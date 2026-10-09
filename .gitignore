@@ -10,3 +10,8 @@ konsylium/*/*/звіти/
 konsylium/*/*/слід*.jsonl
 *.тимч.ngr
 /CLAUDE.md
+konsylium/*/власник/ключ
+konsylium/*/власник/сліди/
+konsylium/*/*/слід*.jsonl
+konsylium/*/*/звіти/*.jsonl
+**/__pycache__/

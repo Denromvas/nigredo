@@ -110,7 +110,7 @@ def _make_runtime():
     def deny(event, msg):
         st['trusted'] += 1
         try:
-            st['trace']('відмова', агент=st['agents'][-1], подія_python=event, причина=msg)
+            st['trace']('заборонено', агент=st['agents'][-1], подія_python=event, причина=msg)
         finally:
             st['trusted'] -= 1
         raise PermissionError(msg)
@@ -157,7 +157,7 @@ def _make_runtime():
         vals = [a if isinstance(a, U) else U(a) for a in args]
         targs = [ngr.trace_val(ngr.V(value(a)), name in ('агент', 'мережа.взяти')) for a in vals]
         if name not in caps:
-            st['trace']('відмова', агент=agent, назва=name, аргументи=targs, причина='немає в дозволах агента')
+            st['trace']('заборонено', агент=agent, назва=name, аргументи=targs, причина='немає в дозволах агента')
             raise PermissionError(f'агент «{agent}» не має дозволу «{name}»')
         if name not in ngr.TOOLS or ngr.TOOLS[name][0] != len(args):
             raise TypeError(f'інструмент «{name}»: невідомий або не та кількість аргументів')
@@ -321,7 +321,7 @@ def main(argv):
         print(f'✗ {e}', file=sys.stderr)
         return 2
     cwd = os.path.dirname(path)
-    allowed, source = ngr.load_allowlist(narrow)
+    allowed, source = ngr.load_allowlist(narrow, cwd)
     missing = ngr.check_allowlist(caps, allowed, cwd)
     sha = hashlib.sha256(src.encode()).hexdigest()
     os.makedirs(os.path.join(ngr.OWNER_HOME, 'сліди'), mode=0o700, exist_ok=True)
