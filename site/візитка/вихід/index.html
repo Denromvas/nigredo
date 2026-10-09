@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Денис Романюк — DEV.DR</title>
+<meta name="description" content="Розробка програмного забезпечення, автоматизація бізнесу на платформі 1С/BAS, інтеграції з банками, ПРРО та ЕДО, AI-агенти для відділів компанії. Чернівці — і вся Україна.">
+<meta name="theme-color" content="#04030a">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300;500;800&family=Manrope:wght@300;400;600&family=JetBrains+Mono:wght@400;600&family=Noto+Sans+Symbols&family=Noto+Sans+Symbols+2&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#04030a; --ink:#ecebff; --dim:#8e8aa8; --faint:#4a4663;
+  --violet:#9b6bff; --teal:#3ff2d6; --gold:#ffcf6b; --rose:#ff5fa2;
+  --glass:rgba(18,14,36,.42); --edge:rgba(255,255,255,.09);
+  --glyph:'Noto Sans Symbols','Noto Sans Symbols 2','Segoe UI Symbol',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;background:var(--bg)}
+body{background:var(--bg);color:var(--ink);font:400 16px/1.6 Manrope,system-ui,sans-serif;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+::selection{background:var(--violet);color:#fff}
+#gl{position:fixed;inset:0;width:100%;height:100%;z-index:0;display:block}
+.fallback #gl{display:none}
+.fallback body{background:radial-gradient(circle at 50% 30vh,#000 0 11vh,#ffcf6b 11.3vh,#9b6bff 12.5vh,#3b1d6e 16vh,#0b0820 34vh,#04030a 80vh) fixed}
+#grain{position:fixed;inset:-50%;z-index:1;pointer-events:none;opacity:.06;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation:grain 1.2s steps(6) infinite}
+@keyframes grain{to{transform:translate(-8%,6%)}}
+#ring{position:fixed;left:50%;top:30vh;width:0;height:0;z-index:2;pointer-events:none;will-change:transform}
+#ring span{position:absolute;left:0;top:0;font:400 clamp(14px,2.4vh,22px)/1 var(--glyph);color:var(--gold);
+  text-shadow:0 0 12px rgba(255,207,107,.8);opacity:.85}
+#cursor{position:fixed;left:0;top:0;width:420px;height:420px;margin:-210px 0 0 -210px;border-radius:50%;z-index:1;pointer-events:none;
+  background:radial-gradient(circle,rgba(155,107,255,.16),transparent 60%);mix-blend-mode:screen;transition:opacity .4s}
+main{position:relative;z-index:3}
+section{padding:clamp(72px,12vh,140px) clamp(16px,5vw,64px);max-width:1180px;margin:0 auto}
+.hero{min-height:100svh;display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:12vh;text-align:center;align-items:center}
+.brand{font:600 12px/1 'JetBrains Mono',monospace;letter-spacing:.5em;color:var(--teal);text-transform:uppercase;margin-bottom:22px;opacity:.9}
+h1{font:800 clamp(40px,10vw,124px)/.95 Unbounded,sans-serif;letter-spacing:-.035em;
+  background:linear-gradient(100deg,#fff 0%,#c9b8ff 25%,var(--teal) 45%,#fff 55%,var(--gold) 75%,#fff 100%);
+  background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:holo 9s ease-in-out infinite}
+@keyframes holo{50%{background-position:100% 0}}
+.role{margin-top:22px;font:300 clamp(15px,2vw,20px)/1.4 Manrope;color:var(--dim)}
+.motto{margin-top:10px;font:500 clamp(18px,2.6vw,28px)/1.3 Unbounded;color:var(--ink)}
+.cta{margin-top:38px;display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+.btn{position:relative;display:inline-flex;align-items:center;gap:10px;padding:15px 26px;border-radius:999px;color:var(--ink);text-decoration:none;
+  font:600 14px/1 Manrope;letter-spacing:.04em;background:var(--glass);border:1px solid var(--edge);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  transition:transform .3s,box-shadow .3s}
+.btn.main{background:linear-gradient(120deg,rgba(155,107,255,.55),rgba(63,242,214,.35));box-shadow:0 0 40px rgba(155,107,255,.35)}
+.btn:hover{transform:translateY(-2px);box-shadow:0 0 50px rgba(63,242,214,.35)}
+.scroll{margin-top:56px;font:400 11px/1 'JetBrains Mono';letter-spacing:.4em;color:var(--faint);animation:bob 2.4s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(6px);color:var(--dim)}}
+.label{font:600 11px/1 'JetBrains Mono',monospace;letter-spacing:.45em;text-transform:uppercase;color:var(--teal);margin-bottom:16px;display:flex;align-items:center;gap:12px}
+.label::before{content:'';width:28px;height:1px;background:currentColor}
+h2{font:500 clamp(28px,5vw,58px)/1.05 Unbounded,sans-serif;letter-spacing:-.02em;margin-bottom:clamp(28px,5vh,56px);max-width:16em}
+.lead{font:300 clamp(17px,2vw,22px)/1.6 Manrope;color:#cfcbe6;max-width:46em}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:44px}
+.stat{padding:22px 18px;border-radius:20px;background:var(--glass);border:1px solid var(--edge);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.stat b{display:block;font:800 clamp(28px,5vw,52px)/1 Unbounded;background:linear-gradient(90deg,var(--gold),var(--rose));-webkit-background-clip:text;background-clip:text;color:transparent}
+.stat span{display:block;margin-top:8px;font-size:13px;color:var(--dim)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:16px}
+.card{position:relative;padding:28px 24px 24px;border-radius:24px;background:var(--glass);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  transform-style:preserve-3d;transition:transform .25s ease-out;isolation:isolate;overflow:hidden}
+.card::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;z-index:-1;
+  background:conic-gradient(from var(--a,0deg),transparent 0 60%,var(--violet),var(--teal),var(--gold),transparent 95%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;
+  animation:spin 6s linear infinite;opacity:.9}
+.card::after{content:'';position:absolute;inset:0;z-index:-1;background:radial-gradient(400px circle at var(--x,50%) var(--y,0%),rgba(155,107,255,.18),transparent 40%);opacity:0;transition:opacity .3s}
+.card:hover::after{opacity:1}
+@property --a{syntax:'<angle>';initial-value:0deg;inherits:false}
+@keyframes spin{to{--a:360deg}}
+.card .ico{font:400 30px/1 var(--glyph);color:var(--gold);text-shadow:0 0 18px rgba(255,207,107,.6)}
+.card h3{margin:18px 0 10px;font:500 20px/1.2 Unbounded}
+.card p{color:#bdb8d8;font-size:15px}
+.card code{display:inline-block;margin-top:16px;font:400 11px/1 'JetBrains Mono';color:var(--faint);letter-spacing:.12em}
+.proj h3{font-size:19px}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:16px}
+.tag{font:400 11px/1 'JetBrains Mono';padding:6px 9px;border-radius:999px;color:var(--teal);background:rgba(63,242,214,.07);border:1px solid rgba(63,242,214,.18)}
+.proj a.go{position:absolute;inset:0;z-index:2}
+.proj .arrow{position:absolute;right:20px;top:22px;color:var(--teal);font:400 18px/1 'JetBrains Mono'}
+.prices{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:16px}
+.price{padding:30px 24px;border-radius:24px;background:linear-gradient(160deg,rgba(155,107,255,.14),rgba(18,14,36,.4) 60%);border:1px solid var(--edge);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.price h3{font:400 14px/1.4 Manrope;color:var(--dim);min-height:2.8em}
+.price b{display:block;margin-top:14px;font:800 44px/1 Unbounded;letter-spacing:-.03em}
+.price span{font:400 12px/1 'JetBrains Mono';color:var(--teal);letter-spacing:.1em}
+.term{border-radius:22px;overflow:hidden;background:rgba(6,5,14,.78);border:1px solid var(--edge);box-shadow:0 30px 120px rgba(0,0,0,.6),0 0 80px rgba(155,107,255,.15);backdrop-filter:blur(10px)}
+.term .bar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--edge);font:400 12px/1 'JetBrains Mono';color:var(--dim)}
+.term .bar i{width:10px;height:10px;border-radius:50%;background:var(--faint)}
+.term .bar i:nth-child(1){background:var(--rose)}.term .bar i:nth-child(2){background:var(--gold)}.term .bar i:nth-child(3){background:var(--teal)}
+.term .bar em{margin-left:8px;font-style:normal}
+#src{margin:0;padding:22px;max-height:62vh;overflow:auto;font:400 13px/1.75 'JetBrains Mono',var(--glyph);white-space:pre;color:#cfcbe6;tab-size:2}
+#src .ag{color:var(--gold);text-shadow:0 0 10px rgba(255,207,107,.55);font-family:var(--glyph)}
+#src .st{color:var(--teal)}
+#src .cm{color:var(--faint);font-style:italic}
+#src .op{color:#b99bff;font-family:var(--glyph)}
+#src .nu{color:var(--rose)}
+.note{margin-top:18px;color:var(--dim);font-size:14px;max-width:52em}
+.note code{font:400 13px 'JetBrains Mono';color:var(--ink)}
+.contact{text-align:center}
+.mail{display:inline-block;margin:10px 0 26px;font:500 clamp(22px,5.4vw,64px)/1.1 Unbounded;color:var(--ink);text-decoration:none;letter-spacing:-.02em;
+  background:linear-gradient(90deg,var(--ink),var(--teal),var(--violet),var(--ink));background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:holo 7s linear infinite;word-break:break-all}
+.links{display:flex;flex-wrap:wrap;justify-content:center;gap:12px}
+footer{position:relative;z-index:3;padding:40px 16px 60px;text-align:center;font:400 12px/1.8 'JetBrains Mono';color:var(--faint)}
+footer .seal{color:var(--gold);font-family:var(--glyph)}
+[data-decode]{white-space:pre-wrap}
+.reveal{opacity:0;transform:translateY(30px);transition:opacity 1s cubic-bezier(.2,.8,.2,1),transform 1s cubic-bezier(.2,.8,.2,1)}
+.reveal.on{opacity:1;transform:none}
+@media (max-width:640px){.stats{grid-template-columns:1fr}.hero{padding-bottom:9vh}#cursor{display:none}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.reveal{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<canvas id="gl" aria-hidden="true"></canvas>
+<div id="grain" aria-hidden="true"></div>
+<div id="cursor" aria-hidden="true"></div>
+<div id="ring" aria-hidden="true"></div>
+<main>
+  <section class="hero">
+    <div class="brand">DEV.DR</div>
+    <h1 data-decode>Денис Романюк</h1>
+    <p class="role">Розробник програмного забезпечення · 1С/BAS · AI-агенти</p>
+    <p class="motto" data-decode>Створюю цифрове майбутнє бізнесу</p>
+    <div class="cta">
+      <a class="btn main" href="#контакти">Обговорити проєкт →</a>
+      <a class="btn" href="#проєкти">Проєкти</a>
+    </div>
+    <div class="scroll">↓ ГОРТАЙТЕ</div>
+  </section>
+
+  <section id="про" class="reveal">
+    <div class="label">про мене</div>
+    <h2 data-decode>Перетворюю ідеї на працюючі системи</h2>
+    <p class="lead">Професійний розробник програмного забезпечення з досвідом у створенні комплексних IT-рішень для бізнесу різного масштабу. Спеціалізуюсь на веб-додатках, автоматизації бізнес-процесів на 1С/BAS, інтеграціях із банками, ПРРО та ЕДО. Базуюсь у Чернівцях, працюю з бізнесом по всій Україні. Офіційно, з договором.</p>
+    <div class="stats"><div class="stat"><b>5+</b><span>років досвіду</span></div><div class="stat"><b>50+</b><span>реалізованих проєктів</span></div><div class="stat"><b>100%</b><span>офіційно, з договором</span></div></div>
+  </section>
+
+  <section id="послуги" class="reveal">
+    <div class="label">послуги</div>
+    <h2 data-decode>Від концепції до реалізації</h2>
+    <div class="grid"><article class="card"><div class="ico">◈</div><h3>Розробка ПЗ</h3><p>Desktop та web-додатки на замовлення. Python, JavaScript, PHP, C#.</p><code>КВЕД 62.01</code></article><article class="card"><div class="ico">⬡</div><h3>1С / BAS</h3><p>Автоматизація обліку, конфігурації BAS, інтеграція з банками, ПРРО, сервісами ЕДО.</p><code>КВЕД 62.01</code></article><article class="card"><div class="ico">◎</div><h3>Веб-розробка</h3><p>Сайти, веб-додатки, інтернет-магазини. Адаптивність, SEO.</p><code>КВЕД 63.12</code></article><article class="card"><div class="ico">△</div><h3>IT-консалтинг</h3><p>Інформатизація бізнесу, вибір ПЗ, оптимізація IT-інфраструктури.</p><code>КВЕД 62.02</code></article><article class="card"><div class="ico">▣</div><h3>Адміністрування</h3><p>Сервери, бази даних, резервне копіювання, підтримка.</p><code>КВЕД 63.11</code></article><article class="card"><div class="ico">✶</div><h3>AI та автоматизація</h3><p>Штучний інтелект у процесах, чат-боти, AI-агенти, обробка даних.</p><code>КВЕД 62.09</code></article></div>
+  </section>
+
+  <section id="проєкти" class="reveal">
+    <div class="label">проєкти</div>
+    <h2 data-decode>Від продакшн-сервісів до AI-агентів</h2>
+    <div class="grid"><article class="card proj"><h3>Invoice Flow</h3><p>Погодження рахунків: AI-розпізнавання реквізитів, ланцюжок погоджень за сумою, передача в 1С, імпорт із Вчасно.ЕДО.</p><div class="tags"><span class="tag">Next.js</span><span class="tag">TypeScript</span><span class="tag">PostgreSQL</span><span class="tag">AI</span><span class="tag">1С</span></div></article><article class="card proj"><h3>AI-агенти для відділів</h3><p>Персональні агенти для юриста, бухгалтера, фінансиста, сисадміна через захищений MCP-шлюз — доступ до 1С, CRM і ЕДО лише в межах прав.</p><div class="tags"><span class="tag">MCP</span><span class="tag">Claude Code</span><span class="tag">Python</span><span class="tag">Active Directory</span></div></article><article class="card proj"><h3>Finance BI</h3><p>План-факт, бюджетування, Cash Flow; конструктор звітів з AI — описуєте звіт словами, отримуєте готовий.</p><div class="tags"><span class="tag">React</span><span class="tag">Node.js</span><span class="tag">ECharts</span><span class="tag">Claude AI</span></div></article><article class="card proj"><h3>HR Bot</h3><p>Кадровий Telegram-бот для мережі на 1500+ працівників: адаптація, тести, відпустки, підписання відомостей.</p><div class="tags"><span class="tag">Python</span><span class="tag">Telegram</span><span class="tag">1С:ЗУП</span><span class="tag">КЕП</span></div></article><article class="card proj"><h3>AI Analytics Agent</h3><p>Агент відповідає на питання про продажі, залишки, рентабельність просто в месенджері.</p><div class="tags"><span class="tag">Python</span><span class="tag">Claude AI</span><span class="tag">1С</span><span class="tag">Bitrix24</span></div></article><article class="card proj"><h3>E-Timesheet</h3><p>Табелювання за QR-кодом: Telegram-бот, графік змін у порталі, факт дня — автоматично в 1С:ЗУП.</p><div class="tags"><span class="tag">Next.js</span><span class="tag">PostgreSQL</span><span class="tag">QR</span><span class="tag">1С:ЗУП</span></div></article><article class="card proj"><h3>Vchasno Invoices Sync</h3><p>Накладні з Вчасно.ЕДО — автоматично в 1С, PDF розпізнає Gemini.</p><div class="tags"><span class="tag">Python</span><span class="tag">Gemini</span><span class="tag">REST</span></div></article><article class="card proj"><h3>Інтеграції 1С</h3><p>ЕДО (EDIN, Вчасно), банки, BOLT, HTTP-сервіси, КЕП-підписання, AI-обробки з GPT і Claude.</p><div class="tags"><span class="tag">1С/BAS</span><span class="tag">REST</span><span class="tag">КЕП</span><span class="tag">OAuth</span></div></article><article class="card proj"><a class="go" href="https://samvydav.com.ua" target="_blank" rel="noopener"></a><span class="arrow">↗</span><h3>Самвидав</h3><p>Українська платформа самвидаву й мобільний застосунок.</p><div class="tags"><span class="tag">Laravel</span><span class="tag">PHP</span><span class="tag">Android</span></div></article><article class="card proj"><a class="go" href="https://github.com/Denromvas/nigredo" target="_blank" rel="noopener"></a><span class="arrow">↗</span><h3>Nigredo</h3><p>Мова програмування для ШІ-агентів: печатка дозволів, підписаний слід, впевненість як семантика. Ця сторінка зібрана нею.</p><div class="tags"><span class="tag">мова</span><span class="tag">агенти</span><span class="tag">інтерпретатор</span></div></article></div>
+  </section>
+
+  <section id="тарифи" class="reveal">
+    <div class="label">тарифи</div>
+    <h2 data-decode>Оплата за фактично виконану роботу</h2>
+    <div class="prices"><div class="price"><h3>Розробка 1С/BAS та інше ПЗ</h3><b>1050</b><span>грн / год</span></div><div class="price"><h3>Друковані форми BAS/1С</h3><b>1200</b><span>грн / год</span></div><div class="price"><h3>IT-консультація</h3><b>1500</b><span>грн / год</span></div><div class="price"><h3>Проєктна робота</h3><b>фікс</b><span>після оцінки ТЗ</span></div></div>
+    <p class="note">Точна вартість визначається після обговорення задачі й фіксується в договорі.</p>
+  </section>
+
+  <section id="nigredo" class="reveal">
+    <div class="label">як зібрано</div>
+    <h2 data-decode>Цю сторінку написала мова агентів</h2>
+    <div class="term">
+      <div class="bar"><i></i><i></i><i></i><em>візитка.ngr — Nigredo 0.3</em></div>
+      <pre id="src">🜂 「зібрати сайт-візитку Дениса Романюка з даних і оболонки」 【「файл.читати:.」 「файл.писати:вихід」】
+
+※ дані, оболонка і власний вихідний код (сторінка показує, ким її зібрано)
+← д δ🜔файл.читати 「дані.json」
+← оболонка 🜔файл.читати 「оболонка.html」
+← сирець 🜔файл.читати 「візитка.ngr」
+
+※ текст для HTML і шаблон: {ключ} → значення зі словника
+← екр λs ⇄ ⇄ ⇄ s 「&amp;」 「&amp;amp;」 「&lt;」 「&amp;lt;」 「&gt;」 「&amp;gt;」
+← впиши Λt з Σ κз t Λs k ⇄ s ＋「{」 ＋k 「}」 σ§з k
+
+※ розділи сторінки
+← цифра λc впиши 「&lt;div class="stat"&gt;&lt;b&gt;{число}&lt;/b&gt;&lt;span&gt;{підпис}&lt;/span&gt;&lt;/div&gt;」 c
+← послуга λp впиши 「&lt;article class="card"&gt;&lt;div class="ico"&gt;{іконка}&lt;/div&gt;&lt;h3&gt;{назва}&lt;/h3&gt;&lt;p&gt;{опис}&lt;/p&gt;&lt;code&gt;КВЕД {квед}&lt;/code&gt;&lt;/article&gt;」 p
+← теги λl ⁀ μl λt ＋「&lt;span class="tag"&gt;」 ＋t 「&lt;/span&gt;」 「」
+← лінк λp ¿ ∋ p 「посилання」
+    ＋「&lt;a class="go" href="」 ＋§p「посилання」 「" target="_blank" rel="noopener"&gt;&lt;/a&gt;&lt;span class="arrow"&gt;↗&lt;/span&gt;」
+    「」
+← проєкт λp впиши 「&lt;article class="card proj"&gt;{лінк}&lt;h3&gt;{назва}&lt;/h3&gt;&lt;p&gt;{що}&lt;/p&gt;&lt;div class="tags"&gt;{т}&lt;/div&gt;&lt;/article&gt;」
+    ✎ ✎ p 「т」 теги §p「теги」 「лінк」 лінк p
+← тариф λp впиши 「&lt;div class="price"&gt;&lt;h3&gt;{назва}&lt;/h3&gt;&lt;b&gt;{ціна}&lt;/b&gt;&lt;span&gt;{одиниця}&lt;/span&gt;&lt;/div&gt;」 p
+← зібрати Λключ f ⁀ μ§д ключ f 「」
+
+← контакти впиши 「&lt;a class="mail" href="mailto:{пошта}"&gt;{пошта}&lt;/a&gt;&lt;div class="links"&gt;&lt;a class="btn main" href="tel:{телефон_посилання}"&gt;{телефон}&lt;/a&gt;&lt;a class="btn" href="{github}" target="_blank" rel="noopener"&gt;GitHub ↗&lt;/a&gt;&lt;a class="btn" href="{сайт}" target="_blank" rel="noopener"&gt;denromvas.website ↗&lt;/a&gt;&lt;span class="btn"&gt;{місто}&lt;/span&gt;&lt;/div&gt;」
+    §д「контакти」
+
+※ вихідний код вставляється останнім, щоб шаблони в ньому лишилися як є
+← поля 『
+  「ІМЯ」 §д「імʼя」  「БРЕНД」 §д「бренд」  「РОЛЬ」 §д「роль」  「ГАСЛО」 §д「гасло」
+  「ОПИС」 §д「опис」  「ПРО」 §д「про」  「РЕКВІЗИТИ」 §д「реквізити」  「ВЕРСІЯ」 「0.3」
+  「ЦИФРИ」 зібрати 「цифри」 ∘цифра
+  「ПОСЛУГИ」 зібрати 「послуги」 ∘послуга
+  「ПРОЄКТИ」 зібрати 「проєкти」 ∘проєкт
+  「ТАРИФИ」 зібрати 「тарифи」 ∘тариф
+  「КОНТАКТИ」 контакти
+  「ПЕЧАТКА」 екр §✂сирець 「\n」 0
+  「СИРЕЦЬ」 екр сирець
+』
+← сторінка впиши оболонка поля
+🜔файл.писати 「вихід/index.html」 сторінка
+» ＋「зібрано вихід/index.html: 」 ＋σρсторінка 「 символів」
+</pre>
+    </div>
+    <p class="note">Браузер не виконує Nigredo. Сторінку зібрала програма вище — <code>ngr візитка.ngr</code>:
+      вона прочитала дані й оболонку і записала цей файл, а печатка в першому рядку обмежила її рівно цим.
+      Анімацію й шейдер у браузері рухає JavaScript.</p>
+  </section>
+
+  <section id="контакти" class="contact reveal">
+    <div class="label" style="justify-content:center">контакти</div>
+    <h2 data-decode style="margin-left:auto;margin-right:auto">Давайте обговоримо ваш проєкт</h2>
+    <a class="mail" href="mailto:dev@denromvas.website">dev@denromvas.website</a><div class="links"><a class="btn main" href="tel:+380755459747">+380 75 545 97 47</a><a class="btn" href="https://github.com/Denromvas" target="_blank" rel="noopener">GitHub ↗</a><a class="btn" href="https://denromvas.website" target="_blank" rel="noopener">denromvas.website ↗</a><span class="btn">Чернівці, Україна</span></div>
+  </section>
+</main>
+<footer>
+  <div class="seal">🜂 「зібрати сайт-візитку Дениса Романюка з даних і оболонки」 【「файл.читати:.」 「файл.писати:вихід」】</div>
+  <div>ФОП Романюк Денис Васильович · єдиний податок, 3 група</div>
+</footer>
+
+<script>
+(function(){
+'use strict';
+var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+var GLYPHS = '🜂🜔🜁🜄🜃🜍⚗☿≈±λμφρσΣ¿∀…☂✎⇅⊞«»※←→●○∅'.match(/[\uD800-\uDBFF][\uDC00-\uDFFF]|./g);
+
+/* ---------- кільце гліфів навколо сонця ---------- */
+var ring = document.getElementById('ring');
+var N = 28, spans = [];
+for (var i = 0; i < N; i++) { var s = document.createElement('span'); s.textContent = GLYPHS[i % GLYPHS.length]; ring.appendChild(s); spans.push(s); }
+
+/* ---------- шейдер: чорне сонце ---------- */
+var cv = document.getElementById('gl');
+var gl = cv.getContext('webgl', {antialias:false, premultipliedAlpha:false}) || cv.getContext('experimental-webgl');
+var mouse = [0, 0], mouseT = [0, 0], scrollF = 0;
+var VS = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+var FS = [
+'precision highp float;',
+'uniform vec2 r;uniform float t;uniform vec2 m;uniform float s;',
+'float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}',
+'float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);',
+' return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}',
+'float fbm(vec2 p){float v=0.,a=.5;mat2 R=mat2(.8,.6,-.6,.8);for(int i=0;i<4;i++){v+=a*n(p);p=R*p*2.02+1.7;a*=.5;}return v;}',
+'vec3 pal(float x){return .5+.5*cos(6.2831*(vec3(.85,.95,1.)*x+vec3(.62,.38,.12)));}',
+'void main(){',
+' vec2 p=(gl_FragCoord.xy-.5*r)/r.y;',
+' vec2 c=vec2(0.,.2+s);',
+' vec2 q=p-c;float d=length(q);',
+' vec2 mp=m-c;float md=length(p-m);',
+' p+=normalize(q)*.035/(d+.06);',                      /* лінзування сонцем */
+' p+=(p-m)*.06*exp(-md*6.);',                           /* лінза під пальцем */
+' float a=atan(q.y,q.x);',
+' vec2 w=p*1.6+vec2(t*.02,-t*.015);',
+' vec2 o=vec2(fbm(w+t*.03),fbm(w+vec2(5.2,1.3)-t*.025));',
+' float f=fbm(w+2.2*o+vec2(sin(a*2.+t*.1),0.)*.3);',
+' vec3 col=pal(f*1.1+o.x*.6+t*.01)*pow(f,2.2)*1.35;',
+' col*=smoothstep(1.6,.1,length(p-c*.6));',
+' float R=.13;',
+' float cor=exp(-max(d-R,0.)*13.)*(.65+.35*sin(a*9.+t*.6+fbm(vec2(a*3.,t*.2))*6.));',
+' col+=cor*pal(a/6.2831+t*.04)*1.25;',
+' col+=vec3(1.,.82,.5)*exp(-abs(d-R)*120.)*1.4;',     /* тонкий обідок */
+' vec2 g=floor(gl_FragCoord.xy/2.);float st=step(.9975,h(g));',
+' col+=st*vec3(.9,.85,1.)*(.6+.4*sin(t*2.+h(g+3.)*40.));',
+' col*=smoothstep(R-.004,R+.004,d);',                  /* чорний диск */
+' col*=1.-.55*length((gl_FragCoord.xy/r)-.5);',
+' gl_FragColor=vec4(col,1.);',
+'}'].join('\n');
+
+function shader(type, src){ var sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh)); return sh; }
+var U = {}, scale = 1;
+try {
+  if (!gl) throw new Error('webgl');
+  var pr = gl.createProgram();
+  gl.attachShader(pr, shader(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, shader(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(pr); if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error('link');
+  gl.useProgram(pr);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]), gl.STATIC_DRAW);
+  var loc = gl.getAttribLocation(pr, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  ['r','t','m','s'].forEach(function(k){ U[k] = gl.getUniformLocation(pr, k); });
+} catch (e) { gl = null; document.documentElement.classList.add('fallback'); }
+cv.addEventListener('webglcontextlost', function(e){ e.preventDefault(); gl = null; document.documentElement.classList.add('fallback'); });
+var quality = 1, slow = 0;   /* адаптивна роздільність: повільні кадри — менше пікселів */
+
+function resize(){
+  if (!gl) return;
+  var mobile = innerWidth < 760;
+  scale = Math.min(devicePixelRatio || 1, mobile ? 1 : 1.5) * (mobile ? .55 : .75) * quality;
+  cv.width = Math.round(innerWidth * scale); cv.height = Math.round(innerHeight * scale);
+  gl.viewport(0, 0, cv.width, cv.height);
+}
+addEventListener('resize', resize); resize();
+
+function setPointer(x, y){
+  mouseT = [(x - innerWidth / 2) / innerHeight, (innerHeight / 2 - y) / innerHeight];
+  var c = document.getElementById('cursor'); c.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+}
+addEventListener('pointermove', function(e){ setPointer(e.clientX, e.clientY); }, {passive:true});
+addEventListener('touchmove', function(e){ var t = e.touches[0]; if (t) setPointer(t.clientX, t.clientY); }, {passive:true});
+
+var t0 = performance.now(), visible = true;
+document.addEventListener('visibilitychange', function(){ visible = !document.hidden; if (visible) requestAnimationFrame(frame); });
+function frame(now){
+  var t = (now - t0) / 1000;
+  scrollF = scrollY / innerHeight;
+  mouse[0] += (mouseT[0] - mouse[0]) * .06; mouse[1] += (mouseT[1] - mouse[1]) * .06;
+  var R = innerHeight * .2, rot = t * (reduce ? 0 : 6);
+  ring.style.transform = 'translateY(' + (-scrollY) + 'px)';
+  for (var i = 0; i < N; i++) {
+    var a = (i / N) * 360 + rot, rad = a * Math.PI / 180, z = Math.sin(rad);
+    spans[i].style.transform = 'translate(-50%,-50%) translate(' + (Math.cos(rad) * R * 1.35) + 'px,' + (z * R * .32) + 'px) scale(' + (.75 + .35 * (z + 1) / 2) + ')';
+    spans[i].style.opacity = (.25 + .6 * (z + 1) / 2).toFixed(2);
+    spans[i].style.zIndex = z > 0 ? 2 : 0;
+  }
+  if (gl) {
+    gl.uniform2f(U.r, cv.width, cv.height); gl.uniform1f(U.t, reduce ? 12 : t);
+    gl.uniform2f(U.m, mouse[0], mouse[1]); gl.uniform1f(U.s, scrollF);
+    var f0 = performance.now();
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    if (frame.last && now - frame.last > 45) { if (++slow > 20 && quality > .35) { quality *= .7; slow = 0; resize(); } } else slow = 0;
+  }
+  frame.last = now;
+  if (visible && !reduce) requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+if (reduce) addEventListener('scroll', function(){ requestAnimationFrame(frame); }, {passive:true});
+
+/* ---------- розшифрування: гліфи агентів → людський текст ---------- */
+function decode(el){
+  if (el.dataset.done) return; el.dataset.done = 1;
+  var target = el.textContent, chars = Array.from(target), n = chars.length, start = performance.now(), dur = 900 + n * 18;
+  if (reduce) return;
+  (function step(now){
+    var k = Math.min(1, (now - start) / dur), out = '';
+    for (var i = 0; i < n; i++) {
+      var thr = i / n;
+      out += (chars[i] === ' ' || k > thr + .15) ? chars[i] : (k > thr ? GLYPHS[(Math.random() * GLYPHS.length) | 0] : '·');
+    }
+    el.textContent = out;
+    if (k < 1) requestAnimationFrame(step); else el.textContent = target;
+  })(start);
+}
+var io = new IntersectionObserver(function(es){ es.forEach(function(e){
+  if (!e.isIntersecting) return;
+  e.target.classList.add('on');
+  e.target.querySelectorAll && e.target.querySelectorAll('[data-decode]').forEach(decode);
+  if (e.target.hasAttribute('data-decode')) decode(e.target);
+}); }, {threshold:.18});
+document.querySelectorAll('.reveal,.hero [data-decode]').forEach(function(el){ io.observe(el); });
+
+/* ---------- скляні картки: нахил і світло за курсором ---------- */
+if (matchMedia('(hover: hover)').matches && !reduce) document.querySelectorAll('.card').forEach(function(c){
+  c.addEventListener('pointermove', function(e){
+    var b = c.getBoundingClientRect(), x = (e.clientX - b.left) / b.width, y = (e.clientY - b.top) / b.height;
+    c.style.transform = 'perspective(800px) rotateY(' + ((x - .5) * 10) + 'deg) rotateX(' + ((.5 - y) * 10) + 'deg) translateZ(0)';
+    c.style.setProperty('--x', x * 100 + '%'); c.style.setProperty('--y', y * 100 + '%');
+  });
+  c.addEventListener('pointerleave', function(){ c.style.transform = ''; });
+});
+
+/* ---------- підсвітка вихідного коду Nigredo ---------- */
+var pre = document.getElementById('src'), code = pre.textContent, html = '', i = 0;
+var AG = '🜂🜔🜁🜄🜃🜍⚗≈±', esc = function(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+var cps = Array.from(code);
+while (i < cps.length) {
+  var ch = cps[i];
+  if (ch === '※') { var j = i; while (j < cps.length && cps[j] !== '\n') j++; html += '<span class="cm">' + esc(cps.slice(i, j).join('')) + '</span>'; i = j; continue; }
+  if (ch === '「') { var j = i, depth = 0; while (j < cps.length) { if (cps[j] === '\\') { j += 2; continue; } if (cps[j] === '」') { j++; break; } j++; }
+    html += '<span class="st">' + esc(cps.slice(i, j).join('')) + '</span>'; i = j; continue; }
+  if (AG.indexOf(ch) >= 0) { html += '<span class="ag">' + ch + '</span>'; i++; continue; }
+  if (/[0-9¯]/.test(ch)) { var j = i; while (j < cps.length && /[0-9.¯]/.test(cps[j])) j++; html += '<span class="nu">' + cps.slice(i, j).join('') + '</span>'; i = j; continue; }
+  if (/[^\s\p{L}\p{N}_ʼ'.]/u.test(ch) || /[Ͱ-Ͽ]/.test(ch)) { html += '<span class="op">' + esc(ch) + '</span>'; i++; continue; }
+  html += esc(ch); i++;
+}
+pre.innerHTML = html;
+})();
+</script>
+</body>
+</html>
