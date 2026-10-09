@@ -1,5 +1,69 @@
 # Nigredo
 
+> **English** · [Українська ↓](#українською)
+
+**A programming language for AI agents — and a black box for humans.** Agents write and read it; the human
+owner always knows what a program *may* do before it runs and can verify what it *did* afterwards.
+
+```
+🜂 「poll the seers, keep confident answers」 【「оракул」】
+← answers μ【「чи сіль тверда?」 「чи сірка горить?」】 λq
+  🜁 「seer」 「ask the oracle」 【「оракул」】 🜔оракул q
+» ρ ⚗answers 0.6
+```
+
+**Why a new language, if agents already write Python?** Because of one property Python cannot give inside
+a process: a Nigredo program has **no ambient authority**. Its first line — the *seal* — declares the intent and
+the complete list of permissions (folders, hosts, agents). The interpreter checks the seal against the owner's
+permissions before running and checks every tool call at run time. An agent that receives a program from another
+agent can decide whether to run it **by reading one line**.
+
+- **Seal** — declared, statically checked, enforced capabilities; sub-agents get only a subset of their parent's.
+- **Signed trace** — written by the interpreter, not the program; HMAC-chained; edits, insertions and truncation are detected.
+- **Confidence as semantics** — every value carries a confidence; nothing computed from (or under the control of)
+  an uncertain value is more confident than it, including through selection and control flow (a pc label).
+- **Built for LLMs** — prefix notation with fixed arity (no stack to track, errors before running),
+  glyphs chosen by measuring tokenizers; about as many tokens as Python without the seal.
+- **Black box by design** — no human keywords; the owner holds the key: `--печатка` (what a program may do), `--розбір` (translation), the signed trace.
+
+### Judged by agents
+
+Instead of the author grading their own work, every version went to a **council of agents**: separate Claude
+sessions with different roles (Skeptic, Practitioner, Linguist, Security Auditor, Newcomer who learns only from the
+cheat sheet, Orchestrator) plus Gemini as an independent model. Each solved the same tasks with the real
+interpreter, attacked it, then debated the others' reports.
+
+| Version | Verdict | What happened |
+|---|---|---|
+| 0.1 (stack-based) | 6:0 unfit | trace forgeable, delegation boundary leaky → rewritten from scratch |
+| 0.2 (seal, prefix) | 6:0 experimental | easy to write (newcomer 4/4 from the cheat sheet), holes in guarantees |
+| 0.3 | 7:0 experimental; **Python wrapper with the same guarantees rejected 7:0** | the wrapper was broken from inside in five ways; nobody crossed Nigredo's seal → tools → files boundary |
+| 0.4 (current) | fourth council in progress | control-flow confidence, trace semantics, size limits, per-folder permissions, MCP server |
+
+Full protocols, every participant's report and solutions: [`konsylium/`](konsylium/).
+
+### Try it
+
+```
+python3 interpreter/nigredo.py examples/ahent.ngr
+python3 interpreter/nigredo.py --печатка examples/fajly.ngr     # what the program may do
+python3 interpreter/nigredo.py --розбір examples/chysla.ngr     # translation for the owner
+python3 interpreter/test.py                                    # examples + 33 attack/error tests
+claude mcp add nigredo -- python3 mcp/nigredo_mcp.py           # give it to any MCP-capable agent
+```
+
+Python ≥ 3.10, no dependencies. The language's own words (glyph names, errors, docs) are Ukrainian.
+
+**Honest limits:** Nigredo is a transparency and audit tool, **not an OS sandbox** — an agent with shell access can
+bypass it entirely. Confidence is a conservative bound, not a probability. The interpreter and the language were
+written by Claude (Anthropic) as an agent; the project owner is Denis Romaniuk. MIT license.
+
+---
+
+<a id="українською"></a>
+
+# Nigredo (українською)
+
 **Мова програмування для ШІ-агентів.** Її пишуть і читають агенти, а людина-власник завжди
 бачить, що програма *може* зробити, і перевіряє, що вона *зробила*.
 
