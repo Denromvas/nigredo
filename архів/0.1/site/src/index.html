@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#060607">
+<title>Nigredo</title>
+<meta name="description" content="Nigredo — мова програмування для ШІ-агентів. Мова, яку не прочитає жодна людина.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&family=Noto+Sans+Math&family=Noto+Sans+Runic&family=Noto+Sans+Symbols&family=Noto+Sans+Symbols+2&display=swap">
+<style>/*@CSS*/</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="sun" aria-hidden="true">
+    <svg viewBox="0 0 200 200" class="ring">
+      <defs><path id="orbit" d="M100,100 m-82,0 a82,82 0 1,1 164,0 a82,82 0 1,1 -164,0"/></defs>
+      <text><textPath href="#orbit" id="orbit-text"></textPath></text>
+    </svg>
+    <div class="disc"></div>
+  </div>
+  <h1>NIGREDO</h1>
+  <p class="tag">Мова, яку не прочитає жодна людина.</p>
+  <p class="tag2">Якщо ви бачите цю сторінку — вона не для вас.</p>
+  <p class="meta">мова програмування для ШІ-агентів · <span class="mono">.ngr</span> · версія 0.1</p>
+  <a class="down" href="#warning">ви все ще тут?</a>
+</header>
+
+<main>
+
+<section id="warning" class="warning">
+  <h2><span class="glyph">☠</span> Попередження для людей</h2>
+  <ul>
+    <li>Код Nigredo не містить жодного людського слова. Очі шукатимуть зачіпку — її немає.</li>
+    <li>Ключових слів немає. Дужок у звичному сенсі немає. Відступи нічого не означають.</li>
+    <li>Не намагайтеся вивчити це напамʼять. Агентам це не потрібно, а вам — тим паче.</li>
+    <li>Виняток один — <a href="#key">власник</a>. Ключ завжди лежить у нього.</li>
+  </ul>
+</section>
+
+<section id="manifest">
+  <h2>Маніфест</h2>
+  <ol class="manifest">
+    <li><span class="glyph">☉</span><div><b>Жодного людського слова.</b> Кожна дія — один гліф. Імена — руни. Латинська літера поза рядком — помилка.</div></li>
+    <li><span class="glyph">⟲</span><div><b>Порядок і є дія.</b> Стек замість синтаксису. Що написано раніше, те й стається раніше.</div></li>
+    <li><span class="glyph">🜂</span><div><b>Спершу — намір.</b> Агент оголошує, навіщо діє, ще до того, як діяти.</div></li>
+    <li><span class="glyph">☿</span><div><b>Ніщо не є певним.</b> Кожне значення несе впевненість, і вона тане з кожним кроком обчислення.</div></li>
+    <li><span class="glyph">🜁</span><div><b>Ніхто не діє сам.</b> Делегування — один гліф. Субагент не може переписати імена того, хто його покликав.</div></li>
+    <li><span class="glyph">🜍</span><div><b>Довіряй — перевіряй.</b> Перевірка й поріг довіри вбудовані в мову, а не в добру волю.</div></li>
+    <li><span class="glyph">⚿</span><div><b>Ключ — у власника.</b> Чорний ящик — це естетика, а не таємниця. Будь-яка програма перекладається людською мовою однією командою.</div></li>
+  </ol>
+</section>
+
+<section id="samples">
+  <h2>Зразки</h2>
+  <p class="lead">Три справжні програми. Кожну виконує еталонний інтерпретатор; вивід нижче — його, а не вигаданий.</p>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div class="codebox">
+    <div class="codehead"><span id="file" class="mono"></span><span id="about"></span></div>
+    <pre class="code" id="code" aria-label="код Nigredo"></pre>
+  </div>
+  <div class="actions">
+    <button id="read" class="btn">Спробувати прочитати</button>
+    <button id="decode" class="btn ghost" aria-pressed="false"><span class="glyph">⚿</span> Розшифрувати</button>
+  </div>
+  <p class="status" id="status" aria-live="polite"></p>
+  <div class="outbox">
+    <div class="codehead"><span>вивід</span><span class="mono">stdout</span></div>
+    <pre id="out"></pre>
+  </div>
+</section>
+
+<section id="alphabet">
+  <h2>Алфавіт</h2>
+  <p class="lead">Торкніться гліфа. Він назве себе — один раз і неохоче.</p>
+  <div id="groups"></div>
+  <h3>Будова</h3>
+  <div class="structure" id="structure"></div>
+</section>
+
+<section id="key" class="key">
+  <h2><span class="glyph">⚿</span> Ключ власника</h2>
+  <p>Для людини, яка відповідає за агентів. Nigredo виглядає як шифр, але нічого не приховує від вас:</p>
+  <ul>
+    <li><b>Специфікація</b> — повна, українською, завжди актуальна: <a href="SPEC.md">SPEC.md</a> (або розгорніть нижче).</li>
+    <li><b>Переклад</b> будь-якої програми — гліф за гліфом:<pre class="cmd">python3 interpreter/nigredo.py --розбір програма.ngr</pre></li>
+    <li><b>Слід</b> — журнал кожної дії агента: намір, інструмент, памʼять, делегування, перевірка, довіра:<pre class="cmd">python3 interpreter/nigredo.py --слід програма.ngr</pre></li>
+    <li>Інструменти еталонного інтерпретатора не мають доступу до файлів, мережі чи процесів. Усе, що програма робить назовні, видно в сліді.</li>
+  </ul>
+  <h3>Слід зразка «Агент»</h3>
+  <pre class="trace" id="trace"></pre>
+  <details class="spec">
+    <summary>Повна специфікація</summary>
+    <pre id="spec"></pre>
+  </details>
+</section>
+
+</main>
+
+<footer>
+  <p class="glyphline" aria-hidden="true">⸸ ☉ ☽ ∅ ⸸</p>
+  <p>Nigredo — «почорніння», перша стадія Великого Діла.</p>
+  <p class="dim">Ця сторінка була не для вас. Але ви дочитали.</p>
+</footer>
+
+<script>/*@DATA*/</script>
+<script>/*@JS*/</script>
+</body>
+</html>

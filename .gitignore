@@ -1,0 +1,12 @@
+# внутрішнє — не публікується
+/MEMORY.md
+/deploy_server.sh
+.claude/
+konsylium/*/protokol/лог_*.txt
+# згенероване
+__pycache__/
+examples/дані/звіти/
+konsylium/*/*/звіти/
+konsylium/*/*/слід*.jsonl
+*.тимч.ngr
+/CLAUDE.md
