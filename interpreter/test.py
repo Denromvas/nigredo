@@ -52,7 +52,9 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     (home / 'дозволи.json').write_text(json.dumps({'дозволено': [
         'оракул', 'жереб', 'час', f'файл.читати:{DATA}', f'файл.писати:{DATA / "звіти"}',
-        f'мережа.взяти:127.0.0.1:{port}']}, ensure_ascii=False))
+        f'мережа.взяти:127.0.0.1:{port}'],
+        'для_тек': {str(ROOT / 'tests' / 'помилки' / 'тека_з_правами'): [f'файл.читати:{DATA}/../..']}},
+        ensure_ascii=False))
     wide = tmp / 'широкі.json'
     wide.write_text(json.dumps({'дозволено': ['файл.читати:/']}, ensure_ascii=False))
     env = dict(os.environ, NIGREDO_HOME=str(home))
@@ -69,7 +71,7 @@ def main():
         check(expected.exists() and got.returncode == 0 and got.stdout == expected.read_text(encoding='utf-8'),
               src.name, f'код {got.returncode}\n{got.stderr}')
 
-    for src in sorted((ROOT / 'tests' / 'помилки').glob('*.ngr')):
+    for src in sorted((ROOT / 'tests' / 'помилки').rglob('[!.]*.ngr')):
         text = src.read_text(encoding='utf-8')
         code, _, want = header(text, 'очікується').partition(' ')
         flags = (header(text, 'прапорці') or '').replace('{ШИРОКІ}', str(wide)).replace('{ДАНІ}', str(DATA)).split()
@@ -77,12 +79,26 @@ def main():
         if '{ПОРТ}' in text:
             prog = src.with_name(f'.{src.stem}.тимч.ngr')
             prog.write_text(text.replace('{ПОРТ}', str(port)), encoding='utf-8')
+        mode = header(text, 'слід')
+        tfile = tmp / f'{src.stem}.jsonl'
+        if mode:
+            flags += ['--слід', str(tfile)]
         try:
             got = run([*flags, str(prog)], env)
         finally:
             if prog != src:
                 prog.unlink()
         ok = got.returncode == int(code) and want in got.stderr
+        if mode == 'без-підробок':
+            recs = [json.loads(line) for line in tfile.read_text(encoding='utf-8').splitlines()]
+            ok = ok and run(['--перевірити-слід', str(tfile)], env).returncode == 0
+            ok = ok and not any(r['подія'] in ('перевірка', 'інструмент') for r in recs)
+        if mode == 'обрізати-після-заборони':
+            lines = tfile.read_text(encoding='utf-8').splitlines()
+            idx = next(i for i, line in enumerate(lines) if '"подія": "заборонено"' in line)
+            cut = tmp / f'{src.stem}.обрізаний.jsonl'
+            cut.write_text('\n'.join(lines[:idx + 1]) + '\n', encoding='utf-8')
+            ok = ok and 'обірвано' in run(['--перевірити-слід', str(cut)], env).stdout
         if header(text, 'печатка-рядків-✓'):
             seal = run(['--печатка', str(src)], env).stdout
             ok = ok and sum(line.lstrip().startswith('✓') for line in seal.splitlines()) == int(header(text, 'печатка-рядків-✓'))

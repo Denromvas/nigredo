@@ -28,8 +28,14 @@ body{background:var(--bg);color:var(--ink);font:400 16px/1.6 Manrope,system-ui,s
   animation:grain 1.2s steps(6) infinite}
 @keyframes grain{to{transform:translate(-8%,6%)}}
 #ring{position:fixed;left:50%;top:30vh;width:0;height:0;z-index:2;pointer-events:none;will-change:transform}
-#ring span{position:absolute;left:0;top:0;font:400 clamp(14px,2.4vh,22px)/1 var(--glyph);color:var(--gold);
-  text-shadow:0 0 12px rgba(255,207,107,.8);opacity:.85}
+#ring .orb{position:absolute;left:0;top:0;transform:perspective(900px) rotateX(74deg);transform-style:preserve-3d}
+#ring .rot{position:absolute;left:0;top:0;transform-style:preserve-3d;animation:orbit 60s linear infinite;will-change:transform}
+#ring span{transform-style:preserve-3d}
+@keyframes orbit{to{transform:rotate(360deg)}}
+@keyframes face{from{transform:rotateZ(0deg) rotateX(-74deg)}to{transform:rotateZ(-360deg) rotateX(-74deg)}}
+#ring span{position:absolute;left:0;top:0;font:400 clamp(14px,2.4vh,22px)/1 var(--glyph);color:rgba(255,207,107,.85);
+  text-shadow:0 0 12px rgba(255,207,107,.8)}
+#ring .up{display:inline-block;animation:face 60s linear infinite}
 #cursor{position:fixed;left:0;top:0;width:420px;height:420px;margin:-210px 0 0 -210px;border-radius:50%;z-index:1;pointer-events:none;
   background:radial-gradient(circle,rgba(155,107,255,.16),transparent 60%);mix-blend-mode:screen;transition:opacity .4s}
 main{position:relative;z-index:3}
@@ -106,6 +112,14 @@ footer .seal{color:var(--gold);font-family:var(--glyph)}
 .reveal{opacity:0;transform:translateY(30px);transition:opacity 1s cubic-bezier(.2,.8,.2,1),transform 1s cubic-bezier(.2,.8,.2,1)}
 .reveal.on{opacity:1;transform:none}
 @media (max-width:640px){.stats{grid-template-columns:1fr}.hero{padding-bottom:9vh}#cursor{display:none}}
+@media (hover:none),(max-width:760px){
+  .card,.stat,.price,.btn,.term{backdrop-filter:none;-webkit-backdrop-filter:none}
+  .card,.stat{background:rgba(14,11,30,.82)} .price{background:linear-gradient(160deg,rgba(60,40,110,.85),rgba(14,11,30,.88) 60%)}
+  .btn{background:rgba(14,11,30,.7)} .term{background:rgba(6,5,14,.92)}
+  .card::before{animation:none;background:linear-gradient(120deg,rgba(155,107,255,.7),rgba(63,242,214,.45) 40%,transparent 60%,rgba(255,207,107,.5))}
+  #grain{display:none}
+}
+.card,.stat,.price{contain:paint}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.reveal{opacity:1;transform:none}}
 </style>
 </head>
@@ -157,7 +171,7 @@ footer .seal{color:var(--gold);font-family:var(--glyph)}
     <div class="label">як зібрано</div>
     <h2 data-decode>Цю сторінку написала мова агентів</h2>
     <div class="term">
-      <div class="bar"><i></i><i></i><i></i><em>візитка.ngr — Nigredo 0.3</em></div>
+      <div class="bar"><i></i><i></i><i></i><em>візитка.ngr — Nigredo 0.4</em></div>
       <pre id="src">🜂 「зібрати сайт-візитку Дениса Романюка з даних і оболонки」 【「файл.читати:.」 「файл.писати:вихід」】
 
 ※ дані, оболонка і власний вихідний код (сторінка показує, ким її зібрано)
@@ -187,7 +201,7 @@ footer .seal{color:var(--gold);font-family:var(--glyph)}
 ※ вихідний код вставляється останнім, щоб шаблони в ньому лишилися як є
 ← поля 『
   「ІМЯ」 §д「імʼя」  「БРЕНД」 §д「бренд」  「РОЛЬ」 §д「роль」  「ГАСЛО」 §д「гасло」
-  「ОПИС」 §д「опис」  「ПРО」 §д「про」  「РЕКВІЗИТИ」 §д「реквізити」  「ВЕРСІЯ」 「0.3」
+  「ОПИС」 §д「опис」  「ПРО」 §д「про」  「РЕКВІЗИТИ」 §д「реквізити」  「ВЕРСІЯ」 「0.4」
   「ЦИФРИ」 зібрати 「цифри」 ∘цифра
   「ПОСЛУГИ」 зібрати 「послуги」 ∘послуга
   「ПРОЄКТИ」 зібрати 「проєкти」 ∘проєкт
@@ -225,8 +239,20 @@ var GLYPHS = '🜂🜔🜁🜄🜃🜍⚗☿≈±λμφρσΣ¿∀…☂✎⇅�
 
 /* ---------- кільце гліфів навколо сонця ---------- */
 var ring = document.getElementById('ring');
-var N = 28, spans = [];
-for (var i = 0; i < N; i++) { var s = document.createElement('span'); s.textContent = GLYPHS[i % GLYPHS.length]; ring.appendChild(s); spans.push(s); }
+var N = 28, orb = document.createElement('div'), rot = document.createElement('div');
+orb.className = 'orb'; rot.className = 'rot'; orb.appendChild(rot); ring.appendChild(orb);
+function placeRing(){
+  rot.textContent = '';
+  var R = innerHeight * .2 * 1.35;
+  for (var i = 0; i < N; i++) {
+    var a = i / N * 2 * Math.PI, s = document.createElement('span'), u = document.createElement('i');
+    u.className = 'up'; u.style.fontStyle = 'normal'; u.textContent = GLYPHS[i % GLYPHS.length];
+    s.appendChild(u);
+    s.style.transform = 'translate(-50%,-50%) translate(' + (Math.cos(a) * R).toFixed(1) + 'px,' + (Math.sin(a) * R).toFixed(1) + 'px)';
+    rot.appendChild(s);
+  }
+}
+placeRing(); addEventListener('resize', placeRing);
 
 /* ---------- шейдер: чорне сонце ---------- */
 var cv = document.getElementById('gl');
@@ -285,7 +311,7 @@ var quality = 1, slow = 0;   /* адаптивна роздільність: п�
 function resize(){
   if (!gl) return;
   var mobile = innerWidth < 760;
-  scale = Math.min(devicePixelRatio || 1, mobile ? 1 : 1.5) * (mobile ? .55 : .75) * quality;
+  scale = Math.min(devicePixelRatio || 1, mobile ? 1 : 1.5) * (mobile ? .45 : .7) * quality;
   cv.width = Math.round(innerWidth * scale); cv.height = Math.round(innerHeight * scale);
   gl.viewport(0, 0, cv.width, cv.height);
 }
@@ -298,21 +324,15 @@ function setPointer(x, y){
 addEventListener('pointermove', function(e){ setPointer(e.clientX, e.clientY); }, {passive:true});
 addEventListener('touchmove', function(e){ var t = e.touches[0]; if (t) setPointer(t.clientX, t.clientY); }, {passive:true});
 
-var t0 = performance.now(), visible = true;
+var t0 = performance.now(), visible = true, tick = 0, lowfps = matchMedia('(hover: none)').matches || innerWidth < 760;
 document.addEventListener('visibilitychange', function(){ visible = !document.hidden; if (visible) requestAnimationFrame(frame); });
 function frame(now){
   var t = (now - t0) / 1000;
   scrollF = scrollY / innerHeight;
   mouse[0] += (mouseT[0] - mouse[0]) * .06; mouse[1] += (mouseT[1] - mouse[1]) * .06;
-  var R = innerHeight * .2, rot = t * (reduce ? 0 : 6);
-  ring.style.transform = 'translateY(' + (-scrollY) + 'px)';
-  for (var i = 0; i < N; i++) {
-    var a = (i / N) * 360 + rot, rad = a * Math.PI / 180, z = Math.sin(rad);
-    spans[i].style.transform = 'translate(-50%,-50%) translate(' + (Math.cos(rad) * R * 1.35) + 'px,' + (z * R * .32) + 'px) scale(' + (.75 + .35 * (z + 1) / 2) + ')';
-    spans[i].style.opacity = (.25 + .6 * (z + 1) / 2).toFixed(2);
-    spans[i].style.zIndex = z > 0 ? 2 : 0;
-  }
-  if (gl) {
+  ring.style.transform = 'translate3d(0,' + (-scrollY) + 'px,0)';
+  var heroOut = scrollY > innerHeight * 1.2;
+  if (gl && (!lowfps || ++tick % (heroOut ? 4 : 2) === 0)) {
     gl.uniform2f(U.r, cv.width, cv.height); gl.uniform1f(U.t, reduce ? 12 : t);
     gl.uniform2f(U.m, mouse[0], mouse[1]); gl.uniform1f(U.s, scrollF);
     var f0 = performance.now();

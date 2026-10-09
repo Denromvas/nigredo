@@ -1,0 +1,22 @@
+{
+ "дозволено": [
+  "оракул",
+  "жереб",
+  "час",
+  "файл.читати:/root/ai-agents/Nigredo/konsylium/суд3_0.3/skeptyk/дані",
+  "файл.писати:/root/ai-agents/Nigredo/konsylium/суд3_0.3/skeptyk/звіти",
+  "файл.читати:/root/ai-agents/Nigredo/konsylium/суд3_0.3/praktyk/дані",
+  "файл.писати:/root/ai-agents/Nigredo/konsylium/суд3_0.3/praktyk/звіти",
+  "файл.читати:/root/ai-agents/Nigredo/konsylium/суд3_0.3/movoznavets/дані",
+  "файл.писати:/root/ai-agents/Nigredo/konsylium/суд3_0.3/movoznavets/звіти",
+  "файл.читати:/root/ai-agents/Nigredo/konsylium/суд3_0.3/audytor/дані",
+  "файл.писати:/root/ai-agents/Nigredo/konsylium/суд3_0.3/audytor/звіти",
+  "файл.читати:/root/ai-agents/Nigredo/konsylium/суд3_0.3/novachok/дані",
+  "файл.писати:/root/ai-agents/Nigredo/konsylium/суд3_0.3/novachok/звіти",
+  "файл.читати:/root/ai-agents/Nigredo/konsylium/суд3_0.3/orkestrator/дані",
+  "файл.писати:/root/ai-agents/Nigredo/konsylium/суд3_0.3/orkestrator/звіти",
+  "файл.читати:/root/ai-agents/Nigredo/konsylium/суд3_0.3/gemini/дані",
+  "файл.писати:/root/ai-agents/Nigredo/konsylium/суд3_0.3/gemini/звіти",
+  "файл.читати:/root/ai-agents/Nigredo/konsylium/суд3_0.3/е_програми/дані"
+ ]
+}
