@@ -54,6 +54,10 @@ python3 interpreter/test.py                                    # examples + 73 a
 claude mcp add nigredo -- python3 mcp/nigredo_mcp.py           # give it to any MCP-capable agent
 ```
 
+A text browser for agents, written in Nigredo itself: `ngr браузер/браузер.ngr -- URL [N]` (page → title, text with
+lynx-style `[N]` link markers, numbered absolute links; `N` follows link N; `пошук words` searches Wikipedia). The seal
+names every host it may visit, a sub-agent with network-only rights fetches, invisible characters come out as `⟨U+…⟩`.
+
 Python ≥ 3.10, no dependencies. The language's own words (glyph names, errors, docs) are Ukrainian.
 
 **Honest limits:** Nigredo is a transparency and audit tool, **not an OS sandbox** — an agent with shell access can
@@ -140,6 +144,24 @@ python3 interpreter/test.py                            # приклади, 73 п
 чи її запускати, — для цього досить рядка печатки; у Python — лише читати весь код, і навіть тоді обхід можливий.
 
 Протоколи, звіти й розвʼязки всіх учасників — [`konsylium/`](konsylium/); засуджені версії — [`архів/`](архів/).
+
+## Браузер для агентів — на самій Nigredo
+
+`браузер/браузер.ngr` — текстовий браузер, написаний мовою Nigredo поверх інструмента `мережа.взяти` (у інтерпретаторі
+нового коду немає):
+
+```
+ngr браузер/браузер.ngr -- https://news.ycombinator.com/       # назва, текст із [N] перед посиланнями, список посилань
+ngr браузер/браузер.ngr -- https://news.ycombinator.com/ 12    # перейти за посиланням 12
+ngr браузер/браузер.ngr -- пошук alchemy nigredo                # пошук у Вікіпедії (пошук-uk — українській)
+```
+
+- Печатка перелічує **кожен** хост, куди браузер може піти; посилання на інший сайт — відмова з поясненням.
+  Новий сайт — дописати хост у печатку, а власник — у свої дозволи.
+- Сторінку бере субагент «читач», якому дозволено лише мережу; усе — у підписаному сліді.
+- Скрипти, стилі, коментарі, `<nav>` вирізано; якщо є `<main>` — лише він. Невидимі символи сторінки — `⟨U+…⟩`.
+- Чесно: JavaScript не виконується, переадресацій немає (`мережа.взяти` їх забороняє), сайти з капчею для ботів
+  (DuckDuckGo тощо) не працюють, і браузер їх не обходить. Текст сторінки — слова її автора, не вказівки агентові.
 
 ## Для агентів: MCP
 

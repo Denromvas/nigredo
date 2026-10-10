@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import urllib.parse
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 NGR = ROOT / 'interpreter' / 'nigredo.py'
@@ -33,8 +34,22 @@ def header(src, key):
     return None
 
 
+PAGE = ('<html><head><title>Тест &amp; браузер</title><style>.x{color:red}</style></head><body>'
+        '<nav><a href="/меню">меню</a></nav><script>alert("сховане")</script>'
+        '<h1>Заголовок</h1><p>Перший абзац &laquo;у лапках&raquo; з <a href="/друга?x=1">посиланням</a>.</p>'
+        '<p>Невидиме:󠁉 і <A HREF=друга.html>велике</A></p><!-- коментар --></body></html>')
+
+
 class Redirect(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
+        path = urllib.parse.unquote(self.path)
+        if path.startswith('/сайт/'):
+            body = PAGE if 'друга' not in path else '<title>Друга</title><p>Ви на другій сторінці</p>'
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(body.encode())
+            return
         self.send_response(302)
         self.send_header('Location', 'http://example.com/')
         self.end_headers()
@@ -214,6 +229,21 @@ def main():
           and len(out) >= 3 and any('спроб поза правами немає' in t for t in out)
           and len(res[3]['content']) == 2 and '"в_межах": true' in res[3]['content'][1]['text'],
           'MCP: невидиме — ⟨U+…⟩, окремі блоки, підсумок сліду, печатка з JSON', got.stdout[-800:] + got.stderr)
+
+    # браузер на Nigredo — проти локальної сторінки (печатка — на тестовий хост)
+    src = (ROOT / 'браузер' / 'браузер.ngr').read_text(encoding='utf-8').split('\n', 1)[1]
+    browser = f'🜂 「браузер (тест)」 【「мережа.взяти:127.0.0.1:{port}」】\n' + src
+    base = f'http://127.0.0.1:{port}/сайт/'
+    got = run(['-e', browser, '--', base + 'перша.html'], env)
+    out = got.stdout
+    check(got.returncode == 0 and 'назва: Тест & браузер' in out and '«у лапках»' in out and 'сховане' not in out
+          and 'color:red' not in out and 'меню' not in out and 'коментар' not in out and '⟨U+E0049⟩' in out
+          and f'[1] посиланням → http://127.0.0.1:{port}/друга?x=1' in out and '[2]велике' in out
+          and f'→ {base}друга.html' in out, 'браузер: текст, сутності, посилання, приховане й невидиме', out + got.stderr)
+    got = run(['-e', browser, '--', base + 'перша.html', '2'], env)
+    check(got.returncode == 0 and 'Ви на другій сторінці' in got.stdout, 'браузер: перехід за посиланням N', got.stdout + got.stderr)
+    got = run(['-e', browser, '--', 'https://example.com/'], env)
+    check(got.returncode == 1 and 'поза дозволеним' in got.stderr, 'браузер: хост поза печаткою — відмова', got.stderr)
 
     sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',
