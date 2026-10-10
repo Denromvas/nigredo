@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 NGR = os.path.join(HERE, '..', 'interpreter', 'nigredo.py')
@@ -23,10 +24,10 @@ TRACES = os.path.join(OWNER_HOME, 'сліди')
 PROTOCOL = '2024-11-05'
 
 
-def ngr(*args, timeout=120):
+def ngr(*args, timeout=120, env=None):
     try:
         p = subprocess.run([sys.executable, NGR, *args], capture_output=True, text=True, cwd=WORKDIR,
-                           timeout=timeout, stdin=subprocess.DEVNULL, env=dict(os.environ, NIGREDO_SHOW_TRACE='1'))
+                           timeout=timeout, stdin=subprocess.DEVNULL, env=env or os.environ)
         return p.returncode, p.stdout, p.stderr
     except subprocess.TimeoutExpired:
         return 124, '', f'✗ перевищено час ({timeout} с)'
@@ -60,8 +61,10 @@ def tools():
              'args': {'type': 'array', 'items': {'type': 'string'}, 'description': 'Аргументи програми (⌂).'}},
              'required': ['code']}},
         {'name': 'nigredo_pereviryty_slid',
-         'description': 'Перевірити підписаний слід виконання: цілість, підписи, чи не обрізано.',
-         'inputSchema': {'type': 'object', 'properties': {'path': {'type': 'string'}}, 'required': ['path']}},
+         'description': 'Перевірити підписаний слід виконання: цілість, підписи, чи не обрізано; з code — чи слід '
+                        'саме від цієї програми.',
+         'inputSchema': {'type': 'object', 'properties': {'path': {'type': 'string'}, 'code': code},
+                         'required': ['path']}},
     ]
 
 
@@ -76,15 +79,14 @@ def call(name, a):
         return (out or err).strip(), rc != 0
     if name == 'nigredo_vykonaty':
         args = [str(x) for x in a.get('args', [])]
-        rc, out, err = ngr('--тека', WORKDIR, '-e', a['code'], *(['--', *args] if args else []))
-        trace = None
-        lines = []
-        for line in err.splitlines():           # шлях до сліду дає сам інтерпретатор — не вгадуємо
-            if line.startswith('слід: ') and trace is None:
-                trace = line[len('слід: '):]
-            else:
-                lines.append(line)
-        err = '\n'.join(lines)
+        fd, tp = tempfile.mkstemp(prefix='ngr-слід-')       # шлях до сліду — окремим каналом, не через stderr
+        os.close(fd)
+        try:
+            rc, out, err = ngr('--тека', WORKDIR, '-e', a['code'], *(['--', *args] if args else []),
+                               env=dict(os.environ, NIGREDO_TRACE_PATH_FILE=tp))
+            trace = open(tp, encoding='utf-8').read().strip()
+        finally:
+            os.unlink(tp)
         text = f'код виходу: {rc}\n--- вивід ---\n{out}'
         if err.strip():
             text += f'--- помилки ---\n{err}\n'
@@ -95,7 +97,16 @@ def call(name, a):
         real = os.path.realpath(os.path.join(TRACES, a['path']))
         if not (real.startswith(TRACES + os.sep) and real.endswith('.jsonl')):
             return '✗ перевіряю лише сліди з теки слідів власника', True
-        rc, out, err = ngr('--перевірити-слід', real)
+        if a.get('code'):                                   # звірити, що слід — саме від цієї програми
+            fd, pp = tempfile.mkstemp(prefix='ngr-програма-')
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                f.write(a['code'])
+            try:
+                rc, out, err = ngr('--перевірити-слід', real, pp)
+            finally:
+                os.unlink(pp)
+        else:
+            rc, out, err = ngr('--перевірити-слід', real)
         return (out or err).strip(), rc != 0
     raise KeyError(name)
 
@@ -126,7 +137,7 @@ def main():
         try:
             if method == 'initialize':
                 reply(id_, {'protocolVersion': PROTOCOL, 'capabilities': {'tools': {}},
-                            'serverInfo': {'name': 'nigredo', 'version': '0.4.1'}})
+                            'serverInfo': {'name': 'nigredo', 'version': '0.4.2'}})
             elif method == 'tools/list':
                 reply(id_, {'tools': tools()})
             elif method == 'tools/call':

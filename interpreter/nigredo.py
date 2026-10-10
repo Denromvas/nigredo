@@ -19,7 +19,7 @@ import urllib.request
 from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
-VERSION = '0.4.1'
+VERSION = '0.4.2'
 MAX_DEPTH = 2000
 MAX_SIZE = 5_000_000      # найбільший логічний розмір значення (символів + елементів); --розмір N
 ALLOC_FACTOR = 20         # сумарно за запуск можна створити не більше ALLOC_FACTOR × --розмір
@@ -171,6 +171,8 @@ class V:
             self.n = 1 + sum(e.n for e in v)
         elif isinstance(v, dict):
             self.n = 1 + sum(len(k) + e.n for k, e in v.items())
+        elif isinstance(v, int) and not isinstance(v, bool):
+            self.n = 1 + v.bit_length() // 3            # ≈ десяткових цифр
         else:
             self.n = 1
 
@@ -311,7 +313,7 @@ def is_name_start(ch):
 
 
 def is_name_char(ch):
-    return is_name_start(ch) or unicodedata.category(ch) in ('Nd', 'Mn', 'Mc') or ch in 'ʼ\''
+    return is_name_start(ch) or unicodedata.category(ch) == 'Nd' or ch in 'ʼ\''
 
 
 def digit(ch):
@@ -437,9 +439,16 @@ def narrower(tool, child, parent):
     if TOOLS.get(tool, (0, '', '', False, ''))[4] != 'тека':
         return False
     c, p = os.path.normpath(child), os.path.normpath(parent)
-    if c.startswith('..') and not p.startswith('..'):
+    if os.path.isabs(c) != os.path.isabs(p):
         return False
-    return c == p or c.startswith(p.rstrip(os.sep) + os.sep) or (p == '.' and not c.startswith('..') and not os.path.isabs(c))
+    if p == '.':
+        rest = c
+    elif c.startswith(p.rstrip(os.sep) + os.sep):
+        rest = c[len(p.rstrip(os.sep)) + 1:]
+    else:
+        return False
+    # решта шляху — лише вглиб: жодного «..» (суд 4: «..» → «../../..» вважалося підтекою)
+    return '..' not in rest.split(os.sep)
 
 
 class Parser:
@@ -667,6 +676,7 @@ class Parser:
 WORLD_WRITERS = {'жереб', 'файл.писати', 'агент', 'мережа.взяти'}      # змінюють стан, який потім можна прочитати
 WORLD_READERS = {'жереб', 'файл.читати', 'файл.список', 'файл.писати', 'агент', 'мережа.взяти'}
 _EFFECTS = {}
+FN_SLOTS = {'∀': (1,), 'μ': (1,), 'φ': (1,), '⇅': (1,), '⊞': (1,), 'Σ': (2,), '↻': (1, 2), '☂': (1,), '🜍': (1,)}
 
 
 def effects(node):
@@ -687,6 +697,8 @@ def effects(node):
                 out.update(('mem', 'world'))
             elif k == 'tool' and n[2] in WORLD_WRITERS:
                 out.add('world')
+            elif k == 'op' and n[2] in FN_SLOTS and any(n[3][i][0] != 'lam' for i in FN_SLOTS[n[2]]):
+                out.update(('mem', 'world'))      # функцію передано значенням (∘, змінна, вираз) — її тіла тут не видно
             elif k == 'deleg':           # памʼять субагента — своя; зовнішній світ — спільний
                 if 'world' in effects(n[5]):
                     out.add('world')
@@ -786,6 +798,8 @@ def verify_trace(path, program=None):
         return '✗ слід не починається з «початок»'
     about = (f'програма {head.get("програма")}, sha256 {str(head.get("sha256"))[:16]}…, '
              f'час {head.get("час", "—")}, запуск {head.get("запуск", "—")}')
+    if 'час' not in head or 'запуск' not in head:
+        return f'⚠ слід цілий, але старого формату (без часу й запуску): не доводить, коли і котрий це запуск; {about}' 
     if program is not None:
         try:
             real = hashlib.sha256(open(program, 'rb').read()).hexdigest()
@@ -999,6 +1013,42 @@ def inside(path, base):
     return path == base or path.startswith(base + os.sep)
 
 
+def delegations(prog):
+    """Пари (дозволи батька, дозволи субагента, імʼя) для всіх 🜁 у програмі."""
+    out = []
+
+    def walk(n, parent):
+        if isinstance(n, tuple) and n:
+            if n[0] == 'seal':
+                parent = n[3]
+            if n[0] == 'deleg':
+                out.append((parent, n[4], n[2]))
+                walk(n[5], n[4])
+                return
+            for x in n:
+                walk(x, parent)
+        elif isinstance(n, list):
+            for x in n:
+                walk(x, parent)
+    walk(prog, prog[2][0][3] if prog[2] and prog[2][0][0] == 'seal' else {})
+    return out
+
+
+def check_program(prog, allowed, cwd):
+    """Печатка й печатки ВСІХ субагентів ⊆ дозволи власника; кожен субагент ⊆ батька за справжніми шляхами."""
+    missing = check_allowlist(prog[2][0][3], allowed, cwd)
+    for parent, child, name in delegations(prog):
+        missing += [f'{m} (субагент «{safe(name)}»)' for m in check_allowlist(child, allowed, cwd)]
+        for t, scopes in child.items():
+            if TOOLS[t][4] != 'тека':
+                continue
+            for sc in scopes:
+                rs = os.path.realpath(os.path.join(cwd, sc))
+                if not any(inside(rs, os.path.realpath(os.path.join(cwd, p))) for p in parent.get(t, [])):
+                    missing.append(f'{t}:{sc} (субагент «{safe(name)}» виходить за межі батька)')
+    return sorted(set(missing))
+
+
 def check_allowlist(caps, allowed, cwd):
     """Печатка ⊆ дозволи власника. Теки — вкладеність, хости й агенти — точний збіг."""
     granted = {}
@@ -1048,13 +1098,23 @@ class Interp:
         self.mem_c = 1.0       # наскільки сумнівними були ключі, якими писали в памʼять
         self.try_stack = []    # для кожного ☂: найменша впевненість усього, що обчислено в його тілі
         self.world_c = 1.0     # наскільки сумнівно могли змінити зовнішній стан (жереб, файли, агенти, мережа)
+        self.decided_c = 1.0   # найсумнівніше рішення в запуску: від нього залежить і тривалість (годинник)
 
         self.depth = 0
+
+    def fn_effects(self, node, c):
+        """Те саме для місця функції: λ — дивимося тіло; будь-що інше (∘, змінна) — невідомо, отже все."""
+        if c < 1 and node[0] != 'lam':
+            self.decided_c = min(self.decided_c, c)
+            self.mem_c, self.world_c = min(self.mem_c, c), min(self.world_c, c)
+        else:
+            self.taint_effects((node,), c)
 
     def taint_effects(self, nodes, c):
         """Код, який міг виконатися чи ні залежно від даних з впевненістю c, міг змінити стан — отже стан сумнівний."""
         if c >= 1:
             return
+        self.decided_c = min(self.decided_c, c)
         eff = set()
         for n in nodes:
             eff |= effects(n)
@@ -1076,6 +1136,7 @@ class Interp:
         if isinstance(res.v, int) and not isinstance(res.v, bool) and res.v.bit_length() > MAX_INT_BITS:
             raise Fatal(f'{g}: число завелике (понад {MAX_INT_BITS} біт)', pos)
         if res.n > 1:
+            self.work(res.n, pos)
             self.alloc += res.n
             if self.alloc > ALLOC_FACTOR * self.max_size:
                 raise Fatal(f'сумарно створено забагато ({self.alloc} > {ALLOC_FACTOR} × --розмір)', pos)
@@ -1206,7 +1267,8 @@ class Interp:
                 e.c = min(e.c, ac, self.world_c if name in WORLD_READERS else 1.0)
                 self.trace('інструмент', агент=self.agent, назва=name, аргументи=targs, помилка=e.msg, впевненість=e.c)
                 raise
-            c = min([res.c, ac] + ([self.world_c] if name in WORLD_READERS else []))
+            c = min([res.c, ac] + ([self.world_c] if name in WORLD_READERS else [])
+                    + ([self.decided_c] if name == 'час' else []))
             res = capc(res, c) if c < 1 else res
             self.taint(c)
             self.trace('інструмент', агент=self.agent, назва=name, аргументи=targs,
@@ -1256,13 +1318,15 @@ class Interp:
             try:
                 res = E(0)
                 tc = self.try_stack.pop()
-                self.taint_effects((argn[0], argn[1]), tc)   # чи дійшло тіло до кінця й чи був обробник — від даних
+                self.taint_effects((argn[0],), tc)            # чи дійшло тіло до кінця й чи був обробник — від даних
+                self.fn_effects(argn[1], tc)
                 return capc(res, tc) if tc < res.c else res
             except Fatal:
                 raise
             except NgrError as e:
                 tc = min(self.try_stack.pop(), e.c)
-                self.taint_effects((argn[0], argn[1]), tc)
+                self.taint_effects((argn[0],), tc)
+                self.fn_effects(argn[1], tc)
                 self.trace('помилку перехоплено', агент=self.agent, помилка=e.msg, впевненість=tc)
                 saved = self.pc
                 self.pc = min(saved, tc)
@@ -1282,7 +1346,7 @@ class Interp:
                 results = [self.each(g, i, fn, [x], pos) for i, x in enumerate(items)]
             finally:
                 self.pc = saved
-            self.taint_effects((argn[1],), lst.s)
+            self.fn_effects(argn[1], lst.s)
             if g == '∀':
                 return V(None, min(self.pc, lst.s))
             if g == 'μ':
@@ -1314,7 +1378,7 @@ class Interp:
                     acc = self.each(g, i, fn, [acc, x], pos)
             finally:
                 self.pc = saved
-            self.taint_effects((argn[2],), lst.s)
+            self.fn_effects(argn[2], lst.s)
             return capc(acc, lst.s) if lst.s < acc.c else acc
         if g == '↻':
             s, cond, stepf = E(0), E(1), E(2)
@@ -1330,7 +1394,8 @@ class Interp:
                     s = self.call(stepf, [s], pos)
             finally:
                 self.pc = saved
-            self.taint_effects((argn[1], argn[2]), cc)
+            self.fn_effects(argn[1], cc)
+            self.fn_effects(argn[2], cc)
             return capc(s, cc) if cc < s.c else s
         args = [E(i) for i in range(len(argn))]
         self.taint(min([1.0] + [a.c for a in args]))   # будь-яка операція може впасти — це видно ☂
@@ -1343,6 +1408,8 @@ class Interp:
         except NgrError as e:
             e.c = min([e.c, self.pc] + [a.c for a in args])
             raise
+        except RecursionError:
+            raise NgrError(f'{g}: значення вкладене надто глибоко', pos, min([self.pc] + [a.c for a in args]))
         if g not in ('≈', '±', '⚗', '►', '▶', '🜃', '🜍', '🜄', '§', '⌂', 'ρ', 'κ'):
             c = min([res.c] + [a.c for a in args])
             if isinstance(res.v, (list, dict)):        # вміст лишає свою впевненість; будова — від аргументів
@@ -1497,6 +1564,8 @@ class Interp:
                 raise Fatal(f'{g}: значення завелике (> --розмір {self.max_size})', pos)
             return V(json.dumps(plain(a[0]), ensure_ascii=False))
         if g == '»':
+            if a[0].n > self.max_size:
+                raise Fatal(f'»: значення завелике для друку (> --розмір {self.max_size})', pos)
             text = show(a[0])
             print(text, file=self.out, flush=True)
             self.trace('вивід', агент=self.agent, текст=trace_val(V(text)))
@@ -1681,7 +1750,7 @@ def seal_report(prog, allowed, source, cwd):
     for d in subs:
         caps = '; '.join(t + (f' → {scopes(t, sc)}' if sc else '') for t, sc in d[4].items()) or 'жодних'
         lines.append(f'  субагент «{safe(d[2])}»: намір «{safe(d[3])}», дозволи: {caps}')
-    missing = check_allowlist(seal[3], allowed, cwd)
+    missing = check_program(prog, allowed, cwd)
     lines.append(f'  дозволи власника: {source}')
     lines.append('  ✓ печатка в межах дозволів власника' if not missing else f'  ✗ бракує дозволу власника: {", ".join(missing)}')
     lines.append('  (права перевіряються й під час виконання: кожен інструмент — лише в межах агента, що його викликає)')
@@ -1712,7 +1781,9 @@ def cheatsheet():
            '  у функції, обраній сумнівно, після сумнівної перевірки `🜍` чи в `☂`, несе цю сумнівність.',
            '  Відібране `φ`, упорядковане `⇅`, згруповане `⊞`, пригадане `🜃` за сумнівним ключем — теж.',
            '  Список має дві міри: впевненість вмісту й **будови** (які елементи, скільки, в якому порядку);',
-           '  `ρ`, `§`, цикли зважають на будову. Змінити впевненість можна лише `≈`, і це записується в слід.',
+           '  `ρ`, `§`, цикли зважають на будову. Побічний стан (памʼять, `жереб`, файли, годинник) після сумнівного',
+           '  рішення теж сумнівний — навіть якщо гілку не виконано. **Явно** змінити впевненість можна лише `≈`',
+           '  (і це записується в слід); інтерпретатор лише консервативно *знижує* її — це оцінка, не ймовірність.',
            '', '## Печатка (обовʼязкова)', '',
            'Перший рядок кожної програми — `🜂 「намір」 【「дозвіл」 …】`. Інструмент, якого нема в печатці,',
            'не пройде розбір; під час виконання кожен виклик ще раз звіряється з дозволами агента, що його робить.',
@@ -1773,7 +1844,14 @@ def cheatsheet():
             '  що має shell, може обійти Nigredo взагалі чи змінити `~/.nigredo` (дозволи, ключ сліду). Від такого',
             '  агента захищають права процесу й пісочниця ОС, а не мова.',
             '- Впевненість відстежується через дані й керування, але це консервативна оцінка, а не ймовірність.',
-            '- Ліміти: `--кроки` (обчислення), `--розмір` (найбільший рядок/список), глибина рекурсії.',
+            '- Ліміти: `--кроки` (обчислення; створення великих значень теж коштує кроків), `--розмір` (логічний',
+            '  розмір значення — символи й елементи разом зі спільними посиланнями, і цілі), сумарно створене за запуск',
+            '  ≤ 20 × `--розмір`, `--слід-розмір` (байти сліду), глибина рекурсії.',
+            '- Права теки («для_тек») має програма-**файл** у тій теці, але не та, що лежить у теці, куди програмам',
+            '  дозволено писати. Код рядком (`-e`) прав теки не має, доки не вказано `--тека` — а її вибирає той, хто',
+            '  запускає: від агента з shell це не захищає.',
+            '- Субагент може взяти ті самі або вужчі права (підтеку без `..`); печатку кожного субагента звіряють з',
+            '  дозволами власника за справжніми шляхами.',
             '- `оракул` — імітація; `агент` — справжній виклик Claude (коштує грошей і часу).',
             '- Порівняно з Python: без печатки — приблизно стільки ж токенів; печатка додає фіксовану ціну.',
             '',
@@ -1784,7 +1862,10 @@ def cheatsheet():
             '  копія (новий файл, не в теці запису програми). Печатка, кожен інструмент повністю, відмови, делегування,',
             '  памʼять, перевірки, відсів, впевненість, вивід; спроба без дозволу — запис «заборонено». Записи',
             '  підписано ключем власника (HMAC) і зчеплено; `ngr --перевірити-слід ФАЙЛ` виявить зміну, вставку чи',
-            '  обрізання (завершальні записи — лише «кінець», «помилка» або «відмова» на старті).', '']
+            '  обрізання (завершальні записи — лише «кінець», «помилка» або «відмова» на старті).',
+            '- `ngr --перевірити-слід СЛІД ПРОГРАМА` — ще й чи слід саме від цієї програми; у сліді є час і',
+            '  ідентифікатор запуску (слід старого формату без них — «⚠»). Навіть відкинута до запуску програма лишає слід.',
+            '']
     return '\n'.join(out)
 
 
@@ -1904,7 +1985,7 @@ def main(argv):
               else seal_report(prog, allowed, source, cwd) + (f'\n  права теки: {cwd}' if dir_rights else
                                                                '\n  права теки: жодних (код рядком без --тека)'))
         return 0
-    missing = check_allowlist(prog[2][0][3], allowed, cwd) if prog else []
+    missing = check_program(prog, allowed, cwd) if prog else []
     sha = hashlib.sha256(src.encode()).hexdigest()
     key = owner_key()
     os.makedirs(os.path.join(OWNER_HOME, 'сліди'), mode=0o700, exist_ok=True)
@@ -1954,7 +2035,7 @@ def main(argv):
             trace('кінець', кроків=opts['steps'] - interp.steps_left)
         except NgrError as e:
             trace('помилка', повідомлення=safe(str(e)))
-            print(e, file=sys.stderr)
+            print(safe(str(e)), file=sys.stderr)
             code = 1
         except Exception as e:                       # вада інтерпретатора: чесно, без трасування Python
             trace('помилка', внутрішня=True, повідомлення=f'{type(e).__name__}: {e}')
@@ -1963,8 +2044,12 @@ def main(argv):
             code = 4
         return code
     finally:
-        if os.environ.get('NIGREDO_SHOW_TRACE'):
-            print(f'слід: {main_trace}', file=sys.stderr)
+        if os.environ.get('NIGREDO_TRACE_PATH_FILE'):
+            try:
+                with open(os.environ['NIGREDO_TRACE_PATH_FILE'], 'w', encoding='utf-8') as f:
+                    f.write(main_trace)
+            except OSError:
+                pass
         for o in outs:
             if o is not sys.stderr:
                 o.close()
