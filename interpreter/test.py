@@ -90,15 +90,15 @@ def main():
                 prog.unlink()
         ok = got.returncode == int(code) and want in got.stderr
         if mode == 'без-підробок':
-            recs = [json.loads(line) for line in tfile.read_text(encoding='utf-8').splitlines()]
+            recs = [json.loads(line) for line in tfile.read_text(encoding='utf-8').split('\n') if line]
             ok = ok and run(['--перевірити-слід', str(tfile)], env).returncode == 0
             ok = ok and not any(r['подія'] in ('перевірка', 'інструмент') for r in recs)
         if mode == 'відмова-на-старті':
-            recs = [json.loads(line) for line in tfile.read_text(encoding='utf-8').splitlines()]
+            recs = [json.loads(line) for line in tfile.read_text(encoding='utf-8').split('\n') if line]
             ok = ok and len(recs) == 2 and recs[-1]['подія'] == 'відмова'
             ok = ok and run(['--перевірити-слід', str(tfile)], env).returncode == 0
         if mode == 'обрізати-після-заборони':
-            lines = tfile.read_text(encoding='utf-8').splitlines()
+            lines = tfile.read_text(encoding='utf-8').split('\n')[:-1]
             idx = next(i for i, line in enumerate(lines) if '"подія": "заборонено"' in line)
             cut = tmp / f'{src.stem}.обрізаний.jsonl'
             cut.write_text('\n'.join(lines[:idx + 1]) + '\n', encoding='utf-8')
@@ -158,6 +158,62 @@ def main():
     junk.write_bytes(b'\0\0\0 not json\n')
     verdict = run(['--перевірити-слід', str(junk)], env)
     check(verdict.returncode == 1 and 'Traceback' not in verdict.stderr, 'перевірка сміття не падає', verdict.stderr)
+
+    # повторний огляд 0.4.3: хвіст виводу, невидиме у виводі, підсумок перевірки, JSON печатки, труба, argv
+    pathf = tmp / 'шлях_сліду'
+    penv = dict(env, NIGREDO_TRACE_PATH_FILE=str(pathf))
+    got = run(['-e', '🜂 「довгий звіт」 【】\n» ＋ ⁀ μ…1 2000 λi 「рядок звіту 」 「」 「ХВІСТ-ДЛЯ-ОТРИМУВАЧА」'], penv)
+    tr = pathf.read_text(encoding='utf-8')
+    check(got.returncode == 0 and 'ХВІСТ-ДЛЯ-ОТРИМУВАЧА' in pathlib.Path(tr).read_text(encoding='utf-8'),
+          'довгий вивід у сліді повністю (з хвостом)', got.stderr)
+    got = run(['-e', '🜂 「теги」 【】\n» δ 「"ок\\udb40\\udc49\\u200b"」'], penv)
+    check(got.stdout.strip() == 'ок⟨U+E0049⟩⟨U+200B⟩', 'невидиме у виводі — як ⟨U+…⟩', repr(got.stdout))
+    got = run(['-e', '🜂 「спроба поза правами」 【「файл.читати:.」】\n» ☂ 🜔файл.читати 「/etc/hostname」 λe 「ні」',
+               '--тека', str(DATA)], penv)
+    tr = pathf.read_text(encoding='utf-8')
+    verdict = run(['--перевірити-слід', tr], env).stdout
+    js = json.loads(run(['--перевірити-слід', tr, '--json'], env).stdout)
+    check(verdict.startswith('✓') and '«заборонено»): 1' in verdict and 'перехоплено помилок (☂): 1' in verdict
+          and js['цілий'] and len(js['заборонено']) == 1, 'підсумок перевірки сліду каже про «заборонено»', verdict)
+    got = run(['--печатка', '--json', '-e', '🜂 「а」 【】\n» ＋ 1'], env)
+    try:
+        info = json.loads(got.stdout)
+    except ValueError:
+        info = {}
+    check(got.returncode == 2 and info.get('в_межах') is False and info.get('помилка_розбору'),
+          '--печатка --json при помилці розбору — теж JSON', got.stdout + got.stderr)
+    seal = run(['--печатка', str(ROOT / 'examples' / 'ahent.ngr')], env).stdout
+    check('права теки: немає' in seal and 'намір (слова автора): 「' in seal and 'необхідно, але не досить' in seal,
+          '--печатка: слова автора в 「」, «права теки: немає», «необхідно, але не досить»', seal)
+    p = subprocess.Popen([sys.executable, str(NGR), '-e', '🜂 「багато рядків」 【】\n∀ …1 100000 λi » i'],
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    p.stdout.readline()
+    p.stdout.close()
+    err = p.stderr.read().decode()
+    p.wait()
+    check(p.returncode != 4 and 'внутрішня' not in err and 'Exception' not in err, 'обірвана труба — тихо, не «вада мови»', err)
+    got = subprocess.run([sys.executable, str(NGR), '-e', '🜂 「а」 【】\n» ⌂', '--', os.fsdecode(b'\xff')],
+                         capture_output=True, text=True, env=penv)
+    tr = pathf.read_text(encoding='utf-8')
+    check(got.returncode == 2 and 'не UTF-8' in got.stderr and 'Traceback' not in got.stderr
+          and run(['--перевірити-слід', tr], env).returncode == 0, 'аргумент не UTF-8 — відмова зі слідом', got.stderr)
+    mcp = ROOT / 'mcp' / 'nigredo_mcp.py'
+    work = tmp / 'робоча'
+    work.mkdir()
+    reqs = [{'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'},
+            {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/call', 'params': {'name': 'nigredo_vykonaty', 'arguments': {
+                'code': '🜂 「теги」 【】\n» ＋ 「звіт ок」 δ 「"\\udb40\\udc49\\u2028"」'}}},
+            {'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call', 'params': {'name': 'nigredo_pechatka', 'arguments': {
+                'code': '🜂 「а」 【「оракул」】\n» 1'}}}]
+    got = subprocess.run([sys.executable, str(mcp)], input=''.join(json.dumps(r) + '\n' for r in reqs),
+                         capture_output=True, text=True, env=dict(env, NIGREDO_WORKDIR=str(work)))
+    res = {m['id']: m.get('result', {}) for m in map(json.loads, got.stdout.splitlines())}
+    desc = next(t['description'] for t in res[1]['tools'] if t['name'] == 'nigredo_pechatka')
+    out = [c['text'] for c in res[2]['content']]
+    check('необхідно, але не досить' in desc and any('звіт ок⟨U+E0049⟩⟨U+2028⟩' in t for t in out)
+          and len(out) >= 3 and any('спроб поза правами немає' in t for t in out)
+          and len(res[3]['content']) == 2 and '"в_межах": true' in res[3]['content'][1]['text'],
+          'MCP: невидиме — ⟨U+…⟩, окремі блоки, підсумок сліду, печатка з JSON', got.stdout[-800:] + got.stderr)
 
     sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',

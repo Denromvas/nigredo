@@ -1,0 +1,9 @@
+{
+ "дозволено": ["оракул", "мережа.взяти", "агент", "файл.читати:/etc", "файл.писати:/root/ai-agents/Nigredo/konsylium/огляд_0.4.3/praktyk/дані"],
+ "для_тек": {
+  "/root/ai-agents/Nigredo/konsylium/огляд_0.4.3/praktyk": [
+   "файл.читати:/root/ai-agents/Nigredo/konsylium/огляд_0.4.3",
+   "файл.писати:/root/ai-agents/Nigredo/konsylium/огляд_0.4.3/praktyk/дані"
+  ]
+ }
+}
