@@ -93,6 +93,10 @@ def main():
             recs = [json.loads(line) for line in tfile.read_text(encoding='utf-8').splitlines()]
             ok = ok and run(['--перевірити-слід', str(tfile)], env).returncode == 0
             ok = ok and not any(r['подія'] in ('перевірка', 'інструмент') for r in recs)
+        if mode == 'відмова-на-старті':
+            recs = [json.loads(line) for line in tfile.read_text(encoding='utf-8').splitlines()]
+            ok = ok and len(recs) == 2 and recs[-1]['подія'] == 'відмова'
+            ok = ok and run(['--перевірити-слід', str(tfile)], env).returncode == 0
         if mode == 'обрізати-після-заборони':
             lines = tfile.read_text(encoding='utf-8').splitlines()
             idx = next(i for i, line in enumerate(lines) if '"подія": "заборонено"' in line)
@@ -126,6 +130,21 @@ def main():
     forged.write_text('\n'.join(json.dumps(r, ensure_ascii=False) for r in recs) + '\n', encoding='utf-8')
     verdict = run(['--перевірити-слід', str(forged)], env).stdout
     check(verdict.startswith('✗'), 'слід, перерахований без ключа, виявлено', verdict)
+    dup = tmp / 'дубль.jsonl'                 # повторений ключ: розбір візьме останній, підпис — від першого
+    first, rest_ = lines[0], lines[1:]
+    dup.write_text(first.replace('{"№": 1,', '{"№": 1, "програма": "підміна.ngr",', 1) + '\n' + '\n'.join(rest_) + '\n',
+                   encoding='utf-8')
+    verdict = run(['--перевірити-слід', str(dup)], env).stdout
+    check(verdict.startswith('✗'), 'слід із повтореним ключем виявлено', verdict)
+    head = json.loads(lines[0])
+    if head.get('програма') and os.path.exists(head['програма']):
+        other = ROOT / 'examples' / 'pryvit.ngr'
+        if os.path.realpath(head['програма']) == os.path.realpath(other):
+            other = ROOT / 'examples' / 'chysla.ngr'
+        own = run(['--перевірити-слід', str(sample), head['програма']], env).stdout
+        alien = run(['--перевірити-слід', str(sample), str(other)], env).stdout
+        check(own.startswith('✓') and 'ІНШОЇ' in alien, 'слід привʼязано до програми', own + alien)
+    check('час' in head and 'запуск' in head, 'у сліді є час і ідентифікатор запуску', str(head)[:200])
     junk = tmp / 'сміття.jsonl'
     junk.write_bytes(b'\0\0\0 not json\n')
     verdict = run(['--перевірити-слід', str(junk)], env)

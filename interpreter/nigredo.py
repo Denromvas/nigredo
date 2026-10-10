@@ -19,9 +19,15 @@ import urllib.request
 from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
-VERSION = '0.4'
+VERSION = '0.4.1'
 MAX_DEPTH = 2000
-MAX_SIZE = 5_000_000      # найбільший рядок/список/словник (символів чи елементів); --розмір N
+MAX_SIZE = 5_000_000      # найбільший логічний розмір значення (символів + елементів); --розмір N
+ALLOC_FACTOR = 20         # сумарно за запуск можна створити не більше ALLOC_FACTOR × --розмір
+MAX_INT_BITS = 100_000    # найбільше ціле (≈ 30 000 десяткових цифр)
+MAX_TRACE = 50_000_000    # найбільший слід у байтах; --слід-розмір N
+HEAVY = set('＝≠σΔ⁀∋↑⇅⊞≈')  # робота пропорційна розміру — і кроки теж
+if hasattr(sys, 'set_int_max_str_digits'):
+    sys.set_int_max_str_digits(0)
 DEFAULT_STEPS = 10_000_000
 OWNER_HOME = os.path.realpath(os.path.expanduser(os.environ.get('NIGREDO_HOME', '~/.nigredo')))
 # реєстр агентів для інструмента «агент»: {"agents": [{"name": …, "path": …}]}
@@ -153,11 +159,20 @@ ASCII_HINTS = {
 class V:
     """Значення з впевненістю c ∈ [0, 1]. Для списку/словника/рядка c — мінімум вмісту,
     а s — впевненість будови: які елементи є, скільки їх і в якому порядку."""
-    __slots__ = ('v', 'c', 's')
+    __slots__ = ('v', 'c', 's', 'n')
 
     def __init__(self, v, c=1.0, s=None):
         self.v, self.c = v, c
         self.s = c if s is None else s
+        # логічний розмір (спільні посилання рахуються стільки разів, скільки трапляються)
+        if isinstance(v, str):
+            self.n = len(v) + 1
+        elif isinstance(v, list):
+            self.n = 1 + sum(e.n for e in v)
+        elif isinstance(v, dict):
+            self.n = 1 + sum(len(k) + e.n for k, e in v.items())
+        else:
+            self.n = 1
 
 
 class Fn:
@@ -271,6 +286,8 @@ def safe(s):
 
 
 def deep_eq(a, b):
+    if a is b:
+        return True
     va, vb = a.v, b.v
     if isinstance(va, bool) or isinstance(vb, bool):
         return type(va) is type(vb) and va == vb
@@ -383,7 +400,7 @@ def lex(src):
                 buf += src[i]
                 adv()
             buf = unicodedata.normalize('NFC', buf)
-            scripts = {script_of(c) for c in buf if unicodedata.category(c).startswith('L')}
+            scripts = {script_of(c) for c in buf if unicodedata.category(c) in ('Lu', 'Ll', 'Lt', 'Lo')}
             if len(scripts) > 1:
                 raise StaticError(f'імʼя «{buf}» змішує письма ({", ".join(sorted(scripts))}): однакові на вигляд '
                                   f'літери різних абеток у Nigredo заборонені', pos)
@@ -411,6 +428,18 @@ def lex(src):
 
 # ------------------------------------------------------------------ розбір
 # Вузол: (вид, позиція, ...). Види: lit var call op bind lam list dict block seal tool deleg
+
+
+def narrower(tool, child, parent):
+    """Обмеження субагента — те саме або вужче: для тек — підтека (без виходу через ..), інакше точний збіг."""
+    if child == parent:
+        return True
+    if TOOLS.get(tool, (0, '', '', False, ''))[4] != 'тека':
+        return False
+    c, p = os.path.normpath(child), os.path.normpath(parent)
+    if c.startswith('..') and not p.startswith('..'):
+        return False
+    return c == p or c.startswith(p.rstrip(os.sep) + os.sep) or (p == '.' and not c.startswith('..') and not os.path.isabs(c))
 
 
 class Parser:
@@ -621,7 +650,7 @@ class Parser:
                 if t not in parent:
                     raise StaticError(f'субагент «{name[2]}» просить «{t}», якого немає в батька', pos)
                 for s in scopes:
-                    if s not in parent[t]:
+                    if not any(narrower(t, s, p) for p in parent[t]):
                         raise StaticError(f'субагент «{name[2]}» просить «{t}:{s}» — у батька лише {parent[t]}', pos)
                 if not scopes:
                     caps[t] = list(parent[t])
@@ -633,6 +662,43 @@ class Parser:
             return ('deleg', pos, name[2], intent[2], caps, body)
         ar = GLYPHS[g][0]
         return ('op', pos, g, [self.expr() for _ in range(ar)])
+
+
+WORLD_WRITERS = {'жереб', 'файл.писати', 'агент', 'мережа.взяти'}      # змінюють стан, який потім можна прочитати
+WORLD_READERS = {'жереб', 'файл.читати', 'файл.список', 'файл.писати', 'агент', 'мережа.взяти'}
+_EFFECTS = {}
+
+
+def effects(node):
+    """Які стани може змінити цей код, якщо виконається: {'mem', 'world'}. Невідома функція — усе."""
+    key = id(node)
+    if key in _EFFECTS:
+        return _EFFECTS[key][1]
+    out = set()
+
+    def walk(n):
+        if isinstance(n, tuple) and n:
+            k = n[0]
+            if k == 'op' and n[2] == '🜄':
+                out.add('mem')
+            elif k == 'op' and n[2] in '►▶':
+                out.update(('mem', 'world'))
+            elif k == 'call':
+                out.update(('mem', 'world'))
+            elif k == 'tool' and n[2] in WORLD_WRITERS:
+                out.add('world')
+            elif k == 'deleg':           # памʼять субагента — своя; зовнішній світ — спільний
+                if 'world' in effects(n[5]):
+                    out.add('world')
+                return
+            for x in n:
+                walk(x)
+        elif isinstance(n, list):
+            for x in n:
+                walk(x)
+    walk(node)
+    _EFFECTS[key] = (node, frozenset(out))      # тримаємо вузол, щоб id не переписався
+    return _EFFECTS[key][1]
 
 
 def parse(src):
@@ -647,17 +713,20 @@ class Trace:
     """Слід веде інтерпретатор, а не програма. JSONL; кожен запис підписано HMAC-SHA256 ключем власника
     (теку власника програма не бачить) і зчеплено з попереднім. Останній запис — «кінець» або «помилка»."""
 
-    def __init__(self, outs, key):
+    def __init__(self, outs, key, limit=MAX_TRACE):
         self.outs, self.key, self.prev, self.n = outs, key, '0' * 16, 0
-        self.depth = 0
+        self.depth, self.bytes, self.limit = 0, 0, limit
 
     def __call__(self, event, **data):
+        if self.bytes > self.limit and event not in ('помилка', 'кінець', 'відмова'):
+            raise Fatal(f'слід перевищив {self.limit} байтів (--слід-розмір) — програму зупинено')
         self.n += 1
         rec = {'№': self.n, 'подія': event, 'глибина': self.depth, **data, 'попередній': self.prev}
         h = sign(self.key, rec)
         rec['хеш'] = h
         self.prev = h
         line = json.dumps(rec, ensure_ascii=False) + '\n'
+        self.bytes += len(line.encode())
         for o in self.outs:
             o.write(line)
             o.flush()
@@ -678,26 +747,53 @@ def owner_key():
     return open(path).read().strip().encode()
 
 
-def verify_trace(path):
-    key, prev, n, last = owner_key(), '0' * 16, 0, None
+def _no_dups(pairs):
+    keys = [k for k, _ in pairs]
+    if len(keys) != len(set(keys)):
+        raise ValueError('ключ повторюється')
+    return dict(pairs)
+
+
+def verify_trace(path, program=None):
+    """✓ лише якщо: кожен рядок — канонічний JSON без повторених ключів; підписи й ланцюжок цілі; слід
+    завершено («кінець», «помилка» або «відмова» на старті); якщо дано програму — її sha256 збігається."""
+    key, prev, n, last, head = owner_key(), '0' * 16, 0, None, None
     try:
+        st = os.stat(path)
+        if not os.path.isfile(path):
+            return '✗ це не файл сліду'
+        if st.st_size > 2 * MAX_TRACE:
+            return f'✗ файл завеликий для сліду ({st.st_size} байтів)'
         lines = open(path, encoding='utf-8').read().splitlines()
     except (OSError, UnicodeDecodeError) as e:
         return f'✗ слід не прочитати: {e}'
     for lineno, line in enumerate(lines, 1):
         try:
-            rec = json.loads(line)
+            rec = json.loads(line, object_pairs_hook=_no_dups)
+            if json.dumps(rec, ensure_ascii=False) != line:
+                raise ValueError('не канонічний запис')
             h = rec.pop('хеш')
         except (ValueError, KeyError, AttributeError, TypeError):
-            return f'✗ слід пошкоджено в рядку {lineno}: це не запис сліду'
+            return f'✗ слід пошкоджено в рядку {lineno}: це не запис сліду (або змінений запис)'
         if rec.get('попередній') != prev or not hmac.compare_digest(sign(key, rec), str(h)):
             return f'✗ слід пошкоджено або змінено в рядку {lineno}'
+        if n == 0:
+            head = rec
         prev, n, last = h, n + 1, rec.get('подія')
-    # завершальні: «кінець», «помилка» або «відмова» на старті (запис №2, до будь-якої дії);
-    # «заборонено» посеред роботи — не кінець
     if not (last in ('кінець', 'помилка') or (last == 'відмова' and n == 2)):
         return f'✗ слід обірвано: {n} записів, останній — «{last}», а не кінець/помилка/відмова на старті'
-    return f'✓ слід цілий і завершений ({last}): {n} записів, останній хеш {prev}'
+    if not head or head.get('подія') != 'початок':
+        return '✗ слід не починається з «початок»'
+    about = (f'програма {head.get("програма")}, sha256 {str(head.get("sha256"))[:16]}…, '
+             f'час {head.get("час", "—")}, запуск {head.get("запуск", "—")}')
+    if program is not None:
+        try:
+            real = hashlib.sha256(open(program, 'rb').read()).hexdigest()
+        except OSError as e:
+            return f'✗ не прочитати програму: {e}'
+        if not real.startswith(str(head.get('sha256'))):
+            return f'✗ слід цілий, але від ІНШОЇ програми ({about})'
+    return f'✓ слід цілий і завершений ({last}): {n} записів; {about}'
 
 
 def trace_val(x, full=False):
@@ -820,7 +916,10 @@ def t_agent(it, pos, name, prompt):
     if name.v not in reg:
         raise NgrError(f'агент: «{name.v}» немає в реєстрі', pos)
     try:
-        r = subprocess.run(['claude', '-p', show(prompt)], cwd=reg[name.v], capture_output=True, text=True, timeout=900)
+        q = show(prompt)
+        q = ' ' + q if q.startswith('-') else q      # запит не може стати прапорцем claude
+        r = subprocess.run(['claude', '-p', q], cwd=reg[name.v], capture_output=True, text=True, timeout=900,
+                           stdin=subprocess.DEVNULL)
     except (OSError, subprocess.TimeoutExpired) as e:
         raise NgrError(f'агент: {e}', pos)
     if r.returncode:
@@ -843,7 +942,7 @@ TOOLS = {
 }
 
 
-def read_allowlist(path, cwd=None):
+def read_allowlist(path, cwd=None, prog=None):
     """«дозволено» — для всіх програм; «для_тек» — {"/абсолютна/тека": [дозволи]} лише для програм у цій теці."""
     try:
         data = json.load(open(path, encoding='utf-8'))
@@ -851,10 +950,18 @@ def read_allowlist(path, cwd=None):
         per_dir = data.get('для_тек', {})
         if not isinstance(per_dir, dict):
             raise ValueError('«для_тек» має бути словником тека → список')
+        common = list(lst)
         for d, extra in per_dir.items():
             if not isinstance(extra, list):
                 raise ValueError(f'«для_тек» → «{d}»: потрібен список')
             if cwd and os.path.isabs(os.path.expanduser(d)) and inside(cwd, os.path.expanduser(d)):
+                # програма, що лежить там, куди програмам дозволено писати, могла бути написана програмою —
+                # права теки їй не належать
+                writable = [e.partition(':')[2].strip() for e in common + extra
+                            if e.partition(':')[0].strip() == 'файл.писати']
+                if prog and any(w and os.path.isabs(os.path.expanduser(w)) and inside(prog, os.path.expanduser(w))
+                                for w in writable):
+                    continue
                 lst += extra
         if not all(isinstance(x, str) for x in lst):
             raise ValueError('дозволи мають бути рядками')
@@ -863,12 +970,12 @@ def read_allowlist(path, cwd=None):
         raise Refused(f'не вдалося прочитати дозволи {path}: {e}')
 
 
-def load_allowlist(narrow=None, cwd=None):
+def load_allowlist(narrow=None, cwd=None, prog=None):
     """Дозволи власника — OWNER_HOME/дозволи.json (без нього — лише іграшкові інструменти).
     --дозволи ФАЙЛ лише звужує їх: лишається те, що є в обох."""
     path = os.path.join(OWNER_HOME, 'дозволи.json')
     if os.path.exists(path):
-        owner = read_allowlist(path, cwd)
+        owner = read_allowlist(path, cwd, prog)
         source = f'{path} (sha256 {hashlib.sha256(open(path, "rb").read()).hexdigest()[:16]})'
     else:
         owner, source = list(DEFAULT_ALLOWED), '(файлу власника немає: лише іграшкові інструменти)'
@@ -933,20 +1040,51 @@ class Interp:
         self.trace, self.rng = trace, random.Random(seed)
         self.argv, self.protected = list(argv), set(protected)
         self.max_size = max_size
+        self.alloc = 0
         self.steps_left, self.cwd = steps, os.path.abspath(cwd)
         self.out = out or sys.stdout
         self.memory, self.agent, self.caps = {}, 'головний', {}
         self.pc = 1.0          # впевненість контексту керування: усе, що створено тут, не впевненіше
         self.mem_c = 1.0       # наскільки сумнівними були ключі, якими писали в памʼять
         self.try_stack = []    # для кожного ☂: найменша впевненість усього, що обчислено в його тілі
+        self.world_c = 1.0     # наскільки сумнівно могли змінити зовнішній стан (жереб, файли, агенти, мережа)
 
         self.depth = 0
+
+    def taint_effects(self, nodes, c):
+        """Код, який міг виконатися чи ні залежно від даних з впевненістю c, міг змінити стан — отже стан сумнівний."""
+        if c >= 1:
+            return
+        eff = set()
+        for n in nodes:
+            eff |= effects(n)
+        if 'mem' in eff:
+            self.mem_c = min(self.mem_c, c)
+        if 'world' in eff:
+            self.world_c = min(self.world_c, c)
 
     def taint(self, c):
         if c < 1:
             for i, t in enumerate(self.try_stack):
                 if c < t:
                     self.try_stack[i] = c
+
+    def sized(self, res, g, pos):
+        """Межі памʼяті: одне значення, ціле, сумарно створене."""
+        if res.n > self.max_size:
+            raise Fatal(f'{g}: значення завелике (логічний розмір {res.n} > --розмір {self.max_size})', pos)
+        if isinstance(res.v, int) and not isinstance(res.v, bool) and res.v.bit_length() > MAX_INT_BITS:
+            raise Fatal(f'{g}: число завелике (понад {MAX_INT_BITS} біт)', pos)
+        if res.n > 1:
+            self.alloc += res.n
+            if self.alloc > ALLOC_FACTOR * self.max_size:
+                raise Fatal(f'сумарно створено забагато ({self.alloc} > {ALLOC_FACTOR} × --розмір)', pos)
+        return res
+
+    def work(self, units, pos):
+        self.steps_left -= units // 64
+        if self.steps_left < 0:
+            raise Fatal('перевищено ліміт кроків (--кроки)', pos)
 
     def step(self, pos):
         self.steps_left -= 1
@@ -966,16 +1104,18 @@ class Interp:
 
     def call(self, fn, args, pos):
         if not isinstance(fn.v, Fn):
-            raise NgrError(f'очікувалася функція, а не {kind(fn)}', pos)
+            raise NgrError(f'очікувалася функція, а не {kind(fn)}', pos, min(fn.c, self.pc))
         f = fn.v
         if len(f.params) != len(args):
-            raise NgrError(f'функція чекає {len(f.params)} аргумент(и), а дано {len(args)}', pos)
+            raise NgrError(f'функція чекає {len(f.params)} аргумент(и), а дано {len(args)}', pos, min(fn.c, self.pc))
         self.depth += 1
         if self.depth > MAX_DEPTH:
             raise Fatal('надто глибока рекурсія', pos)
         saved = self.pc
         self.pc = min(saved, fn.c)
         self.taint(fn.c)
+        if fn.c < 1:
+            self.taint_effects((f.body,), fn.c)
         try:
             env = dict(zip(f.params, args))
             env['\0parent'] = f.env
@@ -1006,21 +1146,22 @@ class Interp:
         if k == 'lit':
             return V(node[2], self.pc)
         if k == 'var':
-            return self.lookup(env, node[2], pos)
+            val = self.lookup(env, node[2], pos)
+            if self.try_stack:
+                self.taint(val.c)          # усе, з чим працює тіло ☂, може визначити успіх чи помилку
+            return val
         if k == 'list':
-            if len(node[2]) > self.max_size:
-                raise Fatal('список завеликий', pos)
-            return mk([self.eval(e, env) for e in node[2]], self.pc)
+            return self.sized(mk([self.eval(e, env) for e in node[2]], self.pc), '【】', pos)
         if k == 'dict':
             d, c, sc = {}, self.pc, self.pc
             items = node[2]
             for i in range(0, len(items), 2):
                 key = self.eval(items[i], env)
                 if not isinstance(key.v, str):
-                    raise NgrError('ключ словника має бути рядком', items[i][1])
+                    raise NgrError('ключ словника має бути рядком', items[i][1], min(key.c, self.pc))
                 d[key.v] = self.eval(items[i + 1], env)
                 c, sc = min(c, key.c, d[key.v].c), min(sc, key.c)
-            return V(d, c, sc)
+            return self.sized(V(d, c, sc), '『』', pos)
         if k == 'block':
             inner = {'\0parent': env}
             result = V(None)
@@ -1054,12 +1195,18 @@ class Interp:
                            причина='інструмента немає в дозволах цього агента')
                 raise NgrError(f'агент «{self.agent}» не має дозволу «{name}» (функцію з інструментом '
                                f'викликано там, де цього дозволу немає)', pos)
+            ac = min([self.pc] + [a.c for a in args])
+            self.taint(ac)
+            if name in WORLD_WRITERS:
+                self.trace('виклик', агент=self.agent, назва=name, аргументи=targs)   # до дії: видно, навіть якщо процес уб'ють
+                self.world_c = min(self.world_c, ac)
             try:
                 res = TOOLS[name][5](self, pos, *args)
             except NgrError as e:
-                self.trace('інструмент', агент=self.agent, назва=name, аргументи=targs, помилка=e.msg)
+                e.c = min(e.c, ac, self.world_c if name in WORLD_READERS else 1.0)
+                self.trace('інструмент', агент=self.agent, назва=name, аргументи=targs, помилка=e.msg, впевненість=e.c)
                 raise
-            c = min([res.c, self.pc] + [a.c for a in args])
+            c = min([res.c, ac] + ([self.world_c] if name in WORLD_READERS else []))
             res = capc(res, c) if c < 1 else res
             self.taint(c)
             self.trace('інструмент', агент=self.agent, назва=name, аргументи=targs,
@@ -1067,7 +1214,7 @@ class Interp:
             return res
         if k == 'deleg':
             return self.delegate(node, env)
-        return self.op(node[2], node[3], env, pos)
+        return self.sized(self.op(node[2], node[3], env, pos), node[2], pos)
 
     def delegate(self, node, env):
         _, pos, name, intent, caps, body = node
@@ -1099,17 +1246,23 @@ class Interp:
                 branch = E(1) if self.boolean(c, g, pos) else E(2)
             finally:
                 self.pc = saved
-            return capc(branch, min(c.c, branch.c)) if c.c < branch.c else branch
+            self.taint_effects((argn[1], argn[2]), c.c)
+            if c.c < branch.c:
+                self.work(branch.n, pos)
+                return capc(branch, min(c.c, branch.c))
+            return branch
         if g == '☂':
             self.try_stack.append(self.pc)
             try:
                 res = E(0)
                 tc = self.try_stack.pop()
+                self.taint_effects((argn[0], argn[1]), tc)   # чи дійшло тіло до кінця й чи був обробник — від даних
                 return capc(res, tc) if tc < res.c else res
             except Fatal:
                 raise
             except NgrError as e:
                 tc = min(self.try_stack.pop(), e.c)
+                self.taint_effects((argn[0], argn[1]), tc)
                 self.trace('помилку перехоплено', агент=self.agent, помилка=e.msg, впевненість=tc)
                 saved = self.pc
                 self.pc = min(saved, tc)
@@ -1120,6 +1273,7 @@ class Interp:
                 return capc(res, tc) if tc < res.c else res
         if g in '∀μφ⇅⊞':
             lst = E(0)
+            self.taint(lst.c)
             items = self.seq(lst, g, pos)
             fn = E(1)
             saved = self.pc
@@ -1128,6 +1282,7 @@ class Interp:
                 results = [self.each(g, i, fn, [x], pos) for i, x in enumerate(items)]
             finally:
                 self.pc = saved
+            self.taint_effects((argn[1],), lst.s)
             if g == '∀':
                 return V(None, min(self.pc, lst.s))
             if g == 'μ':
@@ -1159,6 +1314,7 @@ class Interp:
                     acc = self.each(g, i, fn, [acc, x], pos)
             finally:
                 self.pc = saved
+            self.taint_effects((argn[2],), lst.s)
             return capc(acc, lst.s) if lst.s < acc.c else acc
         if g == '↻':
             s, cond, stepf = E(0), E(1), E(2)
@@ -1174,9 +1330,12 @@ class Interp:
                     s = self.call(stepf, [s], pos)
             finally:
                 self.pc = saved
+            self.taint_effects((argn[1], argn[2]), cc)
             return capc(s, cc) if cc < s.c else s
         args = [E(i) for i in range(len(argn))]
         self.taint(min([1.0] + [a.c for a in args]))   # будь-яка операція може впасти — це видно ☂
+        if g in HEAVY:
+            self.work(sum(a.n for a in args), pos)
         try:
             res = self.prim(g, args, pos)
         except Fatal:
@@ -1184,8 +1343,6 @@ class Interp:
         except NgrError as e:
             e.c = min([e.c, self.pc] + [a.c for a in args])
             raise
-        if isinstance(res.v, (str, list, dict)) and len(res.v) > self.max_size:
-            raise Fatal(f'{g}: значення завелике ({len(res.v)} > --розмір {self.max_size})', pos)
         if g not in ('≈', '±', '⚗', '►', '▶', '🜃', '🜍', '🜄', '§', '⌂', 'ρ', 'κ'):
             c = min([res.c] + [a.c for a in args])
             if isinstance(res.v, (list, dict)):        # вміст лишає свою впевненість; будова — від аргументів
@@ -1209,7 +1366,7 @@ class Interp:
             return x.v
         if isinstance(x.v, str):
             return [V(ch, x.c) for ch in x.v]
-        raise NgrError(f'{g}: очікувався список або рядок, а не {kind(x)}', pos)
+        raise NgrError(f'{g}: очікувався список або рядок, а не {kind(x)}', pos, min(x.c, self.pc))
 
     def prim(self, g, a, pos):
         n = lambda i: self.num(a[i], g, pos)      # noqa: E731
@@ -1217,6 +1374,8 @@ class Interp:
         if g == '＋':
             x, y = a[0].v, a[1].v
             if isinstance(x, str) and isinstance(y, str) or isinstance(x, list) and isinstance(y, list):
+                if a[0].n + a[1].n > self.max_size:
+                    raise Fatal(f'＋: значення завелике ({a[0].n + a[1].n} > --розмір {self.max_size})', pos)
                 return V(x + y)
             if isinstance(x, str) or isinstance(y, str):
                 raise NgrError(f'＋: рядок можна зʼєднати лише з рядком (для числа — σ): {brief(a[0], 30)} ＋ {brief(a[1], 30)}', pos)
@@ -1224,7 +1383,10 @@ class Interp:
         if g == '－':
             return V(n(0) - n(1))
         if g == '×':
-            return V(n(0) * n(1))
+            x, y = n(0), n(1)
+            if isinstance(x, int) and isinstance(y, int) and x.bit_length() + y.bit_length() > MAX_INT_BITS:
+                raise Fatal(f'×: число завелике (понад {MAX_INT_BITS} біт)', pos)
+            return V(x * y)
         if g in '÷‰':
             x, y = n(0), n(1)
             if y == 0:
@@ -1259,8 +1421,8 @@ class Interp:
             x, y = n(0), n(1)
             if not (isinstance(x, int) and isinstance(y, int)):
                 raise NgrError('…: межі ряду мають бути цілими', pos)
-            if y - x > 10_000_000:
-                raise NgrError('…: надто довгий ряд', pos)
+            if y - x + 1 > self.max_size:
+                raise Fatal(f'…: ряд завеликий ({y - x + 1} > --розмір {self.max_size})', pos)
             c = min(a[0].c, a[1].c)
             return V([V(i, c) for i in range(x, y + 1)], c)
         if g == 'ρ':
@@ -1306,8 +1468,12 @@ class Interp:
             return V([V(p, c) for p in (s.split(sep) if sep else s.split())], c)
         if g == '⁀':
             lst, sep = self.need(a[0], 'список', g, pos), self.need(a[1], 'рядок', g, pos)
+            if a[0].n + len(sep) * len(lst) > self.max_size:
+                raise Fatal(f'⁀: значення завелике (> --розмір {self.max_size})', pos)
             return V(sep.join(show(e) for e in lst))
         if g == 'σ':
+            if a[0].n > self.max_size:
+                raise Fatal(f'{g}: значення завелике (> --розмір {self.max_size})', pos)
             return V(show(a[0]))
         if g == 'ν':
             s = self.need(a[0], 'рядок', g, pos).strip().lstrip('\ufeff')
@@ -1322,9 +1488,13 @@ class Interp:
         if g == 'δ':
             try:
                 return wrap(json.loads(self.need(a[0], 'рядок', g, pos)), a[0].c)
+            except RecursionError:
+                raise NgrError('δ: JSON вкладений надто глибоко', pos)
             except ValueError as e:
                 raise NgrError(f'δ: не JSON: {e}', pos)
         if g == 'Δ':
+            if a[0].n > self.max_size:
+                raise Fatal(f'{g}: значення завелике (> --розмір {self.max_size})', pos)
             return V(json.dumps(plain(a[0]), ensure_ascii=False))
         if g == '»':
             text = show(a[0])
@@ -1338,9 +1508,11 @@ class Interp:
             self.trace('впевненість', агент=self.agent, значення=trace_val(a[0]), було=a[0].c, стало=c)
             return capc(a[0], c)
         if g == '±':
-            return V(a[0].c)
+            return V(a[0].c, min(a[0].c, self.pc))    # впевненість — теж дані: не певніша за саму себе
         if g == '⚗':
             lst, t = self.need(a[0], 'список', g, pos), n(1)
+            # що лишилось — залежить від упевненостей елементів і порогу: це будова результату
+            sc = min([a[0].s, a[1].c, self.pc] + [x.c for x in lst])
             if not 0 <= t <= 1:
                 raise NgrError('⚗: поріг має бути від 0 до 1', pos)
             kept = []
@@ -1350,7 +1522,7 @@ class Interp:
                            рішення='лишено' if ok else 'відкинуто')
                 if ok:
                     kept.append(x)
-            return mk(kept, a[0].s)
+            return mk(kept, sc)
         if g == '🜄':
             key = self.need(a[0], 'рядок', g, pos)
             kc = min(a[0].c, self.pc)
@@ -1385,8 +1557,11 @@ class Interp:
                 return V(self.need(y, 'рядок', g, pos) in x)
             raise NgrError(f'∋: очікувався рядок, список чи словник, а не {kind(a[0])}', pos)
         if g == '⇄':
-            return V(self.need(a[0], 'рядок', g, pos).replace(self.need(a[1], 'рядок', g, pos),
-                                                              self.need(a[2], 'рядок', g, pos)))
+            src_, old, new = (self.need(a[i], 'рядок', g, pos) for i in range(3))
+            cnt = src_.count(old) if old else len(src_) + 1
+            if len(src_) + cnt * len(new) > self.max_size:
+                raise Fatal(f'⇄: значення завелике (> --розмір {self.max_size})', pos)
+            return V(src_.replace(old, new))
         if g == '⊢':
             return V(self.need(a[0], 'рядок', g, pos).strip().strip('\ufeff\u200b').strip())
         if g in '≅⌗':
@@ -1620,6 +1795,8 @@ def cheatsheet_short():
              '「файл.писати:тека」 「файл.список:тека」 「мережа.взяти:хост」 「агент:імʼя」. Поза печаткою — помилка до запуску.',
              'Рядок 「…」 (\\n \\」), список 【…】, словник 『к з …』, блок 《…》, коментар ※, так/ні/ніщо ● ○ ∅, мінус ¯5.',
              'Імена — слова одного письма; ← імʼя вираз (лише на початку інструкції, назавжди). Умови — лише ●/○.',
+             'УВАГА: ＋ － ＝ — ПОВНОШИРИННІ (U+FF0B, U+FF0D, U+FF1D), мінус числа ¯ (U+00AF). ASCII + - = — помилка.',
+             'Опис інструмента клієнт може нормалізувати (＋→+); точні гліфи — в результаті nigredo_pamyatka.',
              'Гліфи (арність через сигнатуру):']
     for g, (ar, sig, desc, _, grp) in GLYPHS.items():
         lines.append(f'  {sig} — {desc}')
@@ -1639,16 +1816,19 @@ USAGE = f"""Nigredo {VERSION}
     --слід ФАЙЛ|-          де ще вести слід (новий файл; - = stderr); слід ведеться завжди
                            у {OWNER_HOME}/сліди/
     --дозволи ФАЙЛ         звузити дозволи власника ({OWNER_HOME}/дозволи.json)
+    --тека ТЕКА            для -e: виконувати як програму з цієї теки (з її правами «для_тек»)
+    --слід-розмір N        найбільший слід у байтах (типово {MAX_TRACE})
     --зерно N              зерно для «жереб» (типово 0)
     --кроки N              ліміт кроків (типово {DEFAULT_STEPS})
     --розмір N             найбільший рядок/список (типово {MAX_SIZE})
-  ngr --перевірити-слід ФАЙЛ
+  ngr --перевірити-слід ФАЙЛ [ПРОГРАМА]   (з програмою — ще й чи слід саме від неї)
   ngr --памʼятка           згенерувати памʼятку для агентів
 """
 
 
 def main(argv):
-    opts = {'mode': 'run', 'trace': None, 'allow': None, 'seed': 0, 'steps': DEFAULT_STEPS, 'size': MAX_SIZE}
+    opts = {'mode': 'run', 'trace': None, 'allow': None, 'seed': 0, 'steps': DEFAULT_STEPS, 'size': MAX_SIZE,
+            'dir': None, 'tsize': MAX_TRACE}
     src = path = None
     prog_args = []
     it = iter(argv)
@@ -1666,7 +1846,9 @@ def main(argv):
             print(cheatsheet_short())
             return 0
         if a == '--перевірити-слід':
-            msg = verify_trace(next(it))
+            tpath = next(it)
+            rest = list(it)
+            msg = verify_trace(tpath, rest[0] if rest else None)
             print(msg)
             return 0 if msg.startswith('✓') else 1
         if a in ('--печатка', '--розбір'):
@@ -1681,6 +1863,10 @@ def main(argv):
             opts['steps'] = int(next(it))
         elif a == '--розмір':
             opts['size'] = int(next(it))
+        elif a == '--слід-розмір':
+            opts['tsize'] = int(next(it))
+        elif a == '--тека':
+            opts['dir'] = os.path.realpath(next(it))
         elif a == '-e':
             src, path = next(it), '<-e>'
         else:
@@ -1694,24 +1880,31 @@ def main(argv):
         print(USAGE, file=sys.stderr)
         return 2
     try:
-        prog = parse(src)
+        prog, perr = parse(src), None
     except StaticError as e:
-        print(e, file=sys.stderr)
-        return 2
-    # шляхи в печатці й інструментах — відносно теки програми (для -e — поточної теки)
-    cwd = os.getcwd() if path == '<-e>' else os.path.dirname(os.path.abspath(path))
+        prog, perr = None, e
+    # шляхи — відносно теки програми; для -e — теки --тека (права теки) або поточної (без прав теки)
+    if path == '<-e>':
+        cwd = opts['dir'] or os.getcwd()
+        dir_rights = opts['dir'] is not None
+    else:
+        cwd = os.path.dirname(os.path.abspath(path))
+        dir_rights = True
     try:
-        allowed, source = load_allowlist(opts['allow'], cwd)
+        allowed, source = load_allowlist(opts['allow'], cwd if dir_rights else None,
+                                         os.path.realpath(path) if path != '<-e>' else None)
     except Refused as e:
         print(e, file=sys.stderr)
         return 3
-    if opts['mode'] == 'розбір':
-        print(explain_program(prog))
+    if opts['mode'] in ('розбір', 'печатка'):
+        if perr:
+            print(perr, file=sys.stderr)
+            return 2
+        print(explain_program(prog) if opts['mode'] == 'розбір'
+              else seal_report(prog, allowed, source, cwd) + (f'\n  права теки: {cwd}' if dir_rights else
+                                                               '\n  права теки: жодних (код рядком без --тека)'))
         return 0
-    if opts['mode'] == 'печатка':
-        print(seal_report(prog, allowed, source, cwd))
-        return 0
-    missing = check_allowlist(prog[2][0][3], allowed, cwd)
+    missing = check_allowlist(prog[2][0][3], allowed, cwd) if prog else []
     sha = hashlib.sha256(src.encode()).hexdigest()
     key = owner_key()
     os.makedirs(os.path.join(OWNER_HOME, 'сліди'), mode=0o700, exist_ok=True)
@@ -1721,7 +1914,7 @@ def main(argv):
     extra_stderr = opts['trace'] == '-'
     if opts['trace'] and not extra_stderr:
         paths.append(os.path.realpath(opts['trace']))
-    write_scopes = prog[2][0][3].get('файл.писати', [])
+    write_scopes = prog[2][0][3].get('файл.писати', []) if prog else []
     for tp in paths[1:]:
         if any(inside(tp, os.path.join(cwd, w)) for w in write_scopes):
             print(f'✗ слід «{tp}» лежить у теці, куди програмі дозволено писати — оберіть інше місце',
@@ -1739,11 +1932,16 @@ def main(argv):
         return 3
     if extra_stderr:
         outs.append(sys.stderr)
-    trace = Trace(outs, key)
+    trace = Trace(outs, key, opts['tsize'])
     code = 0
     try:
-        trace('початок', версія=VERSION, програма=path, sha256=sha[:16], аргументи=prog_args,
-              дозволи_власника=source, дозволено=allowed)
+        trace('початок', версія=VERSION, програма=path, sha256=sha, аргументи=prog_args,
+              час=datetime.now(timezone.utc).isoformat(timespec='seconds'), запуск=os.urandom(6).hex(),
+              тека=cwd, дозволи_власника=source, дозволено=allowed)
+        if perr:
+            trace('відмова', причина='помилка до запуску', повідомлення=safe(str(perr)))
+            print(perr, file=sys.stderr)
+            return 2
         if missing:
             trace('відмова', бракує=missing)
             print(f'✗ печатка просить більше, ніж дозволив власник: {", ".join(missing)}\n'
@@ -1765,6 +1963,8 @@ def main(argv):
             code = 4
         return code
     finally:
+        if os.environ.get('NIGREDO_SHOW_TRACE'):
+            print(f'слід: {main_trace}', file=sys.stderr)
         for o in outs:
             if o is not sys.stderr:
                 o.close()
