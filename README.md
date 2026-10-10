@@ -57,6 +57,7 @@ claude mcp add nigredo -- python3 mcp/nigredo_mcp.py           # give it to any 
 A text browser for agents, written in Nigredo itself: `ngr браузер/браузер.ngr -- URL [N]` (page → title, text with
 lynx-style `[N]` link markers, numbered absolute links; `N` follows link N; `пошук words` searches Wikipedia). The seal
 names every host it may visit, a sub-agent with network-only rights fetches, invisible characters come out as `⟨U+…⟩`.
+Over MCP it is the `nigredo_brauzer` tool.
 
 Python ≥ 3.10, no dependencies. The language's own words (glyph names, errors, docs) are Ukrainian.
 
@@ -169,7 +170,8 @@ ngr браузер/браузер.ngr -- пошук alchemy nigredo             
 claude mcp add nigredo -- python3 /шлях/до/nigredo/mcp/nigredo_mcp.py
 ```
 
-Інструменти `nigredo_vykonaty`, `nigredo_pechatka`, `nigredo_rozbir`, `nigredo_pereviryty_slid`, `nigredo_pamyatka`;
+Інструменти `nigredo_vykonaty`, `nigredo_pechatka`, `nigredo_rozbir`, `nigredo_pereviryty_slid`, `nigredo_pamyatka` і
+`nigredo_brauzer` (браузер вище: `url`, `link`, `search`, `lang`; хости — з його печатки, підсумок сліду — у відповіді);
 стисла памʼятка (~2 тис. токенів) — прямо в описі інструмента, вивчати нічого не треба.
 
 ## Чорний ящик
