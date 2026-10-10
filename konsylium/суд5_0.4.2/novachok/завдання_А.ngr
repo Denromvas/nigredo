@@ -1,0 +1,3 @@
+🜂 「FizzBuzz 1…15」 【】
+← fb λn ¿ ＝ 0 ‰ n 15 「FizzBuzz」 ¿ ＝ 0 ‰ n 3 「Fizz」 ¿ ＝ 0 ‰ n 5 「Buzz」 σ n
+∀ … 1 15 λi » fb i

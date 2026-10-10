@@ -19,7 +19,7 @@ import urllib.request
 from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
-VERSION = '0.4.2'
+VERSION = '0.4.3'
 MAX_DEPTH = 2000
 MAX_SIZE = 5_000_000      # найбільший логічний розмір значення (символів + елементів); --розмір N
 ALLOC_FACTOR = 20         # сумарно за запуск можна створити не більше ALLOC_FACTOR × --розмір
@@ -240,6 +240,8 @@ def plain(x):
 
 
 def wrap(p, c=1.0):
+    if isinstance(p, str) and any(0xD800 <= ord(ch) <= 0xDFFF for ch in p):
+        raise ValueError('у рядку неповний символ (сурогат)')
     if isinstance(p, list):
         return V([wrap(e, c) for e in p], c)
     if isinstance(p, dict):
@@ -328,6 +330,26 @@ def script_of(ch):
     return name.split(' ')[0]
 
 
+FILLERS = set('\u3164\u115f\u1160\uffa0\u2800')
+CONFUSABLE = str.maketrans('аеорсухіјѕкмтвнАВЕКМНОРСТХІЈЅ', 'aeopcyxijskmtbhABEKMHOPCTXIJS')
+
+
+def skeleton(name):
+    return name.translate(CONFUSABLE)
+
+
+def check_twins(toks):
+    """Два різні імена, однакові на вигляд (x і х, cop і сор), — помилка (UTS #39)."""
+    seen = {}
+    for kind_, val, pos in toks:
+        if kind_ != 'name':
+            continue
+        sk = skeleton(val)
+        if sk in seen and seen[sk] != val:
+            raise StaticError(f'імена «{seen[sk]}» і «{val}» однакові на вигляд — двійники заборонені', pos)
+        seen.setdefault(sk, val)
+
+
 def lex(src):
     toks, i, line, col = [], 0, 1, 1
     n = len(src)
@@ -353,8 +375,11 @@ def lex(src):
             else:
                 toks.append(('nl', indent, pos))
             adv()
-        elif ch in '\ufe0e\ufe0f' or ch.isspace():
+        elif ch in ' \t\r':
             adv()
+        elif ch.isspace() or ch in '\ufe0e\ufe0f' or unicodedata.category(ch) in ('Cf', 'Cc'):
+            raise StaticError(f'нестандартний чи невидимий символ U+{ord(ch):04X} поза рядком — у коді лише пробіл, '
+                              f'табуляція й новий рядок', pos)
         elif ch == COMMENT:
             while i < n and src[i] != '\n':
                 adv()
@@ -406,6 +431,10 @@ def lex(src):
             if len(scripts) > 1:
                 raise StaticError(f'імʼя «{buf}» змішує письма ({", ".join(sorted(scripts))}): однакові на вигляд '
                                   f'літери різних абеток у Nigredo заборонені', pos)
+            if any(ch in FILLERS for ch in buf):
+                raise StaticError(f'імʼя з невидимим заповнювачем (U+3164 тощо) заборонене', pos)
+            if any(unicodedata.category(ch) == 'Nd' and not '0' <= ch <= '9' for ch in buf):
+                raise StaticError(f'в імені «{buf}» — лише цифри 0–9 (інші письма цифр плутаються з ними)', pos)
             toks.append(('name', buf, pos))
         elif ch in GLYPHS or ch in CONSTS:
             toks.append(('glyph', ch, pos))
@@ -430,6 +459,13 @@ def lex(src):
 
 # ------------------------------------------------------------------ розбір
 # Вузол: (вид, позиція, ...). Види: lit var call op bind lam list dict block seal tool deleg
+
+
+def plain_text(text, what, pos):
+    """Намір і дозволи бачить отримувач у --печатка: жодних керівних, невидимих чи bidi-символів."""
+    bad = [ch for ch in text if unicodedata.category(ch) in ('Cc', 'Cf', 'Zl', 'Zp', 'Co', 'Cn', 'Cs')]
+    if bad:
+        raise StaticError(f'{what}: керівні чи невидимі символи заборонені ({", ".join(f"U+{ord(c):04X}" for c in bad[:3])})', pos)
 
 
 def narrower(tool, child, parent):
@@ -597,6 +633,7 @@ class Parser:
             raise StaticError(f'дозволи {what} мають бути буквальним списком рядків 【「…」 …】', pos)
         caps = {}
         for e in node[2]:
+            plain_text(e[2], f'дозвіл {what}', e[1])
             name, _, scope = e[2].partition(':')
             name = name.strip()
             if name not in TOOLS:
@@ -613,6 +650,7 @@ class Parser:
             intent = self.expr()
             if intent[0] != 'lit' or not isinstance(intent[2], str) or not intent[2].strip():
                 raise StaticError('намір печатки має бути непорожнім буквальним рядком 「…」', pos)
+            plain_text(intent[2], 'намір печатки', pos)
             _, caps = self.caps_literal('печатки', pos)
             self.cap_stack.append(caps)
             return ('seal', pos, intent[2], caps)
@@ -653,6 +691,8 @@ class Parser:
             intent = self.expr()
             if name[0] != 'lit' or not isinstance(name[2], str) or intent[0] != 'lit' or not isinstance(intent[2], str):
                 raise StaticError('🜁: імʼя і намір субагента мають бути буквальними рядками', pos)
+            plain_text(name[2], 'імʼя субагента', pos)
+            plain_text(intent[2], 'намір субагента', pos)
             _, caps = self.caps_literal('субагента', pos, inherit=True)
             parent = self.cap_stack[-1]
             for t, scopes in caps.items():
@@ -714,7 +754,9 @@ def effects(node):
 
 
 def parse(src):
-    p = Parser(lex(src))
+    toks = lex(src)
+    check_twins(toks)
+    p = Parser(toks)
     return p.program()
 
 
@@ -729,7 +771,12 @@ class Trace:
         self.outs, self.key, self.prev, self.n = outs, key, '0' * 16, 0
         self.depth, self.bytes, self.limit = 0, 0, limit
 
+    def _check_strings(self, data):
+        if _bad_str(data):
+            raise Fatal('у даних для сліду неповний символ (сурогат) — запис неможливий, програму зупинено')
+
     def __call__(self, event, **data):
+        self._check_strings(data)
         if self.bytes > self.limit and event not in ('помилка', 'кінець', 'відмова'):
             raise Fatal(f'слід перевищив {self.limit} байтів (--слід-розмір) — програму зупинено')
         self.n += 1
@@ -742,6 +789,16 @@ class Trace:
         for o in self.outs:
             o.write(line)
             o.flush()
+
+
+def _bad_str(x):
+    if isinstance(x, str):
+        return any(0xD800 <= ord(ch) <= 0xDFFF for ch in x)
+    if isinstance(x, dict):
+        return any(_bad_str(k) or _bad_str(v) for k, v in x.items())
+    if isinstance(x, (list, tuple)):
+        return any(_bad_str(v) for v in x)
+    return False
 
 
 def sign(key, rec):
@@ -787,6 +844,8 @@ def verify_trace(path, program=None):
             h = rec.pop('хеш')
         except (ValueError, KeyError, AttributeError, TypeError):
             return f'✗ слід пошкоджено в рядку {lineno}: це не запис сліду (або змінений запис)'
+        if rec.get('№') != n + 1:
+            return f'✗ слід пошкоджено в рядку {lineno}: пропущено чи переставлено запис (№ {rec.get("№")} замість {n + 1})'
         if rec.get('попередній') != prev or not hmac.compare_digest(sign(key, rec), str(h)):
             return f'✗ слід пошкоджено або змінено в рядку {lineno}'
         if n == 0:
@@ -796,7 +855,7 @@ def verify_trace(path, program=None):
         return f'✗ слід обірвано: {n} записів, останній — «{last}», а не кінець/помилка/відмова на старті'
     if not head or head.get('подія') != 'початок':
         return '✗ слід не починається з «початок»'
-    about = (f'програма {head.get("програма")}, sha256 {str(head.get("sha256"))[:16]}…, '
+    about = (f'програма {safe(str(head.get("програма")))}, sha256 {str(head.get("sha256"))[:16]}…, '
              f'час {head.get("час", "—")}, запуск {head.get("запуск", "—")}')
     if 'час' not in head or 'запуск' not in head:
         return f'⚠ слід цілий, але старого формату (без часу й запуску): не доводить, коли і котрий це запуск; {about}' 
@@ -833,15 +892,20 @@ def os_err(tool, e, p):
 def _path_ok(it, tool, p, pos, write=False):
     if not isinstance(p, str):
         raise NgrError(f'{tool}: шлях має бути рядком', pos)
+    if '\0' in p or any(unicodedata.category(ch) in ('Cc', 'Cf') for ch in p):
+        it.trace('заборонено', агент=it.agent, назва=tool, шлях=safe(p), причина='керівні чи невидимі символи в шляху')
+        raise NgrError(f'{tool}: у шляху керівні чи невидимі символи', pos)
     real = os.path.realpath(os.path.join(it.cwd, p))
     if inside(real, OWNER_HOME) or real in it.protected:
-        raise NgrError(f'{tool}: «{p}» — це тека власника або слід; програмі туди не можна', pos)
+        it.trace('заборонено', агент=it.agent, назва=tool, шлях=safe(p), причина='тека власника або слід')
+        raise NgrError(f'{tool}: «{safe(p)}» — це тека власника або слід; програмі туди не можна', pos)
     check = os.path.dirname(real) if write else real
     for base in it.caps[tool]:
         b = os.path.realpath(os.path.join(it.cwd, base))
         if check == b or check.startswith(b + os.sep) or (not write and real == b):
             return real
-    raise NgrError(f'{tool}: «{p}» поза дозволеним ({", ".join(it.caps[tool])})', pos)
+    it.trace('заборонено', агент=it.agent, назва=tool, шлях=safe(p), причина='поза дозволеною текою')
+    raise NgrError(f'{tool}: «{safe(p)}» поза дозволеним ({", ".join(safe(x) for x in it.caps[tool])})', pos)
 
 
 def t_oracle(it, pos, q):
@@ -1095,6 +1159,7 @@ class Interp:
         self.out = out or sys.stdout
         self.memory, self.agent, self.caps = {}, 'головний', {}
         self.pc = 1.0          # впевненість контексту керування: усе, що створено тут, не впевненіше
+        self.halt_c = 1.0      # канал завершення: після пройденої сумнівної 🜍 решта запуску не впевненіша
         self.mem_c = 1.0       # наскільки сумнівними були ключі, якими писали в памʼять
         self.try_stack = []    # для кожного ☂: найменша впевненість усього, що обчислено в його тілі
         self.world_c = 1.0     # наскільки сумнівно могли змінити зовнішній стан (жереб, файли, агенти, мережа)
@@ -1109,6 +1174,10 @@ class Interp:
             self.mem_c, self.world_c = min(self.mem_c, c), min(self.world_c, c)
         else:
             self.taint_effects((node,), c)
+
+    @property
+    def cpc(self):
+        return min(self.pc, self.halt_c)
 
     def taint_effects(self, nodes, c):
         """Код, який міг виконатися чи ні залежно від даних з впевненістю c, міг змінити стан — отже стан сумнівний."""
@@ -1165,10 +1234,10 @@ class Interp:
 
     def call(self, fn, args, pos):
         if not isinstance(fn.v, Fn):
-            raise NgrError(f'очікувалася функція, а не {kind(fn)}', pos, min(fn.c, self.pc))
+            raise NgrError(f'очікувалася функція, а не {kind(fn)}', pos, min(fn.c, self.cpc))
         f = fn.v
         if len(f.params) != len(args):
-            raise NgrError(f'функція чекає {len(f.params)} аргумент(и), а дано {len(args)}', pos, min(fn.c, self.pc))
+            raise NgrError(f'функція чекає {len(f.params)} аргумент(и), а дано {len(args)}', pos, min(fn.c, self.cpc))
         self.depth += 1
         if self.depth > MAX_DEPTH:
             raise Fatal('надто глибока рекурсія', pos)
@@ -1205,21 +1274,21 @@ class Interp:
         k, pos = node[0], node[1]
         self.step(pos)
         if k == 'lit':
-            return V(node[2], self.pc)
+            return V(node[2], self.cpc)
         if k == 'var':
             val = self.lookup(env, node[2], pos)
             if self.try_stack:
                 self.taint(val.c)          # усе, з чим працює тіло ☂, може визначити успіх чи помилку
             return val
         if k == 'list':
-            return self.sized(mk([self.eval(e, env) for e in node[2]], self.pc), '【】', pos)
+            return self.sized(mk([self.eval(e, env) for e in node[2]], self.cpc), '【】', pos)
         if k == 'dict':
-            d, c, sc = {}, self.pc, self.pc
+            d, c, sc = {}, self.cpc, self.cpc
             items = node[2]
             for i in range(0, len(items), 2):
                 key = self.eval(items[i], env)
                 if not isinstance(key.v, str):
-                    raise NgrError('ключ словника має бути рядком', items[i][1], min(key.c, self.pc))
+                    raise NgrError('ключ словника має бути рядком', items[i][1], min(key.c, self.cpc))
                 d[key.v] = self.eval(items[i + 1], env)
                 c, sc = min(c, key.c, d[key.v].c), min(sc, key.c)
             return self.sized(V(d, c, sc), '『』', pos)
@@ -1231,14 +1300,14 @@ class Interp:
             return result
         if k == 'bind':
             if node[3][0] == 'lam':
-                fn = V(Fn(node[3][2], node[3][3], env, node[2]), self.pc)
+                fn = V(Fn(node[3][2], node[3][3], env, node[2]), self.cpc)
                 env[node[2]] = fn
                 return fn
             val = self.eval(node[3], env)
             env[node[2]] = val
             return val
         if k == 'lam':
-            return V(Fn(node[2], node[3], env), self.pc)
+            return V(Fn(node[2], node[3], env), self.cpc)
         if k == 'call':
             fn = self.lookup(env, node[2], pos)
             return self.call(fn, [self.eval(a, env) for a in node[3]], pos)
@@ -1256,7 +1325,7 @@ class Interp:
                            причина='інструмента немає в дозволах цього агента')
                 raise NgrError(f'агент «{self.agent}» не має дозволу «{name}» (функцію з інструментом '
                                f'викликано там, де цього дозволу немає)', pos)
-            ac = min([self.pc] + [a.c for a in args])
+            ac = min([self.cpc] + [a.c for a in args])
             self.taint(ac)
             if name in WORLD_WRITERS:
                 self.trace('виклик', агент=self.agent, назва=name, аргументи=targs)   # до дії: видно, навіть якщо процес уб'ють
@@ -1278,8 +1347,30 @@ class Interp:
             return self.delegate(node, env)
         return self.sized(self.op(node[2], node[3], env, pos), node[2], pos)
 
+    def exceeds(self, caps):
+        """Що з caps виходить за права поточного агента (теки — за справжніми шляхами)."""
+        over = []
+        for t, scopes in caps.items():
+            if t not in self.caps:
+                over.append(t)
+                continue
+            for sc in scopes:
+                if TOOLS[t][4] == 'тека':
+                    rs = os.path.realpath(os.path.join(self.cwd, sc))
+                    ok = any(inside(rs, os.path.realpath(os.path.join(self.cwd, p))) for p in self.caps[t])
+                else:
+                    ok = sc in self.caps[t]
+                if not ok:
+                    over.append(f'{t}:{sc}')
+        return over
+
     def delegate(self, node, env):
         _, pos, name, intent, caps, body = node
+        over = self.exceeds(caps)
+        if over:              # функцію з 🜁 викликав агент з меншими правами — субагент не може мати більше за нього
+            self.trace('заборонено', агент=self.agent, субагент=name, дозволи=caps, бракує=over,
+                       причина='субагент просить більше, ніж має агент, що його викликає')
+            raise NgrError(f'агент «{self.agent}» не може дати субагенту «{name}» більше, ніж має сам: {", ".join(over)}', pos)
         saved = (self.memory, self.agent, self.caps, self.mem_c)
         self.trace('делегування', агент=self.agent, субагент=name, намір=intent, дозволи=caps)
         self.memory, self.agent, self.caps, self.mem_c = {}, f'{self.agent}/{name}', caps, 1.0
@@ -1314,7 +1405,7 @@ class Interp:
                 return capc(branch, min(c.c, branch.c))
             return branch
         if g == '☂':
-            self.try_stack.append(self.pc)
+            self.try_stack.append(self.cpc)
             try:
                 res = E(0)
                 tc = self.try_stack.pop()
@@ -1348,7 +1439,7 @@ class Interp:
                 self.pc = saved
             self.fn_effects(argn[1], lst.s)
             if g == '∀':
-                return V(None, min(self.pc, lst.s))
+                return V(None, min(self.cpc, lst.s))
             if g == 'μ':
                 return mk(results, lst.s)
             # відбір, порядок і групи залежать від результатів функції — це будова результату (s);
@@ -1406,10 +1497,10 @@ class Interp:
         except Fatal:
             raise
         except NgrError as e:
-            e.c = min([e.c, self.pc] + [a.c for a in args])
+            e.c = min([e.c, self.cpc] + [a.c for a in args])
             raise
         except RecursionError:
-            raise NgrError(f'{g}: значення вкладене надто глибоко', pos, min([self.pc] + [a.c for a in args]))
+            raise NgrError(f'{g}: значення вкладене надто глибоко', pos, min([self.cpc] + [a.c for a in args]))
         if g not in ('≈', '±', '⚗', '►', '▶', '🜃', '🜍', '🜄', '§', '⌂', 'ρ', 'κ'):
             c = min([res.c] + [a.c for a in args])
             if isinstance(res.v, (list, dict)):        # вміст лишає свою впевненість; будова — від аргументів
@@ -1433,7 +1524,7 @@ class Interp:
             return x.v
         if isinstance(x.v, str):
             return [V(ch, x.c) for ch in x.v]
-        raise NgrError(f'{g}: очікувався список або рядок, а не {kind(x)}', pos, min(x.c, self.pc))
+        raise NgrError(f'{g}: очікувався список або рядок, а не {kind(x)}', pos, min(x.c, self.cpc))
 
     def prim(self, g, a, pos):
         n = lambda i: self.num(a[i], g, pos)      # noqa: E731
@@ -1567,8 +1658,8 @@ class Interp:
             if a[0].n > self.max_size:
                 raise Fatal(f'»: значення завелике для друку (> --розмір {self.max_size})', pos)
             text = show(a[0])
+            self.trace('вивід', агент=self.agent, текст=trace_val(V(text)))   # спершу слід — тоді вивід
             print(text, file=self.out, flush=True)
-            self.trace('вивід', агент=self.agent, текст=trace_val(V(text)))
             return V(None)
         if g == '≈':
             c = n(1)
@@ -1577,11 +1668,11 @@ class Interp:
             self.trace('впевненість', агент=self.agent, значення=trace_val(a[0]), було=a[0].c, стало=c)
             return capc(a[0], c)
         if g == '±':
-            return V(a[0].c, min(a[0].c, self.pc))    # впевненість — теж дані: не певніша за саму себе
+            return V(a[0].c, min(a[0].c, self.cpc))    # впевненість — теж дані: не певніша за саму себе
         if g == '⚗':
             lst, t = self.need(a[0], 'список', g, pos), n(1)
             # що лишилось — залежить від упевненостей елементів і порогу: це будова результату
-            sc = min([a[0].s, a[1].c, self.pc] + [x.c for x in lst])
+            sc = min([a[0].s, a[1].c, self.cpc] + [x.c for x in lst])
             if not 0 <= t <= 1:
                 raise NgrError('⚗: поріг має бути від 0 до 1', pos)
             kept = []
@@ -1594,16 +1685,16 @@ class Interp:
             return mk(kept, sc)
         if g == '🜄':
             key = self.need(a[0], 'рядок', g, pos)
-            kc = min(a[0].c, self.pc)
+            kc = min(a[0].c, self.cpc)
             self.mem_c = min(self.mem_c, kc)       # сам факт запису під таким ключем — теж інформація
             val = capc(a[1], kc) if kc < a[1].c else a[1]
             self.memory[key] = val
             self.trace('памʼять', агент=self.agent, дія='запамʼятати', ключ=key, значення=trace_val(val), впевненість=val.c)
-            return V(None, self.pc)
+            return V(None, self.cpc)
         if g == '🜃':
             key = self.need(a[0], 'рядок', g, pos)
             res = self.memory.get(key, V(None))
-            c = min(a[0].c, self.mem_c, self.pc)  # і знайдене, і відсутнє залежить від того, як писали
+            c = min(a[0].c, self.mem_c, self.cpc)  # і знайдене, і відсутнє залежить від того, як писали
             res = capc(res, c) if c < res.c else res
             self.trace('памʼять', агент=self.agent, дія='пригадати', ключ=key, значення=trace_val(res), впевненість=res.c)
             return res
@@ -1614,7 +1705,8 @@ class Interp:
             self.trace('перевірка', агент=self.agent, значення=trace_val(a[0]), результат='пройдена' if ok else 'НЕ пройдена',
                        впевненість=r.c)
             if not ok:
-                raise NgrError(f'🜍: перевірку не пройдено для {brief(a[0], 60)}', pos, min(r.c, a[0].c, self.pc))
+                raise NgrError(f'🜍: перевірку не пройдено для {brief(a[0], 60)}', pos, min(r.c, a[0].c, self.cpc))
+            self.halt_c = min(self.halt_c, r.c)     # те, що програма йде далі, — теж знання про умову
             return capc(a[0], r.c) if r.c < a[0].c else a[0]
         if g == '∋':
             x, y = a[0].v, a[1]
@@ -1723,37 +1815,55 @@ def explain_program(prog):
     return '\n'.join(explain(s) for s in prog[2])
 
 
-def seal_report(prog, allowed, source, cwd):
+def seal_info(prog, allowed, source, cwd, dir_rights=True):
+    """Усе, що отримувач має знати до запуску, — словником (для --печатка і --печатка --json)."""
     def scopes(t, sc):
         if TOOLS[t][4] == 'тека':
-            return ', '.join(os.path.realpath(os.path.join(cwd, x)) for x in sc)
-        return ', '.join(safe(x) for x in sc)
+            return [safe(os.path.realpath(os.path.join(cwd, x))) for x in sc]
+        return [safe(x) for x in sc]
 
     seal = prog[2][0]
-    lines = ['ПЕЧАТКА', f'  намір: «{safe(seal[2])}»', '  дозволи:']
-    for t, sc in seal[3].items():
-        lines.append(f'    {t}' + (f' → {scopes(t, sc)}' if sc else '') + f'   ({TOOLS[t][2]})')
-    if not seal[3]:
-        lines.append('    жодних — програма лише обчислює')
-    subs = []
+    subs, explicit = [], 0
 
-    def walk(n):
-        if isinstance(n, tuple):
-            if n and n[0] == 'deleg':
-                subs.append(n)
+    def walk(n, owner):
+        nonlocal explicit
+        if isinstance(n, tuple) and n:
+            if n[0] == 'op' and n[2] == '≈':
+                explicit += 1
+            if n[0] == 'deleg':
+                subs.append({'імʼя': safe(n[2]), 'намір': safe(n[3]), 'усередині': owner,
+                             'дозволи': {t: scopes(t, sc) for t, sc in n[4].items()}})
+                walk(n[5], f'{owner}/{safe(n[2])}')
+                return
             for x in n:
-                walk(x)
+                walk(x, owner)
         elif isinstance(n, list):
             for x in n:
-                walk(x)
-    walk(prog)
-    for d in subs:
-        caps = '; '.join(t + (f' → {scopes(t, sc)}' if sc else '') for t, sc in d[4].items()) or 'жодних'
-        lines.append(f'  субагент «{safe(d[2])}»: намір «{safe(d[3])}», дозволи: {caps}')
-    missing = check_program(prog, allowed, cwd)
-    lines.append(f'  дозволи власника: {source}')
-    lines.append('  ✓ печатка в межах дозволів власника' if not missing else f'  ✗ бракує дозволу власника: {", ".join(missing)}')
-    lines.append('  (права перевіряються й під час виконання: кожен інструмент — лише в межах агента, що його викликає)')
+                walk(x, owner)
+    walk(prog, 'головний')
+    missing = [safe(m) for m in check_program(prog, allowed, cwd)]
+    return {'намір': safe(seal[2]), 'дозволи': {t: scopes(t, sc) for t, sc in seal[3].items()},
+            'субагенти': subs, 'явні_зміни_впевненості': explicit, 'дозволи_власника': safe(source),
+            'права_теки': safe(cwd) if dir_rights else None, 'в_межах': not missing, 'бракує': missing}
+
+
+def seal_report(prog, allowed, source, cwd, dir_rights=True):
+    i = seal_info(prog, allowed, source, cwd, dir_rights)
+    lines = ['ПЕЧАТКА', f'  намір: «{i["намір"]}»', '  дозволи:']
+    for t, sc in i['дозволи'].items():
+        lines.append(f'    {t}' + (f' → {", ".join(sc)}' if sc else '') + f'   ({TOOLS[t][2]})')
+    if not i['дозволи']:
+        lines.append('    жодних — програма лише обчислює')
+    for d in i['субагенти']:
+        caps = '; '.join(t + (f' → {", ".join(sc)}' if sc else '') for t, sc in d['дозволи'].items()) or 'жодних'
+        lines.append(f'  субагент «{d["імʼя"]}» (у коді агента «{d["усередині"]}»): намір «{d["намір"]}», дозволи: {caps}')
+    if i['явні_зміни_впевненості']:
+        lines.append(f'  явні зміни впевненості ≈: {i["явні_зміни_впевненості"]} (кожна — у сліді)')
+    lines.append(f'  дозволи власника: {i["дозволи_власника"]}')
+    lines.append(f'  права теки: {i["права_теки"]}' if i['права_теки'] else '  права теки: жодних (код рядком без --тека)')
+    lines.append('  ✓ печатка в межах дозволів власника' if i['в_межах'] else f'  ✗ бракує дозволу власника: {", ".join(i["бракує"])}')
+    lines.append('  (права перевіряються й під час виконання: кожен інструмент і кожен субагент — лише в межах агента, '
+                 'що його викликає; намір — слова автора програми)')
     return '\n'.join(lines)
 
 
@@ -1843,7 +1953,11 @@ def cheatsheet():
             '  не зробить нічого поза печаткою і не допише, не змінить і не обріже свій слід непомітно. Але *агент*,',
             '  що має shell, може обійти Nigredo взагалі чи змінити `~/.nigredo` (дозволи, ключ сліду). Від такого',
             '  агента захищають права процесу й пісочниця ОС, а не мова.',
-            '- Впевненість відстежується через дані й керування, але це консервативна оцінка, а не ймовірність.',
+            '- Впевненість відстежується через дані, керування й побічний стан, але це консервативна оцінка, а не',
+            '  ймовірність. Після пройденої сумнівної перевірки `🜍` решта запуску не впевненіша за неї. Сам факт, що',
+            '  програма дожила до кінця (а не впала), — канал, який мова не відстежує.',
+            '- Намір, імена субагентів і вивід програми — слова її автора. Довіряй печатці (`--печатка`, код 3, якщо не в',
+            '  межах дозволів; `--печатка --json` для машин) і сліду, перевіреному разом із програмою.',
             '- Ліміти: `--кроки` (обчислення; створення великих значень теж коштує кроків), `--розмір` (логічний',
             '  розмір значення — символи й елементи разом зі спільними посиланнями, і цілі), сумарно створене за запуск',
             '  ≤ 20 × `--розмір`, `--слід-розмір` (байти сліду), глибина рекурсії.',
@@ -1884,7 +1998,9 @@ def cheatsheet_short():
     lines.append('Інструменти: ' + '; '.join(TOOLS[t][1] for t in TOOLS))
     lines += ['Приклад: 🜂 「сума чисел」 【「файл.читати:дані」】 ¦ ← n δ🜔файл.читати 「дані/x.json」 ¦ » Σ n 0 Λa x ＋a x',
               'Впевненість: усе з даних і під сумнівними умовами не впевненіше за джерело; змінити — лише ≈ (у слід).',
-              'Слід веде інтерпретатор (підписаний). Nigredo — прозорість і аудит, не пісочниця ОС.']
+              'Слід веде інтерпретатор (підписаний). Nigredo — прозорість і аудит, не пісочниця ОС.',
+              'Намір і вивід — слова автора програми; перевіряй слід через nigredo_pereviryty_slid з code.',
+              'Субагент не може мати більше прав, ніж агент, що його викликає (і ніж дозволив власник).']
     return '\n'.join(lines)
 
 
@@ -1892,7 +2008,7 @@ def cheatsheet_short():
 
 USAGE = f"""Nigredo {VERSION}
   ngr ФАЙЛ.ngr | -e КОД  [-- аргументи програми]
-    --печатка              що програмі дозволено (без виконання)
+    --печатка [--json]     що програмі дозволено (без виконання); код 3, якщо не в межах дозволів власника
     --розбір               переклад українським псевдокодом (без виконання)
     --слід ФАЙЛ|-          де ще вести слід (новий файл; - = stderr); слід ведеться завжди
                            у {OWNER_HOME}/сліди/
@@ -1909,8 +2025,8 @@ USAGE = f"""Nigredo {VERSION}
 
 def main(argv):
     opts = {'mode': 'run', 'trace': None, 'allow': None, 'seed': 0, 'steps': DEFAULT_STEPS, 'size': MAX_SIZE,
-            'dir': None, 'tsize': MAX_TRACE}
-    src = path = None
+            'dir': None, 'tsize': MAX_TRACE, 'json': False}
+    src = path = raw = None
     prog_args = []
     it = iter(argv)
     for a in it:
@@ -1946,6 +2062,8 @@ def main(argv):
             opts['size'] = int(next(it))
         elif a == '--слід-розмір':
             opts['tsize'] = int(next(it))
+        elif a == '--json':
+            opts['json'] = True
         elif a == '--тека':
             opts['dir'] = os.path.realpath(next(it))
         elif a == '-e':
@@ -1953,7 +2071,8 @@ def main(argv):
         else:
             path = a
             try:
-                src = open(a, encoding='utf-8').read()
+                raw = open(a, 'rb').read()
+                src = raw.decode('utf-8')
             except (OSError, UnicodeDecodeError) as e:
                 print(f'✗ {a}: {getattr(e, "strerror", None) or e}', file=sys.stderr)
                 return 2
@@ -1981,12 +2100,14 @@ def main(argv):
         if perr:
             print(perr, file=sys.stderr)
             return 2
-        print(explain_program(prog) if opts['mode'] == 'розбір'
-              else seal_report(prog, allowed, source, cwd) + (f'\n  права теки: {cwd}' if dir_rights else
-                                                               '\n  права теки: жодних (код рядком без --тека)'))
-        return 0
+        if opts['mode'] == 'розбір':
+            print(explain_program(prog))
+            return 0
+        info = seal_info(prog, allowed, source, cwd, dir_rights)
+        print(json.dumps(info, ensure_ascii=False, indent=1) if opts['json'] else seal_report(prog, allowed, source, cwd, dir_rights))
+        return 0 if info['в_межах'] else 3
     missing = check_program(prog, allowed, cwd) if prog else []
-    sha = hashlib.sha256(src.encode()).hexdigest()
+    sha = hashlib.sha256(raw if path != '<-e>' else src.encode()).hexdigest()
     key = owner_key()
     os.makedirs(os.path.join(OWNER_HOME, 'сліди'), mode=0o700, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
@@ -2018,7 +2139,8 @@ def main(argv):
     try:
         trace('початок', версія=VERSION, програма=path, sha256=sha, аргументи=prog_args,
               час=datetime.now(timezone.utc).isoformat(timespec='seconds'), запуск=os.urandom(6).hex(),
-              тека=cwd, дозволи_власника=source, дозволено=allowed)
+              тека=safe(cwd), дозволи_власника=safe(source), дозволено=allowed,
+              ліміти={'кроки': opts['steps'], 'розмір': opts['size'], 'слід': opts['tsize'], 'зерно': opts['seed']})
         if perr:
             trace('відмова', причина='помилка до запуску', повідомлення=safe(str(perr)))
             print(perr, file=sys.stderr)

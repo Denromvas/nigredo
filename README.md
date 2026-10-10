@@ -38,7 +38,8 @@ interpreter, attacked it, then debated the others' reports.
 | 0.1 (stack-based) | 6:0 unfit | trace forgeable, delegation boundary leaky → rewritten from scratch |
 | 0.2 (seal, prefix) | 6:0 experimental | easy to write (newcomer 4/4 from the cheat sheet), holes in guarantees |
 | 0.3 | 7:0 experimental; **Python wrapper with the same guarantees rejected 7:0** | the wrapper was broken from inside in five ways; nobody crossed Nigredo's seal → tools → files boundary |
-| 0.4 → 0.4.2 (current) | **5:2 adopted for the niche "delegation with seal and trace"** | a newcomer learned it purely via MCP and solved everything first try; all council-3 attacks closed; new findings fixed with negative tests |
+| 0.4 → 0.4.2 | **5:2 adopted for the niche "delegation with seal and trace"** | a newcomer learned it purely via MCP and solved everything first try; all council-3 attacks closed |
+| 0.4.2 frozen → 0.4.3 (current) | 7:0 experimental — "close to adopted" | on the frozen version the councillors escalated a sub-agent through a parent's function (transitive delegation); fixed in 0.4.3 with negative tests, re-review requested |
 
 Full protocols, every participant's report and solutions: [`konsylium/`](konsylium/).
 
@@ -48,7 +49,7 @@ Full protocols, every participant's report and solutions: [`konsylium/`](konsyli
 python3 interpreter/nigredo.py examples/ahent.ngr
 python3 interpreter/nigredo.py --печатка examples/fajly.ngr     # what the program may do
 python3 interpreter/nigredo.py --розбір examples/chysla.ngr     # translation for the owner
-python3 interpreter/test.py                                    # examples + 43 attack/error tests
+python3 interpreter/test.py                                    # examples + 50 attack/error tests
 claude mcp add nigredo -- python3 mcp/nigredo_mcp.py           # give it to any MCP-capable agent
 ```
 
@@ -109,7 +110,7 @@ Python ≥ 3.10, без залежностей.
 python3 interpreter/nigredo.py examples/ahent.ngr     # або ngr, якщо зробити симлінк
 python3 interpreter/nigredo.py --печатка examples/fajly.ngr
 python3 interpreter/nigredo.py --розбір examples/chysla.ngr
-python3 interpreter/test.py                            # приклади, 43 перевірки помилок і атак, слід, памʼятка
+python3 interpreter/test.py                            # приклади, 50 перевірок помилок і атак, слід, памʼятка
 ```
 
 Дозволи власника — `~/.nigredo/дозволи.json`, наприклад
@@ -130,7 +131,8 @@ python3 interpreter/test.py                            # приклади, 43 п
 | 0.1 — стекова, «шифр для людей» | 6:0 — непридатна як робоча | Практична користь 2/10; слід можна підробити; межа делегування проникна. Переписано з нуля. |
 | 0.2 — печатка, префіксний запис | 6:0 — експериментальна | Писати легко (новачок 4/4 з памʼятки), але знайдено діри в гарантіях. |
 | 0.3 | 7:0 — експериментальна; **Python-обгортку як заміну відкинуто 7:0** | Обгортку з тими самими гарантіями (`porivniannia/ngrpy.py`) зламали зсередини пʼятьма способами; межу Nigredo «печатка → інструменти → файли» — ніхто. Знайдено відмивання впевненості через вибір і обрізаний слід. |
-| 0.4 → 0.4.2 — поточна | **5:2 «прийняти» для ніші «доручення з печаткою і слідом»** | Новачок вивчив мову лише через MCP і розвʼязав усе з першої спроби; атаки суду 3 закрито; нові знахідки виправлено з негативними тестами. |
+| 0.4 → 0.4.2 | **5:2 «прийняти» для ніші «доручення з печаткою і слідом»** | Новачок вивчив мову лише через MCP і розвʼязав усе з першої спроби; атаки суду 3 закрито. |
+| 0.4.2 заморожена → 0.4.3 — поточна | 7:0 «експериментальна», «близько до А» | На замороженій версії субагента підвищили через функцію батька (транзитивне делегування); виправлено в 0.4.3 з негативними тестами, просять повторний огляд. |
 
 Висновок третього суду: Nigredo краща за Python там, де агент **отримує чужу програму** й мусить вирішити,
 чи її запускати, — для цього досить рядка печатки; у Python — лише читати весь код, і навіть тоді обхід можливий.
