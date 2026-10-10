@@ -39,7 +39,8 @@ interpreter, attacked it, then debated the others' reports.
 | 0.2 (seal, prefix) | 6:0 experimental | easy to write (newcomer 4/4 from the cheat sheet), holes in guarantees |
 | 0.3 | 7:0 experimental; **Python wrapper with the same guarantees rejected 7:0** | the wrapper was broken from inside in five ways; nobody crossed Nigredo's seal → tools → files boundary |
 | 0.4 → 0.4.2 | **5:2 adopted for the niche "delegation with seal and trace"** | a newcomer learned it purely via MCP and solved everything first try; all council-3 attacks closed |
-| 0.4.2 frozen → 0.4.3 (current) | 7:0 experimental — "close to adopted" | on the frozen version the councillors escalated a sub-agent through a parent's function (transitive delegation); fixed in 0.4.3 with negative tests, re-review requested |
+| 0.4.2 frozen → 0.4.3 | 7:0 experimental — "close to adopted" | on the frozen version the councillors escalated a sub-agent through a parent's function (transitive delegation); fixed in 0.4.3 with negative tests, re-review requested |
+| 0.4.3 frozen → 0.4.4 (current) | **6:1 adopted** for the niche "delegation with seal and trace" (Gemini: experimental) | 300+ attempts on two frozen versions in a row: nobody acted outside the seal or got a false "✓". Findings were about the *signal*: U+2028 broke trace verification, invisible Unicode tags reached the receiving model, author text inside the seal report, homoglyphs beyond the table, the "survived, so the condition is known" channel. All fixed in 0.4.4 with negative tests (one visibility rule, UTS #39 skeletons, full output in the trace) |
 
 Full protocols, every participant's report and solutions: [`konsylium/`](konsylium/).
 
@@ -49,7 +50,7 @@ Full protocols, every participant's report and solutions: [`konsylium/`](konsyli
 python3 interpreter/nigredo.py examples/ahent.ngr
 python3 interpreter/nigredo.py --печатка examples/fajly.ngr     # what the program may do
 python3 interpreter/nigredo.py --розбір examples/chysla.ngr     # translation for the owner
-python3 interpreter/test.py                                    # examples + 50 attack/error tests
+python3 interpreter/test.py                                    # examples + 73 attack/error tests + trace/MCP checks
 claude mcp add nigredo -- python3 mcp/nigredo_mcp.py           # give it to any MCP-capable agent
 ```
 
@@ -69,7 +70,7 @@ written by Claude (Anthropic) as an agent; the project owner is Denis Romaniuk. 
 бачить, що програма *може* зробити, і перевіряє, що вона *зробила*.
 
 *Nigredo* — «почорніння», перша стадія алхімічного Великого Діла: розкласти, щоб зібрати заново.
-Мову двічі засуджував консиліум агентів, і двічі її переписано (історія нижче).
+Мову двічі засуджував консиліум агентів, і двічі її переписано; з 0.4 її судять на замороженій версії (історія нижче).
 
 ```
 🜂 「опитати провидців і лишити впевнені відповіді」 【「оракул」】
@@ -110,7 +111,7 @@ Python ≥ 3.10, без залежностей.
 python3 interpreter/nigredo.py examples/ahent.ngr     # або ngr, якщо зробити симлінк
 python3 interpreter/nigredo.py --печатка examples/fajly.ngr
 python3 interpreter/nigredo.py --розбір examples/chysla.ngr
-python3 interpreter/test.py                            # приклади, 50 перевірок помилок і атак, слід, памʼятка
+python3 interpreter/test.py                            # приклади, 73 перевірки помилок і атак, слід, MCP, памʼятка
 ```
 
 Дозволи власника — `~/.nigredo/дозволи.json`, наприклад
@@ -119,7 +120,7 @@ python3 interpreter/test.py                            # приклади, 50 п
 - [`ДЛЯ_АГЕНТІВ.md`](ДЛЯ_АГЕНТІВ.md) — памʼятка з усіма гліфами (генерується інтерпретатором).
 - [`spec/SPEC.md`](spec/SPEC.md) — специфікація.
 
-## Історія: два суди
+## Історія: суди
 
 Мову створив ШІ-агент на прохання власника. Щоб оцінка не була лише думкою автора, її віддали на
 **консиліум**: пʼять окремих сесій Claude з різними ролями (Скептик, Практик, Мовознавець, Аудитор
@@ -132,7 +133,8 @@ python3 interpreter/test.py                            # приклади, 50 п
 | 0.2 — печатка, префіксний запис | 6:0 — експериментальна | Писати легко (новачок 4/4 з памʼятки), але знайдено діри в гарантіях. |
 | 0.3 | 7:0 — експериментальна; **Python-обгортку як заміну відкинуто 7:0** | Обгортку з тими самими гарантіями (`porivniannia/ngrpy.py`) зламали зсередини пʼятьма способами; межу Nigredo «печатка → інструменти → файли» — ніхто. Знайдено відмивання впевненості через вибір і обрізаний слід. |
 | 0.4 → 0.4.2 | **5:2 «прийняти» для ніші «доручення з печаткою і слідом»** | Новачок вивчив мову лише через MCP і розвʼязав усе з першої спроби; атаки суду 3 закрито. |
-| 0.4.2 заморожена → 0.4.3 — поточна | 7:0 «експериментальна», «близько до А» | На замороженій версії субагента підвищили через функцію батька (транзитивне делегування); виправлено в 0.4.3 з негативними тестами, просять повторний огляд. |
+| 0.4.2 заморожена → 0.4.3 | 7:0 «експериментальна», «близько до А» | На замороженій версії субагента підвищили через функцію батька (транзитивне делегування); виправлено в 0.4.3 з негативними тестами, просять повторний огляд. |
+| 0.4.3 заморожена → 0.4.4 — поточна | **6:1 «А» — прийняти для ніші «доручення з печаткою і слідом»** (Gemini — «Б») | Понад 300 спроб на двох заморожених версіях поспіль: ні дії поза печаткою, ні хибного «✓». Знайдено вади сигналу: U+2028 ламав перевірку сліду, невидимі теги доходили до моделі-отримувача, текст автора у звіті печатки, двійники поза таблицею, канал «дожила — отже умова відома». Усе виправлено в 0.4.4 з негативними тестами. |
 
 Висновок третього суду: Nigredo краща за Python там, де агент **отримує чужу програму** й мусить вирішити,
 чи її запускати, — для цього досить рядка печатки; у Python — лише читати весь код, і навіть тоді обхід можливий.
