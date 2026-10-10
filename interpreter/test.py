@@ -244,6 +244,24 @@ def main():
     check(got.returncode == 0 and 'Ви на другій сторінці' in got.stdout, 'браузер: перехід за посиланням N', got.stdout + got.stderr)
     got = run(['-e', browser, '--', 'https://example.com/'], env)
     check(got.returncode == 1 and 'поза дозволеним' in got.stderr, 'браузер: хост поза печаткою — відмова', got.stderr)
+    tbrowser = tmp / 'браузер.ngr'
+    tbrowser.write_text(browser, encoding='utf-8')
+    call = lambda i, args: {'jsonrpc': '2.0', 'id': i, 'method': 'tools/call',      # noqa: E731
+                            'params': {'name': 'nigredo_brauzer', 'arguments': args}}
+    reqs = [{'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}, call(2, {'url': base + 'перша.html'}),
+            call(3, {'url': base + 'перша.html', 'link': 2}), call(4, {'url': base, 'search': 'x'}),
+            call(5, {'url': 'файл:///etc/passwd'}), call(6, {'url': base, 'link': 0})]
+    got = subprocess.run([sys.executable, str(ROOT / 'mcp' / 'nigredo_mcp.py')],
+                         input=''.join(json.dumps(r) + '\n' for r in reqs), capture_output=True, text=True,
+                         env=dict(env, NIGREDO_WORKDIR=str(tmp / 'робоча'), NIGREDO_BROWSER=str(tbrowser)))
+    res = {m['id']: m.get('result', {}) for m in map(json.loads, got.stdout.splitlines())}
+    desc = next(t['description'] for t in res[1]['tools'] if t['name'] == 'nigredo_brauzer')
+    text = lambda i: '\n'.join(c['text'] for c in res[i].get('content', []))      # noqa: E731
+    check(f'127.0.0.1:{port}' in desc and 'УВАГА' not in desc and not res[2]['isError']
+          and '[1]посиланням' in text(2) and '«заборонено»' not in text(2) and 'спроб поза правами немає' in text(2)
+          and 'Ви на другій сторінці' in text(3)
+          and all(res[i]['isError'] and text(i).startswith('✗') for i in (4, 5, 6)),
+          'MCP-браузер: сторінка, перехід, слід, відмови на поганих запитах', got.stdout[-1500:] + got.stderr)
 
     sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',
