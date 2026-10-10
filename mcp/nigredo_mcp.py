@@ -6,9 +6,9 @@
 
   claude mcp add nigredo -- python3 /шлях/до/Nigredo/mcp/nigredo_mcp.py
 
-Програми з `nigredo_vykonaty` виконуються еталонним інтерпретатором у робочій теці
-($NIGREDO_WORKDIR, типово ~/.nigredo/робоча) з дозволами власника (~/.nigredo/дозволи.json) —
-сервер нічого не дозволяє понад них. Кожен запуск лишає підписаний слід у ~/.nigredo/сліди/.
+Програми виконуються еталонним інтерпретатором як програми з робочої теки ($NIGREDO_WORKDIR, типово
+~/nigredo-робоча — поза текою власника) з дозволами власника для цієї теки (~/.nigredo/дозволи.json,
+«для_тек») — сервер нічого не дозволяє понад них. Кожен запуск лишає підписаний слід у $NIGREDO_HOME/сліди/.
 """
 import json
 import os
@@ -17,14 +17,16 @@ import sys
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 NGR = os.path.join(HERE, '..', 'interpreter', 'nigredo.py')
-WORKDIR = os.path.expanduser(os.environ.get('NIGREDO_WORKDIR', '~/.nigredo/робоча'))
+WORKDIR = os.path.realpath(os.path.expanduser(os.environ.get('NIGREDO_WORKDIR', '~/nigredo-робоча')))
+OWNER_HOME = os.path.realpath(os.path.expanduser(os.environ.get('NIGREDO_HOME', '~/.nigredo')))
+TRACES = os.path.join(OWNER_HOME, 'сліди')
 PROTOCOL = '2024-11-05'
 
 
 def ngr(*args, timeout=120):
     try:
-        p = subprocess.run([sys.executable, NGR, *args], capture_output=True, text=True,
-                           cwd=WORKDIR, timeout=timeout)
+        p = subprocess.run([sys.executable, NGR, *args], capture_output=True, text=True, cwd=WORKDIR,
+                           timeout=timeout, stdin=subprocess.DEVNULL, env=dict(os.environ, NIGREDO_SHOW_TRACE='1'))
         return p.returncode, p.stdout, p.stderr
     except subprocess.TimeoutExpired:
         return 124, '', f'✗ перевищено час ({timeout} с)'
@@ -50,7 +52,9 @@ def tools():
          'inputSchema': {'type': 'object', 'properties': {'code': code}, 'required': ['code']}},
         {'name': 'nigredo_vykonaty',
          'description': 'Виконати програму на Nigredo. Повертає вивід, помилки, код виходу і шлях до підписаного сліду. '
-                        'Дії — лише в межах печатки і дозволів власника.\n\n' + short,
+                        'Дії — лише в межах печатки і дозволів власника. ВАЖЛИВО: клієнт може нормалізувати '
+                        'гліфи в цьому описі (повноширинні ＋ － ＝ стають + - =) — точні гліфи бери з результату '
+                        'nigredo_pamyatka, виклич її першою.\n\n' + short,
          'inputSchema': {'type': 'object', 'properties': {
              'code': code,
              'args': {'type': 'array', 'items': {'type': 'string'}, 'description': 'Аргументи програми (⌂).'}},
@@ -65,26 +69,33 @@ def call(name, a):
     if name == 'nigredo_pamyatka':
         return sheet(), False
     if name == 'nigredo_pechatka':
-        rc, out, err = ngr('--печатка', '-e', a['code'])
+        rc, out, err = ngr('--печатка', '--тека', WORKDIR, '-e', a['code'])
         return (out or err).strip(), rc != 0
     if name == 'nigredo_rozbir':
-        rc, out, err = ngr('--розбір', '-e', a['code'])
+        rc, out, err = ngr('--розбір', '--тека', WORKDIR, '-e', a['code'])
         return (out or err).strip(), rc != 0
     if name == 'nigredo_vykonaty':
-        before = set(os.listdir(os.path.join(os.path.expanduser(os.environ.get('NIGREDO_HOME', '~/.nigredo')), 'сліди'))) \
-            if os.path.isdir(os.path.expanduser(os.path.join(os.environ.get('NIGREDO_HOME', '~/.nigredo'), 'сліди'))) else set()
         args = [str(x) for x in a.get('args', [])]
-        rc, out, err = ngr('-e', a['code'], *(['--', *args] if args else []))
-        traces_dir = os.path.expanduser(os.path.join(os.environ.get('NIGREDO_HOME', '~/.nigredo'), 'сліди'))
-        new = sorted(set(os.listdir(traces_dir)) - before) if os.path.isdir(traces_dir) else []
+        rc, out, err = ngr('--тека', WORKDIR, '-e', a['code'], *(['--', *args] if args else []))
+        trace = None
+        lines = []
+        for line in err.splitlines():           # шлях до сліду дає сам інтерпретатор — не вгадуємо
+            if line.startswith('слід: ') and trace is None:
+                trace = line[len('слід: '):]
+            else:
+                lines.append(line)
+        err = '\n'.join(lines)
         text = f'код виходу: {rc}\n--- вивід ---\n{out}'
-        if err:
-            text += f'--- помилки ---\n{err}'
-        if new:
-            text += f'--- слід ---\n{os.path.join(traces_dir, new[-1])}'
+        if err.strip():
+            text += f'--- помилки ---\n{err}\n'
+        if trace:
+            text += f'--- слід ---\n{trace}'
         return text, rc != 0
     if name == 'nigredo_pereviryty_slid':
-        rc, out, err = ngr('--перевірити-слід', a['path'])
+        real = os.path.realpath(os.path.join(TRACES, a['path']))
+        if not (real.startswith(TRACES + os.sep) and real.endswith('.jsonl')):
+            return '✗ перевіряю лише сліди з теки слідів власника', True
+        rc, out, err = ngr('--перевірити-слід', real)
         return (out or err).strip(), rc != 0
     raise KeyError(name)
 
@@ -115,7 +126,7 @@ def main():
         try:
             if method == 'initialize':
                 reply(id_, {'protocolVersion': PROTOCOL, 'capabilities': {'tools': {}},
-                            'serverInfo': {'name': 'nigredo', 'version': '0.4'}})
+                            'serverInfo': {'name': 'nigredo', 'version': '0.4.1'}})
             elif method == 'tools/list':
                 reply(id_, {'tools': tools()})
             elif method == 'tools/call':
