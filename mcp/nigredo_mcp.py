@@ -22,6 +22,7 @@ WORKDIR = os.path.realpath(os.path.expanduser(os.environ.get('NIGREDO_WORKDIR', 
 OWNER_HOME = os.path.realpath(os.path.expanduser(os.environ.get('NIGREDO_HOME', '~/.nigredo')))
 TRACES = os.path.join(OWNER_HOME, 'сліди')
 PROTOCOL = '2024-11-05'
+BIDI = set('\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069\u200e\u200f\u061c')
 
 
 def ngr(*args, timeout=120, env=None):
@@ -73,7 +74,7 @@ def call(name, a):
         return sheet(), False
     if name == 'nigredo_pechatka':
         rc, out, err = ngr('--печатка', '--тека', WORKDIR, '-e', a['code'])
-        return (out or err).strip(), rc != 0
+        return (out or err).strip(), rc != 0          # rc 3 — печатка не в межах дозволів власника
     if name == 'nigredo_rozbir':
         rc, out, err = ngr('--розбір', '--тека', WORKDIR, '-e', a['code'])
         return (out or err).strip(), rc != 0
@@ -87,7 +88,10 @@ def call(name, a):
             trace = open(tp, encoding='utf-8').read().strip()
         finally:
             os.unlink(tp)
-        text = f'код виходу: {rc}\n--- вивід ---\n{out}'
+        clean = lambda t: ''.join(ch if ch in '\n\t' or not (ch < ' ' or 0x7f <= ord(ch) < 0xa0 or ch in BIDI)
+                                  else f'⟨U+{ord(ch):04X}⟩' for ch in t)
+        out, err = clean(out), clean(err)            # вивід програми — слова її автора: без керівних символів
+        text = f'код виходу: {rc}\n--- вивід (слова програми) ---\n{out}'
         if err.strip():
             text += f'--- помилки ---\n{err}\n'
         if trace:
@@ -137,7 +141,7 @@ def main():
         try:
             if method == 'initialize':
                 reply(id_, {'protocolVersion': PROTOCOL, 'capabilities': {'tools': {}},
-                            'serverInfo': {'name': 'nigredo', 'version': '0.4.2'}})
+                            'serverInfo': {'name': 'nigredo', 'version': '0.4.3'}})
             elif method == 'tools/list':
                 reply(id_, {'tools': tools()})
             elif method == 'tools/call':

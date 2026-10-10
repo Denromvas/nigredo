@@ -145,6 +145,15 @@ def main():
         alien = run(['--перевірити-слід', str(sample), str(other)], env).stdout
         check(own.startswith('✓') and 'ІНШОЇ' in alien, 'слід привʼязано до програми', own + alien)
     check('час' in head and 'запуск' in head, 'у сліді є час і ідентифікатор запуску', str(head)[:200])
+    refused = ROOT / 'tests' / 'помилки' / '10_vidmova_vlasnyka.ngr'
+    got = run(['--печатка', str(refused)], env)
+    js = run(['--печатка', '--json', str(refused)], env)
+    try:
+        info = json.loads(js.stdout)
+    except ValueError:
+        info = {}
+    check(got.returncode == 3 and '✗' in got.stdout and info.get('в_межах') is False and info.get('бракує'),
+          '--печатка: код 3 і «✗» поза межами; --json машиночитаний', got.stdout + js.stdout)
     junk = tmp / 'сміття.jsonl'
     junk.write_bytes(b'\0\0\0 not json\n')
     verdict = run(['--перевірити-слід', str(junk)], env)

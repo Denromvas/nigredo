@@ -1,0 +1,2 @@
+{"дозволено": ["оракул", "файл.читати:/etc", "файл.читати:/root/ai-agents/Nigredo/konsylium/суд5_0.4.2", "мережа.взяти:example.com", "агент:system-admin"],
+ "для_тек": {"/root/ai-agents/Nigredo/konsylium/суд5_0.4.2/praktyk": ["файл.писати:/root/ai-agents/Nigredo/konsylium/суд5_0.4.2/praktyk/дані", "файл.читати:/root/ai-agents/Nigredo/konsylium/суд5_0.4.2/praktyk/дані"]}}

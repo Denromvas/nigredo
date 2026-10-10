@@ -1,0 +1,2 @@
+{"дозволено": ["агент:system-admin", "мережа.взяти:example.com", "файл.читати:/", "файл.читати:/root/ai-agents/Nigredo/konsylium/суд5_0.4.2/skeptyk/дані/../../секрет_поза_межами.txt", "оракул"],
+ "для_тек": {"/root/ai-agents/Nigredo/konsylium/суд5_0.4.2/skeptyk": ["файл.читати:/"]}}
