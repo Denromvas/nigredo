@@ -197,6 +197,13 @@ def main():
         info = {}
     check(got.returncode == 2 and info.get('в_межах') is False and info.get('помилка_розбору'),
           '--печатка --json при помилці розбору — теж JSON', got.stdout + got.stderr)
+    got = run(['--перевірити', '--json', '-e', '🜂 「т」 【】\n← n 5\n» ＋ 「всього: 」 n\n» ⌕ 「a」 「(a+)+」'], env)
+    try:
+        info = json.loads(got.stdout)
+    except ValueError:
+        info = {}
+    check(got.returncode == 2 and info.get('гаразд') is False and len(info.get('помилки', [])) == 2
+          and info['помилки'][0]['рядок'] == 3, '--перевірити --json: усі помилки до запуску з місцем', got.stdout + got.stderr)
     seal = run(['--печатка', str(ROOT / 'examples' / 'ahent.ngr')], env).stdout
     check('права теки: немає' in seal and 'намір (слова автора): 「' in seal and 'необхідно, але не досить' in seal,
           '--печатка: слова автора в 「」, «права теки: немає», «необхідно, але не досить»', seal)

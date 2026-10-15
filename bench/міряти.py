@@ -124,9 +124,19 @@ def main():
                          'токени_з_печаткою': tokens(code) if lang == 'ngr' else None, 'чому': why}
         row['гарантія'] = bool(row['ngr'] and row['ngr']['ok'])
         rows.append(row)
+    bugs = []                      # М5: однакова помилка; чи впіймано ДО запуску (нічого не виконується)
+    for d in sorted(p for p in (BENCH / 'помилки').iterdir() if p.is_dir()):
+        py = subprocess.run([sys.executable, '-m', 'py_compile', str(d / 'рішення.py')], capture_output=True)
+        ng = subprocess.run([sys.executable, str(NGR), '--перевірити', str(d / 'рішення.ngr')], capture_output=True,
+                            text=True, env=env)
+        bugs.append({'задача': d.name, 'назва': (d / 'помилка.md').read_text(encoding='utf-8').strip('# \n'),
+                     'py': py.returncode != 0, 'ngr': ng.returncode != 0,
+                     'чим': (ng.stdout.strip().splitlines() or [''])[0][:110]})
+    for p in (BENCH / 'помилки').rglob('__pycache__'):
+        shutil.rmtree(p, ignore_errors=True)
     srv.shutdown()
     shutil.rmtree(home, ignore_errors=True)
-    report(rows)
+    report(rows, bugs)
 
 
 def fmt_tok(r, key='токени'):
@@ -136,7 +146,7 @@ def fmt_tok(r, key='токени'):
     return str(t.get('o200k_base', '')) or f'{r["символів"]} симв.'
 
 
-def report(rows):
+def report(rows, bugs=()):
     unit = 'токени o200k' if ENC else 'символи (tiktoken немає)'
     lines = ['# Мірило: Nigredo проти Python', '',
              f'Згенеровано `bench/міряти.py` ({time.strftime("%Y-%m-%d")}). Nigredo — без рядка печатки; одиниця — {unit}.', '',
@@ -162,7 +172,16 @@ def report(rows):
               f'- **М3 довжина:** медіана Nigredo/Python = {tok:.2f} на {len(both)} спільних задачах (умова 1.0: ≤ 1.00).' if tok else '- **М3:** немає спільних задач.',
               f'- **М4 гарантії:** печатка й слід — у {n_ok} задачах Nigredo; у Python — 0 (нема чим обмежити й перевірити).',
               f'- **М6 швидкість:** медіана часу Nigredo/Python = {spd:.2f} (умова 1.0: ≤ 3.00; час включає запуск інтерпретатора).' if spd else '',
-              '- **М2, М5, М7** ще не міряються: потрібні прогін моделей, набір помилок і повтор зі сліду (фази 0, 1, 3).']
+              f'- **М5 помилки до запуску:** Nigredo {sum(b["ngr"] for b in bugs)}/{len(bugs)}, Python {sum(b["py"] for b in bugs)}/{len(bugs)} '
+              f'(Python — `py_compile`; Nigredo — `ngr --перевірити`). Умова 1.0: Nigredo більше. Чесно: з лінтерами '
+              f'Python ловив би більше (pyflakes — описки й двійники імен; mypy з анотаціями — типи), але агенти їх '
+              f'зазвичай не запускають, а в Nigredo перевірка — частина мови.' if bugs else '',
+              '- **М2, М7** ще не міряються: потрібні прогін моделей і повтор зі сліду (фази 0, 3).']
+    if bugs:
+        lines += ['', '## М5: навмисні помилки — чи впіймано до запуску', '',
+                  '| Помилка | Python | Nigredo | Як Nigredo її бачить |', '|---|---|---|---|']
+        lines += [f'| {b["задача"]} {b["назва"]} | {"✓" if b["py"] else "✗"} | {"✓" if b["ngr"] else "✗"} | '
+                  f'{b["чим"].replace("|", "¦")} |' for b in bugs]
     (BENCH / 'РЕЗУЛЬТАТИ.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
     print('\n'.join(lines))
 
