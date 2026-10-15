@@ -21,7 +21,7 @@ import time
 
 BENCH = pathlib.Path(__file__).resolve().parent
 ROOT = BENCH.parent
-NGR = ROOT / 'interpreter' / 'nigredo.py'
+NGR = ROOT / 'interpreter' / 'ngr.py'
 
 try:
     import tiktoken

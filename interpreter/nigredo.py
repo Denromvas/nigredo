@@ -14,18 +14,16 @@ import subprocess
 import sys
 import threading
 import unicodedata
-import urllib.parse
-import urllib.request
 from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
-VERSION = '0.4.4'
+VERSION = '0.5-dev'
 MAX_DEPTH = 2000
 MAX_SIZE = 5_000_000      # найбільший логічний розмір значення (символів + елементів); --розмір N
 ALLOC_FACTOR = 20         # сумарно за запуск можна створити не більше ALLOC_FACTOR × --розмір
 MAX_INT_BITS = 100_000    # найбільше ціле (≈ 30 000 десяткових цифр)
 MAX_TRACE = 50_000_000    # найбільший слід у байтах; --слід-розмір N
-HEAVY = set('＝≠σΔ⁀∋↑⇅⊞≈')  # робота пропорційна розміру — і кроки теж
+HEAVY = set('＝≠σΔ⁀∋↑⇅⊞≈⇣⇡⊳⌕⇋')  # робота пропорційна розміру — і кроки теж
 if hasattr(sys, 'set_int_max_str_digits'):
     sys.set_int_max_str_digits(0)
 DEFAULT_STEPS = 10_000_000
@@ -118,6 +116,12 @@ GLYPHS = {
     '∋': (2, '∋ x y', 'чи містить: підрядок у рядку, елемент у списку, ключ у словнику', '({0} містить {1})', 'дані'),
     '⇄': (3, '⇄ рядок що чим', 'замінити всі входження', 'у {0} замінити {1} на {2}', 'дані'),
     '⊢': (1, '⊢ рядок', 'обрізати пробіли й невидимі символи (BOM) з країв', 'обрізати({0})', 'дані'),
+    '⇣': (1, '⇣ рядок', 'малими літерами', 'малими({0})', 'дані'),
+    '⇡': (1, '⇡ рядок', 'великими літерами', 'великими({0})', 'дані'),
+    '⊏': (3, '⊏ x від до', 'зріз рядка чи списку [від, до); відʼємні — з кінця; до ∅ — до кінця', '{0}[{1}…{2}]', 'дані'),
+    '⊳': (2, '⊳ x що', 'позиція підрядка в рядку чи елемента в списку; ¯1 — немає', 'позиція {1} у {0}', 'дані'),
+    '⌕': (2, '⌕ рядок шаблон', 'усі збіги регулярного виразу (з групами — списки груп)', 'усі збіги {1} у {0}', 'дані'),
+    '⇋': (3, '⇋ рядок шаблон заміна', 'замінити збіги регулярного виразу (\\1 — група)', 'у {0} замінити збіги {1} на {2}', 'дані'),
     '⇅': (2, '⇅ список λx ключ', 'відсортувати за ключем (рядки — за українською абеткою)', 'відсортувати {0} за {1}', 'дані'),
     '⊞': (2, '⊞ список λx ключ', 'згрупувати: словник ключ-рядок → список елементів', 'згрупувати {0} за {1}', 'дані'),
     '≅': (2, '≅ x n', 'округлити до n знаків після коми (половину — вгору, як у грошах)', 'округлити({0}, {1})', 'числа'),
@@ -144,6 +148,7 @@ CONSTS = {'●': True, '○': False, '∅': None}
 OPEN = {'【': '】', '『': '』', '《': '》'}
 CLOSE = set(OPEN.values())
 STR_OPEN, STR_CLOSE, COMMENT, SEP, NEG = '「', '」', '※', '¦', '¯'
+TMPL_OPEN, TMPL_CLOSE = '〔', '〕'      # шаблонний рядок: 〔текст {вираз} текст〕
 GREEK = range(0x0370, 0x0400)
 ASCII_HINTS = {
     '+': '＋', '-': '－ (або ¯ перед числом)', '*': '×', '/': '÷', '=': '＝', '<': '‹', '>': '›',
@@ -349,28 +354,42 @@ def script_of(ch):
     return name.split(' ')[0]
 
 
-DIGIT_LIKE = str.maketrans('ОоOoЗзБб', '00003366')
+DIGIT_LIKE = str.maketrans('ОOЗзБб', '003366')     # мала o — звичне імʼя змінної, лишаємо (мірило)
 _CONFUSABLES = {}
 
 
 def confusables():
-    """Таблиця UTS #39 (interpreter/двійники.tsv): символ → скелет, як він виглядає."""
+    """Таблиця UTS #39 (interpreter/двійники.tsv): символ → коди скелета (hex), як він виглядає. Коди в символи
+    перетворюються лише для тих символів, що трапилися в іменах (запуск не платить за всю таблицю)."""
     if not _CONFUSABLES:
         path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'двійники.tsv')
         try:
-            for line in open(path, encoding='utf-8'):
-                if line.strip() and not line.startswith('#'):
-                    k, v = line.rstrip('\n').split('\t')
-                    _CONFUSABLES[chr(int(k, 16))] = ''.join(chr(int(x, 16)) for x in v.split())
+            text = open(path, encoding='utf-8').read()
         except OSError as e:
             raise Fatal(f'немає таблиці двійників {path}: {e.strerror} — без неї двійників не відловити')
+        for line in text.split('\n'):
+            if line and line[0] != '#':
+                k, _, v = line.partition('\t')
+                _CONFUSABLES[chr(int(k, 16))] = v
     return _CONFUSABLES
+
+
+_PROTO = {}
+
+
+def _proto(ch, t):
+    """Прототип символу: коди з таблиці перетворюються один раз і кешуються окремо."""
+    p = _PROTO.get(ch)
+    if p is None:
+        v = t.get(ch)
+        p = _PROTO[ch] = ch if v is None else ''.join(chr(int(x, 16)) for x in v.split())
+    return p
 
 
 def skeleton(name):
     """Як імʼя виглядає: скелет UTS #39 — NFD, кожен символ → його прототип із confusables.txt, знову NFD."""
     t = confusables()
-    return unicodedata.normalize('NFD', ''.join(t.get(c, c) for c in unicodedata.normalize('NFD', name)))
+    return unicodedata.normalize('NFD', ''.join(_proto(c, t) for c in unicodedata.normalize('NFD', name)))
 
 
 def glyph_twin(name):
@@ -412,8 +431,55 @@ def lex(src):
                 col += 1
             i += 1
 
+    modes = []          # стек шаблонів: 'текст' — усередині 〔〕, 'дірка' — у {вираз} шаблону
     while i < n:
         ch, pos = src[i], (line, col)
+        if modes and modes[-1] == 'текст':
+            buf = []
+            while True:
+                if i >= n:
+                    raise StaticError(f'незакритий шаблон «{TMPL_OPEN}» — бракує «{TMPL_CLOSE}»', pos)
+                c = src[i]
+                if c == TMPL_CLOSE or c == '{':
+                    break
+                if c == '\\' and i + 1 < n:
+                    e = src[i + 1]
+                    buf.append({'n': '\n', 't': '\t', '\\': '\\', '{': '{', '}': '}', TMPL_CLOSE: TMPL_CLOSE}.get(e, '\\' + e))
+                    adv(2)
+                    continue
+                if c == '\r' and src[i + 1:i + 2] == '\n':
+                    adv()
+                    continue
+                buf.append(c)
+                adv()
+            text = ''.join(buf)
+            bad = hidden(text)
+            if bad:
+                raise StaticError(f'у шаблоні невидимий чи керівний символ U+{ord(bad[0]):04X}', pos)
+            if text:
+                toks.append(('tpart', text, pos))
+            tpos = (line, col)
+            if src[i] == TMPL_CLOSE:
+                toks.append(('tclose', TMPL_CLOSE, tpos))
+                modes.pop()
+            else:
+                toks.append(('hopen', '{', tpos))
+                modes[-1] = 'текст'
+                modes.append('дірка')
+            adv()
+            continue
+        if modes and modes[-1] == 'дірка' and (ch == '}' or ch == '\n' or ch == SEP):
+            if ch != '}':
+                raise StaticError('вираз у {…} шаблону — в одному рядку і без ¦', pos)
+            toks.append(('hclose', '}', pos))
+            modes.pop()
+            adv()
+            continue
+        if ch == TMPL_OPEN:
+            toks.append(('topen', TMPL_OPEN, pos))
+            modes.append('текст')
+            adv()
+            continue
         if ch == '\n':
             j = i + 1
             while j < n and src[j] in ' \t':
@@ -520,6 +586,8 @@ def lex(src):
             if ord(ch) in GREEK:
                 raise StaticError(f'невідомий гліф «{ch}» (грецькі літери — це гліфи, не імена)', pos)
             raise StaticError(f'невідомий символ «{ch}»' + (f' — може, {hint}?' if hint else ''), pos)
+    if modes:
+        raise StaticError(f'незакритий шаблон «{TMPL_OPEN}» — бракує «{TMPL_CLOSE}» чи «}}»', (line, col))
     toks.append(('eof', None, (line, col)))
     return toks
 
@@ -671,6 +739,24 @@ class Parser:
             self.ctx.pop()
             self.scopes.pop()
             return ('block', pos, stmts)
+        if kind_ == 'topen':
+            parts = []
+            while True:
+                k2, v2, p2 = self.next()
+                if k2 == 'tclose':
+                    return ('tmpl', pos, parts)
+                if k2 == 'tpart':
+                    parts.append(('lit', p2, v2))
+                    continue
+                if k2 != 'hopen':
+                    raise StaticError('шаблон обірвався — бракує «〕»', p2)
+                part = self.expr()                      # після 'hopen' — рівно один вираз
+                end = self.next()
+                if end[0] != 'hclose':
+                    raise StaticError('у {…} шаблону — рівно один вираз; після нього має бути «}»', end[2])
+                parts.append(part)
+        if kind_ in ('hclose', 'tclose', 'hopen', 'tpart'):
+            raise StaticError(f'«{val}» тут не очікувалося — бракує виразу в шаблоні', pos)
         if kind_ == 'close':
             raise StaticError(f'«{val}» тут не очікувалося — бракує аргументу', pos)
         if kind_ == 'eof' or kind_ == 'nl':
@@ -848,6 +934,8 @@ def total_type(node):
         return 'fn'
     if k in ('list', 'dict'):
         return k if all(total_type(x) for x in node[2]) else None
+    if k == 'tmpl':
+        return 'str' if all(total_type(x) for x in node[2]) else None
     if k != 'op':
         return None
     g, ts = node[2], [total_type(x) for x in node[3]]
@@ -1081,6 +1169,105 @@ def _path_ok(it, tool, p, pos, write=False):
     raise NgrError(f'{tool}: «{safe(p)}» поза дозволеним ({", ".join(safe(x) for x in it.caps[tool])})', pos)
 
 
+def _char_in(items, ch, P):
+    """Чи може елемент шаблону (розібраний re._parser) збігтися з символом ch."""
+    for op, av in items:
+        if op == P.LITERAL:
+            return ord(ch) == av
+        if op == P.NOT_LITERAL:
+            return ord(ch) != av
+        if op == P.ANY:
+            return ch != '\n'
+        if op == P.IN:
+            neg, hit = False, False
+            for o2, a2 in av:
+                if o2 == P.NEGATE:
+                    neg = True
+                elif o2 == P.LITERAL:
+                    hit |= ord(ch) == a2
+                elif o2 == P.RANGE:
+                    hit |= a2[0] <= ord(ch) <= a2[1]
+                elif o2 == P.CATEGORY:
+                    name = str(a2)
+                    test = (ch.isalnum() or ch == '_') if 'WORD' in name else ch.isdigit() if 'DIGIT' in name else ch.isspace()
+                    hit |= (not test) if 'NOT' in name else test
+                else:
+                    return True
+            return hit != neg
+        return True                 # групи, повторення, інше — вважаємо, що можуть
+    return True
+
+
+def regex(pat, g, pos):
+    """Скомпільований шаблон, якщо в ньому немає відомих катастрофічних класів перебору (ReDoS): повторення
+    всередині повторення без обовʼязкового роздільника, якого внутрішнє не їсть, — `(a+)+`, `(\\w+\\s?)+`;
+    альтернативи з однаковим початком у повторенні — `(a|aa)+`. Регулярку Python не перервати, тож перевірка —
+    до запуску шаблону, а не тайм-аут."""
+    import re
+    import re._parser as P
+    if len(pat) > 500:
+        raise NgrError(f'{g}: шаблон довший за 500 символів', pos)
+    try:
+        tree = P.parse(pat)
+    except re.error as e:
+        raise NgrError(f'{g}: хибний шаблон: {e}', pos)
+    REPS = (P.MAX_REPEAT, P.MIN_REPEAT, P.POSSESSIVE_REPEAT)
+
+    def distinct(alts):         # (foo|bar): кожна альтернатива починається своїм буквальним символом
+        firsts = [b[0] if b else None for b in alts]
+        lits = [f[1] for f in firsts if f and f[0] == P.LITERAL]
+        return len(lits) == len(firsts) and len(set(lits)) == len(lits)
+
+    def eats(items, ch):        # чи може ця частина шаблону зʼїсти символ ch
+        for op, av in items:
+            if op in REPS and eats(av[2], ch) or op == P.SUBPATTERN and eats(av[3], ch) \
+                    or op == P.BRANCH and any(eats(b, ch) for b in av[1]) \
+                    or op not in REPS + (P.SUBPATTERN, P.BRANCH) and _char_in([(op, av)], ch, P):
+                return True
+        return False
+
+    def variable(items):        # частини змінної довжини: повторення (і «?»), неоднозначні альтернативи
+        out = []
+        for op, av in items:
+            if op in REPS:
+                if av[0] != av[1]:
+                    out.append(av[2])
+                out += variable(av[2])
+            elif op == P.SUBPATTERN:
+                out += variable(av[3])
+            elif op == P.BRANCH:
+                if not distinct(av[1]):
+                    out.append(None)            # неоднозначна альтернатива — їсть будь-що
+                for b in av[1]:
+                    out += variable(b)
+        return out
+
+    def walk(items):
+        for op, av in items:
+            if op in REPS:
+                body = av[2]
+                if av[1] is P.MAXREPEAT or av[1] > 1:
+                    flat = body[0][1][3] if len(body) == 1 and body[0][0] == P.SUBPATTERN else body
+                    seps = [chr(a) for o, a in flat if o == P.LITERAL]
+                    for v in variable(body):
+                        if v is None:
+                            raise NgrError(f'{g}: альтернативи «|» у повторенні мають починатися різними '
+                                           f'буквальними символами — інакше перебір вибухає (ReDoS)', pos)
+                        if not any(not eats(v, c) for c in seps):
+                            raise NgrError(f'{g}: змінна частина всередині повторення без роздільника — шаблон '
+                                           f'може перебирати вічно (ReDoS); перепишіть, наприклад, без вкладеного «+»', pos)
+                walk(body)
+            elif op == P.SUBPATTERN:
+                walk(av[3])
+            elif op == P.BRANCH:
+                for b in av[1]:
+                    walk(b)
+            elif op in (P.ASSERT, P.ASSERT_NOT):
+                walk(av[1])
+    walk(tree.data if hasattr(tree, 'data') else tree)
+    return re.compile(pat)
+
+
 def t_oracle(it, pos, q):
     h = hashlib.sha256(show(q).encode()).digest()
     return V(bool(h[0] & 1), round(0.3 + 0.69 * int.from_bytes(h[1:3], 'big') / 65535, 2))
@@ -1130,6 +1317,8 @@ def t_list(it, pos, p):
 
 def t_fetch(it, pos, url):
     u = url.v
+    import urllib.parse
+    import urllib.request                 # ліниво: мережа потрібна рідко, а імпорт коштує ~0,05 с запуску
     parts = urllib.parse.urlsplit(u) if isinstance(u, str) else None
     try:
         port = parts.port if parts else None
@@ -1462,6 +1651,12 @@ class Interp:
             return val
         if k == 'list':
             return self.sized(mk([self.eval(e, env) for e in node[2]], self.cpc), '【】', pos)
+        if k == 'tmpl':                    # 〔текст {вираз}〕: рядок, не впевненіший за жодну підстановку
+            vals = [self.eval(e, env) for e in node[2]]
+            if sum(v.n for v in vals) > self.max_size:
+                raise Fatal(f'〔〕: значення завелике (> --розмір {self.max_size})', pos)
+            self.work(sum(v.n for v in vals), pos)
+            return V(''.join(show(v) for v in vals), min([self.cpc] + [v.c for v in vals]))
         if k == 'dict':
             d, c, sc = {}, self.cpc, self.cpc
             items = node[2]
@@ -1901,6 +2096,40 @@ class Interp:
             if isinstance(x, dict):
                 return V(self.need(y, 'рядок', g, pos) in x)
             raise NgrError(f'∋: очікувався рядок, список чи словник, а не {kind(a[0])}', pos)
+        if g in '⇣⇡':
+            x = self.need(a[0], 'рядок', g, pos)
+            return V(x.lower() if g == '⇣' else x.upper())
+        if g == '⊏':
+            x = a[0].v
+            if not isinstance(x, (str, list)):
+                raise NgrError(f'⊏: очікувався рядок чи список, а не {kind(a[0])}', pos)
+            ends = []
+            for b in (a[1], a[2]):
+                if b.v is not None and (isinstance(b.v, bool) or not isinstance(b.v, int)):
+                    raise NgrError('⊏: межі — цілі числа (до ∅ — до кінця)', pos)
+                ends.append(b.v)
+            return V(x[ends[0]:ends[1]])
+        if g == '⊳':
+            x = a[0].v
+            if isinstance(x, str):
+                return V(x.find(self.need(a[1], 'рядок', g, pos)))
+            if isinstance(x, list):
+                return V(next((i for i, e in enumerate(x) if deep_eq(e, a[1])), -1))
+            raise NgrError(f'⊳: очікувався рядок чи список, а не {kind(a[0])}', pos)
+        if g == '⌕':
+            x = self.need(a[0], 'рядок', g, pos)
+            found = regex(self.need(a[1], 'рядок', g, pos), g, pos).findall(x)
+            return V([V([V(p) for p in f]) if isinstance(f, tuple) else V(f) for f in found])
+        if g == '⇋':
+            x = self.need(a[0], 'рядок', g, pos)
+            r = regex(self.need(a[1], 'рядок', g, pos), g, pos)
+            try:
+                out = r.sub(self.need(a[2], 'рядок', g, pos), x)
+            except Exception as e:      # noqa: BLE001 — хибне посилання на групу в заміні
+                raise NgrError(f'⇋: хибна заміна: {e}', pos)
+            if len(out) > self.max_size:
+                raise Fatal(f'⇋: значення завелике (> --розмір {self.max_size})', pos)
+            return V(out)
         if g == '⇄':
             src_, old, new = (self.need(a[i], 'рядок', g, pos) for i in range(3))
             cnt = src_.count(old) if old else len(src_) + 1
@@ -1940,6 +2169,9 @@ def explain(node, ind=0):
         return 'аргументи програми'
     if k == 'list':
         return '[' + ', '.join(explain(e, ind) for e in node[2]) + ']'
+    if k == 'tmpl':
+        return '«' + ''.join(safe(e[2]) if e[0] == 'lit' and isinstance(e[2], str) else '{' + explain(e, ind) + '}'
+                             for e in node[2]) + '»'
     if k == 'dict':
         it = node[2]
         return '{' + ', '.join(f'{explain(it[i], ind)}: {explain(it[i + 1], ind)}' for i in range(0, len(it), 2)) + '}'
@@ -2082,6 +2314,10 @@ def cheatsheet():
            '  у виводі й сліді вони показані як `⟨U+…⟩`.',
            '- Умови — лише `●` (так) або `○` (ні); `∅` — ніщо. Числа — цифри `0–9` або `０–９`, мінус — `¯5`.',
            '- Рядок `「…」` (екранування `\\」 \\n`), список `【…】`, словник `『ключ значення …』`, блок `《…》` (значення — останній вираз).',
+           '- **Шаблонний рядок** `〔текст {вираз} текст〕` — як f-рядок: у `{…}` рівно один вираз в одному рядку,',
+           '  `\\{ \\} \\〕` — буквально. `〔{k}: {⌗ v 2} грн〕`. У `「…」` фігурні дужки — звичайні символи (JSON пишіть там).',
+           '- Регулярні вирази (`⌕` усі збіги, `⇋` заміна) — синтаксис Python `re`; шаблони з катастрофічним перебором',
+           '  (`(a+)+`, `(a|aa)+`, `(\\w+\\s?)+`) — помилка: змінна частина в повторенні потребує роздільника.',
            '  JSON: `true/false/null` ↔ `●/○/∅`. `§` словника без такого ключа дає `∅`. Значення верхнього рівня без `»` нікуди не йде.',
            '- Коментар — `※` до кінця рядка. Відносні шляхи — від теки файлу програми.',
            '- **Кожне значення має впевненість** (типово 1). Усе, що обчислено з даних, не впевненіше за них —',
@@ -2138,11 +2374,16 @@ def cheatsheet():
             '```', '🜂 「групування, гроші, абетка」 【】',
             '← продажі 【『「місто」 「Хотин」 「сума」 70』 『「місто」 「Київ」 「сума」 99.5』 『「місто」 「Хотин」 「сума」 830.25』】',
             '← групи ⊞ продажі λp §p 「місто」',
-            '∀ ↑κгрупи λм » ＋ м ＋ 「: 」 ⌗ Σ §групи м 0 Λa p ＋a §p 「сума」 2', '```', '',
+            '∀ ↑κгрупи λм » 〔{м}: {⌗ Σ §групи м 0 Λa p ＋a §p 「сума」 2}〕', '```', '',
+            '```', '🜂 「слова й адреси в тексті」 【】',
+            '← т 「Агент читає програму. Програма каже, що їй можна: info@example.net」',
+            '← слова ⌕ ⇣т 「\\w+」',
+            '» 〔слів: {ρслова}, перше: {§слова 0}〕',
+            '∀ ⌕ т 「[\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+」 λa » 〔адреса: {a}〕', '```', '',
             '## Пастки', '',
             '- `＝0 ‰n 3` — спершу гліф, потім аргументи: «остача n на 3 дорівнює 0».',
             '- Імена склеюються з цифрами: `n15` — одне імʼя; пишіть `n 15`.',
-            '- `＋` зʼєднує рядки лише з рядками: `＋「№」 σn`.',
+            '- `＋` зʼєднує рядки лише з рядками: `＋「№」 σn`; коротше — шаблон `〔№{n}〕`.',
             '- Функцію, названу `←`, викликають просто: `факт 10`; передати як значення — `∘факт`.',
             '  Функцію-значення (параметр) викликають `► f x`.',
             '- `✂ рядок 「」` ріже за пробілами. `↑` сортує рядки за українською абеткою.',
@@ -2195,6 +2436,8 @@ def cheatsheet_short():
              'Перший рядок — ПЕЧАТКА: 🜂 「намір」 【「дозвіл」 …】; дозволи: 「оракул」 「жереб」 「час」 「файл.читати:тека」',
              '「файл.писати:тека」 「файл.список:тека」 「мережа.взяти:хост」 「агент:імʼя」. Поза печаткою — помилка до запуску.',
              'Рядок 「…」 (\\n \\」), список 【…】, словник 『к з …』, блок 《…》, коментар ※, так/ні/ніщо ● ○ ∅, мінус ¯5.',
+             'Шаблон 〔текст {вираз} текст〕 — як f-рядок (у {} один вираз): 〔{k}: {⌗ v 2}〕. Регулярки ⌕ ⇋ — синтаксис re;',
+             '(a+)+ та інший катастрофічний перебір — помилка.',
              'Імена — слова одного письма; ← імʼя вираз (лише на початку інструкції, назавжди). Умови — лише ●/○.',
              'УВАГА: ＋ － ＝ — ПОВНОШИРИННІ (U+FF0B, U+FF0D, U+FF1D), мінус числа ¯ (U+00AF). ASCII + - = — помилка.',
              'Опис інструмента клієнт може нормалізувати (＋→+); точні гліфи — в результаті nigredo_pamyatka.',
@@ -2404,7 +2647,8 @@ def main(argv):
                 o.close()
 
 
-if __name__ == '__main__':
+def entry():
+    """Точка входу: глибока рекурсія — в окремому потоці з великим стеком. Запускач — interpreter/ngr.py."""
     sys.setrecursionlimit(100_000)
     threading.stack_size(256 * 1024 * 1024)
     result = [1]
@@ -2417,4 +2661,8 @@ if __name__ == '__main__':
     t = threading.Thread(target=target)
     t.start()
     t.join()
-    sys.exit(result[0])
+    return result[0]
+
+
+if __name__ == '__main__':
+    sys.exit(entry())
