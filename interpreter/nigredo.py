@@ -2411,6 +2411,10 @@ class Interp:
                 return capc(branch, min(c.c, branch.c))
             return branch
         if g == '☂':
+            if argn[1][0] != 'lam':               # обробник — функція завжди, а не лише коли сталася помилка
+                h = E(1)
+                if not isinstance(h.v, Fn):
+                    raise NgrError(f'☂: обробник має бути функцією (λe …), а не {kind(h)}', pos)
             self.try_stack.append(self.cpc)
             try:
                 res = E(0)
@@ -2481,6 +2485,9 @@ class Interp:
             return capc(acc, lst.s) if lst.s < acc.c else acc
         if g == '↻':
             s, cond, stepf = E(0), E(1), E(2)
+            for f in (cond, stepf):                 # обидві — функції завжди, навіть якщо крок не знадобився
+                if not isinstance(f.v, Fn):
+                    raise NgrError(f'↻: умова й крок мають бути функціями (λs …), а не {kind(f)}', pos)
             cc, saved = 1.0, self.pc
             try:
                 while True:
@@ -2589,10 +2596,12 @@ class Interp:
             if not (isinstance(x, str) and isinstance(y, str)):
                 x, y = n(0), n(1)
             return V({'‹': x < y, '›': x > y, '≤': x <= y, '≥': x >= y}[g])
-        if g == '∧':
-            return V(b(0) and b(1))
+        if g == '∧':                              # обидва — ●/○ (без скороченого обчислення: тип перевірено завжди)
+            x, y = b(0), b(1)
+            return V(x and y)
         if g == '∨':
-            return V(b(0) or b(1))
+            x, y = b(0), b(1)
+            return V(x or y)
         if g == '¬':
             return V(not b(0))
         if g == '►':
@@ -3297,6 +3306,8 @@ def main(argv):
                 return 2
             return 0
         info = seal_info(prog, allowed, source, cwd, dir_extra)
+        info['програма'] = safe(path if path == '<-e>' else os.path.realpath(path))       # що саме перевірено
+        info['sha256'] = hashlib.sha256(raw if path != '<-e>' else src.encode()).hexdigest()
         print(json.dumps(info, ensure_ascii=False, indent=1) if opts['json'] else seal_report(prog, allowed, source, cwd, dir_extra))
         return 0 if info['в_межах'] else 3
     missing = check_program(prog, allowed, cwd) if prog else []
