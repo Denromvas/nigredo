@@ -1,0 +1,3 @@
+info@example.net
+support@example.com
+ops-team+alerts@mail.example.org

@@ -16,3 +16,4 @@ konsylium/*/*/слід*.jsonl
 konsylium/*/*/звіти/*.jsonl
 **/__pycache__/
 konsylium/**/*.jsonl
+bench/тимч/
