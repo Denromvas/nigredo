@@ -916,7 +916,7 @@ class Parser:
         caps = {}
         for e in node[2]:
             plain_text(e[2], f'дозвіл {what}', e[1])
-            name, _, scope = e[2].partition(':')
+            name, _, scope = canon_perm(e[2]).partition(':')
             name = name.strip()
             if name not in TOOLS:
                 raise StaticError(f'невідомий інструмент у дозволах: «{name}»', e[1])
@@ -929,17 +929,23 @@ class Parser:
         if g == '🜂':
             if self.cap_stack:
                 raise StaticError('печатка 🜂 — лише одна й лише першим рядком програми', pos)
-            intent = self.expr()
-            if intent[0] != 'lit' or not isinstance(intent[2], str) or not intent[2].strip():
-                raise StaticError('намір печатки має бути непорожнім буквальним рядком 「…」', pos)
-            plain_text(intent[2], 'намір печатки', pos)
+            if self.peek()[0] in ('nl', 'eof'):          # гола 🜂 — програма без дозволів
+                self.cap_stack.append({})
+                return ('seal', pos, '', {})
+            nxt = self.peek()
+            intent = ('lit', pos, '') if nxt[0] == 'open' and nxt[1] == '【' else self.expr()   # намір — за бажанням
+            if intent[0] != 'lit' or not isinstance(intent[2], str) or (intent[2] == '' and nxt[0] != 'open'):
+                raise StaticError('печатка: 🜂 「намір」 【「дозвіл」 …】, 🜂 【「дозвіл」 …】 або сама 🜂', pos)
+            if intent[2]:
+                plain_text(intent[2], 'намір печатки', pos)
             _, caps = self.caps_literal('печатки', pos)
             self.cap_stack.append(caps)
             return ('seal', pos, intent[2], caps)
         if g == '🜔':
             kind_, name, npos = self.next()
             if kind_ != 'name':
-                raise StaticError('після 🜔 очікувалася назва інструмента: 🜔файл.читати …', npos)
+                raise StaticError('після 🜔 очікувалася назва інструмента: 🜔читати …', npos)
+            name = TOOL_ALIASES.get(name, name)
             if name not in TOOLS:
                 raise StaticError(f'невідомий інструмент «{name}»; є: {", ".join(TOOLS)}', npos)
             if name not in self.cap_stack[-1]:
@@ -972,14 +978,16 @@ class Parser:
             return ('var', pos, name)
         if g == '🜁':
             name = self.expr()
-            intent = self.expr()
+            nxt = self.peek()
+            intent = ('lit', pos, '') if nxt[0] == 'open' and nxt[1] == '【' else self.expr()   # намір — за бажанням
             if name[0] != 'lit' or not isinstance(name[2], str) or intent[0] != 'lit' or not isinstance(intent[2], str):
-                raise StaticError('🜁: імʼя і намір субагента мають бути буквальними рядками', pos)
+                raise StaticError('🜁: імʼя (і, за бажанням, намір) субагента — буквальні рядки', pos)
             plain_text(name[2], 'імʼя субагента', pos, name=True)
             seen = self.agent_names.setdefault(skeleton(name[2]), name[2])
             if seen != name[2]:
                 raise StaticError(f'субагенти «{seen}» і «{name[2]}» однакові на вигляд — двійники заборонені', pos)
-            plain_text(intent[2], 'намір субагента', pos)
+            if intent[2]:
+                plain_text(intent[2], 'намір субагента', pos)
             _, caps = self.caps_literal('субагента', pos, inherit=True)
             parent = self.cap_stack[-1]
             for t, scopes in caps.items():
@@ -1927,20 +1935,25 @@ TOOLS = {
                'з SHA-256 питання; нічого не знає', False, '', t_oracle),
     'жереб': (1, '🜔жереб n → 1…n', 'випадкове ціле (зерно --зерно, типово 0)', False, '', t_dice),
     'час': (0, '🜔час → рядок', 'поточний час UTC, ISO 8601', False, '', t_time),
-    'файл.читати': (1, '🜔файл.читати шлях → рядок', 'прочитати текстовий файл', True, 'тека', t_read),
-    'файл.писати': (2, '🜔файл.писати шлях текст → ∅', 'записати (перезаписати) текстовий файл', True, 'тека', t_write),
-    'файл.список': (1, '🜔файл.список тека → список', 'імена в теці', True, 'тека', t_list),
-    'мережа.взяти': (1, '🜔мережа.взяти url → рядок', 'HTTP GET (до 1 МБ, 30 с)', True, 'хост', t_fetch),
+    'файл.читати': (1, '🜔читати шлях → рядок', 'прочитати текстовий файл', True, 'тека', t_read),
+    'файл.писати': (2, '🜔писати шлях текст → ∅', 'записати (перезаписати) текстовий файл', True, 'тека', t_write),
+    'файл.список': (1, '🜔список тека → список', 'імена в теці', True, 'тека', t_list),
+    'мережа.взяти': (1, '🜔взяти url → рядок', 'HTTP GET (до 1 МБ, 30 с)', True, 'хост', t_fetch),
     'агент': (2, '🜔агент 「імʼя」 「запит」 → рядок', 'спитати справжнього агента з реєстру лаунчера '
               '(claude -p у його теці; він діє з власними правами)', True, 'імʼя', t_agent),
 }
+
+
+# короткі назви інструментів (у печатці, 🜔 і дозволах власника) — синоніми повних; у звітах, сліді — повні
+TOOL_ALIASES = {'читати': 'файл.читати', 'писати': 'файл.писати', 'список': 'файл.список', 'взяти': 'мережа.взяти'}
+TOOL_SHORT = {v: k for k, v in TOOL_ALIASES.items()}
 
 
 def read_allowlist(path, cwd=None, prog=None):
     """«дозволено» — для всіх програм; «для_тек» — {"/абсолютна/тека": [дозволи]} лише для програм у цій теці."""
     try:
         data = json.load(open(path, encoding='utf-8'))
-        lst = list(data.get('дозволено', []))
+        lst = [canon_perm(a) for a in data.get('дозволено', [])]
         per_dir = data.get('для_тек', {})
         if not isinstance(per_dir, dict):
             raise ValueError('«для_тек» має бути словником тека → список')
@@ -1948,6 +1961,7 @@ def read_allowlist(path, cwd=None, prog=None):
         for d, extra in per_dir.items():
             if not isinstance(extra, list):
                 raise ValueError(f'«для_тек» → «{d}»: потрібен список')
+            extra = [canon_perm(a) for a in extra]
             if cwd and os.path.isabs(os.path.expanduser(d)) and inside(cwd, os.path.expanduser(d)):
                 # програма, що лежить там, куди програмам дозволено писати, могла бути написана програмою —
                 # права теки їй не належать
@@ -1980,8 +1994,17 @@ def load_allowlist(narrow=None, cwd=None, prog=None):
     return owner, source
 
 
+def canon_perm(entry):
+    """Дозвіл у повній формі: «читати:дані» → «файл.читати:дані»."""
+    if not isinstance(entry, str):
+        return entry
+    name, sep, scope = entry.partition(':')
+    full = TOOL_ALIASES.get(name.strip())
+    return f'{full}{sep}{scope}' if full else entry
+
+
 def parse_caps(entry):
-    name, _, scope = entry.partition(':')
+    name, _, scope = canon_perm(entry).partition(':')
     name = name.strip()
     if name not in TOOLS:
         return {name: []}
@@ -2867,12 +2890,13 @@ def explain(node, ind=0):
                 f'{", ".join(node[3])}; модуль:\n{body}')
     if k == 'seal':
         caps = '; '.join(t + (f' [{", ".join(s)}]' if s else '') for t, s in node[3].items()) or 'жодних'
-        return f'ПЕЧАТКА — намір: «{safe(node[2])}»; дозволи: {caps}'
+        return f'ПЕЧАТКА — намір: {"«" + safe(node[2]) + "»" if node[2] else "не вказано"}; дозволи: {caps}'
     if k == 'tool':
         return f'інструмент {node[2]}({", ".join(explain(a, ind) for a in node[3])})'
     if k == 'deleg':
         caps = ', '.join(t + (f' [{", ".join(s)}]' if s else '') for t, s in node[4].items()) or 'жодних'
-        return (f'субагент «{safe(node[2])}» (намір «{safe(node[3])}»; дозволи: {caps}) виконує:\n'
+        intent = f'намір «{safe(node[3])}»; ' if node[3] else ''
+        return (f'субагент «{safe(node[2])}» ({intent}дозволи: {caps}) виконує:\n'
                 f'{pad}  {explain(node[5], ind + 1)}')
     g, args = node[2], node[3]
     tmpl = GLYPHS[g][3]
@@ -2948,7 +2972,8 @@ def seal_report(prog, allowed, source, cwd, dir_extra=None):
     """Текст для людини й моделі: слова автора (намір, імена, шляхи) — у 「」, решта — слова інтерпретатора."""
     i = seal_info(prog, allowed, source, cwd, dir_extra)
     q = lambda sc: ', '.join(f'「{x}」' for x in sc)
-    lines = ['ПЕЧАТКА', f'  намір (слова автора): 「{i["намір"]}」', '  дозволи:']
+    lines = ['ПЕЧАТКА', f'  намір (слова автора): 「{i["намір"]}」' if i['намір'] else '  намір: не вказано автором',
+             '  дозволи:']
     for t, sc in i['дозволи'].items():
         lines.append(f'    {t}' + (f' → {q(sc)}' if sc else '') + f'   ({TOOLS[t][2]})')
     if not i['дозволи']:
@@ -2956,7 +2981,7 @@ def seal_report(prog, allowed, source, cwd, dir_extra=None):
     for d in i['субагенти']:
         caps = '; '.join(t + (f' → {q(sc)}' if sc else '') for t, sc in d['дозволи'].items()) or 'жодних'
         where = ' → '.join(f'「{x}」' for x in d['усередині'])
-        lines.append(f'  субагент 「{d["імʼя"]}」 (у коді: {where}): дозволи: {caps}; намір 「{d["намір"]}」')
+        lines.append(f'  субагент 「{d["імʼя"]}」 (у коді: {where}): дозволи: {caps}' + (f'; намір 「{d["намір"]}」' if d['намір'] else ''))
     for m in i['модулі']:
         caps = '; '.join(t + (f' → {q(sc)}' if sc else '') for t, sc in m['дозволи'].items()) or 'жодних'
         lines.append(f'  модуль 「{m["шлях"]}」 (sha256 {m["sha256"][:16]}…): бере {", ".join(m["імена"])}; дозволи: {caps}; '
@@ -3030,14 +3055,17 @@ def cheatsheet():
            '  **Явно** змінити впевненість можна лише `≈`',
            '  (і це записується в слід); інтерпретатор лише консервативно *знижує* її — це оцінка, не ймовірність.',
            '', '## Печатка (обовʼязкова)', '',
-           'Перший рядок кожної програми — `🜂 「намір」 【「дозвіл」 …】`. Інструмент, якого нема в печатці,',
+           'Перший рядок кожної програми — `🜂 「намір」 【「дозвіл」 …】`. Намір — за бажанням (`🜂 【「дозвіл」 …】`; його',
+           'ніхто не перевіряє, це слова автора), програма без дозволів — просто `🜂`. Інструмент, якого нема в печатці,',
            'не пройде розбір; під час виконання кожен виклик ще раз звіряється з дозволами агента, що його робить.',
            'Печатка має вкладатися в дозволи власника (`~/.nigredo/дозволи.json`: «дозволено» — для всіх програм,',
            '«для_тек» — лише для програм у певній теці; `--дозволи` може їх лише звузити), інакше програма не',
            'запуститься. Власник бачить печатку командою `ngr --печатка файл.ngr`: слова автора (намір, імена',
            'субагентів, шляхи) — у `「」`, тож у печатці заборонено `「」`, пробіли поспіль чи по краях і невидиме,',
            'а в імені субагента ще й `/` (ним пишеться вкладеність).', '',
-           '```', '🜂 「порахувати слова у звітах」 【「файл.читати:звіти」 「файл.писати:вихід」】', '```', '',
+           '```', '🜂 【「читати:звіти」 「писати:вихід」】', '```', '',
+           'Назви інструментів короткі (`читати писати список взяти`); повні (`файл.читати`, `мережа.взяти`) — синоніми,',
+           'і в `--печатка`, `--розбір` та сліді показано саме повні.', '',
            'Дозвіл для файлів — тека (і все в ній); для мережі — хост (порти 80/443) або `хост:порт`;',
            'для агента — імʼя з реєстру. Теку власника (`~/.nigredo`) дозволити не можна.', '',
            ]
@@ -3053,7 +3081,7 @@ def cheatsheet():
         out.append('')
     out += ['## Інструменти', '', '| Запис | Що робить | Дозвіл у печатці |', '|---|---|---|']
     for name, (ar, sig, desc, scoped, ex, _) in TOOLS.items():
-        out.append(f'| `{sig}` | {desc} | `「{name}' + (f':{ex}' if scoped else '') + '」` |')
+        out.append(f'| `{sig}` | {desc} | `「{TOOL_SHORT.get(name, name)}' + (f':{ex}' if scoped else '') + '」` |')
     out += ['', '## Приклади', '',
             '```', '🜂 「FizzBuzz」 【】',
             '∀ …1 15 λn » ¿ ＝0 ‰n 15 「FizzBuzz」 ¿ ＝0 ‰n 3 「Fizz」 ¿ ＝0 ‰n 5 「Buzz」 n', '```', '',
@@ -3138,8 +3166,9 @@ def cheatsheet():
 def cheatsheet_short():
     """Стисла памʼятка для контексту агента (MCP-опис, ~1–1.5 тис. токенів)."""
     lines = [f'Nigredo {VERSION}: префіксний запис, фіксована арність, 1 рядок = 1 вираз (продовження — більший відступ, ¦ — розділювач).',
-             'Перший рядок — ПЕЧАТКА: 🜂 「намір」 【「дозвіл」 …】; дозволи: 「оракул」 「жереб」 「час」 「файл.читати:тека」',
-             '「файл.писати:тека」 「файл.список:тека」 「мережа.взяти:хост」 「агент:імʼя」. Поза печаткою — помилка до запуску.',
+             'Перший рядок — ПЕЧАТКА: 🜂 【「дозвіл」 …】 (намір за бажанням: 🜂 「намір」 【…】; без дозволів — просто 🜂);',
+             'дозволи: 「оракул」 「жереб」 「час」 「читати:тека」 「писати:тека」 「список:тека」 「взяти:хост」 「агент:імʼя」',
+             '(повні назви файл.читати, мережа.взяти — синоніми). Поза печаткою — помилка до запуску.',
              'Рядок 「…」 (\\n \\」), список 【…】, словник 『к з …』, блок 《…》, коментар ※, так/ні/ніщо ● ○ ∅, мінус ¯5.',
              'До запуску ловляться: типи (＋ рядка й числа, умова не ●/○…), невідомі імена, арність, небезпечні регулярки.',
              'Модуль: ⊃ 「мод.ngr」 【「f」】 (верхній рівень); f кличуть за імʼям; печатка модуля ⊆ програми й діє (перетин прав);',
@@ -3155,7 +3184,7 @@ def cheatsheet_short():
     for g, (ar, sig, desc, _, grp) in GLYPHS.items():
         lines.append(f'  {sig} — {desc}')
     lines.append('Інструменти: ' + '; '.join(TOOLS[t][1] for t in TOOLS))
-    lines += ['Приклад: 🜂 「сума чисел」 【「файл.читати:дані」】 ¦ ← n δ🜔файл.читати 「дані/x.json」 ¦ » Σ n 0 Λa x ＋a x',
+    lines += ['Приклад: 🜂 【「читати:дані」】 ¦ ← n δ🜔читати 「дані/x.json」 ¦ » Σ n 0 Λa x ＋a x',
               'Впевненість: усе з даних і під сумнівними умовами не впевненіше за джерело; змінити — лише ≈ (у слід).',
               'Канал завершення: якщо гілка під сумнівною умовою могла зупинити програму (☠ 🜍 ÷0 § виклик…) або операція',
               'могла впасти на сумнівному аргументі, то й решта запуску не впевненіша. Ліміти — єдиний невідстежений залишок.',

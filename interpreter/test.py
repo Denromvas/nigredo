@@ -231,6 +231,11 @@ def main():
     got = run(['--розбір', '-e', '🜂 「т」 【】\n» ' + '【' * 6000 + '1' + '】' * 6000], env)
     check(got.returncode in (0, 2) and 'Traceback' not in got.stderr, '--розбір глибокої вкладеності — без трасування',
           got.stderr[-300:])
+    short = tmp / 'власник_короткі'
+    short.mkdir()
+    (short / 'дозволи.json').write_text(json.dumps({'дозволено': [f'читати:{DATA}']}, ensure_ascii=False), encoding='utf-8')
+    got = run(['-e', f'🜂 【「файл.читати:{DATA}」】\n» ρ 🜔читати 「{DATA}/продажі.json」'], dict(env, NIGREDO_HOME=str(short)))
+    check(got.returncode == 0, 'короткі назви в дозволах власника = повні', got.stderr)
     seal = run(['--печатка', str(ROOT / 'examples' / 'ahent.ngr')], env).stdout
     check('права теки: немає' in seal and 'намір (слова автора): 「' in seal and 'необхідно, але не досить' in seal,
           '--печатка: слова автора в 「」, «права теки: немає», «необхідно, але не досить»', seal)
