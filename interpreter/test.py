@@ -41,6 +41,13 @@ PAGE = ('<html><head><title>Тест &amp; браузер</title><style>.x{color
 
 
 class Redirect(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers.get('Content-Length', 0)))
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/plain; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(b'got ' + self.headers.get('Content-Type', '').encode() + b' ' + body)
+
     def do_GET(self):
         path = urllib.parse.unquote(self.path)
         if path.startswith('/сайт/'):
@@ -67,7 +74,7 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     (home / 'дозволи.json').write_text(json.dumps({'дозволено': [
         'оракул', 'жереб', 'час', f'файл.читати:{DATA}', f'файл.писати:{DATA / "звіти"}',
-        f'мережа.взяти:127.0.0.1:{port}'],
+        f'мережа.взяти:127.0.0.1:{port}', f'послати:127.0.0.1:{port}'],
         'для_тек': {str(ROOT / 'tests' / 'помилки' / 'тека_з_правами'): [f'файл.читати:{DATA}/../..']}},
         ensure_ascii=False))
     wide = tmp / 'широкі.json'
@@ -236,6 +243,12 @@ def main():
     (short / 'дозволи.json').write_text(json.dumps({'дозволено': [f'читати:{DATA}']}, ensure_ascii=False), encoding='utf-8')
     got = run(['-e', f'🜂 【「файл.читати:{DATA}」】\n» ρ 🜔читати 「{DATA}/продажі.json」'], dict(env, NIGREDO_HOME=str(short)))
     check(got.returncode == 0, 'короткі назви в дозволах власника = повні', got.stderr)
+    got = run(['-e', f'🜂 【「послати:127.0.0.1:{port}」】\n» 🜔послати 「http://127.0.0.1:{port}/звіт」 『「сума」 12.50 「секрет」 「ХВІСТ-ТІЛА」』'], penv)
+    tr = pathf.read_text(encoding='utf-8')
+    check(got.stdout.startswith('got application/json {"сума": 12.5') and 'ХВІСТ-ТІЛА' in pathlib.Path(tr).read_text(encoding='utf-8'),
+          'послати: JSON без втрат, тіло повністю в сліді', got.stdout + got.stderr)
+    got = run(['-e', f'🜂 【「послати:127.0.0.1:{port}」】\n» 🜔послати 「http://127.0.0.1:1/x」 「a」'], env)
+    check(got.returncode == 1 and 'поза дозволеним' in got.stderr, 'послати: інший порт — відмова під час виконання', got.stderr)
     seal = run(['--печатка', str(ROOT / 'examples' / 'ahent.ngr')], env).stdout
     check('права теки: немає' in seal and 'намір (слова автора): 「' in seal and 'необхідно, але не досить' in seal,
           '--печатка: слова автора в 「」, «права теки: немає», «необхідно, але не досить»', seal)
