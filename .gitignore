@@ -17,3 +17,4 @@ konsylium/*/*/звіти/*.jsonl
 **/__pycache__/
 konsylium/**/*.jsonl
 bench/тимч/
+konsylium/**/розмова_раунд*.md
