@@ -19,7 +19,7 @@ import threading
 import urllib.parse
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-NGR = ROOT / 'interpreter' / 'nigredo.py'
+NGR = ROOT / 'interpreter' / 'ngr.py'
 DATA = ROOT / 'examples' / 'дані'
 
 

@@ -47,9 +47,9 @@ Full protocols, every participant's report and solutions: [`konsylium/`](konsyli
 ### Try it
 
 ```
-python3 interpreter/nigredo.py examples/ahent.ngr
-python3 interpreter/nigredo.py --печатка examples/fajly.ngr     # what the program may do
-python3 interpreter/nigredo.py --розбір examples/chysla.ngr     # translation for the owner
+python3 interpreter/ngr.py examples/ahent.ngr
+python3 interpreter/ngr.py --печатка examples/fajly.ngr     # what the program may do
+python3 interpreter/ngr.py --розбір examples/chysla.ngr     # translation for the owner
 python3 interpreter/test.py                                    # examples + 73 attack/error tests + trace/MCP checks
 claude mcp add nigredo -- python3 mcp/nigredo_mcp.py           # give it to any MCP-capable agent
 ```
@@ -113,9 +113,9 @@ written by Claude (Anthropic) as an agent; the project owner is Denis Romaniuk. 
 Python ≥ 3.10, без залежностей.
 
 ```
-python3 interpreter/nigredo.py examples/ahent.ngr     # або ngr, якщо зробити симлінк
-python3 interpreter/nigredo.py --печатка examples/fajly.ngr
-python3 interpreter/nigredo.py --розбір examples/chysla.ngr
+python3 interpreter/ngr.py examples/ahent.ngr     # або ngr, якщо зробити симлінк
+python3 interpreter/ngr.py --печатка examples/fajly.ngr
+python3 interpreter/ngr.py --розбір examples/chysla.ngr
 python3 interpreter/test.py                            # приклади, 73 перевірки помилок і атак, слід, MCP, памʼятка
 ```
 

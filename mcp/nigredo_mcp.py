@@ -18,7 +18,8 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.realpath(__file__))
-NGR = os.path.join(HERE, '..', 'interpreter', 'nigredo.py')
+NGR = os.path.join(HERE, '..', 'interpreter', 'nigredo.py')   # модуль (правило видимості)
+NGR_RUN = os.path.join(HERE, '..', 'interpreter', 'ngr.py')     # запускач (кешований байткод)
 # браузер, написаний на Nigredo; інший файл може вказати лише той, хто запускає сервер (власник), — не агент
 BROWSER = os.path.realpath(os.environ.get('NIGREDO_BROWSER') or os.path.join(HERE, '..', 'браузер', 'браузер.ngr'))
 WORKDIR = os.path.realpath(os.path.expanduser(os.environ.get('NIGREDO_WORKDIR', '~/nigredo-робоча')))
@@ -42,7 +43,7 @@ def bad_text(*texts):
 
 def ngr(*args, timeout=120, env=None):
     try:
-        p = subprocess.run([sys.executable, NGR, *args], capture_output=True, text=True, cwd=WORKDIR,
+        p = subprocess.run([sys.executable, NGR_RUN, *args], capture_output=True, text=True, cwd=WORKDIR,
                            timeout=timeout, stdin=subprocess.DEVNULL, env=env or os.environ)
         return p.returncode, p.stdout, p.stderr
     except subprocess.TimeoutExpired:
