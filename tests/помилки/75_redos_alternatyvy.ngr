@@ -1,4 +1,6 @@
-※ очікується: 2 альтернативи «|» у повторенні
-※ (a|aa)+ — альтернативи з однаковим початком у повторенні
-🜂 「неоднозначні альтернативи」 【】
-» ⌕ 「aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!」 「^(a|aa)+$」
+※ очікується: 0
+※ прапорці: --кроки 20000
+※ (a|aa)+$ і (?i)(?:a+A)+$ (обхід старої перевірки, суд 6) — лінійно
+🜂 「неоднозначні альтернативи — лінійно」 【】
+» ρ ⌕ 「aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!」 「^(a|aa)+$」
+» ρ ⌕ 「aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!」 「(?i)(?:a+A)+$」
