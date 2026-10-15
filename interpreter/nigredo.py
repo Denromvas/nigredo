@@ -66,6 +66,8 @@ GLYPHS = {
     '←': (None, '← імʼя вираз', 'назвати значення (назавжди: перепризначити не можна)', '{name} ← {0}', 'імена'),
     'λ': (None, 'λ x тіло', 'функція одного аргументу', 'функція ({p}) ↦ {0}', 'імена'),
     'Λ': (None, 'Λ a b тіло', 'функція двох аргументів', 'функція ({p}) ↦ {0}', 'імена'),
+    '⊃': (None, '⊃ 「модуль.ngr」 【「імʼя」 …】', 'взяти названі значення з модуля (лише на початку інструкції верхнього '
+          'рівня; печатка модуля ⊆ печатки програми)', 'з модуля {0} взяти {1}', 'імена'),
     '∘': (None, '∘ імʼя', 'функція, названа ←, як значення: μ 【1 2】 ∘факт', '{name}', 'імена'),
     '►': (2, '► f x', 'викликати функцію-значення з одним аргументом', '{0}({1})', 'імена'),
     '▶': (3, '▶ f a b', 'викликати функцію-значення з двома аргументами', '{0}({1}, {2})', 'імена'),
@@ -629,8 +631,9 @@ def narrower(tool, child, parent):
 
 
 class Parser:
-    def __init__(self, toks):
+    def __init__(self, toks, base=None, root=None, stack=(), module=False):
         self.t, self.i = toks, 0
+        self.base, self.root, self.stack, self.module = base, root or base, stack, module   # для ⊃
         self.scopes = [{}]          # імʼя → арність функції або 0 для значення
         self.cap_stack = []         # дозволи найближчої печатки / субагента: {інструмент: [обмеження]}
         self.agent_names = {skeleton("головний"): "головний"}   # скелет імені субагента → імʼя
@@ -672,6 +675,11 @@ class Parser:
         if tok[0] != 'glyph' or tok[1] != '🜂':
             raise StaticError('програма має починатися з печатки: 🜂 「намір」 【дозволи】', tok[2])
         stmts = self.statements(end=None)
+        if self.module:
+            for st in stmts[1:]:
+                if st[0] not in ('bind', 'import') or (st[0] == 'bind' and acts(st[3])):
+                    raise StaticError('модуль на верхньому рівні лише називає (← …) і бере інші модулі (⊃); дії — '
+                                      'інструменти, субагенти, друк, памʼять — лише всередині функцій', st[1])
         return ('block', (1, 1), stmts)
 
     def statements(self, end):
@@ -791,6 +799,54 @@ class Parser:
         self.scopes.pop()
         return ('lam', pos, params, body)
 
+    def import_(self, pos):
+        """⊃ 「шлях.ngr」 【「імʼя」 …】: розібрати модуль зараз (щоб знати арності), перевірити його печатку."""
+        if self.i - 1 != self.head or len(self.scopes) != 1:
+            raise StaticError('⊃ — лише на початку інструкції верхнього рівня (не у функції чи блоці)', pos)
+        path, names = self.expr(), self.expr()
+        if path[0] != 'lit' or not isinstance(path[2], str):
+            raise StaticError('⊃: шлях до модуля — буквальний рядок 「…」', pos)
+        if names[0] != 'list' or not names[2] or any(e[0] != 'lit' or not isinstance(e[2], str) for e in names[2]):
+            raise StaticError('⊃: імена — непорожній буквальний список рядків 【「імʼя」 …】', pos)
+        rel = path[2]
+        if self.base is None:
+            raise StaticError('⊃: модулі — лише в програмах із текою', pos)
+        if not rel.endswith('.ngr') or os.path.isabs(rel) or hidden(rel, ''):
+            raise StaticError('⊃: модуль — відносний шлях до файлу .ngr', pos)
+        real = os.path.realpath(os.path.join(self.base, rel))
+        if not inside(real, self.root) or inside(real, OWNER_HOME):
+            raise StaticError(f'⊃: модуль «{safe(rel)}» поза текою програми — модулі лише з її теки й підтек', pos)
+        if real in self.stack:
+            raise StaticError(f'⊃: циклічний імпорт «{safe(rel)}»', pos)
+        try:
+            raw = open(real, 'rb').read()
+            src = raw.decode('utf-8')
+        except (OSError, UnicodeDecodeError) as e:
+            raise StaticError(f'⊃: модуль «{safe(rel)}» не прочитати: {getattr(e, "strerror", None) or e}', pos)
+        try:
+            toks = lex(src)
+            check_twins(toks)
+            sub = Parser(toks, os.path.dirname(real), self.root, self.stack + (real,), module=True)
+            mod = sub.program()
+        except StaticError as e:
+            raise StaticError(f'у модулі «{safe(rel)}»: {e}', pos)
+        mcaps = mod[2][0][3]
+        parent = self.cap_stack[-1]
+        for t, scopes in mcaps.items():
+            if t not in parent:
+                raise StaticError(f'модуль «{safe(rel)}» просить «{t}», якого немає в печатці програми', pos)
+            for sc in scopes:
+                if parent[t] and sc not in parent[t] and not any(narrower(t, sc, ps) for ps in parent[t]):
+                    raise StaticError(f'модуль «{safe(rel)}» просить «{t}:{sc}» — ширше, ніж у печатці програми', pos)
+        for e in names[2]:
+            nm = e[2]
+            if nm not in sub.scopes[0]:
+                raise StaticError(f'у модулі «{safe(rel)}» немає «{safe(nm)}»', e[1])
+            if nm in self.scopes[0]:
+                raise StaticError(f'«{nm}» уже назване тут — значення в Nigredo не перепризначаються', e[1])
+            self.scopes[0][nm] = sub.scopes[0][nm]
+        return ('import', pos, rel, [e[2] for e in names[2]], mod, hashlib.sha256(raw).hexdigest(), real)
+
     def caps_literal(self, what, pos, inherit=False):
         node = self.expr()
         if node[0] != 'list' or any(e[0] != 'lit' or not isinstance(e[2], str) for e in node[2]):
@@ -845,6 +901,8 @@ class Parser:
             return ('bind', pos, name, value)
         if g in 'λΛ':
             return self.lam(1 if g == 'λ' else 2, pos)
+        if g == '⊃':
+            return self.import_(pos)
         if g == '∘':
             name, npos = self.name_tok('∘')
             if not self.lookup(name):
@@ -958,6 +1016,19 @@ def total_type(node):
     return None
 
 
+def acts(node):
+    """Чи діє цей код у світі поза функціями (інструмент, субагент, друк, памʼять, слід) — для модулів."""
+    if isinstance(node, tuple) and node:
+        if node[0] == 'lam':
+            return False
+        if node[0] in ('tool', 'deleg', 'import') or node[0] == 'op' and node[2] in ('»', '🜄', '🜃', '≈', '⚗', '🜍', '☠'):
+            return True
+        return any(acts(x) for x in node)
+    if isinstance(node, list):
+        return any(acts(x) for x in node)
+    return False
+
+
 def may_stop(node, called=False):
     """Чи може цей код зупинити програму — для каналу завершення (☠, 🜍, ÷ 0, § поза межами, невідповідний тип,
     виклик, інструмент…). called: вузол — функція, яку викличуть (λ — дивимося тіло; інше — невідомо, отже може)."""
@@ -966,10 +1037,10 @@ def may_stop(node, called=False):
     return total_type(node) is None
 
 
-def parse(src):
+def parse(src, base=None, path=None):
     toks = lex(src)
     check_twins(toks)
-    p = Parser(toks)
+    p = Parser(toks, base, stack=(os.path.realpath(path),) if path else ())
     return p.program()
 
 
@@ -1447,6 +1518,10 @@ def delegations(prog):
         if isinstance(n, tuple) and n:
             if n[0] == 'seal':
                 parent = n[3]
+            if n[0] == 'import':
+                out.append((parent, n[4][2][0][3], f'модуль {n[2]}'))
+                walk(n[4], n[4][2][0][3])
+                return
             if n[0] == 'deleg':
                 out.append((parent, n[4], n[2]))
                 walk(n[5], n[4])
@@ -1464,14 +1539,15 @@ def check_program(prog, allowed, cwd):
     """Печатка й печатки ВСІХ субагентів ⊆ дозволи власника; кожен субагент ⊆ батька за справжніми шляхами."""
     missing = check_allowlist(prog[2][0][3], allowed, cwd)
     for parent, child, name in delegations(prog):
-        missing += [f'{m} (субагент «{safe(name)}»)' for m in check_allowlist(child, allowed, cwd)]
+        who = safe(name) if name.startswith('модуль ') else f'субагент «{safe(name)}»'
+        missing += [f'{m} ({who})' for m in check_allowlist(child, allowed, cwd)]
         for t, scopes in child.items():
             if TOOLS[t][4] != 'тека':
                 continue
             for sc in scopes:
                 rs = os.path.realpath(os.path.join(cwd, sc))
                 if not any(inside(rs, os.path.realpath(os.path.join(cwd, p))) for p in parent.get(t, [])):
-                    missing.append(f'{t}:{sc} (субагент «{safe(name)}» виходить за межі батька)')
+                    missing.append(f'{t}:{sc} ({who} виходить за межі батька)')
     return sorted(set(missing))
 
 
@@ -1520,6 +1596,7 @@ class Interp:
         self.steps_left, self.cwd = steps, os.path.abspath(cwd)
         self.out = out or sys.stdout
         self.memory, self.agent, self.caps = {}, 'головний', {}
+        self.modules = {}      # справжній шлях модуля → його імена (модуль виконується один раз)
         self.pc = 1.0          # впевненість контексту керування: усе, що створено тут, не впевненіше
         self.halt_c = 1.0      # канал завершення: після пройденої сумнівної 🜍 решта запуску не впевненіша
         self.mem_c = 1.0       # наскільки сумнівними були ключі, якими писали в памʼять
@@ -1686,6 +1763,17 @@ class Interp:
         if k == 'call':
             fn = self.lookup(env, node[2], pos)
             return self.call(fn, [self.eval(a, env) for a in node[3]], pos)
+        if k == 'import':
+            path, names, mod, sha, real = node[2], node[3], node[4], node[5], node[6]
+            menv = self.modules.get(real)
+            if menv is None:
+                self.trace('модуль', агент=self.agent, шлях=safe(path), sha256=sha, дозволи=mod[2][0][3])
+                menv = self.modules[real] = {}
+                for st in mod[2][1:]:          # печатку модуля НЕ виконуємо: права агента вона не змінює
+                    self.eval(st, menv)
+            for nm in names:
+                env[nm] = menv[nm]
+            return V(None)
         if k == 'seal':
             self.caps = node[3]
             self.trace('печатка', агент=self.agent, намір=node[2], дозволи=node[3])
@@ -2187,6 +2275,10 @@ def explain(node, ind=0):
         if len(node[3]) == 1 and inner.startswith('(') and inner.endswith(')'):
             inner = inner[1:-1]
         return f'{node[2]}({inner})'
+    if k == 'import':
+        caps = '; '.join(t + (f' [{", ".join(s)}]' if s else '') for t, s in node[4][2][0][3].items()) or 'жодних'
+        return (f'з модуля «{safe(node[2])}» (sha256 {node[5][:16]}…, дозволи: {caps}) взяти: '
+                f'{", ".join(node[3])}')
     if k == 'seal':
         caps = '; '.join(t + (f' [{", ".join(s)}]' if s else '') for t, s in node[3].items()) or 'жодних'
         return f'ПЕЧАТКА — намір: «{safe(node[2])}»; дозволи: {caps}'
@@ -2239,13 +2331,16 @@ def seal_info(prog, allowed, source, cwd, dir_extra=None):
         return [safe(x) for x in sc]
 
     seal = prog[2][0]
-    subs, explicit = [], 0
+    subs, explicit, mods = [], 0, []
 
     def walk(n, owner):
         nonlocal explicit
         if isinstance(n, tuple) and n:
             if n[0] == 'op' and n[2] == '≈':
                 explicit += 1
+            if n[0] == 'import':
+                mods.append({'шлях': safe(n[2]), 'sha256': n[5], 'намір': safe(n[4][2][0][2]), 'імена': n[3],
+                             'дозволи': {t: scopes(t, sc) for t, sc in n[4][2][0][3].items()}})
             if n[0] == 'deleg':
                 subs.append({'імʼя': safe(n[2]), 'намір': safe(n[3]), 'усередині': owner,
                              'дозволи': {t: scopes(t, sc) for t, sc in n[4].items()}})
@@ -2259,7 +2354,7 @@ def seal_info(prog, allowed, source, cwd, dir_extra=None):
     walk(prog, ['головний'])
     missing = [safe(m) for m in check_program(prog, allowed, cwd)]
     return {'намір': safe(seal[2]), 'дозволи': {t: scopes(t, sc) for t, sc in seal[3].items()},
-            'субагенти': subs, 'явні_зміни_впевненості': explicit, 'дозволи_власника': safe(source),
+            'субагенти': subs, 'модулі': mods, 'явні_зміни_впевненості': explicit, 'дозволи_власника': safe(source),
             'права_теки': [safe(x) for x in dir_extra] if dir_extra is not None else None, 'тека': safe(cwd), 'в_межах': not missing, 'бракує': missing}
 
 
@@ -2276,6 +2371,10 @@ def seal_report(prog, allowed, source, cwd, dir_extra=None):
         caps = '; '.join(t + (f' → {q(sc)}' if sc else '') for t, sc in d['дозволи'].items()) or 'жодних'
         where = ' → '.join(f'「{x}」' for x in d['усередині'])
         lines.append(f'  субагент 「{d["імʼя"]}」 (у коді: {where}): дозволи: {caps}; намір 「{d["намір"]}」')
+    for m in i['модулі']:
+        caps = '; '.join(t + (f' → {q(sc)}' if sc else '') for t, sc in m['дозволи'].items()) or 'жодних'
+        lines.append(f'  модуль 「{m["шлях"]}」 (sha256 {m["sha256"][:16]}…): бере {", ".join(m["імена"])}; дозволи: {caps}; '
+                     f'намір 「{m["намір"]}」')
     if i['явні_зміни_впевненості']:
         lines.append(f'  явні зміни впевненості ≈: {i["явні_зміни_впевненості"]} (кожна — у сліді)')
     lines.append(f'  дозволи власника: {i["дозволи_власника"]}')
@@ -2320,6 +2419,9 @@ def cheatsheet():
            '  (`(a+)+`, `(a|aa)+`, `(\\w+\\s?)+`) — помилка: змінна частина в повторенні потребує роздільника.',
            '  JSON: `true/false/null` ↔ `●/○/∅`. `§` словника без такого ключа дає `∅`. Значення верхнього рівня без `»` нікуди не йде.',
            '- Коментар — `※` до кінця рядка. Відносні шляхи — від теки файлу програми.',
+           '- **Модулі:** `⊃ 「мод.ngr」 【「f」 「g」】` на початку інструкції верхнього рівня бере названі значення з файлу',
+           '  в теці програми. Модуль має свою печатку, і вона ⊆ печатки програми; на верхньому рівні модуль лише називає',
+           '  (`←`, `⊃`), дії — у функціях, і виконуються з правами того, хто викликає. Шляхи в модулі — від теки програми.',
            '- **Кожне значення має впевненість** (типово 1). Усе, що обчислено з даних, не впевненіше за них —',
            '  і через операції, і через **керування**: значення, створене під сумнівною умовою `¿`, у циклі `↻`,',
            '  у функції, обраній сумнівно, після сумнівної перевірки `🜍` чи в `☂`, несе цю сумнівність.',
@@ -2436,6 +2538,7 @@ def cheatsheet_short():
              'Перший рядок — ПЕЧАТКА: 🜂 「намір」 【「дозвіл」 …】; дозволи: 「оракул」 「жереб」 「час」 「файл.читати:тека」',
              '「файл.писати:тека」 「файл.список:тека」 「мережа.взяти:хост」 「агент:імʼя」. Поза печаткою — помилка до запуску.',
              'Рядок 「…」 (\\n \\」), список 【…】, словник 『к з …』, блок 《…》, коментар ※, так/ні/ніщо ● ○ ∅, мінус ¯5.',
+             'Модуль: ⊃ 「мод.ngr」 【「f」】 (верхній рівень; печатка модуля ⊆ печатки програми; дії — лише у функціях модуля).',
              'Шаблон 〔текст {вираз} текст〕 — як f-рядок (у {} один вираз): 〔{k}: {⌗ v 2}〕. Регулярки ⌕ ⇋ — синтаксис re;',
              '(a+)+ та інший катастрофічний перебір — помилка.',
              'Імена — слова одного письма; ← імʼя вираз (лише на початку інструкції, назавжди). Умови — лише ●/○.',
@@ -2534,10 +2637,6 @@ def main(argv):
     if src is None:
         print(USAGE, file=sys.stderr)
         return 2
-    try:
-        prog, perr = parse(src), None
-    except StaticError as e:
-        prog, perr = None, e
     # шляхи — відносно теки програми; для -e — теки --тека (права теки) або поточної (без прав теки)
     if path == '<-e>':
         cwd = opts['dir'] or os.getcwd()
@@ -2545,6 +2644,10 @@ def main(argv):
     else:
         cwd = os.path.dirname(os.path.abspath(path))
         dir_rights = True
+    try:
+        prog, perr = parse(src, cwd, None if path == '<-e>' else path), None
+    except StaticError as e:
+        prog, perr = None, e
     try:
         allowed, source = load_allowlist(opts['allow'], cwd if dir_rights else None,
                                          os.path.realpath(path) if path != '<-e>' else None)

@@ -94,8 +94,12 @@ def main():
                 row[lang] = None
                 continue
             text = src.read_text(encoding='utf-8')
-            code = text + ''.join((d / m).read_text(encoding='utf-8') for m in meta.get('модулі', []))
-            body = text.split('\n', 1)[1] if lang == 'ngr' else code      # Nigredo без печатки (М3)
+            mods = [(d / m).read_text(encoding='utf-8') for m in meta.get('модулі' if lang == 'py' else 'модулі_ngr', [])]
+            code = text + ''.join(mods)
+            if lang == 'ngr':                                               # Nigredo без печаток (М3)
+                body = ''.join(t.split('\n', 1)[1] for t in [text, *mods])
+            else:
+                body = code
             prog = src
             if lang == 'ngr' and '{ПОРТ}' in text:
                 prog = d / '.рішення.тимч.ngr'
