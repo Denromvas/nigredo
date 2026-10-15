@@ -46,8 +46,9 @@ def ngr(*args, timeout=120, env=None):
         p = subprocess.run([sys.executable, NGR_RUN, *args], capture_output=True, text=True, cwd=WORKDIR,
                            timeout=timeout, stdin=subprocess.DEVNULL, env=env or os.environ)
         return p.returncode, p.stdout, p.stderr
-    except subprocess.TimeoutExpired:
-        return 124, '', f'✗ перевищено час ({timeout} с)'
+    except subprocess.TimeoutExpired as e:          # не губити те, що програма встигла вивести
+        out = e.stdout.decode('utf-8', 'replace') if isinstance(e.stdout, bytes) else (e.stdout or '')
+        return 124, out, f'✗ перевищено час ({timeout} с); слід запуску — обірваний'
 
 
 def sheet():
