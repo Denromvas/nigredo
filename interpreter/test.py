@@ -167,7 +167,8 @@ def main():
         info = json.loads(js.stdout)
     except ValueError:
         info = {}
-    check(got.returncode == 3 and '✗' in got.stdout and info.get('в_межах') is False and info.get('бракує'),
+    check(got.returncode == 3 and '✗' in got.stdout and info.get('в_межах') is False and info.get('бракує')
+          and info.get('sha256') == hashlib.sha256(refused.read_bytes()).hexdigest() and info.get('програма'),
           '--печатка: код 3 і «✗» поза межами; --json машиночитаний', got.stdout + js.stdout)
     junk = tmp / 'сміття.jsonl'
     junk.write_bytes(b'\0\0\0 not json\n')
@@ -295,6 +296,39 @@ def main():
           and 'Ви на другій сторінці' in text(3)
           and all(res[i]['isError'] and text(i).startswith('✗') for i in (4, 5, 6)),
           'MCP-браузер: сторінка, перехід, слід, відмови на поганих запитах', got.stdout[-1500:] + got.stderr)
+
+    # таблиця типів = виконання (суд 6): жодна комбінація, яку виконання приймає, не відкидається до запуску,
+    # і жодна комбінація типів не валить інтерпретатор (код 4)
+    import importlib.util
+    import io
+    import itertools
+    os.environ.setdefault('NIGREDO_HOME', str(home))
+    spec = importlib.util.spec_from_file_location('nigredo_тест', ROOT / 'interpreter' / 'nigredo.py')
+    M = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(M)
+    import decimal
+    decimal.setcontext(M.DEC_CTX.copy())
+    S = {'num': '3', 'dec': '2.5', 'str': '「аб」', 'bool': '●', 'no': '○', 'none': '∅', 'list': '【1 2】',
+         'dict': '『「а」 1』', 'fn': 'λx x'}
+    alarms, crashes = [], []
+    for g in M.TYPE_REQ:
+        for combo in itertools.product(S, repeat=M.GLYPHS[g][0]):
+            line = '» ' + g + ' ' + ' '.join(S[t] for t in combo)
+            errs = []
+            try:
+                prog = M.parse('🜂 「т」 【】\n' + line, None, None, errs)
+            except M.StaticError:
+                continue
+            try:
+                M.Interp(lambda *a, **k: None, steps=200000, out=io.StringIO()).run(prog)
+                if errs:
+                    alarms.append(line)
+            except M.NgrError:
+                pass
+            except Exception as e:      # noqa: BLE001
+                crashes.append(f'{line}: {type(e).__name__}')
+    check(not alarms and not crashes, 'таблиця типів = виконання: 0 хибних тривог, 0 падінь на всіх комбінаціях типів',
+          '\n'.join(alarms[:10] + crashes[:10]))
 
     sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',
