@@ -15,6 +15,8 @@ import sys
 import threading
 import unicodedata
 from datetime import datetime, timezone
+import decimal
+import math
 from decimal import ROUND_HALF_UP, Decimal
 
 VERSION = '0.5-dev'
@@ -208,7 +210,12 @@ def kind(x):
     return 'функція'
 
 
+NUM = (int, float, Decimal)      # дробові числа мови — точні десяткові (Decimal); float — лише впевненість (±)
+
+
 def fmt_num(n):
+    if isinstance(n, Decimal):          # як число, а не запис: 1300.0 → 1300, 2.50 → 2.5 (знаки для грошей — ⌗)
+        return str(int(n)) if n == n.to_integral_value() else format(n.normalize(), 'f')
     if isinstance(n, float):
         if n.is_integer() and abs(n) < 1e15:
             return str(int(n))
@@ -225,7 +232,7 @@ def show(x, top=True):
         return '∅'
     if isinstance(v, bool):
         return '●' if v else '○'
-    if isinstance(v, (int, float)):
+    if isinstance(v, NUM):
         return fmt_num(v)
     if isinstance(v, list):
         return '【' + ' '.join(show(e, False) for e in v) + '】'
@@ -243,6 +250,8 @@ def plain(x):
         return {k: plain(e) for k, e in v.items()}
     if isinstance(v, Fn):
         return 'λ'
+    if isinstance(v, Decimal):
+        return int(v) if v == v.to_integral_value() and abs(v) < 10 ** 15 else float(v)
     return v
 
 
@@ -554,7 +563,7 @@ def lex(src):
             if scripts - {'ASCII', 'FULLWIDTH'}:
                 raise StaticError('у числі лише цифри 0–9 або ０–９: цифри інших письмен схожі на інші (৪ — це 4, '
                                   'а виглядає як 8)', pos)
-            val = float(num) if '.' in num else int(num)
+            val = Decimal(num) if '.' in num else int(num)      # дріб — точний десятковий: 0.1 ＋ 0.2 = 0.3
             toks.append(('num', -val if neg else val, pos))
         elif is_name_start(ch):
             buf = ''
@@ -988,7 +997,7 @@ def total_type(node):
     k = node[0]
     if k == 'lit':
         v = node[2]
-        return 'bool' if isinstance(v, bool) else 'num' if isinstance(v, (int, float)) else 'str' if isinstance(v, str) else 'any'
+        return 'bool' if isinstance(v, bool) else 'num' if isinstance(v, NUM) else 'str' if isinstance(v, str) else 'any'
     if k == 'var':
         return 'any'
     if k == 'lam':
@@ -1071,7 +1080,7 @@ TOOL_TYPES = {'оракул': ((_A,), _B), 'жереб': ((_N,), _N), 'час': 
 
 
 def lit_type(v):
-    return _B if isinstance(v, bool) else _N if isinstance(v, (int, float)) else _S if isinstance(v, str) \
+    return _B if isinstance(v, bool) else _N if isinstance(v, NUM) else _S if isinstance(v, str) \
         else 'none' if v is None else _A
 
 
@@ -1848,9 +1857,9 @@ class Interp:
         return x.v
 
     def num(self, x, g, pos):
-        if isinstance(x.v, bool) or not isinstance(x.v, (int, float)):
+        if isinstance(x.v, bool) or not isinstance(x.v, NUM):
             raise NgrError(f'{g}: очікувалося число, а не {kind(x)} {brief(x, 40)}', pos)
-        return x.v
+        return Decimal(repr(x.v)) if isinstance(x.v, float) else x.v     # ± дає float — в арифметиці лише десяткові
 
     def boolean(self, x, g, pos):
         if not isinstance(x.v, bool):
@@ -2109,6 +2118,8 @@ class Interp:
             raise
         except RecursionError:
             raise NgrError(f'{g}: значення вкладене надто глибоко', pos, min([self.cpc] + [a.c for a in args]))
+        except decimal.DecimalException as e:
+            raise NgrError(f'{g}: десяткове число поза межами ({type(e).__name__})', pos, min([self.cpc] + [a.c for a in args]))
         if g not in ('≈', '±', '⚗', '►', '▶', '🜃', '🜍', '🜄', '§', '⌂', 'ρ', 'κ'):
             c = min([res.c] + [a.c for a in args])
             if isinstance(res.v, (list, dict)):        # вміст лишає свою впевненість; будова — від аргументів
@@ -2157,11 +2168,13 @@ class Interp:
             x, y = n(0), n(1)
             if y == 0:
                 raise NgrError(f'{g}: ділення на нуль', pos)
-            if g == '‰':
-                return V(x % y)
-            return V(x // y if isinstance(x, int) and isinstance(y, int) and x % y == 0 else x / y)
+            if g == '‰':                          # як у цілих Python: знак остачі — як у дільника
+                return V(x % y if isinstance(x, int) and isinstance(y, int) else x - y * math.floor(Decimal(x) / y))
+            if isinstance(x, int) and isinstance(y, int):
+                return V(x // y if x % y == 0 else Decimal(x) / Decimal(y))
+            return V(Decimal(x) / Decimal(y))
         if g == '⌊':
-            return V(int(n(0) // 1))
+            return V(math.floor(n(0)))
         if g == '＝':
             return V(deep_eq(a[0], a[1]))
         if g == '≠':
@@ -2248,12 +2261,15 @@ class Interp:
                 return V(int(s))
             except ValueError:
                 try:
-                    return V(float(s))
-                except ValueError:
+                    d = Decimal(s)
+                except decimal.InvalidOperation:
+                    d = None
+                if d is None or not d.is_finite():
                     raise NgrError(f'ν: «{s}» не число', pos)
+                return V(d)
         if g == 'δ':
             try:
-                return wrap(json.loads(self.need(a[0], 'рядок', g, pos)), a[0].c)
+                return wrap(json.loads(self.need(a[0], 'рядок', g, pos), parse_float=Decimal), a[0].c)
             except RecursionError:
                 raise NgrError('δ: JSON вкладений надто глибоко', pos)
             except ValueError as e:
@@ -2270,7 +2286,7 @@ class Interp:
             print(text, file=self.out, flush=True)
             return V(None)
         if g == '≈':
-            c = n(1)
+            c = float(n(1))
             if not 0 <= c <= 1:
                 raise NgrError('≈: впевненість має бути від 0 до 1', pos)
             self.trace('впевненість', агент=self.agent, значення=trace_val(a[0]), було=a[0].c, стало=c)
@@ -2278,7 +2294,7 @@ class Interp:
         if g == '±':
             return V(a[0].c, min(a[0].c, self.cpc))    # впевненість — теж дані: не певніша за саму себе
         if g == '⚗':
-            lst, t = self.need(a[0], 'список', g, pos), n(1)
+            lst, t = self.need(a[0], 'список', g, pos), float(n(1))
             # що лишилось — залежить від упевненостей елементів і порогу: це будова результату
             sc = min([a[0].s, a[1].c, self.cpc] + [x.c for x in lst])
             if not 0 <= t <= 1:
@@ -2371,10 +2387,10 @@ class Interp:
             x, k = n(0), n(1)
             if isinstance(k, bool) or not isinstance(k, int) or not 0 <= k <= 12:
                 raise NgrError(f'{g}: кількість знаків — ціле від 0 до 12', pos)
-            q = Decimal(repr(x)).quantize(Decimal(1).scaleb(-k), rounding=ROUND_HALF_UP)
+            q = Decimal(x).quantize(Decimal(1).scaleb(-k), rounding=ROUND_HALF_UP)
             if g == '⌗':
                 return V(format(q, 'f'))
-            return V(int(q) if k == 0 else float(q))
+            return V(int(q) if k == 0 else q)
         if g == '⌂':
             return V([V(x) for x in self.argv])
         raise NgrError(f'гліф «{g}» не реалізовано', pos)
@@ -2555,7 +2571,7 @@ def cheatsheet():
            '- **Невидимого в тексті програми немає**: керівні, bidi, теги, ZWSP, U+034F, нестандартні пробіли, заповнювачі',
            '  (U+3164) — помилка всюди: в коді, рядках, коментарях, печатці. Такі дані беріть через `δ 「"\\u…"」`;',
            '  у виводі й сліді вони показані як `⟨U+…⟩`.',
-           '- Умови — лише `●` (так) або `○` (ні); `∅` — ніщо. Числа — цифри `0–9` або `０–９`, мінус — `¯5`.',
+           '- Умови — лише `●` (так) або `○` (ні); `∅` — ніщо. Числа — цифри `0–9` або `０–９`, мінус — `¯5`; дроби точні.',
            '- Рядок `「…」` (екранування `\\」 \\n`), список `【…】`, словник `『ключ значення …』`, блок `《…》` (значення — останній вираз).',
            '- **Шаблонний рядок** `〔текст {вираз} текст〕` — як f-рядок: у `{…}` рівно один вираз в одному рядку,',
            '  `\\{ \\} \\〕` — буквально. `〔{k}: {⌗ v 2} грн〕`. У `「…」` фігурні дужки — звичайні символи (JSON пишіть там).',
@@ -2633,7 +2649,8 @@ def cheatsheet():
             '- Функцію, названу `←`, викликають просто: `факт 10`; передати як значення — `∘факт`.',
             '  Функцію-значення (параметр) викликають `► f x`.',
             '- `✂ рядок 「」` ріже за пробілами. `↑` сортує рядки за українською абеткою.',
-            '- Дробові числа друкуються точно (`＋ 0.1 0.2` → `0.30000000000000004`); для грошей — `≅ x 2` і `⌗ x 2`.',
+            '- Дробові числа — **точні десяткові** (і з JSON теж): `＋ 0.1 0.2` → `0.3`, `≅ 2.675 2` → `2.68`; `÷ 1 3` — 28 знаків.',
+            '  Рівно n знаків після коми (гроші) — `⌗ x 2` (рядок) або `≅ x 2` (число).',
             '- Субагент бачить імена батька лише для читання (змінити їх неможливо взагалі) і має власну памʼять.',
             '- Ціна в токенах: кириличне імʼя коштує в 3–8 разів більше за коротке латинське (`відповіді` — 8 токенів,',
             '  `ans` — 1). Для економії беріть короткі імена; рядки й коментарі — будь-якою мовою.',
