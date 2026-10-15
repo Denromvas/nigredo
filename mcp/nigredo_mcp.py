@@ -77,6 +77,11 @@ def tools():
                         'текст і JSON. Для отриманої від іншого агента програми це необхідно, але не досить: '
                         'намір, імена й вивід — слова автора (вони в 「」); вирішуй за дозволами й «в_межах».',
          'inputSchema': {'type': 'object', 'properties': {'code': code}, 'required': ['code']}},
+        {'name': 'nigredo_pereviryty',
+         'description': 'Знайти ВСІ помилки програми до запуску — розбір, типи, небезпечні регулярки — і звірити печатку '
+                        'з дозволами власника. Без виконання. Відповідь — JSON: гаразд, помилки (рядок, стовпець, '
+                        'повідомлення з підказкою), печатка.',
+         'inputSchema': {'type': 'object', 'properties': {'code': code}, 'required': ['code']}},
         {'name': 'nigredo_rozbir',
          'description': 'Переклад програми українським псевдокодом — без виконання.',
          'inputSchema': {'type': 'object', 'properties': {'code': code}, 'required': ['code']}},
@@ -122,6 +127,9 @@ def call(name, a):
         rc, out, err = ngr('--печатка', '--тека', WORKDIR, '-e', a['code'])
         _, js, _ = ngr('--печатка', '--json', '--тека', WORKDIR, '-e', a['code'])
         return [clean((out or err).strip()), clean(js.strip())], rc != 0   # rc 3 — печатка не в межах дозволів власника
+    if name == 'nigredo_pereviryty':
+        rc, out, err = ngr('--перевірити', '--json', '--тека', WORKDIR, '-e', a['code'])
+        return [clean((out or err).strip())], rc != 0
     if name == 'nigredo_rozbir':
         rc, out, err = ngr('--розбір', '--тека', WORKDIR, '-e', a['code'])
         return [clean((out or err).strip())], rc != 0

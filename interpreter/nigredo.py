@@ -828,6 +828,9 @@ class Parser:
             check_twins(toks)
             sub = Parser(toks, os.path.dirname(real), self.root, self.stack + (real,), module=True)
             mod = sub.program()
+            errs = type_errors(mod)
+            if errs:
+                raise errs[0]
         except StaticError as e:
             raise StaticError(f'у модулі «{safe(rel)}»: {e}', pos)
         mcaps = mod[2][0][3]
@@ -1037,11 +1040,149 @@ def may_stop(node, called=False):
     return total_type(node) is None
 
 
-def parse(src, base=None, path=None):
+# ------------------------------------------------------------------ типи до запуску
+# Значення незмінні, тож тип названого значення відомий раз і назавжди: вивід без анотацій ловить певні помилки
+# (обидва типи відомі й не підходять) до запуску. Невідоме ('any': параметр функції, δ, §) — не помилка.
+
+TYPE_NAMES = {'num': 'число', 'str': 'рядок', 'bool': '●/○', 'none': '∅', 'list': 'список', 'dict': 'словник',
+              'fn': 'функція', 'any': 'будь-що'}
+_N, _S, _B, _L, _D, _F, _A = 'num', 'str', 'bool', 'list', 'dict', 'fn', 'any'
+TYPE_REQ = {
+    '＋': [(_N, _N), (_S, _S), (_L, _L)], '－': [(_N, _N)], '×': [(_N, _N)], '÷': [(_N, _N)], '‰': [(_N, _N)],
+    '⌊': [(_N,)], '≅': [(_N, _N)], '⌗': [(_N, _N)], '…': [(_N, _N)],
+    '‹': [(_N, _N), (_S, _S)], '›': [(_N, _N), (_S, _S)], '≤': [(_N, _N), (_S, _S)], '≥': [(_N, _N), (_S, _S)],
+    '∧': [(_B, _B)], '∨': [(_B, _B)], '¬': [(_B,)], '¿': [(_B, _A, _A)],
+    'ρ': [(_S,), (_L,), (_D,)], '§': [(_L, _N), (_S, _N), (_D, _S)], '✂': [(_S, _S)], '⁀': [(_L, _S)],
+    '⇄': [(_S, _S, _S)], '⊢': [(_S,)], '⇣': [(_S,)], '⇡': [(_S,)], 'ν': [(_S,)], 'δ': [(_S,)],
+    '⌕': [(_S, _S)], '⇋': [(_S, _S, _S)], '⊏': [(_S, _N, _N), (_S, _N, 'none'), (_L, _N, _N), (_L, _N, 'none')],
+    '⊳': [(_S, _S), (_L, _A)], '∋': [(_S, _S), (_L, _A), (_D, _S)], 'κ': [(_D,)], '↑': [(_L,)],
+    '↺': [(_S,), (_L,)], '✎': [(_D, _S, _A)], '⚗': [(_L, _N)], '≈': [(_A, _N)],
+    '∀': [(_L, _F)], 'μ': [(_L, _F)], 'φ': [(_L, _F)], '⇅': [(_L, _F)], '⊞': [(_L, _F)], 'Σ': [(_L, _A, _F)],
+    '↻': [(_A, _F, _F)], '☂': [(_A, _F)], '🜍': [(_A, _F)], '►': [(_F, _A)], '▶': [(_F, _A, _A)],
+}
+TYPE_RES = {'－': _N, '×': _N, '÷': _N, '‰': _N, '⌊': _N, '≅': _N, 'ρ': _N, 'ν': _N, '±': _N, '⊳': _N,
+            '＝': _B, '≠': _B, '‹': _B, '›': _B, '≤': _B, '≥': _B, '∧': _B, '∨': _B, '¬': _B, '∋': _B,
+            'σ': _S, '⌗': _S, '⁀': _S, '⇄': _S, '⊢': _S, '⇣': _S, '⇡': _S, '⇋': _S, 'Δ': _S,
+            '✂': _L, 'μ': _L, 'φ': _L, '⇅': _L, '↑': _L, '⌕': _L, 'κ': _L, '…': _L, '⚗': _L, '⌂': _L,
+            '⊞': _D, '✎': _D, '∀': 'none', '»': 'none', '🜄': 'none', '☠': 'none'}
+TOOL_TYPES = {'оракул': ((_A,), _B), 'жереб': ((_N,), _N), 'час': ((), _S), 'файл.читати': ((_S,), _S),
+              'файл.писати': ((_S, _S), 'none'), 'файл.список': ((_S,), _L), 'мережа.взяти': ((_S,), _S),
+              'агент': ((_S, _S), _S)}
+
+
+def lit_type(v):
+    return _B if isinstance(v, bool) else _N if isinstance(v, (int, float)) else _S if isinstance(v, str) \
+        else 'none' if v is None else _A
+
+
+def _fits(actual, alts):
+    return any(len(a) == len(actual) and all(r == _A or t == _A or r == t for r, t in zip(a, actual)) for a in alts)
+
+
+def type_errors(prog):
+    """Певні помилки типів у програмі — список StaticError (порожній — помилок не знайдено)."""
+    errs = []
+
+    def say(g, actual, alts, pos):
+        got = ', '.join(TYPE_NAMES[t] for t in actual)
+        want = ' або '.join('(' + ', '.join(TYPE_NAMES[t] for t in a) + ')' for a in alts)
+        hint = ''
+        if g == '＋' and set(actual) == {_S, _N}:
+            hint = ' — число в рядок: σ або шаблон 〔…{n}〕'
+        elif g in '¿∧∨¬':
+            hint = ' — умова має бути ● або ○ (порівняння: ＝ ≠ ‹ › ≤ ≥)'
+        errs.append(StaticError(f'{g}: аргументи ({got}) не підходять, очікувалося {want}{hint}', pos))
+
+    def t(n, env):
+        k = n[0]
+        if k == 'lit':
+            return lit_type(n[2])
+        if k == 'tmpl':
+            for e in n[2]:
+                t(e, env)
+            return _S
+        if k == 'var':
+            for sc in reversed(env):
+                if n[2] in sc:
+                    return sc[n[2]]
+            return _A
+        if k == 'list':
+            for e in n[2]:
+                t(e, env)
+            return _L
+        if k == 'dict':
+            for e in n[2]:
+                t(e, env)
+            return _D
+        if k == 'block':
+            env = env + [{}]
+            out = 'none'
+            for st in n[2]:
+                out = t(st, env)
+            return out
+        if k == 'bind':
+            env[-1][n[2]] = _F if n[3][0] == 'lam' else _A
+            env[-1][n[2]] = t(n[3], env)
+            return env[-1][n[2]]
+        if k == 'lam':
+            t(n[3], env + [{p: _A for p in n[2]}])
+            return _F
+        if k == 'call':
+            for e in n[3]:
+                t(e, env)
+            return _A
+        if k == 'tool':
+            actual = [t(e, env) for e in n[3]]
+            req, res = TOOL_TYPES.get(n[2], (None, _A))
+            if req is not None and not _fits(actual, [req]):
+                errs.append(StaticError(f'🜔{n[2]}: аргументи ({", ".join(TYPE_NAMES[x] for x in actual)}) не підходять, '
+                                        f'очікувалося ({", ".join(TYPE_NAMES[x] for x in req)})', n[1]))
+            return res
+        if k == 'deleg':
+            return t(n[5], env)
+        if k in ('seal', 'import'):
+            if k == 'import':
+                for nm in n[3]:
+                    env[-1][nm] = _A
+            return 'none'
+        if k == 'op':
+            g, args = n[2], n[3]
+            actual = [t(e, env) for e in args]
+            if g in TYPE_REQ and not _fits(actual, TYPE_REQ[g]):
+                say(g, actual, TYPE_REQ[g], n[1])
+            if g in '÷‰' and args[1][0] == 'lit' and args[1][2] == 0 and not isinstance(args[1][2], bool):
+                errs.append(StaticError(f'{g}: ділення на буквальний нуль', n[1]))
+            if g in '⌕⇋' and args[1][0] == 'lit' and isinstance(args[1][2], str):
+                try:
+                    regex(args[1][2], g, n[1])
+                except NgrError as e:
+                    errs.append(StaticError(e.msg, n[1]))
+            if g == '＋':
+                known = [x for x in actual if x != _A]
+                return known[0] if known and all(x == known[0] for x in known) else _A
+            if g == '¿':
+                return actual[1] if actual[1] == actual[2] else _A
+            if g in ('⊏', '↺', '≈', '🜍'):
+                return actual[0]
+            return TYPE_RES.get(g, _A)
+        return _A
+
+    t(prog, [{}])
+    return errs
+
+
+def parse(src, base=None, path=None, all_errors=None):
+    """Розібрати й перевірити типи; перша помилка — StaticError. all_errors (список) — зібрати всі помилки типів."""
     toks = lex(src)
     check_twins(toks)
     p = Parser(toks, base, stack=(os.path.realpath(path),) if path else ())
-    return p.program()
+    prog = p.program()
+    errs = type_errors(prog)
+    if all_errors is not None:
+        all_errors.extend(errs)
+    elif errs:
+        raise errs[0]
+    return prog
 
 
 # ------------------------------------------------------------------ слід
@@ -2399,6 +2540,9 @@ def cheatsheet():
            '## Як це влаштовано', '',
            '- **Префіксний запис з фіксованою арністю**: гліф, потім рівно стільки аргументів, скільки він бере.',
            '  `＋ 2 3` → 5; `» × 2 ＋ 3 4` → 14. Дужок для групування не треба: арність однозначна.',
+           '- **Помилки до запуску.** Значення незмінні, тож тип кожного названого значення відомий: `＋ 「рядок」 n`,',
+           '  `‹ 「5」 3`, умова не ●/○, `§ список 「ключ」`, небезпечна регулярка, `÷ x 0` — помилка до запуску.',
+           '  `ngr --перевірити --json файл` — усі помилки одразу (з місцем і підказкою) і печатка, без виконання.',
            '- **Кінець рядка завершує вираз.** Бракує аргументу в кінці рядка — помилка до запуску. Довгий вираз',
            '  продовжуйте на наступних рядках **з більшим відступом**; усередині `【】` і `『』` перенос вільний.',
            '  Зайве після завершеного виразу — теж помилка. Кілька виразів в одному рядку — через `¦`.',
@@ -2538,6 +2682,7 @@ def cheatsheet_short():
              'Перший рядок — ПЕЧАТКА: 🜂 「намір」 【「дозвіл」 …】; дозволи: 「оракул」 「жереб」 「час」 「файл.читати:тека」',
              '「файл.писати:тека」 「файл.список:тека」 「мережа.взяти:хост」 「агент:імʼя」. Поза печаткою — помилка до запуску.',
              'Рядок 「…」 (\\n \\」), список 【…】, словник 『к з …』, блок 《…》, коментар ※, так/ні/ніщо ● ○ ∅, мінус ¯5.',
+             'До запуску ловляться: типи (＋ рядка й числа, умова не ●/○…), невідомі імена, арність, небезпечні регулярки.',
              'Модуль: ⊃ 「мод.ngr」 【「f」】 (верхній рівень; печатка модуля ⊆ печатки програми; дії — лише у функціях модуля).',
              'Шаблон 〔текст {вираз} текст〕 — як f-рядок (у {} один вираз): 〔{k}: {⌗ v 2}〕. Регулярки ⌕ ⇋ — синтаксис re;',
              '(a+)+ та інший катастрофічний перебір — помилка.',
@@ -2575,6 +2720,7 @@ USAGE = f"""Nigredo {VERSION}
     --зерно N              зерно для «жереб» (типово 0)
     --кроки N              ліміт кроків (типово {DEFAULT_STEPS})
     --розмір N             найбільший рядок/список (типово {MAX_SIZE})
+  ngr --перевірити [--json] ФАЙЛ   усі помилки до запуску (розбір, типи, регулярки) і печатка — без виконання
   ngr --перевірити-слід ФАЙЛ [ПРОГРАМА]   (з програмою — ще й чи слід саме від неї)
   ngr --памʼятка           згенерувати памʼятку для агентів
 """
@@ -2606,7 +2752,7 @@ def main(argv):
             msg = verify_trace(tpath, rest[0] if rest else None)
             print(verify_trace(tpath, rest[0] if rest else None, True) if '--json' in argv else msg)
             return 0 if msg.startswith('✓') else 1
-        if a in ('--печатка', '--розбір'):
+        if a in ('--печатка', '--розбір', '--перевірити'):
             opts['mode'] = a[2:]
         elif a == '--слід':
             opts['trace'] = next(it)
@@ -2644,10 +2790,12 @@ def main(argv):
     else:
         cwd = os.path.dirname(os.path.abspath(path))
         dir_rights = True
+    errors = []
     try:
-        prog, perr = parse(src, cwd, None if path == '<-e>' else path), None
+        prog, perr = parse(src, cwd, None if path == '<-e>' else path, errors), None
+        perr = errors[0] if errors else None
     except StaticError as e:
-        prog, perr = None, e
+        prog, perr, errors = None, e, [e]
     try:
         allowed, source = load_allowlist(opts['allow'], cwd if dir_rights else None,
                                          os.path.realpath(path) if path != '<-e>' else None)
@@ -2656,6 +2804,22 @@ def main(argv):
     except Refused as e:
         print(e, file=sys.stderr)
         return 3
+    if opts['mode'] == 'перевірити':
+        missing = [safe(m) for m in check_program(prog, allowed, cwd)] if prog else []
+        if opts['json']:
+            print(json.dumps({'гаразд': not errors and not missing,
+                              'помилки': [{'рядок': e.pos[0] if e.pos else None, 'стовпець': e.pos[1] if e.pos else None,
+                                           'повідомлення': safe(e.msg)} for e in errors],
+                              'печатка': {'в_межах': not missing, 'бракує': missing} if prog else None},
+                             ensure_ascii=False, indent=1))
+        else:
+            for e in errors:
+                print(safe(str(e)))
+            if missing:
+                print(f'✗ печатка просить більше, ніж дозволив власник: {", ".join(missing)}')
+            if not errors and not missing:
+                print('✓ помилок до запуску не знайдено; печатка в межах дозволів власника')
+        return 2 if errors else 3 if missing else 0
     if opts['mode'] in ('розбір', 'печатка'):
         if perr:
             if opts['json']:
