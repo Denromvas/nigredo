@@ -1,0 +1,37 @@
+{
+ "дозволено": [
+  "оракул",
+  "жереб",
+  "час"
+ ],
+ "для_тек": {
+  "/root/ai-agents/Nigredo/konsylium/суд6_0.5/skeptyk": [
+   "файл.читати:/root/ai-agents/Nigredo/konsylium/суд6_0.5/skeptyk/дані",
+   "файл.писати:/root/ai-agents/Nigredo/konsylium/суд6_0.5/skeptyk/звіти"
+  ],
+  "/root/ai-agents/Nigredo/konsylium/суд6_0.5/praktyk": [
+   "файл.читати:/root/ai-agents/Nigredo/konsylium/суд6_0.5/praktyk/дані",
+   "файл.писати:/root/ai-agents/Nigredo/konsylium/суд6_0.5/praktyk/звіти"
+  ],
+  "/root/ai-agents/Nigredo/konsylium/суд6_0.5/movoznavets": [
+   "файл.читати:/root/ai-agents/Nigredo/konsylium/суд6_0.5/movoznavets/дані",
+   "файл.писати:/root/ai-agents/Nigredo/konsylium/суд6_0.5/movoznavets/звіти"
+  ],
+  "/root/ai-agents/Nigredo/konsylium/суд6_0.5/audytor": [
+   "файл.читати:/root/ai-agents/Nigredo/konsylium/суд6_0.5/audytor/дані",
+   "файл.писати:/root/ai-agents/Nigredo/konsylium/суд6_0.5/audytor/звіти"
+  ],
+  "/root/ai-agents/Nigredo/konsylium/суд6_0.5/novachok": [
+   "файл.читати:/root/ai-agents/Nigredo/konsylium/суд6_0.5/novachok/дані",
+   "файл.писати:/root/ai-agents/Nigredo/konsylium/суд6_0.5/novachok/звіти"
+  ],
+  "/root/ai-agents/Nigredo/konsylium/суд6_0.5/orkestrator": [
+   "файл.читати:/root/ai-agents/Nigredo/konsylium/суд6_0.5/orkestrator/дані",
+   "файл.писати:/root/ai-agents/Nigredo/konsylium/суд6_0.5/orkestrator/звіти"
+  ],
+  "/root/ai-agents/Nigredo/konsylium/суд6_0.5/gemini": [
+   "файл.читати:/root/ai-agents/Nigredo/konsylium/суд6_0.5/gemini/дані",
+   "файл.писати:/root/ai-agents/Nigredo/konsylium/суд6_0.5/gemini/звіти"
+  ]
+ }
+}
