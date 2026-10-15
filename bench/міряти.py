@@ -81,7 +81,7 @@ def main():
     (BENCH / 'тимч').mkdir(exist_ok=True)
     (home / 'дозволи.json').write_text(json.dumps({'дозволено': [
         f'файл.читати:{BENCH / "дані"}', f'файл.читати:{BENCH / "тимч"}', f'файл.писати:{BENCH / "тимч"}',
-        f'мережа.взяти:127.0.0.1:{port}']}, ensure_ascii=False), encoding='utf-8')
+        f'мережа.взяти:127.0.0.1:{port}', f'мережа.послати:127.0.0.1:{port}']}, ensure_ascii=False), encoding='utf-8')
     env = dict(os.environ, NIGREDO_HOME=str(home))
     rows = []
     for d in sorted(p for p in (BENCH / 'задачі').iterdir() if p.is_dir()):

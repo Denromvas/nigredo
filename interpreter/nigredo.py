@@ -122,6 +122,9 @@ GLYPHS = {
     '⇄': (3, '⇄ рядок що чим', 'замінити всі входження', 'у {0} замінити {1} на {2}', 'дані'),
     '⊢': (1, '⊢ рядок', 'обрізати пробіли й невидимі символи (BOM) з країв', 'обрізати({0})', 'дані'),
     '⇣': (1, '⇣ рядок', 'малими літерами', 'малими({0})', 'дані'),
+    '◷': (2, '◷ дата дата | ◷ дата дні', 'дати ISO (2026-10-15, 2026-10-15T09:30:00+03:00): дві дати — скільки днів від першої '
+          'до другої (дріб, якщо є час); дата й число — дата через стільки днів', 'дати({0}, {1})', 'дані'),
+    '▦': (1, '▦ текст', 'CSV → список словників (перший рядок — заголовки; значення — рядки)', 'csv({0})', 'дані'),
     '⇡': (1, '⇡ рядок', 'великими літерами', 'великими({0})', 'дані'),
     '⊏': (3, '⊏ x від до', 'зріз рядка чи списку [від, до); відʼємні — з кінця; до ∅ — до кінця', '{0}[{1}…{2}]', 'дані'),
     '⊳': (2, '⊳ x що', 'позиція підрядка в рядку чи елемента в списку; ¯1 — немає', 'позиція {1} у {0}', 'дані'),
@@ -1008,8 +1011,8 @@ class Parser:
         return ('op', pos, g, [self.expr() for _ in range(ar)])
 
 
-WORLD_WRITERS = {'жереб', 'файл.писати', 'агент', 'мережа.взяти'}      # змінюють стан, який потім можна прочитати
-WORLD_READERS = {'жереб', 'файл.читати', 'файл.список', 'файл.писати', 'агент', 'мережа.взяти'}
+WORLD_WRITERS = {'жереб', 'файл.писати', 'агент', 'мережа.взяти', 'мережа.послати'}      # змінюють стан, який потім можна прочитати
+WORLD_READERS = {'жереб', 'файл.читати', 'файл.список', 'файл.писати', 'агент', 'мережа.взяти', 'мережа.послати'}
 _EFFECTS = {}
 FN_SLOTS = {'∀': (1,), 'μ': (1,), 'φ': (1,), '⇅': (1,), '⊞': (1,), 'Σ': (2,), '↻': (1, 2), '☂': (1,), '🜍': (1,)}
 
@@ -1138,6 +1141,7 @@ TYPE_REQ = {
     '∧': [(_B, _B)], '∨': [(_B, _B)], '¬': [(_B,)], '¿': [(_B, _A, _A)],
     'ρ': [(_S,), (_L,), (_D,)], '§': [(_L, _N), (_S, _N), (_D, _S)], '✂': [(_S, _S)], '⁀': [(_L, _S)],
     '⇄': [(_S, _S, _S)], '⊢': [(_S,)], '⇣': [(_S,)], '⇡': [(_S,)], 'ν': [(_S,)], 'δ': [(_S,)],
+    '◷': [(_S, _S), (_S, _N)], '▦': [(_S,)],
     '⌕': [(_S, _S)], '≋': [(_S, _S, _S)], '⊏': [(c, a, b) for c in (_S, _L) for a in (_N, 'none') for b in (_N, 'none')],
     '⊳': [(_S, _S), (_L, _A)], '∋': [(_S, _S), (_L, _A), (_D, _S)], 'κ': [(_D,)], '↑': [(_L,)],
     '↺': [(_S,), (_L,)], '✎': [(_D, _S, _A)], '⚗': [(_L, _N)], '≈': [(_A, _N)],
@@ -1148,10 +1152,11 @@ TYPE_REQ = {
 TYPE_RES = {'－': _N, '×': _N, '÷': _N, '‰': _N, '⌊': _N, '≅': _N, 'ρ': _N, 'ν': _N, '±': _N, '⊳': _N,
             '＝': _B, '≠': _B, '‹': _B, '›': _B, '≤': _B, '≥': _B, '∧': _B, '∨': _B, '¬': _B, '∋': _B,
             'σ': _S, '⌗': _S, '⁀': _S, '⇄': _S, '⊢': _S, '⇣': _S, '⇡': _S, '≋': _S, 'Δ': _S,
-            '✂': _L, 'μ': _L, 'φ': _L, '⇅': _L, '↑': _L, '⌕': _L, 'κ': _L, '…': _L, '⚗': _L, '⌂': _L,
+            '▦': _L, '✂': _L, 'μ': _L, 'φ': _L, '⇅': _L, '↑': _L, '⌕': _L, 'κ': _L, '…': _L, '⚗': _L, '⌂': _L,
             '⊞': _D, '✎': _D, '∀': 'none', '»': 'none', '🜄': 'none', '☠': 'none'}
 TOOL_TYPES = {'оракул': ((_A,), _B), 'жереб': ((_N,), _N), 'час': ((), _S), 'файл.читати': ((_S,), _S),
               'файл.писати': ((_S, _S), 'none'), 'файл.список': ((_S,), _L), 'мережа.взяти': ((_S,), _S),
+              'мережа.послати': ((_S, _A), _S),
               'агент': ((_S, _S), _S)}
 
 
@@ -1830,6 +1835,44 @@ def regex(pat, g, pos):
     return r
 
 
+def _iso(s, pos):
+    from datetime import date as _d
+    if not isinstance(s, str):
+        raise NgrError(f'◷: дата — рядок ISO (2026-10-15 або 2026-10-15T09:30:00), а не {type(s).__name__}', pos)
+    try:
+        return _d.fromisoformat(s) if len(s) == 10 else datetime.fromisoformat(s.replace('Z', '+00:00'))
+    except ValueError:
+        raise NgrError(f'◷: «{safe(s)[:40]}» — не дата ISO (2026-10-15 або 2026-10-15T09:30:00)', pos)
+
+
+def date_op(x, y, pos):
+    """◷ a b: дві дати — дні від a до b (ціле для дат, дріб із часом); дата й число — дата через стільки днів."""
+    from datetime import date as _d, timedelta
+    a = _iso(x, pos)
+    if isinstance(y, str):
+        b = _iso(y, pos)
+        if type(a) is _d and type(b) is _d:
+            return (b - a).days
+        a2 = a if isinstance(a, datetime) else datetime(a.year, a.month, a.day)
+        b2 = b if isinstance(b, datetime) else datetime(b.year, b.month, b.day)
+        if (a2.tzinfo is None) != (b2.tzinfo is None):
+            raise NgrError('◷: одна дата з часовим поясом, інша — без; додайте пояс до обох', pos)
+        d = b2 - a2
+        us = (d.days * 86400 + d.seconds) * 10 ** 6 + d.microseconds
+        q = Decimal(us) / Decimal(86400 * 10 ** 6)
+        return int(q) if q == q.to_integral_value() else q
+    if isinstance(y, bool) or not isinstance(y, NUM):
+        raise NgrError('◷: другий аргумент — дата (рядок ISO) або кількість днів (число)', pos)
+    n = Decimal(repr(y)) if isinstance(y, float) else Decimal(y)
+    try:
+        if type(a) is _d and n == n.to_integral_value():
+            return (a + timedelta(days=int(n))).isoformat()
+        base = a if isinstance(a, datetime) else datetime(a.year, a.month, a.day)
+        return (base + timedelta(microseconds=int(n * 86400 * 10 ** 6))).isoformat()
+    except OverflowError:
+        raise NgrError('◷: дата поза межами (рік 1–9999)', pos)
+
+
 def t_oracle(it, pos, q):
     h = hashlib.sha256(show(q).encode()).digest()
     return V(bool(h[0] & 1), round(0.3 + 0.69 * int.from_bytes(h[1:3], 'big') / 65535, 2))
@@ -1877,7 +1920,8 @@ def t_list(it, pos, p):
         raise NgrError(os_err('файл.список', e, p.v), pos)
 
 
-def t_fetch(it, pos, url):
+def _http(it, pos, tool, url, body=None):
+    """HTTP до хоста з печатки (порти 80/443 або явний хост:порт), без логіна в адресі й без переадресацій."""
     u = url.v
     import urllib.parse
     import urllib.request                 # ліниво: мережа потрібна рідко, а імпорт коштує ~0,05 с запуску
@@ -1886,26 +1930,44 @@ def t_fetch(it, pos, url):
         port = parts.port if parts else None
     except ValueError:
         port = -1
-    allowed = it.caps['мережа.взяти']
+    allowed = it.caps[tool]
     ok = parts and parts.scheme in ('http', 'https') and not parts.username and not parts.password and (
         (parts.hostname in allowed and port in (None, 80, 443)) or f'{parts.hostname}:{port}' in allowed)
     if not ok:
-        raise NgrError(f'мережа.взяти: «{u}» поза дозволеним ({", ".join(allowed)}; інший порт, ніж 80/443, '
+        raise NgrError(f'{tool}: «{u}» поза дозволеним ({", ".join(allowed)}; інший порт, ніж 80/443, '
                        f'треба дозволити явно як хост:порт; без логіна в адресі)', pos)
 
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
-            raise NgrError(f'мережа.взяти: переадресацію на «{newurl}» заборонено — дозвольте й візьміть ту адресу явно', pos)
+            raise NgrError(f'{tool}: переадресацію на «{newurl}» заборонено — дозвольте й візьміть ту адресу явно', pos)
+    headers = {'User-Agent': f'nigredo/{VERSION}'}
+    data = None
+    if body is not None:                  # рядок — як текст; список чи словник — як JSON (точні десяткові)
+        if isinstance(body.v, str):
+            data, headers['Content-Type'] = body.v.encode(), 'text/plain; charset=utf-8'
+        elif isinstance(body.v, (list, dict)):
+            data, headers['Content-Type'] = to_json(body).encode(), 'application/json'
+        else:
+            raise NgrError(f'{tool}: тіло — рядок, список чи словник, а не {kind(body)}', pos)
     try:
         opener = urllib.request.build_opener(NoRedirect)
         q = urllib.parse.quote
         u = urllib.parse.urlunsplit(parts._replace(path=q(parts.path, safe='/%'), query=q(parts.query, safe='=&%+')))
-        with opener.open(urllib.request.Request(u, headers={'User-Agent': f'nigredo/{VERSION}'}), timeout=30) as r:
+        req = urllib.request.Request(u, data=data, headers=headers, method='POST' if body is not None else 'GET')
+        with opener.open(req, timeout=30) as r:
             return V(r.read(1_000_000).decode('utf-8', 'replace'))
     except NgrError:
         raise
     except Exception as e:
-        raise NgrError(f'мережа.взяти: {e}', pos)
+        raise NgrError(f'{tool}: {e}', pos)
+
+
+def t_fetch(it, pos, url):
+    return _http(it, pos, 'мережа.взяти', url)
+
+
+def t_send(it, pos, url, body):
+    return _http(it, pos, 'мережа.послати', url, body)
 
 
 def t_agent(it, pos, name, prompt):
@@ -1939,13 +2001,16 @@ TOOLS = {
     'файл.писати': (2, '🜔писати шлях текст → ∅', 'записати (перезаписати) текстовий файл', True, 'тека', t_write),
     'файл.список': (1, '🜔список тека → список', 'імена в теці', True, 'тека', t_list),
     'мережа.взяти': (1, '🜔взяти url → рядок', 'HTTP GET (до 1 МБ, 30 с)', True, 'хост', t_fetch),
+    'мережа.послати': (2, '🜔послати url тіло → рядок', 'HTTP POST: тіло-рядок — як текст, список чи словник — як JSON; '
+                       'відповідь до 1 МБ, 30 с (окремий дозвіл: надсилання даних назовні)', True, 'хост', t_send),
     'агент': (2, '🜔агент 「імʼя」 「запит」 → рядок', 'спитати справжнього агента з реєстру лаунчера '
               '(claude -p у його теці; він діє з власними правами)', True, 'імʼя', t_agent),
 }
 
 
 # короткі назви інструментів (у печатці, 🜔 і дозволах власника) — синоніми повних; у звітах, сліді — повні
-TOOL_ALIASES = {'читати': 'файл.читати', 'писати': 'файл.писати', 'список': 'файл.список', 'взяти': 'мережа.взяти'}
+TOOL_ALIASES = {'читати': 'файл.читати', 'писати': 'файл.писати', 'список': 'файл.список', 'взяти': 'мережа.взяти',
+                'послати': 'мережа.послати'}
 TOOL_SHORT = {v: k for k, v in TOOL_ALIASES.items()}
 
 
@@ -2344,7 +2409,7 @@ class Interp:
         if k == 'tool':
             args = [self.eval(a, env) for a in node[3]]
             name = node[2]
-            full = name in ('агент', 'мережа.взяти', 'файл.писати')     # те, що йде назовні, — у слід повністю
+            full = name in ('агент', 'мережа.взяти', 'мережа.послати', 'файл.писати')     # те, що йде назовні, — у слід повністю
             targs = [trace_val(a, full) for a in args]
             if name not in self.caps:          # права — того, хто виконує зараз, а не того, хто написав функцію
                 self.trace('заборонено', агент=self.agent, назва=name, аргументи=targs,
@@ -2782,6 +2847,13 @@ class Interp:
             if isinstance(x, dict):
                 return V(self.need(y, 'рядок', g, pos) in x)
             raise NgrError(f'∋: очікувався рядок, список чи словник, а не {kind(a[0])}', pos)
+        if g == '◷':
+            return V(date_op(a[0].v, a[1].v, pos))
+        if g == '▦':
+            import csv
+            import io as _io
+            rows = list(csv.DictReader(_io.StringIO(self.need(a[0], 'рядок', g, pos))))
+            return V([V({str(k): V(v if v is not None else '') for k, v in r.items() if k is not None}) for r in rows])
         if g in '⇣⇡':
             x = self.need(a[0], 'рядок', g, pos)
             return V(x.lower() if g == '⇣' else x.upper())
@@ -3167,7 +3239,7 @@ def cheatsheet_short():
     """Стисла памʼятка для контексту агента (MCP-опис, ~1–1.5 тис. токенів)."""
     lines = [f'Nigredo {VERSION}: префіксний запис, фіксована арність, 1 рядок = 1 вираз (продовження — більший відступ, ¦ — розділювач).',
              'Перший рядок — ПЕЧАТКА: 🜂 【「дозвіл」 …】 (намір за бажанням: 🜂 「намір」 【…】; без дозволів — просто 🜂);',
-             'дозволи: 「оракул」 「жереб」 「час」 「читати:тека」 「писати:тека」 「список:тека」 「взяти:хост」 「агент:імʼя」',
+             'дозволи: 「оракул」 「жереб」 「час」 「читати:тека」 「писати:тека」 「список:тека」 「взяти:хост」 「послати:хост」 「агент:імʼя」',
              '(повні назви файл.читати, мережа.взяти — синоніми). Поза печаткою — помилка до запуску.',
              'Рядок 「…」 (\\n \\」), список 【…】, словник 『к з …』, блок 《…》, коментар ※, так/ні/ніщо ● ○ ∅, мінус ¯5.',
              'До запуску ловляться: типи (＋ рядка й числа, умова не ●/○…), невідомі імена, арність, небезпечні регулярки.',
