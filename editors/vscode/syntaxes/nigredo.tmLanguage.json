@@ -1,0 +1,144 @@
+{
+ "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+ "name": "Nigredo",
+ "scopeName": "source.nigredo",
+ "fileTypes": [
+  "ngr"
+ ],
+ "patterns": [
+  {
+   "include": "#comment"
+  },
+  {
+   "include": "#seal"
+  },
+  {
+   "include": "#deleg"
+  },
+  {
+   "include": "#tool"
+  },
+  {
+   "include": "#string"
+  },
+  {
+   "include": "#template"
+  },
+  {
+   "include": "#lambda"
+  },
+  {
+   "include": "#bind"
+  },
+  {
+   "include": "#number"
+  },
+  {
+   "include": "#const"
+  },
+  {
+   "include": "#op"
+  },
+  {
+   "include": "#bracket"
+  }
+ ],
+ "repository": {
+  "comment": {
+   "name": "comment.line.nigredo",
+   "match": "※.*$"
+  },
+  "seal": {
+   "name": "keyword.control.seal.nigredo",
+   "match": "🜂"
+  },
+  "deleg": {
+   "name": "keyword.control.subagent.nigredo",
+   "match": "🜁"
+  },
+  "tool": {
+   "match": "(🜔)([^\\s「」【】『』《》〔〕]+)",
+   "captures": {
+    "1": {
+     "name": "keyword.control.tool.nigredo"
+    },
+    "2": {
+     "name": "entity.name.function.tool.nigredo"
+    }
+   }
+  },
+  "string": {
+   "name": "string.quoted.nigredo",
+   "begin": "「",
+   "end": "」",
+   "patterns": [
+    {
+     "name": "constant.character.escape.nigredo",
+     "match": "\\\\."
+    }
+   ]
+  },
+  "template": {
+   "name": "string.template.nigredo",
+   "begin": "〔",
+   "end": "〕",
+   "patterns": [
+    {
+     "name": "constant.character.escape.nigredo",
+     "match": "\\\\."
+    },
+    {
+     "name": "meta.embedded.expression.nigredo",
+     "begin": "\\{",
+     "end": "\\}",
+     "beginCaptures": {
+      "0": {
+       "name": "punctuation.section.embedded.nigredo"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "punctuation.section.embedded.nigredo"
+      }
+     },
+     "patterns": [
+      {
+       "include": "$self"
+      }
+     ]
+    }
+   ]
+  },
+  "lambda": {
+   "name": "storage.type.function.nigredo",
+   "match": "[λΛ]"
+  },
+  "bind": {
+   "match": "(←)\\s*([^\\s「」【】『』《》〔〕]+)",
+   "captures": {
+    "1": {
+     "name": "keyword.operator.assignment.nigredo"
+    },
+    "2": {
+     "name": "variable.other.definition.nigredo"
+    }
+   }
+  },
+  "number": {
+   "name": "constant.numeric.nigredo",
+   "match": "¯?\\d+(\\.\\d+)?"
+  },
+  "const": {
+   "name": "constant.language.nigredo",
+   "match": "[●○∅]"
+  },
+  "op": {
+   "name": "keyword.operator.glyph.nigredo",
+   "match": "[⊃∘►▶＋－×÷‰⌊＝≠‹›≤≥∧∨¬¿∀μ‖φΣ∫↻☂☠…ρ§✎κε↺↑✂⁀σνδΔ∋⇄⊢⇣◷▦✓χ↘⇡⊏⊳⌕≋⇅⊞№≅⌗⌂»≈±⚗🜄🜃🜍]|¦"
+  },
+  "bracket": {
+   "name": "punctuation.section.nigredo",
+   "match": "[【】『』《》]"
+  }
+ }
+}
