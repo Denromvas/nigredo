@@ -249,6 +249,65 @@ def main():
           'послати: JSON без втрат, тіло повністю в сліді', got.stdout + got.stderr)
     got = run(['-e', f'🜂 【「послати:127.0.0.1:{port}」】\n» 🜔послати 「http://127.0.0.1:1/x」 「a」'], env)
     check(got.returncode == 1 and 'поза дозволеним' in got.stderr, 'послати: інший порт — відмова під час виконання', got.stderr)
+    # SQLite і процеси — окремий власник: бд у тимчасовій теці, команди — точним початком
+    bh, bd = tmp / 'власник_бд', tmp / 'бд'
+    bh.mkdir()
+    (bd / 'bin').mkdir(parents=True)
+    (bh / 'дозволи.json').write_text(json.dumps({'дозволено': [
+        f'бд.читати:{bd}', f'бд.писати:{bd}', 'процес:git --version', 'процес:sh', 'процес:мій'],
+        'для_тек': {}}, ensure_ascii=False), encoding='utf-8')
+    benv = dict(env, NIGREDO_HOME=str(bh))
+    bseal = f'🜂 【「бд.писати:{bd}」 「бд.читати:{bd}」】\n'
+    btr = tmp / 'бд.jsonl'
+    got = run(['--слід', str(btr), '-e', bseal + f'🜔бд.писати 「{bd}/a.db」 「CREATE TABLE t(імʼя TEXT, сума REAL)」 【】\n'
+               f'» 🜔бд.писати 「{bd}/a.db」 「INSERT INTO t VALUES (?, ?), (?, ?)」 【「а」 12.50 「{"я" * 5000}СЕКРЕТНИЙ-ХВІСТ」 3】\n'
+               f'» 🜔бд.читати 「{bd}/a.db」 「SELECT імʼя, сума FROM t WHERE сума > ? ORDER BY сума」 【5】'], benv)
+    check(got.returncode == 0 and got.stdout == '2\n【『「імʼя」 「а」 「сума」 12.5』】\n'
+          and 'СЕКРЕТНИЙ-ХВІСТ' in btr.read_text(encoding='utf-8'),
+          'бд: створити, вставити з параметрами, прочитати; запис — у слід повністю', got.stdout + got.stderr)
+    for q, what in [(f"VACUUM INTO '{tmp}/поза.db'", 'VACUUM INTO'), (f"ATTACH '{tmp}/поза.db' AS п", 'ATTACH'),
+                    ('PRAGMA journal_mode=WAL', 'PRAGMA'), ('BEGIN', 'BEGIN'),
+                    ("SELECT load_extension('x')", 'load_extension'), ('SELECT 1; DROP TABLE t', 'дві інструкції')]:
+        got = run(['-e', bseal + f'» 🜔бд.писати 「{bd}/a.db」 「{q}」 【】'], benv)
+        check(got.returncode == 1 and not (tmp / 'поза.db').exists(), f'бд.писати: {what} — відмова', got.stderr)
+    got = run(['-e', bseal + f'» 🜔бд.читати 「{bd}/a.db」 「DELETE FROM t」 【】\n'], benv)
+    check(got.returncode == 1 and 'поза дозволеним' in got.stderr, 'бд.читати: DELETE — відмова', got.stderr)
+    got = run(['-e', bseal + f'» 🜔бд.читати 「{bd}/a.db」 「SELECT count(*) AS n FROM t」 【】'], benv)
+    check(got.stdout == '【『「n」 2』】\n', 'бд.читати: дані після відмов не змінилися', got.stdout + got.stderr)
+    got = run(['-e', bseal + f'» 🜔бд.читати 「{bd}/нема.db」 「SELECT 1」 【】'], benv)
+    check(got.returncode == 1 and not (bd / 'нема.db').exists(), 'бд.читати: файл не створює', got.stderr)
+    got = run(['-e', bseal + f'» 🜔бд.читати 「{tmp}/a.db」 「SELECT 1」 【】'], benv)
+    check(got.returncode == 1 and 'поза дозволеним' in got.stderr, 'бд.читати: файл поза текою — відмова', got.stderr)
+    got = run(['--кроки', '100000', '-e', bseal + f'» 🜔бд.читати 「{bd}/a.db」 「WITH RECURSIVE r(n) AS (SELECT 1 '
+               f'UNION ALL SELECT n+1 FROM r) SELECT count(*) FROM r」 【】'], benv)
+    check(got.returncode != 0 and 'кроків' in got.stderr, 'бд: нескінченний запит списує --кроки', got.stderr)
+    got = run(['-e', bseal + f'» 🜔бд.читати 「{bd}/a.db」 「SELECT 1 AS x, 2 AS x」 【】'], benv)
+    check(got.returncode == 1 and 'однакові назви' in got.stderr, 'бд.читати: однакові стовпці — помилка, а не втрата', got.stderr)
+    got = run(['-e', '🜂 【「процес:git --version」】\n» ∋ 🜔процес 【「git」 「--version」】 「git」'], benv)
+    check(got.returncode == 0 and got.stdout == '●\n', 'процес: дозволена команда виконується', got.stdout + got.stderr)
+    ptr = tmp / 'процес.jsonl'
+    got = run(['--слід', str(ptr), '-e', f'🜂 【「процес:sh」】\n» ρ 🜔процес 【「sh」 「-c」 「true」 「{"я" * 5000}ХВІСТ-АРГУМЕНТУ」】'], benv)
+    check(got.stdout == '0\n' and 'ХВІСТ-АРГУМЕНТУ' in ptr.read_text(encoding='utf-8'), 'процес: аргументи — у слід повністю',
+          got.stdout + got.stderr)
+    got = run(['-e', '🜂 【「процес:git --version」】\n» 🜔процес 【「git」 「status」】'], benv)
+    check(got.returncode == 1 and 'поза дозволеним' in got.stderr, 'процес: інші аргументи — відмова', got.stderr)
+    got = run(['-e', '🜂 【「процес:git」】\n» 1'], benv)
+    check(got.returncode == 3, 'процес: печатка ширша за дозвіл власника (git ⊄ git --version) — код 3', got.stderr)
+    got = run(['-e', '🜂 【「процес:sh」】\n» ☂ 🜔процес 【「sh」 「-c」 「echo ой >&2; exit 3」】 λп ∋ п 「кодом 3: ой」'], benv)
+    check(got.stdout == '●\n', 'процес: не 0 — помилка з кодом і stderr, яку ловить ☂', got.stdout + got.stderr)
+    # скінченний вивід (1,1 МБ): тест безпечний, навіть якщо ліміт зламано (нескінченний yes без ліміту вбивав Termux)
+    got = run(['-e', '🜂 【「процес:sh」】\n» 🜔процес 【「sh」 「-c」 「head -c 1100000 /dev/zero」】'], benv)
+    check(got.returncode == 1 and '1 МБ' in got.stderr, 'процес: вивід понад 1 МБ — зупинено', got.stderr)
+    (bd / 'bin' / 'мій').write_text('#!/bin/sh\necho hi\n')
+    (bd / 'bin' / 'мій').chmod(0o755)
+    penv2 = dict(benv, PATH=f'{bd / "bin"}{os.pathsep}{os.environ.get("PATH", "")}')
+    got = run(['-e', bseal.replace('】', ' 「процес:мій」】', 1) + '» 🜔процес 【「мій」】'], penv2)
+    check(got.returncode == 3 and 'куди програмам дозволено писати' in got.stderr,
+          'процес: команда з теки запису — код 3', got.stderr)
+    got = run(['-e', '🜂 【「процес:sh」】\n» 🜁 「в」 【「процес:sh -c」】 🜔процес 【「sh」 「-c」 「echo ок」】'], benv)
+    check(got.returncode == 0 and got.stdout == 'ок\n\n', 'процес: субагент із вужчою командою', got.stdout + got.stderr)
+    got = run(['-e', '🜂 【「процес:sh -c」】\n» 🜁 「в」 【「процес:sh」】 1'], benv)
+    check(got.returncode != 0, 'процес: субагент із ширшою командою — відмова', got.stderr)
     seal = run(['--печатка', str(ROOT / 'examples' / 'ahent.ngr')], env).stdout
     check('права теки: немає' in seal and 'намір (слова автора): 「' in seal and 'необхідно, але не досить' in seal,
           '--печатка: слова автора в 「」, «права теки: немає», «необхідно, але не досить»', seal)
