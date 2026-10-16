@@ -1,0 +1,2 @@
+olia@example.com 3
+petro@example.com 2
