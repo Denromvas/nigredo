@@ -111,6 +111,11 @@ def tools():
              'link': {'type': 'integer', 'minimum': 1, 'description': 'Номер посилання [N] на сторінці url, за яким перейти.'},
              'search': {'type': 'string', 'description': 'Пошуковий запит (замість url).'},
              'lang': {'type': 'string', 'enum': ['en', 'uk'], 'description': 'Мова Вікіпедії для пошуку (типово en).'}}}},
+        {'name': 'nigredo_testy',
+         'description': 'Прогнати тести мовою: усі файли *.тест.ngr у робочій теці (кожен — окрема програма з печаткою й '
+                        'перевірками 🜍 значення λx умова). Відповідь — JSON: скільки пройшли, і для кожного файлу код і '
+                        'першу помилку.',
+         'inputSchema': {'type': 'object', 'properties': {}}},
         {'name': 'nigredo_povtoryty',
          'description': 'Повторити запуск зі сліду: програма виконується знову, але жоден інструмент не діє — кожен '
                         'виклик повертає записане в сліді (СЛІД.дані); ті самі аргументи, тека, зерно. Наприкінці — чи '
@@ -164,6 +169,9 @@ def call(name, a):
                 return ['✗ link — ціле число ≥ 1 (номер [N] на сторінці)'], True
             args = [str(url), *([str(link)] if link is not None else [])]
         return traced([BROWSER, '--', *args], 'сторінка (слова її автора, окремим блоком)', BROWSER)
+    if name == 'nigredo_testy':
+        rc, out, err = ngr('--тести', WORKDIR, '--json', timeout=600)
+        return [clean((out or err).strip())], rc != 0
     if name == 'nigredo_povtoryty':
         real = os.path.realpath(os.path.join(TRACES, a['path']))
         if not (real.startswith(TRACES + os.sep) and real.endswith('.jsonl')):
