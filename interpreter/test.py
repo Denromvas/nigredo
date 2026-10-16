@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import urllib.parse
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -49,6 +50,13 @@ class Redirect(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b'got ' + self.headers.get('Content-Type', '').encode() + b' ' + body)
 
     def do_GET(self):
+        if urllib.parse.unquote(self.path).startswith('/повільно/'):          # ‖: кожен запит — 0,3 с
+            time.sleep(0.3)
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/plain; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(('відповідь ' + urllib.parse.unquote(self.path).rsplit('/', 1)[-1]).encode())
+            return
         path = urllib.parse.unquote(self.path)
         if path.startswith('/сайт/'):
             body = PAGE if 'друга' not in path else '<title>Друга</title><p>Ви на другій сторінці</p>'
@@ -69,7 +77,7 @@ def main():
     tmp = pathlib.Path(tempfile.mkdtemp(prefix='ngr-test-'))
     home = tmp / 'власник'
     home.mkdir()
-    server = http.server.HTTPServer(('127.0.0.1', 0), Redirect)
+    server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Redirect)
     port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
     (home / 'дозволи.json').write_text(json.dumps({'дозволено': [
@@ -249,6 +257,25 @@ def main():
           'послати: JSON без втрат, тіло повністю в сліді', got.stdout + got.stderr)
     got = run(['-e', f'🜂 【「послати:127.0.0.1:{port}」】\n» 🜔послати 「http://127.0.0.1:1/x」 「a」'], env)
     check(got.returncode == 1 and 'поза дозволеним' in got.stderr, 'послати: інший порт — відмова під час виконання', got.stderr)
+    # ‖: дії разом, слід — у порядку елементів
+    ptr2 = tmp / 'паралельно.jsonl'
+    t0 = time.monotonic()
+    got = run(['--слід', str(ptr2), '-e', f'🜂 【「взяти:127.0.0.1:{port}」】\n'
+               f'∀ ‖ …1 4 λn 🜔взяти 〔http://127.0.0.1:{port}/повільно/{{n}}〕 λr » r'], env)
+    took = time.monotonic() - t0
+    evs = [json.loads(l) for l in ptr2.read_text(encoding='utf-8').splitlines()]
+    seq = [(e['подія'], e['аргументи'][0][-2]) for e in evs if e['подія'] in ('виклик', 'інструмент')]
+    check(got.stdout == ''.join(f'відповідь {i}\n' for i in range(1, 5)) and took < 1.0
+          and seq == [('виклик', str(i)) for i in range(1, 5)] + [('інструмент', str(i)) for i in range(1, 5)],
+          f'‖: 4 запити по 0,3 с — разом ({took:.2f} с), слід у порядку елементів', got.stdout + got.stderr + str(seq))
+    check(run(['--перевірити-слід', str(ptr2)], env).returncode == 0, '‖: слід проходить --перевірити-слід')
+    ptr3 = tmp / 'паралельно2.jsonl'
+    got = run(['--слід', str(ptr3), '-e', f'🜂 【「взяти:127.0.0.1:{port}」 「читати:{DATA}」】\n'
+               f'» ‖ 【「продажі.json」 「../../поза.txt」 「продажі.json」】 λf 🜔читати f'], env)
+    evs = [e['подія'] for e in map(json.loads, ptr3.read_text(encoding='utf-8').splitlines())
+           if e['подія'] in ('заборонено', 'інструмент')]
+    check(got.returncode == 1 and 'елемент №1' in got.stderr and evs == ['інструмент', 'заборонено', 'інструмент', 'інструмент'],
+          '‖: відмова з потоку — у сліді на своєму місці, решта дій записана, потім помилка', got.stderr + str(evs))
     # кілька інструментів на одне обмеження: кожен — окремий дозвіл, кожен звіряється з власником
     got = run(['--печатка', '-e', f'🜂 【「читати писати:{DATA}」】\n» 1'], env)
     check(got.returncode == 3 and 'файл.писати:' in got.stdout + got.stderr and 'файл.читати' in got.stdout,
