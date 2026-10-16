@@ -2165,7 +2165,7 @@ def _db(it, pos, tool, p, sql, params, write):
         return sqlite3.SQLITE_DENY
     if not write and not os.path.isfile(real):
         raise NgrError(f'{tool}: немає такого файлу: {p.v}', pos)
-    deadline = time.monotonic() + 30
+    deadline = min(time.monotonic() + 30, getattr(it, 'par_deadline', None) or float('inf'))   # у ‖ — спільні 30 с
 
     def progress():                 # ~1000 інструкцій SQLite ≈ 10 кроків Nigredo за часом
         it.steps_left -= 10
@@ -2601,6 +2601,7 @@ class Interp:
         self.defer_node = None  # тіло ‖, чий виклик інструмента відкладено
         self.tl = threading.local()   # для дії інструмента (і в потоці ‖): справжні шляхи, які він узяв
         self.ends = 0           # скільки записів «інструмент» уже зроблено (номер виклику для повтору)
+        self.par_deadline = None   # ‖: спільний ліміт часу запитів SQLite
         self.replay = None      # --повторити: (записи «інструмент», сховище значень)
         self.dry = None         # --сухо: список придушених дій (записи, надсилання, процеси, агенти)
 
@@ -2705,8 +2706,13 @@ class Interp:
             finally:
                 if tl is not None:
                     tl.buf = None
-        with ThreadPoolExecutor(max_workers=max(1, min(PAR_MAX, len(jobs)))) as ex:
-            done = list(ex.map(run, [j.v[1] for j in jobs]))
+        import time
+        self.par_deadline = time.monotonic() + 30     # один ліміт часу на всі запити ‖, а не 30 с кожному (суд 7)
+        try:
+            with ThreadPoolExecutor(max_workers=max(1, min(PAR_MAX, len(jobs)))) as ex:
+                done = list(ex.map(run, [j.v[1] for j in jobs]))
+        finally:
+            self.par_deadline = None
         out, first = [], None
         for i, (j, (outcome, buf)) in enumerate(zip(jobs, done)):
             for event, data in buf:                          # записи з потоку — на своєму місці
