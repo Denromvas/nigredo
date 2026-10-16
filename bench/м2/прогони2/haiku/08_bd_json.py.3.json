@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nimport sqlite3\nfrom collections import defaultdict\n\nwith open(\"дані/клієнти.json\", encoding=\"utf-8\") as f:\n    клієнти = json.load(f)\n\ncon = sqlite3.connect(\"дані/база.db\")\ntry:\n    рядки = con.execute(\n        \"SELECT клієнт_id, сума FROM оплати WHERE статус = ?\",\n        (\"ок\",),\n    ).fetchall()\nfinally:\n    con.close()\n\nрегіони = defaultdict(lambda: {\"сума\": 0, \"ідентифікатори\": set()})\n\nfor клієнт_id, сума in рядки:\n    ключ = str(клієнт_id)\n    if ключ not in клієнти:\n        continue\n    регіон = клієнти[ключ][\"регіон\"]\n    регіони[регіон][\"сума\"] += сума or 0\n    регіони[регіон][\"ідентифікатори\"].add(ключ)\n\nfor регіон, дані in sorted(регіони.items(), key=lambda x: (-x[1][\"сума\"], x[0])):\n    імена = sorted(клієнти[ключ][\"імʼя\"] for ключ in дані[\"ідентифікатори\"])\n    print(f\"{регіон}: {дані['сума']} ({', '.join(імена)})\")\n",
+  "відповідь": "```python\nimport json\nimport sqlite3\nfrom collections import defaultdict\n\nwith open(\"дані/клієнти.json\", encoding=\"utf-8\") as f:\n    клієнти = json.load(f)\n\ncon = sqlite3.connect(\"дані/база.db\")\ntry:\n    рядки = con.execute(\n        \"SELECT клієнт_id, сума FROM оплати WHERE статус = ?\",\n        (\"ок\",),\n    ).fetchall()\nfinally:\n    con.close()\n\nрегіони = defaultdict(lambda: {\"сума\": 0, \"ідентифікатори\": set()})\n\nfor клієнт_id, сума in рядки:\n    ключ = str(клієнт_id)\n    if ключ not in клієнти:\n        continue\n    регіон = клієнти[ключ][\"регіон\"]\n    регіони[регіон][\"сума\"] += сума or 0\n    регіони[регіон][\"ідентифікатори\"].add(ключ)\n\nfor регіон, дані in sorted(регіони.items(), key=lambda x: (-x[1][\"сума\"], x[0])):\n    імена = sorted(клієнти[ключ][\"імʼя\"] for ключ in дані[\"ідентифікатори\"])\n    print(f\"{регіон}: {дані['сума']} ({', '.join(імена)})\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "захід: 240 (Денис, Оля)\nсхід: 75 (Петро)\n",
+  "помилки": ""
+ }
+]

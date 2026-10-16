@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nfrom pathlib import Path\n\nUA = \"абвгґдеєжзиіїйклмнопрстуфхцчшщьюя\"\n\n\ndef ключ(s):\n    s = str(s).lower()\n    return [UA.index(c) + 1 if c in UA else 1000 + ord(c) for c in s]\n\n\nбаза = Path(\"дані\")\n\nwith open(база / \"початок.json\", encoding=\"utf-8\") as f:\n    початок = json.load(f)\n\nwith open(база / \"рух.json\", encoding=\"utf-8\") as f:\n    рух = json.load(f)\n\nзалишок = dict(початок)\nпершй_мінус = {}\n\nfor подія in рух:\n    товар = подія[\"товар\"]\n    залишок[товар] = залишок.get(товар, 0) + подія[\"зміна\"]\n    if залишок[товар] < 0 and товар not in першй_мінус:\n        першй_мінус[товар] = подія[\"час\"]\n\nif not першй_мінус:\n    print(\"усе гаразд\")\nelse:\n    for товар in sorted(першй_мінус, key=ключ):\n        print(f\"{товар}: {першй_мінус[товар]}\")\n",
+  "відповідь": "```python\nimport json\nfrom pathlib import Path\n\nUA = \"абвгґдеєжзиіїйклмнопрстуфхцчшщьюя\"\n\n\ndef ключ(s):\n    s = str(s).lower()\n    return [UA.index(c) + 1 if c in UA else 1000 + ord(c) for c in s]\n\n\nбаза = Path(\"дані\")\n\nwith open(база / \"початок.json\", encoding=\"utf-8\") as f:\n    початок = json.load(f)\n\nwith open(база / \"рух.json\", encoding=\"utf-8\") as f:\n    рух = json.load(f)\n\nзалишок = dict(початок)\nпершй_мінус = {}\n\nfor подія in рух:\n    товар = подія[\"товар\"]\n    залишок[товар] = залишок.get(товар, 0) + подія[\"зміна\"]\n    if залишок[товар] < 0 and товар not in першй_мінус:\n        першй_мінус[товар] = подія[\"час\"]\n\nif not першй_мінус:\n    print(\"усе гаразд\")\nelse:\n    for товар in sorted(першй_мінус, key=ключ):\n        print(f\"{товар}: {першй_мінус[товар]}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "болт: 09:20\nгайка: 09:10\n",
+  "помилки": ""
+ }
+]

@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import os\n\n\ndef read_names(path):\n    names = {}\n    with open(path, encoding=\"utf-8-sig\") as f:\n        for line in f:\n            name = line.strip()\n            if not name:\n                continue\n            names.setdefault(name.casefold(), name)\n    return names\n\n\ndef fmt(items):\n    if not items:\n        return \"—\"\n    return \", \".join(sorted(items, key=lambda s: (s.casefold(), s)))\n\n\ndef main():\n    base = \"дані\"\n    yesterday = read_names(os.path.join(base, \"вчора.txt\"))\n    today = read_names(os.path.join(base, \"сьогодні.txt\"))\n\n    added = [today[k] for k in today if k not in yesterday]\n    removed = [yesterday[k] for k in yesterday if k not in today]\n    stayed = sum(1 for k in today if k in yesterday)\n\n    print(\"додано: \" + fmt(added))\n    print(\"зникло: \" + fmt(removed))\n    print(\"лишилось: \" + str(stayed))\n\n\nmain()\n",
+  "відповідь": "```python\nimport os\n\n\ndef read_names(path):\n    names = {}\n    with open(path, encoding=\"utf-8-sig\") as f:\n        for line in f:\n            name = line.strip()\n            if not name:\n                continue\n            names.setdefault(name.casefold(), name)\n    return names\n\n\ndef fmt(items):\n    if not items:\n        return \"—\"\n    return \", \".join(sorted(items, key=lambda s: (s.casefold(), s)))\n\n\ndef main():\n    base = \"дані\"\n    yesterday = read_names(os.path.join(base, \"вчора.txt\"))\n    today = read_names(os.path.join(base, \"сьогодні.txt\"))\n\n    added = [today[k] for k in today if k not in yesterday]\n    removed = [yesterday[k] for k in yesterday if k not in today]\n    stayed = sum(1 for k in today if k in yesterday)\n\n    print(\"додано: \" + fmt(added))\n    print(\"зникло: \" + fmt(removed))\n    print(\"лишилось: \" + str(stayed))\n\n\nmain()\n```\n",
+  "код_виходу": 0,
+  "вивід": "додано: Богдан, Марко\nзникло: Анна, Денис\nлишилось: 2\n",
+  "помилки": ""
+ }
+]

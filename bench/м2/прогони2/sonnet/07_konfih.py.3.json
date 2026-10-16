@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\n\n\ndef main():\n    with open(\"дані/конфіги.json\", encoding=\"utf-8\") as f:\n        configs = json.load(f)\n\n    def fmt(v):\n        if isinstance(v, str):\n            return v\n        return json.dumps(v, ensure_ascii=False)\n\n    for name in sorted(configs):\n        chain = []\n        seen = set()\n        cur = name\n        cyclic = False\n        while cur is not None and cur in configs:\n            if cur in seen:\n                cyclic = True\n                break\n            seen.add(cur)\n            chain.append(cur)\n            cur = configs[cur].get(\"успадковує\")\n\n        if cyclic:\n            print(f\"{name}: цикл\")\n            continue\n\n        result = {}\n        for n in reversed(chain):\n            result.update(configs[n].get(\"значення\") or {})\n\n        body = \", \".join(f\"{k}={fmt(result[k])}\" for k in sorted(result))\n        print(f\"{name}: {body}\".rstrip())\n\n\nmain()\n",
+  "відповідь": "```python\nimport json\n\n\ndef main():\n    with open(\"дані/конфіги.json\", encoding=\"utf-8\") as f:\n        configs = json.load(f)\n\n    def fmt(v):\n        if isinstance(v, str):\n            return v\n        return json.dumps(v, ensure_ascii=False)\n\n    for name in sorted(configs):\n        chain = []\n        seen = set()\n        cur = name\n        cyclic = False\n        while cur is not None and cur in configs:\n            if cur in seen:\n                cyclic = True\n                break\n            seen.add(cur)\n            chain.append(cur)\n            cur = configs[cur].get(\"успадковує\")\n\n        if cyclic:\n            print(f\"{name}: цикл\")\n            continue\n\n        result = {}\n        for n in reversed(chain):\n            result.update(configs[n].get(\"значення\") or {})\n\n        body = \", \".join(f\"{k}={fmt(result[k])}\" for k in sorted(result))\n        print(f\"{name}: {body}\".rstrip())\n\n\nmain()\n```\n",
+  "код_виходу": 0,
+  "вивід": "а: цикл\nб: цикл\nбаза: порт=80, хост=localhost\nв: цикл\nрозробка: налагодження=true, порт=8080, хост=localhost\nтест: налагодження=true, порт=8080, хост=test.local\n",
+  "помилки": ""
+ }
+]

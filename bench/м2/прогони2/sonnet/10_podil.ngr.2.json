@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "🜂 「поділ суми за вагами до копійок」 【「читати:дані」】\n← dat δ 🜔читати 「поділ.json」\n← tot ⌊ × ν §dat 「сума」 100\n← wts §dat 「ваги」\n← sw ∫ κ wts λk §wts k\n← rows μ ε wts λ【k w】 《\n  ← m × tot w\n  ← o ‰ m sw\n  【k ÷ － m o sw o】\n》\n← left － tot ∫ rows λp §p 1\n← ranked ⇅ rows λp 【－ 0 §p 2 §p 0】\n← ex μ ⊏ ranked 0 left λp §p 0\n∀ ⇅ rows λp §p 0 λp » 〔{§p 0}: {⌗ ÷ ＋ §p 1 ¿ ∋ ex §p 0 1 0 100 2}〕\n",
+  "відповідь": "```\n🜂 「поділ суми за вагами до копійок」 【「читати:дані」】\n← dat δ 🜔читати 「поділ.json」\n← tot ⌊ × ν §dat 「сума」 100\n← wts §dat 「ваги」\n← sw ∫ κ wts λk §wts k\n← rows μ ε wts λ【k w】 《\n  ← m × tot w\n  ← o ‰ m sw\n  【k ÷ － m o sw o】\n》\n← left － tot ∫ rows λp §p 1\n← ranked ⇅ rows λp 【－ 0 §p 2 §p 0】\n← ex μ ⊏ ranked 0 left λp §p 0\n∀ ⇅ rows λp §p 0 λp » 〔{§p 0}: {⌗ ÷ ＋ §p 1 ¿ ∋ ex §p 0 1 0 100 2}〕\n```\n",
+  "код_виходу": 0,
+  "вивід": "Анна: 500.00\nДенис: 166.67\nОля: 166.67\nПетро: 166.66\n",
+  "помилки": ""
+ }
+]

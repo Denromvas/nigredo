@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import re\nimport sys\nfrom collections import Counter\n\ndef main():\n    лічильник = Counter()\n    шаблон = re.compile(r'https?://[^\\s]+', re.IGNORECASE)\n    with open('дані/запити.log', encoding='utf-8', errors='replace') as f:\n        for рядок in f:\n            m = шаблон.search(рядок)\n            if not m:\n                continue\n            адреса = m.group(0)\n            решта = адреса.split('://', 1)[1]\n            домен = re.split(r'[/:]', решта, 1)[0].lower()\n            if домен.startswith('www.'):\n                домен = домен[4:]\n            if домен:\n                лічильник[домен] += 1\n    for домен, n in sorted(лічильник.items(), key=lambda x: (-x[1], x[0]))[:3]:\n        print(f'{домен} {n}')\n\nmain()\n",
+  "відповідь": "```python\nimport re\nimport sys\nfrom collections import Counter\n\ndef main():\n    лічильник = Counter()\n    шаблон = re.compile(r'https?://[^\\s]+', re.IGNORECASE)\n    with open('дані/запити.log', encoding='utf-8', errors='replace') as f:\n        for рядок in f:\n            m = шаблон.search(рядок)\n            if not m:\n                continue\n            адреса = m.group(0)\n            решта = адреса.split('://', 1)[1]\n            домен = re.split(r'[/:]', решта, 1)[0].lower()\n            if домен.startswith('www.'):\n                домен = домен[4:]\n            if домен:\n                лічильник[домен] += 1\n    for домен, n in sorted(лічильник.items(), key=lambda x: (-x[1], x[0]))[:3]:\n        print(f'{домен} {n}')\n\nmain()\n```\n",
+  "код_виходу": 0,
+  "вивід": "example.com 3\napi.example.com 2\ndocs.python.org 2\n",
+  "помилки": "/tmp/м2-run-5nymi3kw/рішення.py:15: DeprecationWarning: 'maxsplit' is passed as positional argument\n  домен = re.split(r'[/:]', решта, 1)[0].lower()\n"
+ }
+]

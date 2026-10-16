@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import csv\nfrom decimal import Decimal, getcontext\n\ngetcontext().prec = 2000\n\ndef fmt(d):\n    s = format(d, 'f')\n    if '.' in s:\n        s = s.rstrip('0').rstrip('.')\n    if s in ('-0', ''):\n        s = '0'\n    return s\n\ngroups = {}\nwith open('дані/виміри.csv', encoding='utf-8-sig', newline='') as f:\n    reader = csv.reader(f)\n    next(reader, None)\n    for row in reader:\n        if not row:\n            continue\n        name = row[0].strip()\n        val = row[1].strip() if len(row) > 1 else ''\n        lst = groups.setdefault(name, [])\n        if val != '':\n            lst.append(Decimal(val))\n\nfor name in sorted(groups):\n    vals = sorted(groups[name])\n    n = len(vals)\n    if n == 0:\n        print(f\"{name}: —\")\n        continue\n    if n % 2:\n        med = vals[n // 2]\n    else:\n        med = (vals[n // 2 - 1] + vals[n // 2]) / 2\n    print(f\"{name}: {fmt(med)}\")\n",
+  "відповідь": "```python\nimport csv\nfrom decimal import Decimal, getcontext\n\ngetcontext().prec = 2000\n\ndef fmt(d):\n    s = format(d, 'f')\n    if '.' in s:\n        s = s.rstrip('0').rstrip('.')\n    if s in ('-0', ''):\n        s = '0'\n    return s\n\ngroups = {}\nwith open('дані/виміри.csv', encoding='utf-8-sig', newline='') as f:\n    reader = csv.reader(f)\n    next(reader, None)\n    for row in reader:\n        if not row:\n            continue\n        name = row[0].strip()\n        val = row[1].strip() if len(row) > 1 else ''\n        lst = groups.setdefault(name, [])\n        if val != '':\n            lst.append(Decimal(val))\n\nfor name in sorted(groups):\n    vals = sorted(groups[name])\n    n = len(vals)\n    if n == 0:\n        print(f\"{name}: —\")\n        continue\n    if n % 2:\n        med = vals[n // 2]\n    else:\n        med = (vals[n // 2 - 1] + vals[n // 2]) / 2\n    print(f\"{name}: {fmt(med)}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "А: 2.5\nБ: 2\nВ: —\nГ: 0.15\nД: 3\n",
+  "помилки": ""
+ }
+]

@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import csv\nimport os\nfrom decimal import Decimal\nfrom collections import defaultdict\n\n\ndef форматувати(d):\n    s = format(d, \"f\")\n    if \".\" in s:\n        s = s.rstrip(\"0\").rstrip(\".\")\n    if s in (\"-0\", \"\"):\n        s = \"0\"\n    return s\n\n\ndef main():\n    шлях = os.path.join(\"дані\", \"виміри.csv\")\n    групи = defaultdict(list)\n    with open(шлях, encoding=\"utf-8-sig\", newline=\"\") as f:\n        читач = csv.DictReader(f)\n        for рядок in читач:\n            датчик = (рядок.get(\"датчик\") or \"\").strip()\n            знач = (рядок.get(\"значення\") or \"\").strip()\n            групи[датчик]\n            if знач == \"\":\n                continue\n            групи[датчик].append(Decimal(знач))\n\n    for датчик in sorted(групи):\n        v = sorted(групи[датчик])\n        if not v:\n            print(f\"{датчик}: —\")\n            continue\n        n = len(v)\n        if n % 2:\n            м = v[n // 2]\n        else:\n            м = (v[n // 2 - 1] + v[n // 2]) / 2\n        print(f\"{датчик}: {форматувати(м)}\")\n\n\nmain()\n",
+  "відповідь": "```python\nimport csv\nimport os\nfrom decimal import Decimal\nfrom collections import defaultdict\n\n\ndef форматувати(d):\n    s = format(d, \"f\")\n    if \".\" in s:\n        s = s.rstrip(\"0\").rstrip(\".\")\n    if s in (\"-0\", \"\"):\n        s = \"0\"\n    return s\n\n\ndef main():\n    шлях = os.path.join(\"дані\", \"виміри.csv\")\n    групи = defaultdict(list)\n    with open(шлях, encoding=\"utf-8-sig\", newline=\"\") as f:\n        читач = csv.DictReader(f)\n        for рядок in читач:\n            датчик = (рядок.get(\"датчик\") or \"\").strip()\n            знач = (рядок.get(\"значення\") or \"\").strip()\n            групи[датчик]\n            if знач == \"\":\n                continue\n            групи[датчик].append(Decimal(знач))\n\n    for датчик in sorted(групи):\n        v = sorted(групи[датчик])\n        if not v:\n            print(f\"{датчик}: —\")\n            continue\n        n = len(v)\n        if n % 2:\n            м = v[n // 2]\n        else:\n            м = (v[n // 2 - 1] + v[n // 2]) / 2\n        print(f\"{датчик}: {форматувати(м)}\")\n\n\nmain()\n```\n",
+  "код_виходу": 0,
+  "вивід": "А: 2.5\nБ: 2\nВ: —\nГ: 0.15\nД: 3\n",
+  "помилки": ""
+ }
+]

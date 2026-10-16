@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nfrom collections import defaultdict\nfrom decimal import Decimal, ROUND_HALF_UP\n\nГРОШІ = Decimal(\"0.01\")\n\n\ndef d(x):\n    return Decimal(str(x))\n\n\ndef main():\n    with open(\"дані/замовлення.json\", encoding=\"utf-8\") as f:\n        замовлення = json.load(f)\n    with open(\"дані/коди.json\", encoding=\"utf-8\") as f:\n        коди = json.load(f)\n\n    суми = defaultdict(Decimal)\n    for зам in замовлення:\n        код = зам.get(\"код\")\n        знижка = d(коди[код]) if код is not None and код in коди else Decimal(0)\n        for поз in зам.get(\"позиції\", []):\n            сира = d(поз[\"ціна\"]) * d(поз[\"кількість\"]) * (100 - знижка) / 100\n            виручка = сира.quantize(ГРОШІ, rounding=ROUND_HALF_UP)\n            суми[поз[\"категорія\"]] += виручка\n\n    for кат, сума in sorted(суми.items(), key=lambda kv: (-kv[1], kv[0])):\n        print(f\"{кат}: {сума:.2f}\")\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "відповідь": "```python\nimport json\nfrom collections import defaultdict\nfrom decimal import Decimal, ROUND_HALF_UP\n\nГРОШІ = Decimal(\"0.01\")\n\n\ndef d(x):\n    return Decimal(str(x))\n\n\ndef main():\n    with open(\"дані/замовлення.json\", encoding=\"utf-8\") as f:\n        замовлення = json.load(f)\n    with open(\"дані/коди.json\", encoding=\"utf-8\") as f:\n        коди = json.load(f)\n\n    суми = defaultdict(Decimal)\n    for зам in замовлення:\n        код = зам.get(\"код\")\n        знижка = d(коди[код]) if код is not None and код in коди else Decimal(0)\n        for поз in зам.get(\"позиції\", []):\n            сира = d(поз[\"ціна\"]) * d(поз[\"кількість\"]) * (100 - знижка) / 100\n            виручка = сира.quantize(ГРОШІ, rounding=ROUND_HALF_UP)\n            суми[поз[\"категорія\"]] += виручка\n\n    for кат, сума in sorted(суми.items(), key=lambda kv: (-kv[1], kv[0])):\n        print(f\"{кат}: {сума:.2f}\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n",
+  "код_виходу": 0,
+  "вивід": "напої: 584.87\nїжа: 265.33\n",
+  "помилки": ""
+ }
+]

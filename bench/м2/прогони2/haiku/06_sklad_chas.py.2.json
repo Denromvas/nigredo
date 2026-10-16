@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nfrom pathlib import Path\n\nАБЕТКА = \"абвгґдеєжзиіїйклмнопрстуфхцчшщьюя\"\n\n\ndef ключ(текст):\n    return [АБЕТКА.index(c) if c in АБЕТКА else 100 + ord(c) for c in текст.lower()]\n\n\nтека = Path(\"дані\")\nwith open(тека / \"рух.json\", encoding=\"utf-8\") as f:\n    рух = json.load(f)\nwith open(тека / \"початок.json\", encoding=\"utf-8\") as f:\n    початок = json.load(f)\n\nзалишок = dict(початок)\nперша_подія = {}\nfor подія in рух:\n    товар = подія[\"товар\"]\n    залишок[товар] = залишок.get(товар, 0) + подія[\"зміна\"]\n    if залишок[товар] < 0 and товар not in перша_подія:\n        перша_подія[товар] = подія[\"час\"]\n\nif not перша_подія:\n    print(\"усе гаразд\")\nelse:\n    for товар in sorted(перша_подія, key=ключ):\n        print(f\"{товар}: {перша_подія[товар]}\")\n",
+  "відповідь": "```python\nimport json\nfrom pathlib import Path\n\nАБЕТКА = \"абвгґдеєжзиіїйклмнопрстуфхцчшщьюя\"\n\n\ndef ключ(текст):\n    return [АБЕТКА.index(c) if c in АБЕТКА else 100 + ord(c) for c in текст.lower()]\n\n\nтека = Path(\"дані\")\nwith open(тека / \"рух.json\", encoding=\"utf-8\") as f:\n    рух = json.load(f)\nwith open(тека / \"початок.json\", encoding=\"utf-8\") as f:\n    початок = json.load(f)\n\nзалишок = dict(початок)\nперша_подія = {}\nfor подія in рух:\n    товар = подія[\"товар\"]\n    залишок[товар] = залишок.get(товар, 0) + подія[\"зміна\"]\n    if залишок[товар] < 0 and товар not in перша_подія:\n        перша_подія[товар] = подія[\"час\"]\n\nif not перша_подія:\n    print(\"усе гаразд\")\nelse:\n    for товар in sorted(перша_подія, key=ключ):\n        print(f\"{товар}: {перша_подія[товар]}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "болт: 09:20\nгайка: 09:10\n",
+  "помилки": ""
+ }
+]

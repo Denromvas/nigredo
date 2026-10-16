@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nimport os\n\n\ndef main():\n    with open(os.path.join(\"дані\", \"рух.json\"), encoding=\"utf-8\") as f:\n        події = json.load(f)\n    with open(os.path.join(\"дані\", \"початок.json\"), encoding=\"utf-8\") as f:\n        залишки = dict(json.load(f))\n\n    перший = {}\n    for п in події:\n        товар = п[\"товар\"]\n        залишки[товар] = залишки.get(товар, 0) + п[\"зміна\"]\n        if залишки[товар] < 0 and товар not in перший:\n            перший[товар] = п[\"час\"]\n\n    if not перший:\n        print(\"усе гаразд\")\n        return\n    for товар in sorted(перший):\n        print(f\"{товар}: {перший[товар]}\")\n\n\nmain()\n",
+  "відповідь": "```python\nimport json\nimport os\n\n\ndef main():\n    with open(os.path.join(\"дані\", \"рух.json\"), encoding=\"utf-8\") as f:\n        події = json.load(f)\n    with open(os.path.join(\"дані\", \"початок.json\"), encoding=\"utf-8\") as f:\n        залишки = dict(json.load(f))\n\n    перший = {}\n    for п in події:\n        товар = п[\"товар\"]\n        залишки[товар] = залишки.get(товар, 0) + п[\"зміна\"]\n        if залишки[товар] < 0 and товар not in перший:\n            перший[товар] = п[\"час\"]\n\n    if not перший:\n        print(\"усе гаразд\")\n        return\n    for товар in sorted(перший):\n        print(f\"{товар}: {перший[товар]}\")\n\n\nmain()\n```\n",
+  "код_виходу": 0,
+  "вивід": "болт: 09:20\nгайка: 09:10\n",
+  "помилки": ""
+ }
+]

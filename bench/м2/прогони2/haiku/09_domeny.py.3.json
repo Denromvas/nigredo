@@ -1,0 +1,20 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": false,
+  "код": "import re\nfrom collections import Counter\nfrom pathlib import Path\n\nPATTERN = re.compile(r\"https?://\\S+\")\n\n\ndef домен_з_адреси(адреса: str) -> str:\n    _, _, частина = адреса.partition(\"://\")\n    хост = re.split(r\"[/:]\", частина, maxsplit=1)[0].lower()\n    if хост.startswith(\"www.\"):\n        хост = хост[4:]\n    return хост\n\n\ndef main() -> None:\n    шлях = Path(\"дані\") / \"запити.log\"\n    текст = шлях.read_text(encoding=\"utf-8\", errors=\"replace\")\n\n    лічильник = Counter()\n    for адреса in PATTERN.findall(текст):\n        домен = домен_з_адреси(адреса)\n        if домен:\n            лічильник[домен] += 1\n\n    найчастіші = sorted(лічильник.items(), key=lambda x: (-x[1], x[0]))[:3]\n    for домен, _ in найчастіші:\n        print(f\"домен {домен}\")\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "відповідь": "```python\nimport re\nfrom collections import Counter\nfrom pathlib import Path\n\nPATTERN = re.compile(r\"https?://\\S+\")\n\n\ndef домен_з_адреси(адреса: str) -> str:\n    _, _, частина = адреса.partition(\"://\")\n    хост = re.split(r\"[/:]\", частина, maxsplit=1)[0].lower()\n    if хост.startswith(\"www.\"):\n        хост = хост[4:]\n    return хост\n\n\ndef main() -> None:\n    шлях = Path(\"дані\") / \"запити.log\"\n    текст = шлях.read_text(encoding=\"utf-8\", errors=\"replace\")\n\n    лічильник = Counter()\n    for адреса in PATTERN.findall(текст):\n        домен = домен_з_адреси(адреса)\n        if домен:\n            лічильник[домен] += 1\n\n    найчастіші = sorted(лічильник.items(), key=lambda x: (-x[1], x[0]))[:3]\n    for домен, _ in найчастіші:\n        print(f\"домен {домен}\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n",
+  "код_виходу": 0,
+  "вивід": "домен example.com\nдомен api.example.com\nдомен docs.python.org\n",
+  "помилки": ""
+ },
+ {
+  "спроба": 2,
+  "гаразд": true,
+  "код": "import re\nfrom collections import Counter\nfrom pathlib import Path\n\nPATTERN = re.compile(r\"https?://\\S+\")\n\n\ndef домен_з_адреси(адреса: str) -> str:\n    _, _, частина = адреса.partition(\"://\")\n    хост = re.split(r\"[/:]\", частина, maxsplit=1)[0].lower()\n    if хост.startswith(\"www.\"):\n        хост = хост[4:]\n    return хост\n\n\ndef main() -> None:\n    шлях = Path(\"дані\") / \"запити.log\"\n    текст = шлях.read_text(encoding=\"utf-8\", errors=\"replace\")\n\n    лічильник = Counter()\n    for адреса in PATTERN.findall(текст):\n        домен = домен_з_адреси(адреса)\n        if домен:\n            лічильник[домен] += 1\n\n    найчастіші = sorted(лічильник.items(), key=lambda x: (-x[1], x[0]))[:3]\n    for домен, кількість in найчастіші:\n        print(f\"{домен} {кількість}\")\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "відповідь": "```python\nimport re\nfrom collections import Counter\nfrom pathlib import Path\n\nPATTERN = re.compile(r\"https?://\\S+\")\n\n\ndef домен_з_адреси(адреса: str) -> str:\n    _, _, частина = адреса.partition(\"://\")\n    хост = re.split(r\"[/:]\", частина, maxsplit=1)[0].lower()\n    if хост.startswith(\"www.\"):\n        хост = хост[4:]\n    return хост\n\n\ndef main() -> None:\n    шлях = Path(\"дані\") / \"запити.log\"\n    текст = шлях.read_text(encoding=\"utf-8\", errors=\"replace\")\n\n    лічильник = Counter()\n    for адреса in PATTERN.findall(текст):\n        домен = домен_з_адреси(адреса)\n        if домен:\n            лічильник[домен] += 1\n\n    найчастіші = sorted(лічильник.items(), key=lambda x: (-x[1], x[0]))[:3]\n    for домен, кількість in найчастіші:\n        print(f\"{домен} {кількість}\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n",
+  "код_виходу": 0,
+  "вивід": "example.com 3\napi.example.com 2\ndocs.python.org 2\n",
+  "помилки": ""
+ }
+]

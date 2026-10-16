@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import collections\nimport os\nimport re\n\nURL_RE = re.compile(r\"https?://\\S+\")\n\n\ndef host_of(url):\n    rest = url.split(\"://\", 1)[1]\n    host = re.split(r\"[/:]\", rest, maxsplit=1)[0].lower()\n    if host.startswith(\"www.\"):\n        host = host[4:]\n    return host\n\n\ndef main():\n    counts = collections.Counter()\n    path = os.path.join(\"дані\", \"запити.log\")\n    with open(path, encoding=\"utf-8\", errors=\"replace\") as f:\n        for line in f:\n            for url in URL_RE.findall(line):\n                host = host_of(url)\n                if host:\n                    counts[host] += 1\n    top = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:3]\n    for host, n in top:\n        print(f\"{host} {n}\")\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "відповідь": "```python\nimport collections\nimport os\nimport re\n\nURL_RE = re.compile(r\"https?://\\S+\")\n\n\ndef host_of(url):\n    rest = url.split(\"://\", 1)[1]\n    host = re.split(r\"[/:]\", rest, maxsplit=1)[0].lower()\n    if host.startswith(\"www.\"):\n        host = host[4:]\n    return host\n\n\ndef main():\n    counts = collections.Counter()\n    path = os.path.join(\"дані\", \"запити.log\")\n    with open(path, encoding=\"utf-8\", errors=\"replace\") as f:\n        for line in f:\n            for url in URL_RE.findall(line):\n                host = host_of(url)\n                if host:\n                    counts[host] += 1\n    top = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:3]\n    for host, n in top:\n        print(f\"{host} {n}\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n",
+  "код_виходу": 0,
+  "вивід": "example.com 3\napi.example.com 2\ndocs.python.org 2\n",
+  "помилки": ""
+ }
+]

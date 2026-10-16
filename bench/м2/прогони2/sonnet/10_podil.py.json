@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nfrom decimal import Decimal, ROUND_FLOOR\n\nwith open(\"дані/поділ.json\", encoding=\"utf-8\") as f:\n    d = json.load(f)\n\n# Сума в копійках\ntotal = int((Decimal(d[\"сума\"]) * 100).to_integral_value())\nваги = d[\"ваги\"]\nW = sum(ваги.values())\n\nбазові = {}\nзалишки = {}\nfor імя, w in ваги.items():\n    num = total * w\n    q, r = divmod(num, W)  # r/W — відкинута дробова частина\n    базові[імя] = q\n    залишки[імя] = r\n\nleft = total - sum(базові.values())\n\n# Найбільша дробова частина першою; при рівності — за абеткою\nпорядок = sorted(ваги, key=lambda n: (-залишки[n], n))\nfor імя in порядок[:left]:\n    базові[імя] += 1\n\nfor імя in sorted(ваги):\n    k = базові[імя]\n    print(f\"{імя}: {k // 100}.{k % 100:02d}\")\n",
+  "відповідь": "```python\nimport json\nfrom decimal import Decimal, ROUND_FLOOR\n\nwith open(\"дані/поділ.json\", encoding=\"utf-8\") as f:\n    d = json.load(f)\n\n# Сума в копійках\ntotal = int((Decimal(d[\"сума\"]) * 100).to_integral_value())\nваги = d[\"ваги\"]\nW = sum(ваги.values())\n\nбазові = {}\nзалишки = {}\nfor імя, w in ваги.items():\n    num = total * w\n    q, r = divmod(num, W)  # r/W — відкинута дробова частина\n    базові[імя] = q\n    залишки[імя] = r\n\nleft = total - sum(базові.values())\n\n# Найбільша дробова частина першою; при рівності — за абеткою\nпорядок = sorted(ваги, key=lambda n: (-залишки[n], n))\nfor імя in порядок[:left]:\n    базові[імя] += 1\n\nfor імя in sorted(ваги):\n    k = базові[імя]\n    print(f\"{імя}: {k // 100}.{k % 100:02d}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "Анна: 500.00\nДенис: 166.67\nОля: 166.67\nПетро: 166.66\n",
+  "помилки": ""
+ }
+]

@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "from pathlib import Path\n\n\ndef читати(шлях):\n    імена = {}\n    with open(шлях, encoding=\"utf-8-sig\") as f:\n        for рядок in f:\n            назва = рядок.strip()\n            if назва:\n                імена.setdefault(назва.casefold(), назва)\n    return імена\n\n\nвчора = читати(Path(\"дані\") / \"вчора.txt\")\nсьогодні = читати(Path(\"дані\") / \"сьогодні.txt\")\n\nдодано = [сьогодні[k] for k in сьогодні if k not in вчора]\nзникло = [вчора[k] for k in вчора if k not in сьогодні]\nлишилось = sum(1 for k in сьогодні if k in вчора)\n\n\ndef список(імена):\n    return \", \".join(sorted(імена, key=str.casefold)) if імена else \"—\"\n\n\nprint(f\"додано: {список(додано)}\")\nprint(f\"зникло: {список(зникло)}\")\nprint(f\"лишилось: {лишилось}\")\n",
+  "відповідь": "```python\nfrom pathlib import Path\n\n\ndef читати(шлях):\n    імена = {}\n    with open(шлях, encoding=\"utf-8-sig\") as f:\n        for рядок in f:\n            назва = рядок.strip()\n            if назва:\n                імена.setdefault(назва.casefold(), назва)\n    return імена\n\n\nвчора = читати(Path(\"дані\") / \"вчора.txt\")\nсьогодні = читати(Path(\"дані\") / \"сьогодні.txt\")\n\nдодано = [сьогодні[k] for k in сьогодні if k not in вчора]\nзникло = [вчора[k] for k in вчора if k not in сьогодні]\nлишилось = sum(1 for k in сьогодні if k in вчора)\n\n\ndef список(імена):\n    return \", \".join(sorted(імена, key=str.casefold)) if імена else \"—\"\n\n\nprint(f\"додано: {список(додано)}\")\nprint(f\"зникло: {список(зникло)}\")\nprint(f\"лишилось: {лишилось}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "додано: Богдан, Марко\nзникло: Анна, Денис\nлишилось: 2\n",
+  "помилки": ""
+ }
+]
