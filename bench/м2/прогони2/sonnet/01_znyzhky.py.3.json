@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nfrom decimal import Decimal, ROUND_HALF_UP\nfrom collections import defaultdict\n\n\ndef завантажити(шлях):\n    with open(шлях, encoding=\"utf-8\") as f:\n        return json.load(f, parse_float=Decimal, parse_int=Decimal)\n\n\ndef main():\n    замовлення = завантажити(\"дані/замовлення.json\")\n    коди = завантажити(\"дані/коди.json\")\n\n    суми = defaultdict(lambda: Decimal(\"0\"))\n    копійка = Decimal(\"0.01\")\n\n    for з in замовлення:\n        код = з.get(\"код\")\n        знижка = Decimal(коди[код]) if код is not None and код in коди else Decimal(\"0\")\n        for п in з.get(\"позиції\", []):\n            ціна = Decimal(п[\"ціна\"])\n            кількість = Decimal(п[\"кількість\"])\n            виручка = (ціна * кількість * (Decimal(100) - знижка) / Decimal(100)).quantize(\n                копійка, rounding=ROUND_HALF_UP\n            )\n            суми[п[\"категорія\"]] += виручка\n\n    for категорія, сума in sorted(суми.items(), key=lambda x: (-x[1], x[0])):\n        print(f\"{категорія}: {сума:.2f}\")\n\n\nmain()\n",
+  "відповідь": "```python\nimport json\nfrom decimal import Decimal, ROUND_HALF_UP\nfrom collections import defaultdict\n\n\ndef завантажити(шлях):\n    with open(шлях, encoding=\"utf-8\") as f:\n        return json.load(f, parse_float=Decimal, parse_int=Decimal)\n\n\ndef main():\n    замовлення = завантажити(\"дані/замовлення.json\")\n    коди = завантажити(\"дані/коди.json\")\n\n    суми = defaultdict(lambda: Decimal(\"0\"))\n    копійка = Decimal(\"0.01\")\n\n    for з in замовлення:\n        код = з.get(\"код\")\n        знижка = Decimal(коди[код]) if код is not None and код in коди else Decimal(\"0\")\n        for п in з.get(\"позиції\", []):\n            ціна = Decimal(п[\"ціна\"])\n            кількість = Decimal(п[\"кількість\"])\n            виручка = (ціна * кількість * (Decimal(100) - знижка) / Decimal(100)).quantize(\n                копійка, rounding=ROUND_HALF_UP\n            )\n            суми[п[\"категорія\"]] += виручка\n\n    for категорія, сума in sorted(суми.items(), key=lambda x: (-x[1], x[0])):\n        print(f\"{категорія}: {сума:.2f}\")\n\n\nmain()\n```\n",
+  "код_виходу": 0,
+  "вивід": "напої: 584.87\nїжа: 265.33\n",
+  "помилки": ""
+ }
+]
