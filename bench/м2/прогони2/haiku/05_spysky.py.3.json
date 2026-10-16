@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "from pathlib import Path\n\n\ndef прочитати(шлях):\n    імена = {}\n    with open(шлях, encoding=\"utf-8-sig\") as f:\n        for рядок in f:\n            назва = рядок.strip()\n            if not назва:\n                continue\n            імена.setdefault(назва.casefold(), назва)\n    return імена\n\n\ndef список(імена):\n    if not імена:\n        return \"—\"\n    return \", \".join(sorted(імена, key=str.casefold))\n\n\nтека = Path(\"дані\")\nвчора = прочитати(тека / \"вчора.txt\")\nсьогодні = прочитати(тека / \"сьогодні.txt\")\n\nдодано = [сьогодні[ключ] for ключ in сьогодні if ключ not in вчора]\nзникло = [вчора[ключ] for ключ in вчора if ключ not in сьогодні]\nлишилось = sum(1 for ключ in сьогодні if ключ in вчора)\n\nprint(f\"додано: {список(додано)}\")\nprint(f\"зникло: {список(зникло)}\")\nprint(f\"лишилось: {лишилось}\")\n",
+  "відповідь": "```python\nfrom pathlib import Path\n\n\ndef прочитати(шлях):\n    імена = {}\n    with open(шлях, encoding=\"utf-8-sig\") as f:\n        for рядок in f:\n            назва = рядок.strip()\n            if not назва:\n                continue\n            імена.setdefault(назва.casefold(), назва)\n    return імена\n\n\ndef список(імена):\n    if not імена:\n        return \"—\"\n    return \", \".join(sorted(імена, key=str.casefold))\n\n\nтека = Path(\"дані\")\nвчора = прочитати(тека / \"вчора.txt\")\nсьогодні = прочитати(тека / \"сьогодні.txt\")\n\nдодано = [сьогодні[ключ] for ключ in сьогодні if ключ not in вчора]\nзникло = [вчора[ключ] for ключ in вчора if ключ not in сьогодні]\nлишилось = sum(1 for ключ in сьогодні if ключ in вчора)\n\nprint(f\"додано: {список(додано)}\")\nprint(f\"зникло: {список(зникло)}\")\nprint(f\"лишилось: {лишилось}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "додано: Богдан, Марко\nзникло: Анна, Денис\nлишилось: 2\n",
+  "помилки": ""
+ }
+]

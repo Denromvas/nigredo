@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nfrom decimal import Decimal\nfrom fractions import Fraction\n\nwith open(\"дані/поділ.json\", encoding=\"utf-8\") as f:\n    d = json.load(f)\n\nсума = Decimal(d[\"сума\"])\nкопійки = int((сума * 100).to_integral_value())\nваги = d[\"ваги\"]\nвсього = sum(ваги.values())\n\nрезультат = {}\nзалишки = {}\nроздано = 0\nfor імя, в in ваги.items():\n    if всього == 0:\n        частка = Fraction(0)\n    else:\n        частка = Fraction(копійки * в, всього)\n    ціла = частка.numerator // частка.denominator\n    результат[імя] = ціла\n    залишки[імя] = частка - ціла\n    роздано += ціла\n\nрешта = копійки - роздано\nпорядок = sorted(ваги, key=lambda н: (-залишки[н], н))\nfor імя in порядок[:решта]:\n    результат[імя] += 1\n\nfor імя in sorted(результат):\n    к = результат[імя]\n    print(f\"{імя}: {к // 100}.{к % 100:02d}\")\n",
+  "відповідь": "```python\nimport json\nfrom decimal import Decimal\nfrom fractions import Fraction\n\nwith open(\"дані/поділ.json\", encoding=\"utf-8\") as f:\n    d = json.load(f)\n\nсума = Decimal(d[\"сума\"])\nкопійки = int((сума * 100).to_integral_value())\nваги = d[\"ваги\"]\nвсього = sum(ваги.values())\n\nрезультат = {}\nзалишки = {}\nроздано = 0\nfor імя, в in ваги.items():\n    if всього == 0:\n        частка = Fraction(0)\n    else:\n        частка = Fraction(копійки * в, всього)\n    ціла = частка.numerator // частка.denominator\n    результат[імя] = ціла\n    залишки[імя] = частка - ціла\n    роздано += ціла\n\nрешта = копійки - роздано\nпорядок = sorted(ваги, key=lambda н: (-залишки[н], н))\nfor імя in порядок[:решта]:\n    результат[імя] += 1\n\nfor імя in sorted(результат):\n    к = результат[імя]\n    print(f\"{імя}: {к // 100}.{к % 100:02d}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "Анна: 500.00\nДенис: 166.67\nОля: 166.67\nПетро: 166.66\n",
+  "помилки": ""
+ }
+]

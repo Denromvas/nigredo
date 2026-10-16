@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import csv\nimport sys\nfrom decimal import Decimal, getcontext\n\ngetcontext().prec = 200\n\nгрупи = {}\nwith open(\"дані/виміри.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n    читач = csv.reader(f)\n    next(читач, None)\n    for рядок in читач:\n        if not рядок or not \"\".join(рядок).strip():\n            continue\n        датчик = рядок[0].strip()\n        значення = рядок[1].strip() if len(рядок) > 1 else \"\"\n        список = групи.setdefault(датчик, [])\n        if значення != \"\":\n            список.append(Decimal(значення))\n\n\ndef формат(d):\n    if d == 0:\n        return \"0\"\n    return format(d.normalize(), \"f\")\n\n\nвивід = []\nfor датчик in sorted(групи):\n    v = sorted(групи[датчик])\n    if not v:\n        вивід.append(f\"{датчик}: —\")\n        continue\n    n = len(v)\n    if n % 2:\n        м = v[n // 2]\n    else:\n        м = (v[n // 2 - 1] + v[n // 2]) / 2\n    вивід.append(f\"{датчик}: {формат(м)}\")\n\nsys.stdout.buffer.write((\"\\n\".join(вивід) + (\"\\n\" if вивід else \"\")).encode(\"utf-8\"))\n",
+  "відповідь": "```python\nimport csv\nimport sys\nfrom decimal import Decimal, getcontext\n\ngetcontext().prec = 200\n\nгрупи = {}\nwith open(\"дані/виміри.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n    читач = csv.reader(f)\n    next(читач, None)\n    for рядок in читач:\n        if not рядок or not \"\".join(рядок).strip():\n            continue\n        датчик = рядок[0].strip()\n        значення = рядок[1].strip() if len(рядок) > 1 else \"\"\n        список = групи.setdefault(датчик, [])\n        if значення != \"\":\n            список.append(Decimal(значення))\n\n\ndef формат(d):\n    if d == 0:\n        return \"0\"\n    return format(d.normalize(), \"f\")\n\n\nвивід = []\nfor датчик in sorted(групи):\n    v = sorted(групи[датчик])\n    if not v:\n        вивід.append(f\"{датчик}: —\")\n        continue\n    n = len(v)\n    if n % 2:\n        м = v[n // 2]\n    else:\n        м = (v[n // 2 - 1] + v[n // 2]) / 2\n    вивід.append(f\"{датчик}: {формат(м)}\")\n\nsys.stdout.buffer.write((\"\\n\".join(вивід) + (\"\\n\" if вивід else \"\")).encode(\"utf-8\"))\n```\n",
+  "код_виходу": 0,
+  "вивід": "А: 2.5\nБ: 2\nВ: —\nГ: 0.15\nД: 3\n",
+  "помилки": ""
+ }
+]

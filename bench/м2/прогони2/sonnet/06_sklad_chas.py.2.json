@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nimport os\n\n\ndef main():\n    base = \"дані\"\n    with open(os.path.join(base, \"рух.json\"), encoding=\"utf-8\") as f:\n        events = json.load(f)\n    with open(os.path.join(base, \"початок.json\"), encoding=\"utf-8\") as f:\n        start = json.load(f)\n\n    balance = dict(start)\n    first_neg = {}\n\n    for e in events:\n        item = e[\"товар\"]\n        balance[item] = balance.get(item, 0) + e[\"зміна\"]\n        if balance[item] < 0 and item not in first_neg:\n            first_neg[item] = e[\"час\"]\n\n    if not first_neg:\n        print(\"усе гаразд\")\n        return\n\n    for item in sorted(first_neg):\n        print(f\"{item}: {first_neg[item]}\")\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "відповідь": "```python\nimport json\nimport os\n\n\ndef main():\n    base = \"дані\"\n    with open(os.path.join(base, \"рух.json\"), encoding=\"utf-8\") as f:\n        events = json.load(f)\n    with open(os.path.join(base, \"початок.json\"), encoding=\"utf-8\") as f:\n        start = json.load(f)\n\n    balance = dict(start)\n    first_neg = {}\n\n    for e in events:\n        item = e[\"товар\"]\n        balance[item] = balance.get(item, 0) + e[\"зміна\"]\n        if balance[item] < 0 and item not in first_neg:\n            first_neg[item] = e[\"час\"]\n\n    if not first_neg:\n        print(\"усе гаразд\")\n        return\n\n    for item in sorted(first_neg):\n        print(f\"{item}: {first_neg[item]}\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n",
+  "код_виходу": 0,
+  "вивід": "болт: 09:20\nгайка: 09:10\n",
+  "помилки": ""
+ }
+]

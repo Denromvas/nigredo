@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "🜂 「додано, зникло і лишилось між вчора і сьогодні」 【「читати:дані」】\n※ читаємо два файли з теки дані\n← yest_raw 🜔читати 「дані/вчора.txt」\n← today_raw 🜔читати 「дані/сьогодні.txt」\n← yest_lines ✂ yest_raw 「\\n」\n← today_lines ✂ today_raw 「\\n」\n← yest_trim μ yest_lines λx ⊢ x\n← today_trim μ today_lines λx ⊢ x\n← yest_names φ yest_trim λx ≠ x 「」\n← today_names φ today_trim λx ≠ x 「」\n※ ключ — ім'я без регістру; ⊞ згрупує повтори, перше входження лишається\n← yest_g ⊞ yest_names λx ⇣ x\n← today_g ⊞ today_names λx ⇣ x\n← yest_keys κ yest_g\n← today_keys κ today_g\n← added ↑ φ today_keys λk ¬ ∋ yest_keys k\n← removed ↑ φ yest_keys λk ¬ ∋ today_keys k\n← kept ρ φ today_keys λk ∋ yest_keys k\n※ показуємо імена як у файлі «сьогодні» (додані) або «вчора» (зниклі)\n← added_s μ added λk § § today_g k 0\n← removed_s μ removed λk § § yest_g k 0\n← show λx ¿ ＝ ρ x 0 「—」 ⁀ x 「, 」\n← a_s show added_s\n← r_s show removed_s\n» 〔додано: {a_s}〕\n» 〔зникло: {r_s}〕\n» 〔лишилось: {kept}〕\n",
+  "відповідь": "```\n🜂 「додано, зникло і лишилось між вчора і сьогодні」 【「читати:дані」】\n※ читаємо два файли з теки дані\n← yest_raw 🜔читати 「дані/вчора.txt」\n← today_raw 🜔читати 「дані/сьогодні.txt」\n← yest_lines ✂ yest_raw 「\\n」\n← today_lines ✂ today_raw 「\\n」\n← yest_trim μ yest_lines λx ⊢ x\n← today_trim μ today_lines λx ⊢ x\n← yest_names φ yest_trim λx ≠ x 「」\n← today_names φ today_trim λx ≠ x 「」\n※ ключ — ім'я без регістру; ⊞ згрупує повтори, перше входження лишається\n← yest_g ⊞ yest_names λx ⇣ x\n← today_g ⊞ today_names λx ⇣ x\n← yest_keys κ yest_g\n← today_keys κ today_g\n← added ↑ φ today_keys λk ¬ ∋ yest_keys k\n← removed ↑ φ yest_keys λk ¬ ∋ today_keys k\n← kept ρ φ today_keys λk ∋ yest_keys k\n※ показуємо імена як у файлі «сьогодні» (додані) або «вчора» (зниклі)\n← added_s μ added λk § § today_g k 0\n← removed_s μ removed λk § § yest_g k 0\n← show λx ¿ ＝ ρ x 0 「—」 ⁀ x 「, 」\n← a_s show added_s\n← r_s show removed_s\n» 〔додано: {a_s}〕\n» 〔зникло: {r_s}〕\n» 〔лишилось: {kept}〕\n```\n",
+  "код_виходу": 0,
+  "вивід": "додано: Богдан, Марко\nзникло: Анна, Денис\nлишилось: 2\n",
+  "помилки": ""
+ }
+]

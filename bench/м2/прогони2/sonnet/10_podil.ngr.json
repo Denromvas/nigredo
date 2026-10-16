@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "🜂 「поділ суми за вагами до копійок」 【「читати:дані」】\n← dat δ 🜔читати 「поділ.json」\n← cents ⌊ × ν §dat 「сума」 100\n← wts §dat 「ваги」\n← tot ∫ ε wts λ【k v】 v\n← rows μ ε wts λ【k v】 《\n  ← num × cents v\n  ← r ‰ num tot\n  『「n」 k 「q」 ÷ － num r tot 「r」 r』\n》\n← lft － cents ∫ rows λp §p 「q」\n← srt ⇅ rows λp 【－ 0 §p 「r」 §p 「n」】\n← top μ ⊏ srt 0 lft λp §p 「n」\n← fin ⇅ rows λp §p 「n」\n∀ fin λp 《\n  ← c ＋ §p 「q」 ¿ ∋ top §p 「n」 1 0\n  » 〔{§p 「n」}: {⌗ ÷ c 100 2}〕\n》\n",
+  "відповідь": "```\n🜂 「поділ суми за вагами до копійок」 【「читати:дані」】\n← dat δ 🜔читати 「поділ.json」\n← cents ⌊ × ν §dat 「сума」 100\n← wts §dat 「ваги」\n← tot ∫ ε wts λ【k v】 v\n← rows μ ε wts λ【k v】 《\n  ← num × cents v\n  ← r ‰ num tot\n  『「n」 k 「q」 ÷ － num r tot 「r」 r』\n》\n← lft － cents ∫ rows λp §p 「q」\n← srt ⇅ rows λp 【－ 0 §p 「r」 §p 「n」】\n← top μ ⊏ srt 0 lft λp §p 「n」\n← fin ⇅ rows λp §p 「n」\n∀ fin λp 《\n  ← c ＋ §p 「q」 ¿ ∋ top §p 「n」 1 0\n  » 〔{§p 「n」}: {⌗ ÷ c 100 2}〕\n》\n```\n",
+  "код_виходу": 0,
+  "вивід": "Анна: 500.00\nДенис: 166.67\nОля: 166.67\nПетро: 166.66\n",
+  "помилки": ""
+ }
+]

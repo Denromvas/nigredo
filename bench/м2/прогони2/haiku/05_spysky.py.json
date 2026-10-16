@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "from pathlib import Path\n\n\ndef read_names(path):\n    names = {}\n    with open(path, encoding=\"utf-8-sig\") as f:\n        for line in f:\n            name = line.strip()\n            if name:\n                names.setdefault(name.casefold(), name)\n    return names\n\n\ndef fmt(names):\n    return \", \".join(sorted(names, key=str.casefold)) or \"—\"\n\n\ndef main():\n    folder = Path(\"дані\")\n    yesterday = read_names(folder / \"вчора.txt\")\n    today = read_names(folder / \"сьогодні.txt\")\n\n    added = [today[k] for k in today if k not in yesterday]\n    removed = [yesterday[k] for k in yesterday if k not in today]\n    kept = sum(1 for k in today if k in yesterday)\n\n    print(f\"додано: {fmt(added)}\")\n    print(f\"зникло: {fmt(removed)}\")\n    print(f\"лишилось: {kept}\")\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "відповідь": "```python\nfrom pathlib import Path\n\n\ndef read_names(path):\n    names = {}\n    with open(path, encoding=\"utf-8-sig\") as f:\n        for line in f:\n            name = line.strip()\n            if name:\n                names.setdefault(name.casefold(), name)\n    return names\n\n\ndef fmt(names):\n    return \", \".join(sorted(names, key=str.casefold)) or \"—\"\n\n\ndef main():\n    folder = Path(\"дані\")\n    yesterday = read_names(folder / \"вчора.txt\")\n    today = read_names(folder / \"сьогодні.txt\")\n\n    added = [today[k] for k in today if k not in yesterday]\n    removed = [yesterday[k] for k in yesterday if k not in today]\n    kept = sum(1 for k in today if k in yesterday)\n\n    print(f\"додано: {fmt(added)}\")\n    print(f\"зникло: {fmt(removed)}\")\n    print(f\"лишилось: {kept}\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n",
+  "код_виходу": 0,
+  "вивід": "додано: Богдан, Марко\nзникло: Анна, Денис\nлишилось: 2\n",
+  "помилки": ""
+ }
+]

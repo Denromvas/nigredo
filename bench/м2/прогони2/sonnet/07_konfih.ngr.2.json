@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "🜂 「успадкування конфігів」 【「читати:дані」】\n← cfg δ 🜔читати 「дані/конфіги.json」\n← fmt λv 《\n  ← j Δ v\n  ¿ ＝ § j 0 「\"」 δ j j\n》\n← walk λname ↻ 『「cur」 name 「seen」 【】』\n  λs ¿ ＝ § s 「cur」 ∅ ○ ¿ ∋ cfg § s 「cur」 ¬ ∋ § s 「seen」 § s 「cur」 ○\n  λs 『「cur」 § § cfg § s 「cur」 「успадковує」 「seen」 ＋ § s 「seen」 【§ s 「cur」】』\n∀ ↑ κ cfg λname 《\n  ← s walk name\n  ← cyc ¿ ＝ § s 「cur」 ∅ ○ ∋ § s 「seen」 § s 「cur」\n  ¿ cyc » 〔{name}: цикл〕 《\n    ← m Σ ↺ § s 「seen」 『』 Λ a n Σ ε § § cfg n 「значення」 a Λ b p ✎ b § p 0 § p 1\n    ← parts μ ↑ κ m λk 〔{k}={fmt § m k}〕\n    » 〔{name}: {⁀ parts 「, 」}〕\n  》\n》\n",
+  "відповідь": "```\n🜂 「успадкування конфігів」 【「читати:дані」】\n← cfg δ 🜔читати 「дані/конфіги.json」\n← fmt λv 《\n  ← j Δ v\n  ¿ ＝ § j 0 「\"」 δ j j\n》\n← walk λname ↻ 『「cur」 name 「seen」 【】』\n  λs ¿ ＝ § s 「cur」 ∅ ○ ¿ ∋ cfg § s 「cur」 ¬ ∋ § s 「seen」 § s 「cur」 ○\n  λs 『「cur」 § § cfg § s 「cur」 「успадковує」 「seen」 ＋ § s 「seen」 【§ s 「cur」】』\n∀ ↑ κ cfg λname 《\n  ← s walk name\n  ← cyc ¿ ＝ § s 「cur」 ∅ ○ ∋ § s 「seen」 § s 「cur」\n  ¿ cyc » 〔{name}: цикл〕 《\n    ← m Σ ↺ § s 「seen」 『』 Λ a n Σ ε § § cfg n 「значення」 a Λ b p ✎ b § p 0 § p 1\n    ← parts μ ↑ κ m λk 〔{k}={fmt § m k}〕\n    » 〔{name}: {⁀ parts 「, 」}〕\n  》\n》\n```\n\nПрограму не запускав і не перевіряв (`--печатка`, `--розбір`, `--перевірити-слід` не виконувалися). Запускати її слід лише після `ngr --печатка --json` з кодом 0 і `\"в_межах\": true`.\n",
+  "код_виходу": 0,
+  "вивід": "а: цикл\nб: цикл\nбаза: порт=80, хост=localhost\nв: цикл\nрозробка: налагодження=true, порт=8080, хост=localhost\nтест: налагодження=true, порт=8080, хост=test.local\n",
+  "помилки": ""
+ }
+]

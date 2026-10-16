@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import csv\nfrom decimal import Decimal, localcontext\n\n\ndef fmt(d):\n    if d == 0:\n        return \"0\"\n    return format(d.normalize(), \"f\")\n\n\ndef main():\n    groups = {}\n    with open(\"дані/виміри.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n        for row in csv.DictReader(f):\n            name = row[\"датчик\"].strip()\n            values = groups.setdefault(name, [])\n            raw = row[\"значення\"].strip()\n            if raw:\n                values.append(Decimal(raw))\n\n    with localcontext() as ctx:\n        ctx.prec = 2000\n        for name in sorted(groups):\n            vals = sorted(groups[name])\n            n = len(vals)\n            if n == 0:\n                print(f\"{name}: —\")\n                continue\n            if n % 2:\n                med = vals[n // 2]\n            else:\n                med = (vals[n // 2 - 1] + vals[n // 2]) / 2\n            print(f\"{name}: {fmt(med)}\")\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "відповідь": "```python\nimport csv\nfrom decimal import Decimal, localcontext\n\n\ndef fmt(d):\n    if d == 0:\n        return \"0\"\n    return format(d.normalize(), \"f\")\n\n\ndef main():\n    groups = {}\n    with open(\"дані/виміри.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n        for row in csv.DictReader(f):\n            name = row[\"датчик\"].strip()\n            values = groups.setdefault(name, [])\n            raw = row[\"значення\"].strip()\n            if raw:\n                values.append(Decimal(raw))\n\n    with localcontext() as ctx:\n        ctx.prec = 2000\n        for name in sorted(groups):\n            vals = sorted(groups[name])\n            n = len(vals)\n            if n == 0:\n                print(f\"{name}: —\")\n                continue\n            if n % 2:\n                med = vals[n // 2]\n            else:\n                med = (vals[n // 2 - 1] + vals[n // 2]) / 2\n            print(f\"{name}: {fmt(med)}\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n",
+  "код_виходу": 0,
+  "вивід": "А: 2.5\nБ: 2\nВ: —\nГ: 0.15\nД: 3\n",
+  "помилки": ""
+ }
+]

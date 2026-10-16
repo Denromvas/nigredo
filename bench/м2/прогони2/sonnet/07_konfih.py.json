@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\n\nwith open(\"дані/конфіги.json\", encoding=\"utf-8\") as f:\n    конфіги = json.load(f)\n\n\ndef текст(v):\n    if isinstance(v, str):\n        return v\n    return json.dumps(v, ensure_ascii=False)\n\n\nfor імя in sorted(конфіги):\n    ланцюжок = []\n    бачені = set()\n    поточний = імя\n    цикл = False\n    while поточний is not None and поточний in конфіги:\n        if поточний in бачені:\n            цикл = True\n            break\n        бачені.add(поточний)\n        ланцюжок.append(поточний)\n        поточний = конфіги[поточний].get(\"успадковує\")\n    if цикл:\n        print(f\"{імя}: цикл\")\n        continue\n    підсумок = {}\n    for н in reversed(ланцюжок):\n        підсумок.update(конфіги[н].get(\"значення\") or {})\n    частини = \", \".join(f\"{к}={текст(підсумок[к])}\" for к in sorted(підсумок))\n    print(f\"{імя}: {частини}\".rstrip() if not частини else f\"{імя}: {частини}\")\n",
+  "відповідь": "```python\nimport json\n\nwith open(\"дані/конфіги.json\", encoding=\"utf-8\") as f:\n    конфіги = json.load(f)\n\n\ndef текст(v):\n    if isinstance(v, str):\n        return v\n    return json.dumps(v, ensure_ascii=False)\n\n\nfor імя in sorted(конфіги):\n    ланцюжок = []\n    бачені = set()\n    поточний = імя\n    цикл = False\n    while поточний is not None and поточний in конфіги:\n        if поточний in бачені:\n            цикл = True\n            break\n        бачені.add(поточний)\n        ланцюжок.append(поточний)\n        поточний = конфіги[поточний].get(\"успадковує\")\n    if цикл:\n        print(f\"{імя}: цикл\")\n        continue\n    підсумок = {}\n    for н in reversed(ланцюжок):\n        підсумок.update(конфіги[н].get(\"значення\") or {})\n    частини = \", \".join(f\"{к}={текст(підсумок[к])}\" for к in sorted(підсумок))\n    print(f\"{імя}: {частини}\".rstrip() if not частини else f\"{імя}: {частини}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "а: цикл\nб: цикл\nбаза: порт=80, хост=localhost\nв: цикл\nрозробка: налагодження=true, порт=8080, хост=localhost\nтест: налагодження=true, порт=8080, хост=test.local\n",
+  "помилки": ""
+ }
+]

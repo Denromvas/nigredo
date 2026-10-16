@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "🜂 「що змінилося між вчора й сьогодні」 【「читати:дані」】\n← mp λpath 《\n  ← rows μ ✂ 🜔читати path 「\\n」 λln ⊢ ln\n  ← ne φ rows λln › ρ ln 0\n  Σ ne 『』 Λacc s ¿ ∋ acc ⇣ s acc ✎ acc ⇣ s s\n》\n← fmt λxs ¿ ＝ ρ xs 0 「—」 ⁀ xs 「, 」\n← yd mp 「дані/вчора.txt」\n← td mp 「дані/сьогодні.txt」\n← newk ↑ φ κ td λk ¬ ∋ yd k\n← oldk ↑ φ κ yd λk ¬ ∋ td k\n← stay φ κ td λk ∋ yd k\n← added μ newk λk §td k\n← gone μ oldk λk §yd k\n» 〔додано: {fmt added}〕\n» 〔зникло: {fmt gone}〕\n» 〔лишилось: {ρ stay}〕\n",
+  "відповідь": "```\n🜂 「що змінилося між вчора й сьогодні」 【「читати:дані」】\n← mp λpath 《\n  ← rows μ ✂ 🜔читати path 「\\n」 λln ⊢ ln\n  ← ne φ rows λln › ρ ln 0\n  Σ ne 『』 Λacc s ¿ ∋ acc ⇣ s acc ✎ acc ⇣ s s\n》\n← fmt λxs ¿ ＝ ρ xs 0 「—」 ⁀ xs 「, 」\n← yd mp 「дані/вчора.txt」\n← td mp 「дані/сьогодні.txt」\n← newk ↑ φ κ td λk ¬ ∋ yd k\n← oldk ↑ φ κ yd λk ¬ ∋ td k\n← stay φ κ td λk ∋ yd k\n← added μ newk λk §td k\n← gone μ oldk λk §yd k\n» 〔додано: {fmt added}〕\n» 〔зникло: {fmt gone}〕\n» 〔лишилось: {ρ stay}〕\n```\n",
+  "код_виходу": 0,
+  "вивід": "додано: Богдан, Марко\nзникло: Анна, Денис\nлишилось: 2\n",
+  "помилки": ""
+ }
+]

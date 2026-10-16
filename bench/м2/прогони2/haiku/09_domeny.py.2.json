@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import re\nfrom collections import Counter\n\nURL = re.compile(r\"https?://\\S+\")\n\ncounts = Counter()\nwith open(\"дані/запити.log\", encoding=\"utf-8\", errors=\"replace\") as f:\n    for line in f:\n        for m in URL.finditer(line):\n            url = m.group(0)\n            rest = url[url.index(\"://\") + 3:]\n            end = len(rest)\n            for sep in (\"/\", \":\"):\n                i = rest.find(sep)\n                if i != -1:\n                    end = min(end, i)\n            domain = rest[:end].lower()\n            if domain.startswith(\"www.\"):\n                domain = domain[4:]\n            if domain:\n                counts[domain] += 1\n\ntop = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:3]\nfor domain, n in top:\n    print(f\"{domain} {n}\")\n",
+  "відповідь": "```python\nimport re\nfrom collections import Counter\n\nURL = re.compile(r\"https?://\\S+\")\n\ncounts = Counter()\nwith open(\"дані/запити.log\", encoding=\"utf-8\", errors=\"replace\") as f:\n    for line in f:\n        for m in URL.finditer(line):\n            url = m.group(0)\n            rest = url[url.index(\"://\") + 3:]\n            end = len(rest)\n            for sep in (\"/\", \":\"):\n                i = rest.find(sep)\n                if i != -1:\n                    end = min(end, i)\n            domain = rest[:end].lower()\n            if domain.startswith(\"www.\"):\n                domain = domain[4:]\n            if domain:\n                counts[domain] += 1\n\ntop = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:3]\nfor domain, n in top:\n    print(f\"{domain} {n}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "example.com 3\napi.example.com 2\ndocs.python.org 2\n",
+  "помилки": ""
+ }
+]

@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "🜂 【「читати:дані」】\n← d δ 🜔читати 「поділ.json」\n← ws §d 「ваги」\n← C ⌊ × ν §d 「сума」 100\n← W ∫ κ ws λk §ws k\n← rows μ κ ws λk 《\n  ← num × C §ws k\n  ← r ‰ num W\n  『「n」 k 「f」 ÷ －num r W 「r」 r』\n》\n← L － C ∫ rows λp §p 「f」\n← srt ⇅ rows λp 【－0 §p 「r」 §p 「n」】\n← win μ ⊏ srt 0 L λp §p 「n」\n∀ ⇅ rows λp §p 「n」 λp 《\n  ← c ＋ §p 「f」 ¿ ∋ win §p 「n」 1 0\n  » 〔{§p 「n」}: {⌗ ÷ c 100 2}〕\n》\n",
+  "відповідь": "```\n🜂 【「читати:дані」】\n← d δ 🜔читати 「поділ.json」\n← ws §d 「ваги」\n← C ⌊ × ν §d 「сума」 100\n← W ∫ κ ws λk §ws k\n← rows μ κ ws λk 《\n  ← num × C §ws k\n  ← r ‰ num W\n  『「n」 k 「f」 ÷ －num r W 「r」 r』\n》\n← L － C ∫ rows λp §p 「f」\n← srt ⇅ rows λp 【－0 §p 「r」 §p 「n」】\n← win μ ⊏ srt 0 L λp §p 「n」\n∀ ⇅ rows λp §p 「n」 λp 《\n  ← c ＋ §p 「f」 ¿ ∋ win §p 「n」 1 0\n  » 〔{§p 「n」}: {⌗ ÷ c 100 2}〕\n》\n```\n",
+  "код_виходу": 0,
+  "вивід": "Анна: 500.00\nДенис: 166.67\nОля: 166.67\nПетро: 166.66\n",
+  "помилки": ""
+ }
+]

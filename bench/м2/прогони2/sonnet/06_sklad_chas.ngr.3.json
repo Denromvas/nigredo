@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "🜂 「перший момент, коли залишок товару став відʼємним」 【「читати:дані」】\n← ev δ 🜔читати 「рух.json」\n← start δ 🜔читати 「початок.json」\n← step Λ st e 《\n  ← tv §e 「товар」\n  ← bl §st 「bl」\n  ← nw ＋ ¿ ∋ bl tv §bl tv 0 §e 「зміна」\n  ← fl §st 「fl」\n  ← nf ¿ ∧ ‹ nw 0 ¬ ∋ fl tv ✎ fl tv §e 「час」 fl\n  ✎ ✎ st 「bl」 ✎ bl tv nw 「fl」 nf\n》\n← res Σ ev 『「bl」 start 「fl」 『』』 ∘step\n← fl §res 「fl」\n¿ ＝ ρ fl 0\n  » 「усе гаразд」\n  ∀ ↑ κ fl λk » 〔{k}: {§fl k}〕\n",
+  "відповідь": "```\n🜂 「перший момент, коли залишок товару став відʼємним」 【「читати:дані」】\n← ev δ 🜔читати 「рух.json」\n← start δ 🜔читати 「початок.json」\n← step Λ st e 《\n  ← tv §e 「товар」\n  ← bl §st 「bl」\n  ← nw ＋ ¿ ∋ bl tv §bl tv 0 §e 「зміна」\n  ← fl §st 「fl」\n  ← nf ¿ ∧ ‹ nw 0 ¬ ∋ fl tv ✎ fl tv §e 「час」 fl\n  ✎ ✎ st 「bl」 ✎ bl tv nw 「fl」 nf\n》\n← res Σ ev 『「bl」 start 「fl」 『』』 ∘step\n← fl §res 「fl」\n¿ ＝ ρ fl 0\n  » 「усе гаразд」\n  ∀ ↑ κ fl λk » 〔{k}: {§fl k}〕\n```\n",
+  "код_виходу": 0,
+  "вивід": "болт: 09:20\nгайка: 09:10\n",
+  "помилки": ""
+ }
+]
