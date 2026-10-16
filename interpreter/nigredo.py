@@ -97,6 +97,9 @@ GLYPHS = {
           'якщо {0} то {1} інакше {2}', 'керування'),
     '∀': (2, '∀ список λx тіло', 'для кожного елемента виконати функцію; дає ∅', 'для кожного з {0}: {1}', 'керування'),
     'μ': (2, 'μ список λx тіло', 'перетворити кожен елемент (map)', 'кожен з {0} перетворити: {1}', 'керування'),
+    '‖': (2, '‖ список λx 🜔інструмент …', 'паралельно: для кожного елемента — один виклик інструмента (мережа, агент, '
+          'процес, читання); аргументи — по черзі, дії — разом (до 8), результати й слід — у порядку елементів',
+          'паралельно для кожного з {0}: {1}', 'керування'),
     'φ': (2, 'φ список λx умова', 'лишити елементи, для яких умова ● (filter)', 'з {0} лишити ті, де {1}', 'керування'),
     'Σ': (3, 'Σ список початок Λa x тіло', 'згорнути (reduce): a ← тіло для кожного x', 'згорнути {0} від {1}: {2}', 'керування'),
     '∫': (2, '∫ список λx число', 'сума: для кожного елемента — число, усе додати точно', 'сума по {0}: {1}', 'керування'),
@@ -1047,13 +1050,18 @@ class Parser:
             self.cap_stack.pop()
             return ('deleg', pos, name[2], intent[2], caps, body)
         ar = GLYPHS[g][0]
-        return ('op', pos, g, [self.expr() for _ in range(ar)])
+        args = [self.expr() for _ in range(ar)]
+        if g == '‖' and not (args[1][0] == 'lam' and len(args[1][2]) == 1 and args[1][3][0] == 'tool'
+                             and args[1][3][2] in PARALLEL_TOOLS):
+            raise StaticError('‖ список λx 🜔інструмент …: тіло — рівно один виклик інструмента без спільного стану '
+                              '(' + ', '.join(TOOL_SHORT.get(t, t) for t in PARALLEL_TOOLS) + '; не запис і не жереб — їхній порядок був би випадковим)', pos)
+        return ('op', pos, g, args)
 
 
 WORLD_WRITERS = {'жереб', 'файл.писати', 'бд.писати', 'процес', 'агент', 'мережа.взяти', 'мережа.послати'}      # змінюють стан, який потім можна прочитати
 WORLD_READERS = {'жереб', 'файл.читати', 'файл.список', 'файл.писати', 'бд.читати', 'бд.писати', 'процес', 'агент', 'мережа.взяти', 'мережа.послати'}
 _EFFECTS = {}
-FN_SLOTS = {'∀': (1,), 'μ': (1,), '∫': (1,), 'φ': (1,), '⇅': (1,), '⊞': (1,), 'Σ': (2,), '↻': (1, 2), '☂': (1,), '🜍': (1,)}
+FN_SLOTS = {'∀': (1,), 'μ': (1,), '∫': (1,), '‖': (1,), 'φ': (1,), '⇅': (1,), '⊞': (1,), 'Σ': (2,), '↻': (1, 2), '☂': (1,), '🜍': (1,)}
 
 
 def effects(node):
@@ -1185,13 +1193,13 @@ TYPE_REQ = {
     '⊳': [(_S, _S), (_L, _A)], '∋': [(_S, _S), (_L, _A), (_D, _S)], 'κ': [(_D,)], 'ε': [(_D,)], '↑': [(_L,)],
     '↺': [(_S,), (_L,)], '✎': [(_D, _S, _A)], '⚗': [(_L, _N)], '≈': [(_A, _N)],
     '∀': [(_L, _F), (_S, _F)], 'μ': [(_L, _F), (_S, _F)], 'φ': [(_L, _F), (_S, _F)], '⇅': [(_L, _F), (_S, _F)],
-    '⊞': [(_L, _F), (_S, _F)], '∫': [(_L, _F), (_S, _F)], 'Σ': [(_L, _A, _F), (_S, _A, _F)],
+    '⊞': [(_L, _F), (_S, _F)], '∫': [(_L, _F), (_S, _F)], '‖': [(_L, _F), (_S, _F)], 'Σ': [(_L, _A, _F), (_S, _A, _F)],
     '↻': [(_A, _F, _F)], '☂': [(_A, _F)], '🜍': [(_A, _F)], '►': [(_F, _A)], '▶': [(_F, _A, _A)],
 }
 TYPE_RES = {'∫': _N, '－': _N, '×': _N, '÷': _N, '‰': _N, '⌊': _N, '≅': _N, 'ρ': _N, 'ν': _N, '±': _N, '⊳': _N,
             '＝': _B, '≠': _B, '‹': _B, '›': _B, '≤': _B, '≥': _B, '∧': _B, '∨': _B, '¬': _B, '∋': _B,
             'σ': _S, '⌗': _S, '⁀': _S, '⇄': _S, '⊢': _S, '⇣': _S, '⇡': _S, '≋': _S, 'Δ': _S,
-            '▦': _L, 'ε': _L, '✂': _L, 'μ': _L, 'φ': _L, '⇅': _L, '↑': _L, '⌕': _L, 'κ': _L, '…': _L, '⚗': _L, '⌂': _L,
+            '▦': _L, 'ε': _L, '‖': _L, '✂': _L, 'μ': _L, 'φ': _L, '⇅': _L, '↑': _L, '⌕': _L, 'κ': _L, '…': _L, '⚗': _L, '⌂': _L,
             '⊞': _D, '✎': _D, '∀': 'none', '»': 'none', '🜄': 'none', '☠': 'none'}
 TOOL_TYPES = {'оракул': ((_A,), _B), 'жереб': ((_N,), _N), 'час': ((), _S), 'файл.читати': ((_S,), _S),
               'файл.писати': ((_S, _S), 'none'), 'файл.список': ((_S,), _L), 'мережа.взяти': ((_S,), _S),
@@ -1324,12 +1332,17 @@ class Trace:
     def __init__(self, outs, key, limit=MAX_TRACE):
         self.outs, self.key, self.prev, self.n = outs, key, '0' * 16, 0
         self.depth, self.bytes, self.limit = 0, 0, limit
+        self.tl = threading.local()     # ‖: записи з потоку дії — у його буфер, потім у порядку елементів
 
     def _check_strings(self, data):
         if _bad_str(data):
             raise Fatal('у даних для сліду неповний символ (сурогат) — запис неможливий, програму зупинено')
 
     def __call__(self, event, **data):
+        buf = getattr(self.tl, 'buf', None)
+        if buf is not None:
+            buf.append((event, data))
+            return
         self._check_strings(data)
         if self.bytes > self.limit and event not in ('помилка', 'кінець', 'відмова'):
             raise Fatal(f'слід перевищив {self.limit} байтів (--слід-розмір) — програму зупинено')
@@ -2111,6 +2124,9 @@ def t_db_write(it, pos, p, sql, params):
 
 
 PROC_CAP, PROC_TIME = 1_000_000, 60
+PAR_MAX = 8                    # ‖: найбільше одночасних дій
+PARALLEL_TOOLS = ('мережа.взяти', 'мережа.послати', 'агент', 'процес', 'бд.читати', 'файл.читати', 'файл.список',
+                  'оракул', 'час')   # ‖: дії без спільного стану (не жереб; не запис — порядок записів був би випадковим)
 
 
 def cmd_within(s, g):
@@ -2450,6 +2466,88 @@ class Interp:
         self.decided_c = 1.0   # найсумнівніше рішення в запуску: від нього залежить і тривалість (годинник)
 
         self.depth = 0
+        self.defer_node = None  # тіло ‖, чий виклик інструмента відкладено
+
+    def tool_begin(self, name, args, pos):
+        """Перевірка прав, впевненість аргументів і запис «виклик» — до дії (для ‖ — по черзі, до паралельних дій)."""
+        full = name in ('агент', 'мережа.взяти', 'мережа.послати', 'файл.писати', 'бд.писати', 'процес')  # те, що йде назовні, — у слід повністю
+        targs = [trace_val(a, full) for a in args]
+        if name not in self.caps:          # права — того, хто виконує зараз, а не того, хто написав функцію
+            self.trace('заборонено', агент=self.agent, назва=name, аргументи=targs,
+                       причина='інструмента немає в дозволах цього агента')
+            raise NgrError(f'агент «{self.agent}» не має дозволу «{name}» (функцію з інструментом '
+                           f'викликано там, де цього дозволу немає)', pos)
+        ac = min([self.cpc] + [a.c for a in args])
+        self.taint(ac)
+        if name in WORLD_WRITERS:
+            self.trace('виклик', агент=self.agent, назва=name, аргументи=targs)   # до дії: видно, навіть якщо процес уб'ють
+            self.world_c = min(self.world_c, ac)
+        return {'назва': name, 'аргументи': args, 'слід': targs, 'ac': ac, 'pos': pos, 'агент': self.agent}
+
+    def tool_do(self, job):
+        """Сама дія (у ‖ — у своєму потоці; записи сліду з потоку — у його буфер)."""
+        try:
+            return TOOLS[job['назва']][5](self, job['pos'], *job['аргументи']), None
+        except (NgrError, Fatal) as e:
+            return None, e
+
+    def tool_end(self, job, outcome):
+        res, err = outcome
+        name, targs, ac = job['назва'], job['слід'], job['ac']
+        if err is not None:
+            if isinstance(err, Fatal):
+                raise err
+            err.c = min(err.c, ac, self.world_c if name in WORLD_READERS else 1.0)
+            self.trace('інструмент', агент=job['агент'], назва=name, аргументи=targs, помилка=err.msg, впевненість=err.c)
+            raise err
+        c = min([res.c, ac] + ([self.world_c] if name in WORLD_READERS else [])
+                + ([self.decided_c] if name == 'час' else []))
+        res = capc(res, c) if c < 1 else res
+        self.taint(c)
+        self.trace('інструмент', агент=job['агент'], назва=name, аргументи=targs, результат=trace_val(res), впевненість=c)
+        return res
+
+    def parallel(self, lst, fn, pos, fnode):
+        """‖ список λx 🜔інструмент …: аргументи — по черзі (друк, помилки, «виклик» у слід — у порядку елементів),
+        дії — паралельно (до PAR_MAX потоків), результати й слід — у порядку елементів."""
+        from concurrent.futures import ThreadPoolExecutor
+        items = self.seq(lst, '‖', pos)
+        saved, saved_node = self.pc, self.defer_node
+        self.pc = min(saved, lst.s)
+        self.defer_node = fn.v.body
+        try:
+            jobs = [self.each('‖', i, fn, [x], pos) for i, x in enumerate(items)]
+        finally:
+            self.pc, self.defer_node = saved, saved_node
+        trace = self.trace
+
+        def run(job):
+            tl = getattr(trace, 'tl', None)
+            if tl is not None:
+                tl.buf = []
+            try:
+                return self.tool_do(job), (tl.buf if tl is not None else [])
+            finally:
+                if tl is not None:
+                    tl.buf = None
+        with ThreadPoolExecutor(max_workers=max(1, min(PAR_MAX, len(jobs)))) as ex:
+            done = list(ex.map(run, [j.v[1] for j in jobs]))
+        out, first = [], None
+        for i, (j, (outcome, buf)) in enumerate(zip(jobs, done)):
+            for event, data in buf:                          # записи з потоку — на своєму місці
+                self.trace(event, **data)
+            try:
+                r = self.tool_end(j.v[1], outcome)
+                out.append(capc(r, j.c) if j.c < r.c else r)
+            except NgrError as e:
+                if not e.where:
+                    e.msg, e.where = f'‖, елемент №{i}: {e.msg}', True
+                first = first or e                           # решта дій уже відбулася — у слід усе, потім помилка
+        if first:
+            raise first
+        self.fn_effects(fnode, lst.s)
+        self.halt_risk(lst.s, fnode, called=True)
+        return mk(out, lst.s)
 
     def fn_effects(self, node, c):
         """Те саме для місця функції: λ — дивимося тіло; будь-що інше (∘, змінна) — невідомо, отже все."""
@@ -2650,33 +2748,10 @@ class Interp:
             self.trace('печатка', агент=self.agent, намір=node[2], дозволи=node[3])
             return V(None)
         if k == 'tool':
-            args = [self.eval(a, env) for a in node[3]]
-            name = node[2]
-            full = name in ('агент', 'мережа.взяти', 'мережа.послати', 'файл.писати', 'бд.писати', 'процес')     # те, що йде назовні, — у слід повністю
-            targs = [trace_val(a, full) for a in args]
-            if name not in self.caps:          # права — того, хто виконує зараз, а не того, хто написав функцію
-                self.trace('заборонено', агент=self.agent, назва=name, аргументи=targs,
-                           причина='інструмента немає в дозволах цього агента')
-                raise NgrError(f'агент «{self.agent}» не має дозволу «{name}» (функцію з інструментом '
-                               f'викликано там, де цього дозволу немає)', pos)
-            ac = min([self.cpc] + [a.c for a in args])
-            self.taint(ac)
-            if name in WORLD_WRITERS:
-                self.trace('виклик', агент=self.agent, назва=name, аргументи=targs)   # до дії: видно, навіть якщо процес уб'ють
-                self.world_c = min(self.world_c, ac)
-            try:
-                res = TOOLS[name][5](self, pos, *args)
-            except NgrError as e:
-                e.c = min(e.c, ac, self.world_c if name in WORLD_READERS else 1.0)
-                self.trace('інструмент', агент=self.agent, назва=name, аргументи=targs, помилка=e.msg, впевненість=e.c)
-                raise
-            c = min([res.c, ac] + ([self.world_c] if name in WORLD_READERS else [])
-                    + ([self.decided_c] if name == 'час' else []))
-            res = capc(res, c) if c < 1 else res
-            self.taint(c)
-            self.trace('інструмент', агент=self.agent, назва=name, аргументи=targs,
-                       результат=trace_val(res), впевненість=c)
-            return res
+            job = self.tool_begin(node[2], [self.eval(a, env) for a in node[3]], pos)
+            if node is self.defer_node:         # ‖ збирає виклики, щоб виконати їх разом
+                return V(('\0виклик', job))
+            return self.tool_end(job, self.tool_do(job))
         if k == 'deleg':
             return self.delegate(node, env)
         return self.sized(self.op(node[2], node[3], env, pos), node[2], pos)
@@ -2769,6 +2844,10 @@ class Interp:
                 finally:
                     self.pc = saved
                 return capc(res, tc) if tc < res.c else res
+        if g == '‖':
+            lst = E(0)
+            self.taint(lst.c)
+            return self.parallel(lst, E(1), pos, argn[1])
         if g in '∀μφ⇅⊞∫':
             lst = E(0)
             self.taint(lst.c)
@@ -3241,6 +3320,7 @@ LAMBDA_TEMPLATES = {
     'φ': 'ті {p} з {0}, де {body}',
     'Σ': 'згорнути {0}, почавши з {1}: ({p}) ↦ {body}',
     '∫': 'сума для кожного {p} з {0}: {body}',
+    '‖': 'паралельно для кожного {p} з {0}: {body}',
     '↻': '',
     '☂': 'спробувати {0}; якщо помилка {p}: {body}',
     '🜍': 'перевірити, що для {p} = {0}: {body}',
