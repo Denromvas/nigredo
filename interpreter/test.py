@@ -591,6 +591,12 @@ def main():
     check(js.get('квоти') == [{'інструмент': 'оракул', 'обмеження': '', 'не_більше': 5}], '--печатка --json: квоти', str(js))
     got = run(['-e', '🜂\n» ⌕ 「a=1 b=2」 「(\\w)=」\n» ⌕ 「a=1」 「\\w=」'], env)
     check(got.stdout == '【【「a」】 【「b」】】\n【「a=」】\n', '⌕: з однією групою — теж список груп (як обіцяє памʼятка)', got.stdout)
+    got = run(['--тести', str(ROOT / 'examples' / 'тести')], env)
+    check(got.returncode == 0 and 'тестів пройшли' in got.stdout, 'ngr --тести: тести мовою (examples/тести) — усі пройшли',
+          got.stdout + got.stderr)
+    (tmp / 'поганий.тест.ngr').write_text('🜂\n🜍 1 λx ＝ x 2\n', encoding='utf-8')
+    got = run(['--тести', str(tmp / 'поганий.тест.ngr')], env)
+    check(got.returncode == 1 and '✗' in got.stdout and '0 з 1' in got.stdout, 'ngr --тести: невдалий тест — код 1 і причина', got.stdout)
     # контракти даних ✓
     got = run(['-e', '🜂\n» ✓ 『「a」 1 「b」 「x」』 『「a」 「ціле」 「…」 「будь-що」』\n» ✓ ∅ 「рядок?」\n'
                '» ☂ ✓ 【1 「2」 3】 【「число」】 λe e\n» ☂ ✓ 『「a」 1』 『「a」 「число」 「b」 「рядок」』 λe e'], env)

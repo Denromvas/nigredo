@@ -651,7 +651,7 @@ def lex(src):
                 raise StaticError(f'імʼя «{buf}»: письмо {", ".join(sorted(scripts - NAME_SCRIPTS))} в іменах не дозволене — '
                                   f'його літери-двійники (як коптська ⲁ і а) таблиця Unicode ловить не всі', pos)
             if any(ch in FILLERS for ch in buf):
-                raise StaticError(f'імʼя з невидимим заповнювачем (U+3164 тощо) заборонене', pos)
+                raise StaticError('імʼя з невидимим заповнювачем (U+3164 тощо) заборонене', pos)
             if any(unicodedata.category(ch) == 'Nd' and not '0' <= ch <= '9' for ch in buf):
                 raise StaticError(f'в імені «{buf}» — лише цифри 0–9 (інші письма цифр плутаються з ними)', pos)
             toks.append(('name', buf, pos))
@@ -2172,7 +2172,7 @@ def xml_path(root, path, pos):
         attr = m.group(1)
         path = path[:m.start()] if m.start() else ''
     steps = []                     # (вниз_будь-де, імʼя, [умови])
-    i, absolute = 0, path.startswith('/') and not path.startswith('//')
+    absolute = path.startswith('/') and not path.startswith('//')
     rest = path[1:] if absolute else path
     for raw in _re.findall(r'(/?/?)([^/\[]+(?:\[[^\]]*\])*)', '/' + rest if rest and not rest.startswith('/') else rest):
         sep, step = raw
@@ -4048,6 +4048,7 @@ def cheatsheet():
            'і в `--печатка`, `--розбір` та сліді показано саме повні.', '',
            'Дозвіл для файлів — тека (і все в ній); для мережі — хост (порти 80/443) або `хост:порт`;',
            'для агента — імʼя з реєстру. Теку власника (`~/.nigredo`) дозволити не можна.',
+           'Тести мовою: файли `*.тест.ngr` з перевірками `🜍 x λv умова`; `ngr --тести тека` — підсумок і код виходу.',
            'Кілька інструментів на одне обмеження: `「читати писати:тимч」`. Квота: `「взяти:api.x≤100」` — не більше 100',
            'викликів за запуск (понад — помилка й «заборонено»; так само в дозволах власника).',
            'Шлях один раз: якщо для інструмента в печатці одна тека, пишіть шлях відносно неї —',
@@ -4215,10 +4216,47 @@ USAGE = f"""Nigredo {VERSION}
   ngr --перевірити-слід ФАЙЛ [ПРОГРАМА]   (з програмою — ще й чи слід саме від неї)
   ngr --сухо ФАЙЛ.ngr      виконати без записів, надсилань, процесів і агентів (читання — так): їхній результат —
                            невідомий (впевненість 0); наприкінці — перелік дій, які програма зробила б
+  ngr --тести [ТЕКА|ФАЙЛ …] [--json]   прогнати всі *.тест.ngr (кожен — програма з 🜍-перевірками; код 0 — пройшов)
   ngr --повторити СЛІД [ПРОГРАМА]   виконати знову без дій у світі: інструменти повертають записане (СЛІД.дані);
                            ті самі аргументи, тека, зерно; наприкінці — чи збігся вивід і завершення
   ngr --памʼятка           згенерувати памʼятку для агентів
 """
+
+
+def run_tests(targets, as_json=False):
+    """ngr --тести [ТЕКА|ФАЙЛ …]: кожен *.тест.ngr — окрема програма (зі своєю печаткою, слідом і 🜍-перевірками);
+    пройшов — код 0. Підсумок і код виходу: 0 — усі пройшли, 1 — ні, 2 — тестів не знайдено."""
+    import contextlib
+    import io
+    files = []
+    for t in targets or ['.']:
+        if os.path.isdir(t):
+            for root_, _, names in os.walk(t):
+                files += [os.path.join(root_, n) for n in names if n.endswith('.тест.ngr')]
+        elif t.endswith('.ngr'):
+            files.append(t)
+    files = sorted(set(files))
+    if not files:
+        print('✗ тестів не знайдено (файли *.тест.ngr)', file=sys.stderr)
+        return 2
+    results = []
+    for f in files:
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            try:
+                code = main([f])
+            except SystemExit as e:
+                code = e.code
+        first = (err.getvalue().strip().splitlines() or [''])[0]
+        results.append({'файл': safe(f), 'код': code, 'пройшов': code == 0, 'помилка': safe(first) if code else ''})
+    ok = sum(r['пройшов'] for r in results)
+    if as_json:
+        print(json.dumps({'пройшли': ok, 'усього': len(results), 'тести': results}, ensure_ascii=False, indent=1))
+    else:
+        for r in results:
+            print(f'{"✓" if r["пройшов"] else "✗"} {r["файл"]}' + (f' — код {r["код"]}: {r["помилка"]}' if not r['пройшов'] else ''))
+        print(f'{ok} з {len(results)} тестів пройшли')
+    return 0 if ok == len(results) else 1
 
 
 def load_replay(tpath, program=None):
@@ -4322,6 +4360,8 @@ def main(argv):
             msg = verify_trace(tpath, rest[0] if rest else None)
             print(verify_trace(tpath, rest[0] if rest else None, True) if js else msg)
             return 0 if msg.startswith('✓') else 1
+        if a == '--тести':
+            return run_tests([r for r in it if r != '--json'], '--json' in argv)
         if a == '--повторити':
             opts['mode'], opts['replay'] = 'повторити', next(it, None)
             if opts['replay'] is None:
