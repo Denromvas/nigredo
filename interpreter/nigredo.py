@@ -2177,6 +2177,7 @@ def _db(it, pos, tool, p, sql, params, write):
         raise NgrError(f'{tool}: {e}: {p.v}', pos)
     try:
         con.setlimit(sqlite3.SQLITE_LIMIT_ATTACHED, 0)
+        con.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 4 * it.max_size)      # одне значення — не більше за --розмір (суд 7)
         con.execute(f'PRAGMA hard_heap_limit = {max(64 << 20, 32 * it.max_size)}')   # і памʼять самого SQLite (суд 7)
         if write:                        # база не росте без меж (zeroblob заповнив би диск телефона)
             page = con.execute('PRAGMA page_size').fetchone()[0]
@@ -2231,7 +2232,7 @@ SQL_ERRORS = [('Incorrect number of bindings', 'кількість «?» у за
               ('no such table', 'немає такої таблиці'), ('no such column', 'немає такого стовпця'),
               ('syntax error', 'синтаксична помилка SQL'), ('UNIQUE constraint failed', 'порушено унікальність'),
               ('NOT NULL constraint failed', 'порожнє значення там, де заборонено'), ('database is locked', 'база зайнята'),
-              ('database or disk is full', 'база досягла межі розміру'), ('unable to open', 'не вдалося відкрити базу')]
+              ('database or disk is full', 'база досягла межі розміру'), ('string or blob too big', 'значення більше за --розмір'), ('unable to open', 'не вдалося відкрити базу')]
 
 
 def sql_err(msg):
@@ -2375,7 +2376,8 @@ TOOLS = {
                        'відповідь до 1 МБ, 30 с (окремий дозвіл: надсилання даних назовні)', True, 'хост', t_send),
     'процес': (1, '🜔процес 【「git」 「status」】 → вивід', 'запустити команду з печатки без оболонки (60 с, вивід до '
                '1 МБ; не 0 — помилка). Дозвіл — початок команди: 「процес:git status」 не дає git push. Команда діє з правами '
-               'процесу: межі тек Nigredo на неї не діють (git, make, npm у теці, куди можна писати, — довільний код)', True,
+               'процесу: межі тек Nigredo на неї не діють (git, make, npm у теці, куди можна писати, — довільний код; команда, що '
+               'читає файли, прочитає й ключ власника — тоді слід можна підробити)', True,
                'команда', t_proc),
     'агент': (2, '🜔агент 「імʼя」 「запит」 → рядок', 'спитати справжнього агента з реєстру лаунчера '
               '(claude -p у його теці; він діє з власними правами)', True, 'імʼя', t_agent),

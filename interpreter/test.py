@@ -504,6 +504,14 @@ def main():
     vals = got.stdout.split()
     check(len(vals) == 2 and all(float(v) < 1 for v in vals), 'канал завершення: σ, ρ давніх значень після сумнівного '
           '«могло впасти» — не впевненіші (суд 7)', got.stdout + got.stderr)
+    # суд 7 (Оркестратор)
+    got = run(['-e', bseal + f'» ☂ 🜔бд.читати 「{bd}/a.db」 「SELECT length(randomblob(200000000)) AS n」 【】 λe 「межа」\n'
+               f'🜔бд.писати 「{bd}/тр.db」 「CREATE TABLE ж(x)」 【】\n🜔бд.писати 「{bd}/тр.db」 「CREATE TABLE в(x)」 【】\n'
+               f'🜔бд.писати 「{bd}/тр.db」 「INSERT INTO в VALUES (1), (2), (3)」 【】\n'
+               f'🜔бд.писати 「{bd}/тр.db」 「CREATE TRIGGER т AFTER INSERT ON ж BEGIN DELETE FROM в; END」 【】\n'
+               f'» 🜔бд.писати 「{bd}/тр.db」 「INSERT INTO ж VALUES (1)」 【】'], benv)
+    check(got.stdout == 'межа\n4\n', 'SQLite: значення понад --розмір — помилка; зміни тригерів — у кількості змінених рядків',
+          got.stdout + got.stderr)
     got = run(['-e', '🜂 「лише намір」\n» 1'], env)
     check(got.returncode == 0, 'печатка лише з наміром (без 【】) — без дозволів')
     seal = run(['--печатка', str(ROOT / 'examples' / 'ahent.ngr')], env).stdout
