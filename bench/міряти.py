@@ -108,8 +108,16 @@ def main():
                 cmd = [sys.executable, str(NGR), str(prog), '--', str(port)]
             else:
                 cmd = [sys.executable, str(prog), str(port)]
+            tpf = home / 'шлях_сліду.txt'
+            replayed = None
             try:
-                out, dt, err = run(cmd, d, env, times, reset)
+                out, dt, err = run(cmd, d, dict(env, NIGREDO_TRACE_PATH_FILE=str(tpf)) if lang == 'ngr' else env,
+                                   times, reset)
+                if lang == 'ngr':                                           # М7: останній запуск — повторити зі сліду
+                    rp = subprocess.run([sys.executable, str(NGR), '--повторити', tpf.read_text(encoding='utf-8'),
+                                         str(prog)], cwd=d, env=env, capture_output=True, text=True, timeout=120)
+                    replayed = rp.returncode == 0 and rp.stdout == out[len(out) - len(rp.stdout):] and \
+                        '✓ повтор збігся' in rp.stderr
             finally:
                 if prog != src:
                     prog.unlink()
@@ -122,7 +130,7 @@ def main():
                                       'інший вивід' if out != expected else
                                       f'повільно: {dt:.2f} с > {limit} с' if not ok else '')
             row[lang] = {'ok': ok, 'вивід_ok': right, 'час': dt, 'символів': len(body), 'токени': tokens(body),
-                         'токени_з_печаткою': tokens(code) if lang == 'ngr' else None, 'чому': why}
+                         'токени_з_печаткою': tokens(code) if lang == 'ngr' else None, 'чому': why, 'повтор': replayed}
         row['гарантія'] = bool(row['ngr'] and row['ngr']['ok'])
         row['примітка'] = meta.get('python_вимога', '')
         rows.append(row)
@@ -199,7 +207,10 @@ def report(rows, bugs=(), falses=()):
                f'Ще {len(bugs) - len(real)} випадки — властивості моделі Nigredo (дозволи, перепризначення, регулярки без '
                f'відкатів), їх порівнювати з Python нечесно. Хибні тривоги на {len(falses)} правильних програмах: {fp}. '
                f'Умова 1.0: більше, ніж Python + pyflakes, і 0 хибних тривог.') if bugs else '',
-              '- **М2, М7** ще не міряються: потрібні прогін моделей на задачах поза памʼяткою і повтор зі сліду (фази 0, 3).']
+              f'- **М7 відтворюваність:** `ngr --повторити` останнього запуску збігся зі слідом у '
+              f'{sum(bool(r["ngr"] and r["ngr"].get("повтор")) for r in rows)} з {sum(bool(r["ngr"]) for r in rows)} '
+              f'задач Nigredo (без жодної дії у світі); у Python — 0 (нема сліду).',
+              '- **М2** — окремий прогін моделей на задачах поза памʼяткою: `bench/м2/РЕЗУЛЬТАТИ.md`.']
     if bugs:
         lines += ['', '## М5: навмисні помилки — чи впіймано до запуску', '',
                   '| Помилка | Клас | Python | Python + pyflakes | Nigredo | Як Nigredo її бачить |', '|---|---|---|---|---|---|']

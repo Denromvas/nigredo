@@ -276,6 +276,38 @@ def main():
            if e['подія'] in ('заборонено', 'інструмент')]
     check(got.returncode == 1 and 'елемент №1' in got.stderr and evs == ['інструмент', 'заборонено', 'інструмент', 'інструмент'],
           '‖: відмова з потоку — у сліді на своєму місці, решта дій записана, потім помилка', got.stderr + str(evs))
+    # --повторити (М7): інструменти повертають записане (СЛІД.дані), у світі нічого не відбувається
+    rp = tmp / 'повтор'
+    rp.mkdir()
+    (rp / 'п.ngr').write_text(f'🜂 【「взяти:127.0.0.1:{port}」 「читати:{DATA}」 「писати:{DATA / "звіти"}」 「оракул」 「жереб」】\n'
+                             f'» ρ 🜔читати 「продажі.json」\n'
+                             f'∀ ‖ …1 2 λn 🜔взяти 〔http://127.0.0.1:{port}/повільно/{{n}}〕 λr » r\n'
+                             f'🜔писати 「{DATA / "звіти" / "повтор.txt"}」 「записано」\n'
+                             f'» 【🜔жереб 1000 ± 🜔оракул 「?」】\n'
+                             f'» ☂ 🜔читати 「нема.txt」 λe 「перехоплено」\n', encoding='utf-8')
+    first = run(['--слід', str(rp / 'с.jsonl'), str(rp / 'п.ngr')], env)
+    (DATA / 'звіти' / 'повтор.txt').unlink()
+    got = run(['--повторити', str(rp / 'с.jsonl')], env)
+    check(first.returncode == 0 and got.returncode == 0 and got.stdout == first.stdout and '✓ повтор збігся' in got.stderr
+          and not (DATA / 'звіти' / 'повтор.txt').exists(),
+          'повтор: той самий вивід (файл, ‖, жереб, оракул, перехоплена помилка), а запису у світі немає',
+          first.stdout + got.stdout + got.stderr)
+    data = (rp / 'с.jsonl.дані').read_text(encoding='utf-8')
+    (rp / 'с.jsonl.дані').write_text(data.replace('відповідь 2', 'відповідь Ж'), encoding='utf-8')
+    got = run(['--повторити', str(rp / 'с.jsonl')], env)
+    check(got.returncode == 1 and 'змінено' in got.stderr, 'повтор: змінене сховище значень — відмова', got.stderr)
+    (rp / 'с.jsonl.дані').write_text('', encoding='utf-8')
+    got = run(['--повторити', str(rp / 'с.jsonl')], env)
+    check(got.returncode == 1 and 'немає значень' in got.stderr, 'повтор: без сховища — відмова з номерами викликів',
+          got.stderr)
+    (rp / 'с.jsonl.дані').write_text(data, encoding='utf-8')
+    (rp / 'інша.ngr').write_text('🜂\n» 1\n', encoding='utf-8')
+    got = run(['--повторити', str(rp / 'с.jsonl'), str(rp / 'інша.ngr')], env)
+    check(got.returncode == 1 and 'ІНШОЇ програми' in got.stderr, 'повтор: інша програма — відмова', got.stderr)
+    got = run(['--слід', str(rp / 'е.jsonl'), '-e', '🜂 【「жереб」】\n» 🜔жереб 6\n» ÷ 1 ν「0」'], env)
+    got2 = run(['--повторити', str(rp / 'е.jsonl')], env)
+    check(got.returncode == 1 and got2.returncode == 0 and got2.stdout == got.stdout and 'завершення «помилка»' in got2.stderr,
+          'повтор: -e програма (код у сліді), завершення помилкою — те саме', got2.stdout + got2.stderr)
     # кілька інструментів на одне обмеження: кожен — окремий дозвіл, кожен звіряється з власником
     got = run(['--печатка', '-e', f'🜂 【「читати писати:{DATA}」】\n» 1'], env)
     check(got.returncode == 3 and 'файл.писати:' in got.stdout + got.stderr and 'файл.читати' in got.stdout,
@@ -430,6 +462,14 @@ def main():
     spec.loader.exec_module(M)
     import decimal
     decimal.setcontext(M.DEC_CTX.copy())
+    it = M.Interp(lambda *a, **k: None, out=io.StringIO())
+    it.replay = ([{'подія': 'інструмент', 'назва': 'час', 'аргументи': [], 'значення': 'x'}], {'x': '2026'})
+    try:
+        it.run(M.parse('🜂 【「жереб」】\n» 🜔жереб 6', '.', None, []))
+        mism = ''
+    except M.NgrError as e:
+        mism = e.msg
+    check('розійшовся зі слідом' in mism, 'повтор: інший виклик, ніж у сліді, — зупинка з розбіжністю', mism)
     S = {'num': '3', 'dec': '2.5', 'str': '「аб」', 'bool': '●', 'no': '○', 'none': '∅', 'list': '【1 2】',
          'dict': '『「а」 1』', 'fn': 'λx x'}
     alarms, crashes = [], []
