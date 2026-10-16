@@ -440,6 +440,7 @@ def main():
     got = run(['--слід', str(ptr5), '-e', f'🜂 【「читати:{DATA / "звіти"}」】\n» 🜔читати 「продажі.json」', '--тека', str(DATA)], env)
     check(got.returncode == 1 and 'поза дозволеним' in got.stderr and '"заборонено"' in ptr5.read_text(encoding='utf-8'),
           'шлях один раз: наявний файл поза дозволом — відмова й «заборонено», а не інший файл', got.stderr)
+    (DATA / 'звіти' / 'продажі.json').unlink(missing_ok=True)      # чистий стан (не від попереднього прогону)
     got = run(['-e', f'🜂 【「писати:{DATA / "звіти"}」】\n🜔писати 「продажі.json」 「x」', '--тека', str(DATA)], env)
     check(got.returncode == 1 and not (DATA / 'звіти' / 'продажі.json').exists(),
           'шлях один раз: запис у наявний файл поза дозволом — відмова, а не тихо в теку з печатки', got.stderr)
