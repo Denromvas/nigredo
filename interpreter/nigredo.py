@@ -67,7 +67,8 @@ class Fatal(NgrError):
 GLYPHS = {
     # звʼязування й функції
     '←': (None, '← імʼя вираз', 'назвати значення (назавжди: перепризначити не можна)', '{name} ← {0}', 'імена'),
-    'λ': (None, 'λ x тіло', 'функція одного аргументу', 'функція ({p}) ↦ {0}', 'імена'),
+    'λ': (None, 'λ x тіло', 'функція одного аргументу; λ【k v】 — розібрати список-пару (рівно стільки елементів)',
+          'функція ({p}) ↦ {0}', 'імена'),
     'Λ': (None, 'Λ a b тіло', 'функція двох аргументів', 'функція ({p}) ↦ {0}', 'імена'),
     '⊃': (None, '⊃ 「модуль.ngr」 【「імʼя」 …】', 'взяти названі значення з модуля (лише на початку інструкції верхнього '
           'рівня; печатка модуля ⊆ печатки програми)', 'з модуля {0} взяти {1}', 'імена'),
@@ -98,6 +99,7 @@ GLYPHS = {
     'μ': (2, 'μ список λx тіло', 'перетворити кожен елемент (map)', 'кожен з {0} перетворити: {1}', 'керування'),
     'φ': (2, 'φ список λx умова', 'лишити елементи, для яких умова ● (filter)', 'з {0} лишити ті, де {1}', 'керування'),
     'Σ': (3, 'Σ список початок Λa x тіло', 'згорнути (reduce): a ← тіло для кожного x', 'згорнути {0} від {1}: {2}', 'керування'),
+    '∫': (2, '∫ список λx число', 'сума: для кожного елемента — число, усе додати точно', 'сума по {0}: {1}', 'керування'),
     '↻': (3, '↻ стан λs умова λs крок', 'поки умова(стан) ● — стан ← крок(стан); дає останній стан',
           'починаючи з {0}, поки {1}, повторювати {2}', 'керування'),
     '☂': (2, '☂ вираз λe обробник', 'обчислити вираз; якщо помилка — обробник(текст помилки)',
@@ -110,6 +112,7 @@ GLYPHS = {
           '{0}[{1}]', 'дані'),
     '✎': (3, '✎ словник ключ значення', 'новий словник із доданим/заміненим ключем', '{0} з [{1}] = {2}', 'дані'),
     'κ': (1, 'κ словник', 'список ключів', 'ключі({0})', 'дані'),
+    'ε': (1, 'ε словник', 'пари 【ключ значення】 (у порядку ключів); з розбором: μ εd λ【k v】 …', 'пари({0})', 'дані'),
     '↺': (1, '↺ x', 'обернути рядок або список', 'навпаки({0})', 'дані'),
     '↑': (1, '↑ список', 'відсортувати за зростанням', 'відсортувати({0})', 'дані'),
     '✂': (2, '✂ рядок роздільник', 'розрізати рядок на список', 'розрізати {0} по {1}', 'дані'),
@@ -691,6 +694,15 @@ def narrower(tool, child, parent):
     return '..' not in rest.split(os.sep)
 
 
+def param_names(params):
+    """Імена параметрів λ/Λ, зокрема з розборів 【a b】."""
+    return [x for p in params for x in (p[2] if isinstance(p, tuple) else [p])]
+
+
+def param_text(params):
+    return ', '.join(f'【{", ".join(p[2])}】' if isinstance(p, tuple) else p for p in params)
+
+
 class Parser:
     def __init__(self, toks, base=None, root=None, stack=(), module=False):
         self.t, self.i = toks, 0
@@ -852,11 +864,27 @@ class Parser:
             raise StaticError(f'після {what} очікувалося імʼя', pos)
         return val, pos
 
+    def param(self, what):
+        """Параметр λ/Λ: імʼя або розбір списку 【a b …】 (рівно стільки елементів)."""
+        self.cont_nl()
+        nxt = self.peek()
+        if nxt[0] == 'open' and nxt[1] == '【':
+            _, _, ppos = self.next()
+            names = []
+            while not (self.peek()[0] == 'close' and self.peek()[1] == '】'):
+                names.append(self.name_tok(what)[0])
+            self.next()
+            if len(names) < 2:
+                raise StaticError(f'{what}【…】: розбір — щонайменше два імені', ppos)
+            return ('pat', ppos, names)
+        return self.name_tok(what)[0]
+
     def lam(self, n, pos):
-        params = [self.name_tok('λ' if n == 1 else 'Λ')[0] for _ in range(n)]
-        if len(set(params)) != n:
+        params = [self.param('λ' if n == 1 else 'Λ') for _ in range(n)]
+        flat = param_names(params)
+        if len(set(flat)) != len(flat):
             raise StaticError('однакові імена параметрів', pos)
-        self.scopes.append({p: 0 for p in params})
+        self.scopes.append({p: 0 for p in flat})
         body = self.expr()
         self.scopes.pop()
         return ('lam', pos, params, body)
@@ -921,17 +949,23 @@ class Parser:
         caps = {}
         for e in node[2]:
             plain_text(e[2], f'дозвіл {what}', e[1])
-            name, _, scope = canon_perm(e[2]).partition(':')
-            name = name.strip()
-            if name not in TOOLS:
-                raise StaticError(f'невідомий інструмент у дозволах: «{name}»', e[1])
-            if TOOLS[name][3] and not scope.strip() and not inherit:
-                raise StaticError(f'«{name}» потребує обмеження: «{name}:{TOOLS[name][4]}»', e[1])
-            if TOOLS[name][4] == 'команда' and scope.strip() and not (
-                    os.path.isabs(w := scope.strip().split(' ')[0]) or '/' not in w):
-                raise StaticError(f'«{name}»: команда — імʼя з PATH (git) або абсолютний шлях, не відносний', e[1])
-            caps.setdefault(name, []).extend([s.strip()] if (s := scope.strip()) else [])
+            names, sep, scope = e[2].partition(':')
+            for nm in names.split(' '):        # 「читати писати:тимч」 = 「читати:тимч」 「писати:тимч」
+                self.cap_one(caps, canon_perm(nm + sep + scope), e[1], inherit)
         return node, caps
+
+    @staticmethod
+    def cap_one(caps, perm, pos, inherit):
+        name, _, scope = perm.partition(':')
+        name = name.strip()
+        if name not in TOOLS:
+            raise StaticError(f'невідомий інструмент у дозволах: «{name}»', pos)
+        if TOOLS[name][3] and not scope.strip() and not inherit:
+            raise StaticError(f'«{name}» потребує обмеження: «{name}:{TOOLS[name][4]}»', pos)
+        if TOOLS[name][4] == 'команда' and scope.strip() and not (
+                os.path.isabs(w := scope.strip().split(' ')[0]) or '/' not in w):
+            raise StaticError(f'«{name}»: команда — імʼя з PATH (git) або абсолютний шлях, не відносний', pos)
+        caps.setdefault(name, []).extend([s.strip()] if (s := scope.strip()) else [])
 
     def glyph(self, g, pos):
         if g == '🜂':
@@ -1019,7 +1053,7 @@ class Parser:
 WORLD_WRITERS = {'жереб', 'файл.писати', 'бд.писати', 'процес', 'агент', 'мережа.взяти', 'мережа.послати'}      # змінюють стан, який потім можна прочитати
 WORLD_READERS = {'жереб', 'файл.читати', 'файл.список', 'файл.писати', 'бд.читати', 'бд.писати', 'процес', 'агент', 'мережа.взяти', 'мережа.послати'}
 _EFFECTS = {}
-FN_SLOTS = {'∀': (1,), 'μ': (1,), 'φ': (1,), '⇅': (1,), '⊞': (1,), 'Σ': (2,), '↻': (1, 2), '☂': (1,), '🜍': (1,)}
+FN_SLOTS = {'∀': (1,), 'μ': (1,), '∫': (1,), 'φ': (1,), '⇅': (1,), '⊞': (1,), 'Σ': (2,), '↻': (1, 2), '☂': (1,), '🜍': (1,)}
 
 
 def effects(node):
@@ -1127,8 +1161,8 @@ def acts(node):
 def may_stop(node, called=False):
     """Чи може цей код зупинити програму — для каналу завершення (☠, 🜍, ÷ 0, § поза межами, невідповідний тип,
     виклик, інструмент…). called: вузол — функція, яку викличуть (λ — дивимося тіло; інше — невідомо, отже може)."""
-    if called:
-        return may_stop(node[3]) if node[0] == 'lam' else True
+    if called:                       # розбір 【a b】 падає на списку іншої довжини
+        return may_stop(node[3]) or any(isinstance(p, tuple) for p in node[2]) if node[0] == 'lam' else True
     return total_type(node) is None
 
 
@@ -1148,16 +1182,16 @@ TYPE_REQ = {
     '⇄': [(_S, _S, _S)], '⊢': [(_S,)], '⇣': [(_S,)], '⇡': [(_S,)], 'ν': [(_S,)], 'δ': [(_S,)],
     '◷': [(_S, _S), (_S, _N)], '▦': [(_S,)],
     '⌕': [(_S, _S)], '≋': [(_S, _S, _S)], '⊏': [(c, a, b) for c in (_S, _L) for a in (_N, 'none') for b in (_N, 'none')],
-    '⊳': [(_S, _S), (_L, _A)], '∋': [(_S, _S), (_L, _A), (_D, _S)], 'κ': [(_D,)], '↑': [(_L,)],
+    '⊳': [(_S, _S), (_L, _A)], '∋': [(_S, _S), (_L, _A), (_D, _S)], 'κ': [(_D,)], 'ε': [(_D,)], '↑': [(_L,)],
     '↺': [(_S,), (_L,)], '✎': [(_D, _S, _A)], '⚗': [(_L, _N)], '≈': [(_A, _N)],
     '∀': [(_L, _F), (_S, _F)], 'μ': [(_L, _F), (_S, _F)], 'φ': [(_L, _F), (_S, _F)], '⇅': [(_L, _F), (_S, _F)],
-    '⊞': [(_L, _F), (_S, _F)], 'Σ': [(_L, _A, _F), (_S, _A, _F)],
+    '⊞': [(_L, _F), (_S, _F)], '∫': [(_L, _F), (_S, _F)], 'Σ': [(_L, _A, _F), (_S, _A, _F)],
     '↻': [(_A, _F, _F)], '☂': [(_A, _F)], '🜍': [(_A, _F)], '►': [(_F, _A)], '▶': [(_F, _A, _A)],
 }
-TYPE_RES = {'－': _N, '×': _N, '÷': _N, '‰': _N, '⌊': _N, '≅': _N, 'ρ': _N, 'ν': _N, '±': _N, '⊳': _N,
+TYPE_RES = {'∫': _N, '－': _N, '×': _N, '÷': _N, '‰': _N, '⌊': _N, '≅': _N, 'ρ': _N, 'ν': _N, '±': _N, '⊳': _N,
             '＝': _B, '≠': _B, '‹': _B, '›': _B, '≤': _B, '≥': _B, '∧': _B, '∨': _B, '¬': _B, '∋': _B,
             'σ': _S, '⌗': _S, '⁀': _S, '⇄': _S, '⊢': _S, '⇣': _S, '⇡': _S, '≋': _S, 'Δ': _S,
-            '▦': _L, '✂': _L, 'μ': _L, 'φ': _L, '⇅': _L, '↑': _L, '⌕': _L, 'κ': _L, '…': _L, '⚗': _L, '⌂': _L,
+            '▦': _L, 'ε': _L, '✂': _L, 'μ': _L, 'φ': _L, '⇅': _L, '↑': _L, '⌕': _L, 'κ': _L, '…': _L, '⚗': _L, '⌂': _L,
             '⊞': _D, '✎': _D, '∀': 'none', '»': 'none', '🜄': 'none', '☠': 'none'}
 TOOL_TYPES = {'оракул': ((_A,), _B), 'жереб': ((_N,), _N), 'час': ((), _S), 'файл.читати': ((_S,), _S),
               'файл.писати': ((_S, _S), 'none'), 'файл.список': ((_S,), _L), 'мережа.взяти': ((_S,), _S),
@@ -1220,7 +1254,7 @@ def type_errors(prog):
             env[-1][n[2]] = t(n[3], env)
             return env[-1][n[2]]
         if k == 'lam':
-            t(n[3], env + [{p: _A for p in n[2]}])
+            t(n[3], env + [{p: _A for p in param_names(n[2])}])
             return _F
         if k == 'call':
             for e in n[3]:
@@ -2507,7 +2541,15 @@ class Interp:
         if f.mod is not None:          # печатка модуля діє: права — перетин прав агента й печатки модуля
             self.caps = intersect_caps(self.caps, f.mod[1], self.cwd)
         try:
-            env = dict(zip(f.params, args))
+            env = {}
+            for p, a in zip(f.params, args):
+                if isinstance(p, tuple):       # розбір 【a b】: список рівно такої довжини
+                    if not isinstance(a.v, list) or len(a.v) != len(p[2]):
+                        raise NgrError(f'розбір 【{" ".join(p[2])}】: очікувався список із {len(p[2])} елементів, а не '
+                                       f'{kind(a)} {brief(a, 40)}', pos, min(a.c, a.s))
+                    env.update((nm, capc(e, a.s) if a.s < e.c else e) for nm, e in zip(p[2], a.v))
+                else:
+                    env[p] = a
             env['\0parent'] = f.env
             res = self.eval(f.body, env)
             return capc(res, fn.c) if fn.c < res.c else res
@@ -2727,7 +2769,7 @@ class Interp:
                 finally:
                     self.pc = saved
                 return capc(res, tc) if tc < res.c else res
-        if g in '∀μφ⇅⊞':
+        if g in '∀μφ⇅⊞∫':
             lst = E(0)
             self.taint(lst.c)
             items = self.seq(lst, g, pos)
@@ -2748,6 +2790,11 @@ class Interp:
             # елемент, відібраний чи згрупований за власною умовою, ще й не впевненіший за неї
             m = min([lst.s] + [r.c for r in results])
             self.taint(m)
+            if g == '∫':                          # сума залежить від кожного числа й від того, які елементи є
+                total = 0
+                for r in results:
+                    total = self.exact(lambda x, y: x + y, total, self.num(r, '∫', pos), '∫', pos)
+                return V(total, m)
             if g == 'φ':
                 conds = [self.boolean(r, g, pos) for r in results]
                 return mk([capc(x, r.c) if r.c < x.c else x for x, r, ok in zip(items, results, conds) if ok], m)
@@ -2935,6 +2982,8 @@ class Interp:
             return V(d)
         if g == 'κ':
             return V([V(k, a[0].s) for k in self.need(a[0], 'словник', g, pos)], a[0].s)
+        if g == 'ε':
+            return mk([mk([V(k, a[0].s), e]) for k, e in self.need(a[0], 'словник', g, pos).items()], a[0].s)
         if g == '↺':
             x = a[0].v
             if isinstance(x, (list, str)):
@@ -3152,7 +3201,7 @@ def explain(node, ind=0):
     if k == 'bind':
         return f'{node[2]} ← {explain(node[3], ind)}'
     if k == 'lam':
-        return f'({", ".join(node[2])}) ↦ {explain(node[3], ind)}'
+        return f'({param_text(node[2])}) ↦ {explain(node[3], ind)}'
     if k == 'call':
         inner = ', '.join(explain(a, ind) for a in node[3])
         if len(node[3]) == 1 and inner.startswith('(') and inner.endswith(')'):
@@ -3179,9 +3228,10 @@ def explain(node, ind=0):
     lam = args[-1] if args and args[-1][0] == 'lam' else None
     if lam and g in LAMBDA_TEMPLATES:
         if g == '↻' and args[1][0] == 'lam':
-            return (f'{lam[2][0]} ← {parts[0]}; поки {explain(args[1][3], ind)} (де {args[1][2][0]} — стан): '
-                    f'{lam[2][0]} ← {explain(lam[3], ind)}; результат — {lam[2][0]}')
-        return LAMBDA_TEMPLATES[g].format(*parts[:-1], p=', '.join(lam[2]), body=explain(lam[3], ind))
+            st, cst = param_text(lam[2][:1]), param_text(args[1][2][:1])
+            return (f'{st} ← {parts[0]}; поки {explain(args[1][3], ind)} (де {cst} — стан): '
+                    f'{st} ← {explain(lam[3], ind)}; результат — {st}')
+        return LAMBDA_TEMPLATES[g].format(*parts[:-1], p=param_text(lam[2]), body=explain(lam[3], ind))
     return GLYPHS[g][3].format(*parts)
 
 
@@ -3190,6 +3240,7 @@ LAMBDA_TEMPLATES = {
     'μ': 'список: для кожного {p} з {0} — {body}',
     'φ': 'ті {p} з {0}, де {body}',
     'Σ': 'згорнути {0}, почавши з {1}: ({p}) ↦ {body}',
+    '∫': 'сума для кожного {p} з {0}: {body}',
     '↻': '',
     '☂': 'спробувати {0}; якщо помилка {p}: {body}',
     '🜍': 'перевірити, що для {p} = {0}: {body}',
@@ -3343,6 +3394,7 @@ def cheatsheet():
            'і в `--печатка`, `--розбір` та сліді показано саме повні.', '',
            'Дозвіл для файлів — тека (і все в ній); для мережі — хост (порти 80/443) або `хост:порт`;',
            'для агента — імʼя з реєстру. Теку власника (`~/.nigredo`) дозволити не можна.',
+           'Кілька інструментів на одне обмеження: `「читати писати:тимч」`.',
            'Шлях один раз: якщо для інструмента в печатці одна тека, пишіть шлях відносно неї —',
            '`🜂 【「читати:дані」】` і `🜔читати 「x.json」` (спершу шукається від теки програми; межа та сама).', '',
            ]
@@ -3377,8 +3429,8 @@ def cheatsheet():
             '```', '🜂 「оцінки: середнє за предметом, найкращий перший」 【】',
             '← о 【『「предмет」 「хімія」 「бал」 9』 『「предмет」 「алхімія」 「бал」 12』 『「предмет」 「хімія」 「бал」 10』】',
             '← г ⊞ о λp §p 「предмет」',
-            '← с μ κг λk 【k ÷ Σ §г k 0 Λa p ＋a §p 「бал」 ρ§г k】',
-            '∀ ⇅ с λp 【－0 §p 1 §p 0】 λp » 〔{§p 0}: {⌗ §p 1 1}〕', '```', '',
+            '← с μ εг λ【k l】 【k ÷ ∫ l λp §p 「бал」 ρl】',
+            '∀ ⇅ с λ【k v】 【－0 v k】 λ【k v】 » 〔{k}: {⌗ v 1}〕', '```', '',
             '```', '🜂 「дати й заміна регулярними виразами」 【】',
             '← т 「Звіт 2026-10-15, оплата 2026-11-01. ДЕДЛАЙН!」',
             '∀ ⌕ т 「(\\d{4})-(\\d{2})-(\\d{2})」 λd » 〔{§d 2}.{§d 1}.{§d 0}〕',
@@ -3461,7 +3513,7 @@ def cheatsheet_short():
     for g, (ar, sig, desc, _, grp) in GLYPHS.items():
         lines.append(f'  {sig} — {desc}')
     lines.append('Інструменти: ' + '; '.join(TOOLS[t][1] for t in TOOLS))
-    lines += ['Приклад: 🜂 【「читати:дані」】 ¦ ← n δ🜔читати 「дані/x.json」 ¦ » Σ n 0 Λa x ＋a x',
+    lines += ['Приклад: 🜂 【「читати:дані」】 ¦ ← n δ🜔читати 「x.json」 ¦ » ∫ n λx x',
               'Впевненість: усе з даних і під сумнівними умовами не впевненіше за джерело; змінити — лише ≈ (у слід).',
               'Канал завершення: якщо гілка під сумнівною умовою могла зупинити програму (☠ 🜍 ÷0 § виклик…) або операція',
               'могла впасти на сумнівному аргументі, то й решта запуску не впевненіша. Ліміти — єдиний невідстежений залишок.',
