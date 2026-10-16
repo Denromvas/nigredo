@@ -44,7 +44,10 @@ class Server(http.server.BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))) or b'{}')
         self.reply(json.dumps({'прийнято': True, '№': 7, 'отримано': body.get('сума')}, ensure_ascii=False), 'application/json')
 
+    hits = 0                  # скільки запитів отримав сервер (М7: під час повтору — жодного)
+
     def reply(self, text, ctype):
+        Server.hits += 1
         data = text.encode()
         self.send_response(200)
         self.send_header('Content-Type', f'{ctype}; charset=utf-8')
@@ -136,10 +139,11 @@ def main():
                 out, dt, err = run(cmd, d, dict(env, NIGREDO_TRACE_PATH_FILE=str(tpf)) if lang == 'ngr' else env,
                                    times, reset)
                 if lang == 'ngr':                                           # М7: останній запуск — повторити зі сліду
+                    hits0 = Server.hits
                     rp = subprocess.run([sys.executable, str(NGR), '--повторити', tpf.read_text(encoding='utf-8'),
                                          str(prog)], cwd=d, env=env, capture_output=True, text=True, timeout=120)
                     replayed = rp.returncode == 0 and rp.stdout == out[len(out) - len(rp.stdout):] and \
-                        '✓ повтор збігся' in rp.stderr
+                        '✓ повтор збігся' in rp.stderr and Server.hits == hits0      # і сервер не отримав жодного запиту
             finally:
                 if prog != src:
                     prog.unlink()
@@ -233,7 +237,8 @@ def report(rows, bugs=(), falses=()):
               f'- **М7 відтворюваність** (перевірка наявності, не міра: повтор із записаними відповідями збігається за '
               f'побудовою): `ngr --повторити` останнього запуску збігся зі слідом у '
               f'{sum(bool(r["ngr"] and r["ngr"].get("повтор")) for r in rows)} з {sum(bool(r["ngr"]) for r in rows)} '
-              f'задач Nigredo (без жодної дії у світі); у Python такого засобу немає.',
+              f'задач Nigredo, і тестовий сервер під час повторів не отримав жодного запиту; Python як мова такого засобу '
+              f'не має (є зовнішні бібліотеки record/replay, напр. для HTTP).',
               '- **М2** — окремий прогін моделей на задачах поза памʼяткою: `bench/м2/РЕЗУЛЬТАТИ.md`.']
     if bugs:
         lines += ['', '## М5: навмисні помилки — чи впіймано до запуску', '',

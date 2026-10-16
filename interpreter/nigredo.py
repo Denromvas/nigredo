@@ -1065,12 +1065,7 @@ class Parser:
             self.cap_stack.pop()
             return ('deleg', pos, name[2], intent[2], caps, body)
         ar = GLYPHS[g][0]
-        args = [self.expr() for _ in range(ar)]
-        if g == '‖' and not (args[1][0] == 'lam' and len(args[1][2]) == 1 and args[1][3][0] == 'tool'
-                             and args[1][3][2] in PARALLEL_TOOLS):
-            raise StaticError('‖ список λx 🜔інструмент …: тіло — рівно один виклик інструмента без спільного стану '
-                              '(' + ', '.join(TOOL_SHORT.get(t, t) for t in PARALLEL_TOOLS) + '; не запис і не жереб — їхній порядок був би випадковим)', pos)
-        return ('op', pos, g, args)
+        return ('op', pos, g, [self.expr() for _ in range(ar)])
 
 
 WORLD_WRITERS = {'жереб', 'файл.писати', 'бд.писати', 'процес', 'агент', 'мережа.взяти', 'мережа.послати'}      # змінюють стан, який потім можна прочитати
@@ -1304,6 +1299,11 @@ def type_errors(prog):
             actual = [t(e, env) for e in args]
             if g in TYPE_REQ and not _fits(actual, TYPE_REQ[g]):
                 say(g, actual, TYPE_REQ[g], n[1])
+            if g == '‖' and not (args[1][0] == 'lam' and len(args[1][2]) == 1 and args[1][3][0] == 'tool'
+                                 and args[1][3][2] in PARALLEL_TOOLS):        # зібрати всі, а не лише першу (суд 7)
+                errs.append(StaticError('‖ список λx 🜔інструмент …: тіло — рівно один виклик інструмента без спільного '
+                                        'стану (' + ', '.join(TOOL_SHORT.get(t, t) for t in PARALLEL_TOOLS) +
+                                        '; не запис і не жереб — їхній порядок був би випадковим)', n[1]))
             if g in '÷‰' and args[1][0] == 'lit' and args[1][2] == 0 and not isinstance(args[1][2], bool):
                 errs.append(StaticError(f'{g}: ділення на буквальний нуль', n[1]))
             if g in '⌕≋' and args[1][0] == 'lit' and isinstance(args[1][2], str):
@@ -2177,6 +2177,7 @@ def _db(it, pos, tool, p, sql, params, write):
         raise NgrError(f'{tool}: {e}: {p.v}', pos)
     try:
         con.setlimit(sqlite3.SQLITE_LIMIT_ATTACHED, 0)
+        con.execute(f'PRAGMA hard_heap_limit = {max(64 << 20, 32 * it.max_size)}')   # і памʼять самого SQLite (суд 7)
         if write:                        # база не росте без меж (zeroblob заповнив би диск телефона)
             page = con.execute('PRAGMA page_size').fetchone()[0]
             con.execute(f'PRAGMA max_page_count = {DB_MAX_BYTES // page}')
@@ -2205,6 +2206,8 @@ def _db(it, pos, tool, p, sql, params, write):
                 if size > it.max_size:
                     raise NgrError(f'{tool}: відповідь завелика (понад --розмір {it.max_size}); додайте LIMIT', pos)
             return V(rows)
+        except MemoryError:
+            raise NgrError(f'{tool}: запит перевищив межу памʼяті SQLite — зменште вибірку (LIMIT, менші значення)', pos)
         except sqlite3.Error as e:
             if it.steps_left < 0:
                 raise Fatal('перевищено ліміт кроків (--кроки)', pos)
@@ -2675,6 +2678,9 @@ class Interp:
         """‖ список λx 🜔інструмент …: аргументи — по черзі (друк, помилки, «виклик» у слід — у порядку елементів),
         дії — паралельно (до PAR_MAX потоків), результати й слід — у порядку елементів."""
         from concurrent.futures import ThreadPoolExecutor
+        if not (isinstance(fn.v, Fn) and len(fn.v.params) == 1 and fn.v.body[0] == 'tool'
+                and fn.v.body[2] in PARALLEL_TOOLS):        # до запуску це ловить перевірка; тут — друга межа
+            raise NgrError('‖: тіло — рівно один виклик інструмента без спільного стану (λx 🜔взяти …)', pos)
         items = self.seq(lst, '‖', pos)
         saved, saved_node = self.pc, self.defer_node
         self.pc = min(saved, lst.s)
@@ -3689,7 +3695,9 @@ def cheatsheet():
            'для агента — імʼя з реєстру. Теку власника (`~/.nigredo`) дозволити не можна.',
            'Кілька інструментів на одне обмеження: `「читати писати:тимч」`.',
            'Шлях один раз: якщо для інструмента в печатці одна тека, пишіть шлях відносно неї —',
-           '`🜂 【「читати:дані」】` і `🜔читати 「x.json」` (спершу шукається від теки програми; межа та сама).', '',
+           '`🜂 【「читати:дані」】` і `🜔читати 「x.json」` (лише якщо від теки програми такого шляху немає; назвали наявне',
+           'поза дозволом — відмова, «заборонено»). Справжній шлях — у сліді.',
+           '☂ ловить помилки програми, але не вичерпання лімітів (--кроки, --розмір, «число завелике»).', '',
            ]
     groups = {}
     for g, (ar, sig, desc, _, grp) in GLYPHS.items():
@@ -3794,6 +3802,10 @@ def cheatsheet_short():
     lines = [f'Nigredo {VERSION}: префіксний запис, фіксована арність, 1 рядок = 1 вираз (продовження — більший відступ, ¦ — розділювач).',
              'Перший рядок — ПЕЧАТКА: 🜂 【「дозвіл」 …】 (намір за бажанням: 🜂 「намір」 【…】; без дозволів — просто 🜂);',
              'дозволи: 「оракул」 「жереб」 「час」 「читати:тека」 「писати:тека」 「список:тека」 「взяти:хост」 「послати:хост」 「агент:імʼя」',
+             '「бд.читати:тека」 「бд.писати:тека」 「процес:git status」 (дозвіл — початок команди); кілька на одне: 「читати список:дані」.',
+             'Шлях — від теки програми; якщо такого немає, а в печатці для інструмента одна тека, — від неї (「x.json」 при 「читати:дані」).',
+             '‖ список λx 🜔інструмент … — паралельно: тіло — рівно один виклик (не запис, не жереб); аргументи — по черзі.',
+             '☂ ловить помилки програми, але не вичерпання лімітів (--кроки, --розмір, «число завелике»).',
              '(повні назви файл.читати, мережа.взяти — синоніми). Поза печаткою — помилка до запуску.',
              'Рядок 「…」 (\\n \\」), список 【…】, словник 『к з …』, блок 《…》, коментар ※, так/ні/ніщо ● ○ ∅, мінус ¯5.',
              'До запуску ловляться: типи (＋ рядка й числа, умова не ●/○…), невідомі імена, арність, небезпечні регулярки.',
