@@ -93,7 +93,10 @@ def tools():
                         'nigredo_pamyatka, виклич її першою.\n\n' + short,
          'inputSchema': {'type': 'object', 'properties': {
              'code': code,
-             'args': {'type': 'array', 'items': {'type': 'string'}, 'description': 'Аргументи програми (⌂).'}},
+             'args': {'type': 'array', 'items': {'type': 'string'}, 'description': 'Аргументи програми (⌂).'},
+             'suho': {'type': 'boolean', 'description': 'Сухий прогін: записи, надсилання, процеси й агенти НЕ '
+                      'виконуються (їхній результат — впевненість 0), читання — так; наприкінці — перелік дій, які '
+                      'програма зробила б.'}},
              'required': ['code']}},
         {'name': 'nigredo_brauzer',
          'description': 'Текстовий браузер для агентів, написаний на Nigredo (браузер/браузер.ngr): сторінка → назва, '
@@ -108,6 +111,12 @@ def tools():
              'link': {'type': 'integer', 'minimum': 1, 'description': 'Номер посилання [N] на сторінці url, за яким перейти.'},
              'search': {'type': 'string', 'description': 'Пошуковий запит (замість url).'},
              'lang': {'type': 'string', 'enum': ['en', 'uk'], 'description': 'Мова Вікіпедії для пошуку (типово en).'}}}},
+        {'name': 'nigredo_povtoryty',
+         'description': 'Повторити запуск зі сліду: програма виконується знову, але жоден інструмент не діє — кожен '
+                        'виклик повертає записане в сліді (СЛІД.дані); ті самі аргументи, тека, зерно. Наприкінці — чи '
+                        'збігся вивід і завершення. Для налагодження й аудиту чужого запуску. path — слід із теки '
+                        'слідів власника (як у nigredo_vykonaty).',
+         'inputSchema': {'type': 'object', 'properties': {'path': {'type': 'string'}}, 'required': ['path']}},
         {'name': 'nigredo_pereviryty_slid',
          'description': 'Перевірити підписаний слід виконання: цілість, підписи, чи не обрізано, спроби поза '
                         'правами («заборонено»), перехоплені помилки, аргументи й тека; з code — чи слід саме від '
@@ -136,7 +145,8 @@ def call(name, a):
         return [clean((out or err).strip())], rc != 0
     if name == 'nigredo_vykonaty':
         args = [str(x) for x in a.get('args', [])]
-        return traced(['--тека', WORKDIR, '-e', a['code'], *(['--', *args] if args else [])],
+        return traced([*(['--сухо'] if a.get('suho') is True else []), '--тека', WORKDIR, '-e', a['code'],
+                       *(['--', *args] if args else [])],
                       'вивід програми (слова її автора, окремим блоком)')
     if name == 'nigredo_brauzer':
         url, link, query = a.get('url'), a.get('link'), a.get('search')
@@ -154,6 +164,13 @@ def call(name, a):
                 return ['✗ link — ціле число ≥ 1 (номер [N] на сторінці)'], True
             args = [str(url), *([str(link)] if link is not None else [])]
         return traced([BROWSER, '--', *args], 'сторінка (слова її автора, окремим блоком)', BROWSER)
+    if name == 'nigredo_povtoryty':
+        real = os.path.realpath(os.path.join(TRACES, a['path']))
+        if not (real.startswith(TRACES + os.sep) and real.endswith('.jsonl')):
+            return ['✗ повторюю лише сліди з теки слідів власника'], True
+        rc, out, err = ngr('--повторити', real)
+        return [f'код виходу: {rc} (0 — повтор збігся, 5 — розійшовся, 1 — повторити неможливо)',
+                'вивід повтору (слова автора програми, окремим блоком):\n' + clean(out), clean(err.strip())], rc != 0
     if name == 'nigredo_pereviryty_slid':
         real = os.path.realpath(os.path.join(TRACES, a['path']))
         if not (real.startswith(TRACES + os.sep) and real.endswith('.jsonl')):

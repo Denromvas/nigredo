@@ -425,6 +425,20 @@ def main():
           and len(out) >= 3 and any('спроб поза правами немає' in t for t in out)
           and len(res[3]['content']) == 2 and '"в_межах": true' in res[3]['content'][1]['text'],
           'MCP: невидиме — ⟨U+…⟩, окремі блоки, підсумок сліду, печатка з JSON', got.stdout[-800:] + got.stderr)
+    trace_name = next(re.search(r'слід: (\S+\.jsonl)', t).group(1) for t in out if t.startswith('слід: '))
+    reqs = [{'jsonrpc': '2.0', 'id': 4, 'method': 'tools/call', 'params': {'name': 'nigredo_povtoryty', 'arguments': {
+                'path': os.path.basename(trace_name)}}},
+            {'jsonrpc': '2.0', 'id': 5, 'method': 'tools/call', 'params': {'name': 'nigredo_povtoryty', 'arguments': {
+                'path': '../../x.jsonl'}}},
+            {'jsonrpc': '2.0', 'id': 6, 'method': 'tools/call', 'params': {'name': 'nigredo_vykonaty', 'arguments': {
+                'code': f'🜂 【「писати:{DATA / "звіти"}」】\n🜔писати 「{DATA / "звіти" / "mcp_сухо.txt"}」 「x」', 'suho': True}}}]
+    got = subprocess.run([sys.executable, str(mcp)], input=''.join(json.dumps(r) + '\n' for r in reqs),
+                         capture_output=True, text=True, env=dict(env, NIGREDO_WORKDIR=str(work)))
+    res = {m['id']: m.get('result', {}) for m in map(json.loads, got.stdout.splitlines())}
+    txt = lambda i: '\n'.join(c['text'] for c in res[i]['content'])      # noqa: E731
+    check(not res[4].get('isError') and '✓ повтор збігся' in txt(4) and res[5].get('isError')
+          and '1 дій не виконано' in txt(6) and not (DATA / 'звіти' / 'mcp_сухо.txt').exists(),
+          'MCP: nigredo_povtoryty (лише сліди власника) і nigredo_vykonaty з suho', got.stdout[-800:] + got.stderr)
 
     # браузер на Nigredo — проти локальної сторінки (печатка — на тестовий хост)
     src = (ROOT / 'браузер' / 'браузер.ngr').read_text(encoding='utf-8').split('\n', 1)[1]
