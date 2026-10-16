@@ -490,6 +490,20 @@ def main():
     short = run(['--памʼятка-коротка'], env).stdout
     check('бд.читати:тека' in short and 'процес:git status' in short and '‖ список' in short and 'Шлях' in short,
           'коротка памʼятка (MCP): дозволи бд/процес, правило шляхів, обмеження ‖', short[:500])
+    # суд 7 (Аудитор)
+    got = run(['-e', bseal + f'🜔бд.писати 「{bd}/v.db」 「CREATE TABLE t(x)」 【】\n🜔бд.писати 「{bd}/v.db」 「CREATE VIEW в AS SELECT x FROM t」 【】\n'
+               f'🜔бд.писати 「{bd}/v.db」 「CREATE TRIGGER тр AFTER INSERT ON t BEGIN SELECT 1; END」 【】\n'
+               f'🜔бд.писати 「{bd}/v.db」 「DROP VIEW в」 【】\n» 🜔бд.писати 「{bd}/v.db」 「DROP TRIGGER тр」 【】'], benv)
+    check(got.returncode == 0, 'бд.писати: DROP VIEW і DROP TRIGGER — дозволено, як обіцяє печатка', got.stderr)
+    got = run(['-e', '🜂 【「процес:sh」】\n» 🜔процес 【「sh」 「-c」 「echo $0」】'], benv)
+    check(got.stdout == 'sh\n\n', 'процес: argv[0] — як дозволено (busybox/toybox не обрати іншу команду)', got.stdout + got.stderr)
+    got = run(['--сухо', '-e', f'🜂 【「писати читати:{DATA / "звіти"}」】\n🜔писати 「{DATA / "звіти" / "с.txt"}」 「x」\n'
+               f'» ± 🜔читати 「{DATA / "звіти" / "звіт_є.txt"}」'.replace('звіт_є.txt', 'шлях_раз.txt')], env)
+    check(got.stdout == '0\n', '--сухо: читання після придушеного запису — невідоме (світ уже не той)', got.stdout + got.stderr)
+    got = run(['-e', '🜂 【「оракул」】\n← д 『「а」 1』\n← в 🜔оракул 「?」\n◷ ¿ ¬в 「2026-10-01」 「не дата」 0\n» ± σ д\n» ± ρ д'], env)
+    vals = got.stdout.split()
+    check(len(vals) == 2 and all(float(v) < 1 for v in vals), 'канал завершення: σ, ρ давніх значень після сумнівного '
+          '«могло впасти» — не впевненіші (суд 7)', got.stdout + got.stderr)
     got = run(['-e', '🜂 「лише намір」\n» 1'], env)
     check(got.returncode == 0, 'печатка лише з наміром (без 【】) — без дозволів')
     seal = run(['--печатка', str(ROOT / 'examples' / 'ahent.ngr')], env).stdout

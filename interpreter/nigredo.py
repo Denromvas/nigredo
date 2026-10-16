@@ -2133,7 +2133,7 @@ DB_MAX_BYTES = 64 * 1024 * 1024        # найбільша база для бд
 DB_INFO_PRAGMAS = {'table_info', 'table_xinfo', 'table_list', 'index_list', 'index_info', 'index_xinfo',
                    'foreign_key_list'}
 DB_READ_ACTS = {20, 21, 31, 33}                        # READ SELECT FUNCTION RECURSIVE
-DB_WRITE_ACTS = DB_READ_ACTS | {1, 2, 7, 8, 9, 10, 11, 13, 14, 18, 23, 26}   # CREATE/DROP INDEX TABLE TRIGGER VIEW,
+DB_WRITE_ACTS = DB_READ_ACTS | {1, 2, 7, 8, 9, 10, 11, 16, 17, 18, 23, 26}   # 16/17 — DROP TRIGGER/VIEW (суд 7)   # CREATE/DROP INDEX TABLE TRIGGER VIEW,
 #                                                                     DELETE INSERT UPDATE ALTER
 
 
@@ -2292,7 +2292,8 @@ def t_proc(it, pos, argv):
     import signal
     import subprocess                     # ліниво: процеси потрібні рідко, а імпорт коштує ~10 мс запуску
     try:
-        pr = subprocess.Popen([exe] + args[1:], cwd=it.cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        # argv[0] — як дозволено, а не ціль симлінка: busybox/toybox обирають команду за argv[0] (суд 7)
+        pr = subprocess.Popen(args, executable=exe, cwd=it.cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, start_new_session=True)
     except OSError as e:
         raise NgrError(f'процес: {e}', pos)
@@ -2654,6 +2655,8 @@ class Interp:
     def tool_end(self, job, outcome):
         res, err = outcome
         self.ends += 1
+        if job.get('сухо'):                 # дію придушено: стан світу тепер не той, що був би (читання після — сумнівні)
+            self.world_c = 0.0
         name, targs, ac = job['назва'], job['слід'], job['ac']
         if err is not None:
             if isinstance(err, Fatal):
@@ -3130,8 +3133,10 @@ class Interp:
             raise NgrError(f'{g}: десяткове число поза межами ({type(e).__name__})', pos, min(self.cpc, amin))
         if amin < 1 and g not in NEVER_FAILS and not (g == '§' and isinstance(args[0].v, dict)):
             self.halt_risk(amin, ('op', pos, '☠', []))   # могло впасти — і не впало
+        if g in 'ρκ§⌂⚗🜃' and self.cpc < res.c:   # свою впевненість задають, але й вони — не певніші за контекст
+            res = capc(res, self.cpc)
         if g not in OWN_CONF:
-            c = min(res.c, amin)
+            c = min(res.c, amin, self.cpc)        # новий результат — не впевненіший за контекст (pc і канал завершення)
             if isinstance(res.v, (list, dict)):        # вміст лишає свою впевненість; будова — від аргументів
                 res = V(res.v, min(res.c, c), min([res.s] + [a.s for a in args]))
             elif c < res.c:
