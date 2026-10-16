@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import re\nfrom collections import Counter\nfrom pathlib import Path\n\nURL_RE = re.compile(r\"https?://([^\\s/:]*)\")\n\n\ndef main():\n    шлях = Path(\"дані\") / \"запити.log\"\n    лічильник = Counter()\n\n    with шлях.open(encoding=\"utf-8\", errors=\"replace\") as файл:\n        for рядок in файл:\n            for домен in URL_RE.findall(рядок):\n                домен = домен.lower()\n                if домен.startswith(\"www.\"):\n                    домен = домен[4:]\n                if домен:\n                    лічильник[домен] += 1\n\n    найчастіші = sorted(лічильник.items(), key=lambda пара: (-пара[1], пара[0]))[:3]\n    for домен, кількість in найчастіші:\n        print(f\"{домен} {кількість}\")\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "відповідь": "```python\nimport re\nfrom collections import Counter\nfrom pathlib import Path\n\nURL_RE = re.compile(r\"https?://([^\\s/:]*)\")\n\n\ndef main():\n    шлях = Path(\"дані\") / \"запити.log\"\n    лічильник = Counter()\n\n    with шлях.open(encoding=\"utf-8\", errors=\"replace\") as файл:\n        for рядок in файл:\n            for домен in URL_RE.findall(рядок):\n                домен = домен.lower()\n                if домен.startswith(\"www.\"):\n                    домен = домен[4:]\n                if домен:\n                    лічильник[домен] += 1\n\n    найчастіші = sorted(лічильник.items(), key=lambda пара: (-пара[1], пара[0]))[:3]\n    for домен, кількість in найчастіші:\n        print(f\"{домен} {кількість}\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n",
+  "код_виходу": 0,
+  "вивід": "example.com 3\napi.example.com 2\ndocs.python.org 2\n",
+  "помилки": ""
+ }
+]

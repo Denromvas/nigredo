@@ -570,6 +570,25 @@ def main():
     check(got.stdout.startswith('без тегу\n') or 'без тегу' in got.stdout, 'XML: запис — без тегу помилка; атрибути екрановано',
           got.stdout + got.stderr)
     check('&quot;&amp;&lt;' in got.stdout, 'XML: значення атрибута екрановано при записі', got.stdout)
+    # квоти «≤N»: печатка, субагент, власник; у ‖ — так само
+    got = run(['-e', '🜂 【「жереб≤3」】\n» ☂ μ …1 5 λi 🜔жереб 6 λe 「квота」'], env)
+    check(got.stdout == 'квота\n', 'квота печатки: четвертий виклик — відмова (ловить ☂)', got.stdout + got.stderr)
+    got = run(['-e', '🜂 【「жереб」】\n» ☂ 🜁 「в」 【「жереб≤1」】 μ …1 2 λi 🜔жереб 6 λe 「квота субагента」\n» 🜔жереб 6'], env)
+    check(got.stdout.startswith('квота субагента\n') and got.returncode == 0,
+          'квота субагента: діє лише в ньому, головний агент далі може', got.stdout + got.stderr)
+    qh = tmp / 'власник_квота'
+    qh.mkdir()
+    (qh / 'дозволи.json').write_text(json.dumps({'дозволено': [f'взяти:127.0.0.1:{port}≤2']}, ensure_ascii=False),
+                                     encoding='utf-8')
+    qtr = tmp / 'квота.jsonl'
+    got = run(['--слід', str(qtr), '-e', f'🜂 【「взяти:127.0.0.1:{port}」】\n'
+               f'» ☂ ‖ …1 3 λn 🜔взяти 〔http://127.0.0.1:{port}/повільно/{{n}}〕 λe 「власник: не більше 2」'],
+              dict(env, NIGREDO_HOME=str(qh)))
+    check(got.stdout == 'власник: не більше 2\n' and 'квота' in qtr.read_text(encoding='utf-8')
+          and qtr.read_text(encoding='utf-8').count('"подія": "скасовано"') == 2,
+          'квота власника на хост: і в ‖ третій запит — відмова й «заборонено» (до дії)', got.stdout + got.stderr)
+    js = json.loads(run(['--печатка', '--json', '-e', '🜂 【「оракул≤5」】\n» 1'], env).stdout)
+    check(js.get('квоти') == [{'інструмент': 'оракул', 'обмеження': '', 'не_більше': 5}], '--печатка --json: квоти', str(js))
     got = run(['-e', '🜂 「лише намір」\n» 1'], env)
     check(got.returncode == 0, 'печатка лише з наміром (без 【】) — без дозволів')
     seal = run(['--печатка', str(ROOT / 'examples' / 'ahent.ngr')], env).stdout
