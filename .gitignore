@@ -18,3 +18,4 @@ konsylium/*/*/звіти/*.jsonl
 konsylium/**/*.jsonl
 bench/тимч/
 konsylium/**/розмова_раунд*.md
+bench/м2/прогін.log

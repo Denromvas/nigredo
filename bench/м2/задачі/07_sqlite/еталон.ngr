@@ -1,0 +1,2 @@
+🜂 【「бд.читати:дані」】
+∀ 🜔бд.читати 「база.db」 「SELECT місто, SUM(сума) AS s FROM продажі GROUP BY місто ORDER BY s DESC LIMIT 2」 【】 λr » 〔{§r 「місто」}: {§r 「s」}〕
