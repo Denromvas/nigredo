@@ -10,7 +10,6 @@ import hmac
 import json
 import os
 import random
-import subprocess
 import sys
 import threading
 import unicodedata
@@ -2219,6 +2218,7 @@ def t_proc(it, pos, argv):
     if any(inside(exe, os.path.realpath(os.path.join(it.cwd, w))) for t in WRITE_TOOLS for w in it.seal_caps.get(t, [])):
         raise NgrError(f'процес: «{safe(exe)}» лежить у теці, куди програмі дозволено писати', pos)
     import signal
+    import subprocess                     # ліниво: процеси потрібні рідко, а імпорт коштує ~10 мс запуску
     try:
         pr = subprocess.Popen([exe] + args[1:], cwd=it.cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, start_new_session=True)
@@ -2262,6 +2262,7 @@ def t_proc(it, pos, argv):
 
 
 def t_agent(it, pos, name, prompt):
+    import subprocess
     if name.v not in it.caps['агент']:
         raise NgrError(f'агент: «{name.v}» поза дозволеними ({", ".join(it.caps["агент"])})', pos)
     try:
