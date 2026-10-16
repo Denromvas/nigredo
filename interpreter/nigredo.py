@@ -2178,6 +2178,7 @@ def t_db_write(it, pos, p, sql, params):
 
 
 PROC_CAP, PROC_TIME = 1_000_000, 60
+DRY_SUPPRESS = {'файл.писати': None, 'бд.писати': 0, 'мережа.послати': '‹сухо›', 'процес': '‹сухо›', 'агент': '‹сухо›'}
 PAR_MAX = 8                    # ‖: найбільше одночасних дій
 PARALLEL_TOOLS = ('мережа.взяти', 'мережа.послати', 'агент', 'процес', 'бд.читати', 'файл.читати', 'файл.список',
                   'оракул', 'час')   # ‖: дії без спільного стану (не жереб; не запис — порядок записів був би випадковим)
@@ -2523,6 +2524,7 @@ class Interp:
         self.defer_node = None  # тіло ‖, чий виклик інструмента відкладено
         self.ends = 0           # скільки записів «інструмент» уже зроблено (номер виклику для повтору)
         self.replay = None      # --повторити: (записи «інструмент», сховище значень)
+        self.dry = None         # --сухо: список придушених дій (записи, надсилання, процеси, агенти)
 
     def tool_begin(self, name, args, pos):
         """Перевірка прав, впевненість аргументів і запис «виклик» — до дії (для ‖ — по черзі, до паралельних дій)."""
@@ -2544,6 +2546,9 @@ class Interp:
         """Сама дія (у ‖ — у своєму потоці; записи сліду з потоку — у його буфер). У повторі — записане."""
         if self.replay is not None:
             return self.replayed(job)
+        if self.dry is not None and job['назва'] in DRY_SUPPRESS:   # --сухо: дія не відбувається, результат невідомий
+            self.dry.append((job['назва'], job['слід']))
+            return V(DRY_SUPPRESS[job['назва']], 0.0), None
         try:
             return TOOLS[job['назва']][5](self, job['pos'], *job['аргументи']), None
         except (NgrError, Fatal) as e:
@@ -3703,6 +3708,8 @@ USAGE = f"""Nigredo {VERSION}
     --розмір N             найбільший рядок/список (типово {MAX_SIZE})
   ngr --перевірити [--json] ФАЙЛ   усі помилки до запуску (розбір, типи, регулярки) і печатка — без виконання
   ngr --перевірити-слід ФАЙЛ [ПРОГРАМА]   (з програмою — ще й чи слід саме від неї)
+  ngr --сухо ФАЙЛ.ngr      виконати без записів, надсилань, процесів і агентів (читання — так): їхній результат —
+                           невідомий (впевненість 0); наприкінці — перелік дій, які програма зробила б
   ngr --повторити СЛІД [ПРОГРАМА]   виконати знову без дій у світі: інструменти повертають записане (СЛІД.дані);
                            ті самі аргументи, тека, зерно; наприкінці — чи збігся вивід і завершення
   ngr --памʼятка           згенерувати памʼятку для агентів
@@ -3734,6 +3741,14 @@ def load_replay(tpath, program=None):
                       f'(слід записано без СЛІД.дані або старою версією)')
     return {'початок': recs[0], 'інструменти': tools, 'сховище': store, 'вивід': [r.get('текст') for r in recs
             if r.get('подія') == 'вивід'], 'кінець': recs[-1]}, None
+
+
+def dry_report(done):
+    print(f'── --сухо: {len(done)} дій не виконано' + (':' if done else ' (програма нічого не змінює у світі)'),
+          file=sys.stderr)
+    for name, args in done:
+        shown = ' '.join(a if isinstance(a, str) else f'‹{a.get("довжина")} символів›' for a in args)
+        print(f'  {name} {safe(shown)[:300]}', file=sys.stderr)
 
 
 def replay_report(replay, new_trace, ends):
@@ -3798,6 +3813,9 @@ def main(argv):
             if opts['replay'] is None:
                 print('✗ --повторити СЛІД [ПРОГРАМА]', file=sys.stderr)
                 return 2
+            continue
+        if a == '--сухо':
+            opts['dry'] = True
             continue
         if a in ('--печатка', '--розбір', '--перевірити'):
             opts['mode'] = a[2:]
@@ -3981,16 +3999,23 @@ def main(argv):
                         max_size=opts['size'])
         if replay:
             interp.replay = (replay['інструменти'], replay['сховище'])
+        if opts.get('dry'):
+            interp.dry = []
+            trace('сухо', причина='--сухо: записи, надсилання, процеси й агенти не виконуються')
         try:
             try:
                 interp.run(prog)
                 trace('кінець', кроків=opts['steps'] - interp.steps_left)
             finally:
-                if replay:
+                if replay or opts.get('dry'):
                     sys.stdout.flush()
+            if opts.get('dry'):
+                dry_report(interp.dry)
             if replay:
                 return replay_report(replay, main_trace, interp.ends)
         except NgrError as e:
+            if interp.dry:
+                dry_report(interp.dry)
             trace('помилка', повідомлення=safe(str(e)))
             print(safe(str(e)), file=sys.stderr)
             code = 1
