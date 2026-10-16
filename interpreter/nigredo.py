@@ -1923,18 +1923,6 @@ class Rx:
     def groups(self, text, m):
         return [None if m[2 * g] is None else text[m[2 * g]:m[2 * g + 1]] for g in range(self.ngroups)]
 
-    def findall(self, text, pay):
-        out = []
-        for m in self.finditer(text, pay):
-            gs = self.groups(text, m)
-            if self.ngroups == 1:
-                out.append(gs[0])
-            elif self.ngroups == 2:
-                out.append(gs[1] or '')
-            else:
-                out.append(tuple(x or '' for x in gs[1:]))
-        return out
-
     def expand(self, tmpl, gs):
         """Шаблон заміни як у re.sub: \\1…\\99, \\g<n>, \\g<імʼя>, \\n \\t \\\\; решта \\x — помилка."""
         out, i, n = [], 0, len(tmpl)
@@ -3790,7 +3778,7 @@ class Interp:
             out, size = [], 0
             for m in r.finditer(x, pay):
                 gs = r.groups(x, m)
-                item = gs[0] if r.ngroups == 1 else (gs[1] or '') if r.ngroups == 2 else [p or '' for p in gs[1:]]
+                item = gs[0] if r.ngroups == 1 else [p or '' for p in gs[1:]]   # з групами — завжди список груп
                 size += 1 + (len(item) if isinstance(item, str) else sum(len(p) + 1 for p in item))
                 if size > self.max_size:              # межа — під час пошуку, а не після
                     raise Fatal(f'⌕: значення завелике (> --розмір {self.max_size})', pos)
@@ -4107,6 +4095,9 @@ def cheatsheet():
             '## Пастки', '',
             '- `＝0 ‰n 3` — спершу гліф, потім аргументи: «остача n на 3 дорівнює 0».',
             '- Імена склеюються з цифрами: `n15` — одне імʼя; пишіть `n 15`.',
+            '- Однолітерні імена з різних абеток — двійники (r і г, x і х, p і р, a і а, o і о, c і с, e і е, y і у):',
+            '  програму не приймуть. Беріть імена одного письма або довші (рядок, група).',
+            '- `⌕` із групами — завжди список груп, навіть з однією: `§§ ⌕ т 「(\\d+)」 0 0` — перша група першого збігу.',
             '- `∧ ∨` обчислюють ОБИДВА боки (не як and/or у Python): `∧ › ρxs 0 ＝ §xs 0 1` впаде на порожньому',
             '  списку; захист — `¿ › ρxs 0 ＝ §xs 0 1 ○` (¿ обчислює лише потрібну гілку).',
             '- `χ` пише числа як число (12.50 → 12.5); суми в XML — рядком `⌗ x 2`.',
