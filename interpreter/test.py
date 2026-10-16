@@ -73,6 +73,15 @@ class Redirect(http.server.BaseHTTPRequestHandler):
         pass
 
 
+def type_sigs():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('nigredo_сиг', ROOT / 'interpreter' / 'nigredo.py')
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return {g: [[m.TYPE_NAMES.get(t, 'будь-що') for t in sig] for sig in sigs] for g, sigs in m.TYPE_REQ.items()
+            if g not in m.LAZY_GLYPHS and sigs}
+
+
 def main():
     tmp = pathlib.Path(tempfile.mkdtemp(prefix='ngr-test-'))
     home = tmp / 'власник'
@@ -512,6 +521,39 @@ def main():
                f'» 🜔бд.писати 「{bd}/тр.db」 「INSERT INTO ж VALUES (1)」 【】'], benv)
     check(got.stdout == 'межа\n4\n', 'SQLite: значення понад --розмір — помилка; зміни тригерів — у кількості змінених рядків',
           got.stdout + got.stderr)
+    # суд 7, раунд 2
+    got = run(['-e', bseal + f'🜔бд.писати 「{bd}/і.db」 「CREATE TABLE t(x)」 【】\n🜔бд.писати 「{bd}/і.db」 「CREATE INDEX ix ON t(x)」 【】\n'
+               f'🜔бд.писати 「{bd}/і.db」 「CREATE TRIGGER тр AFTER INSERT ON t BEGIN SELECT 1; END」 【】\n'
+               f'🜔бд.писати 「{bd}/і.db」 「DROP INDEX ix」 【】\n» 🜔бд.писати 「{bd}/і.db」 「DROP TABLE t」 【】'], benv)
+    check(got.returncode == 0, 'бд.писати: кожна дія з опису (CREATE/DROP INDEX, DROP TABLE з тригером) — дозволена', got.stderr)
+    multi = tmp / 'мульти'
+    multi.mkdir()
+    (multi / 'multi').write_text('#!/bin/sh\necho "вибрано: $(basename "$0")"\n')
+    (multi / 'multi').chmod(0o755)
+    os.symlink(multi / 'multi', multi / 'ехо2')
+    mh = tmp / 'власник_мульти'
+    mh.mkdir()
+    (mh / 'дозволи.json').write_text(json.dumps({'дозволено': ['процес:ехо2']}, ensure_ascii=False), encoding='utf-8')
+    got = run(['-e', '🜂 【「процес:ехо2」】\n» 🜔процес 【「ехо2」】'],
+              dict(env, NIGREDO_HOME=str(mh), PATH=f'{multi}{os.pathsep}{os.environ.get("PATH", "")}'))
+    check(got.stdout == 'вибрано: ехо2\n\n', 'процес: багатокомандний файл (як busybox) бачить дозволене імʼя, а не ціль симлінка',
+          got.stdout + got.stderr)
+    got = run(['-e', '🜂\n» ☂ ▦ 「клієнт,сума\nПетро,1,50」 λe 「помилка」'], env)
+    check(got.stdout == 'помилка\n', '▦: десяткова кома (зайве поле) — помилка, а не тихо загублені копійки', got.stdout)
+    got = run(['--розбір', '-e', f'🜂 【「читати:{DATA}」】\n» 🜔читати 「x.json」'], env)
+    check('від єдиної теки з печатки' in got.stdout, '--розбір: правило «шлях один раз» названо', got.stdout)
+    sample = {'число': '3', 'рядок': '「аб」', 'список': '【1 2】', 'словник': '『「а」 1』', '●/○': '●', 'функція': 'λx x',
+              'будь-що': '1'}
+    halt = '🜂 【「оракул」】\n← в 🜔оракул 「?」\n◷ ¿ ¬в 「2026-10-01」 「не дата」 0\n'
+    leaks = []
+    for g_, sigs in type_sigs().items():
+        if g_ in '≈±⌂':
+            continue
+        args_ = ' '.join(sample.get(t, '1') for t in sigs[0])
+        r = run(['-e', halt + f'» ± {g_} {args_}'], env)
+        if r.returncode == 0 and r.stdout.strip() and float(r.stdout.split()[-1]) >= 1:
+            leaks.append(f'{g_} {args_}')
+    check(not leaks, 'канал завершення: КОЖЕН гліф після сумнівного «могло впасти» — не впевненіший', ', '.join(leaks))
     got = run(['-e', '🜂 「лише намір」\n» 1'], env)
     check(got.returncode == 0, 'печатка лише з наміром (без 【】) — без дозволів')
     seal = run(['--печатка', str(ROOT / 'examples' / 'ahent.ngr')], env).stdout
@@ -605,6 +647,21 @@ def main():
     spec.loader.exec_module(M)
     import decimal
     decimal.setcontext(M.DEC_CTX.copy())
+    itr = tmp / 'внутрішня.jsonl'                     # код 4: у сліді — внутрішня помилка й останній виклик (суд 7)
+    saved_tool = M.TOOLS['час']
+
+    def boom(*a):
+        raise RuntimeError('імітована вада')
+    M.TOOLS['час'] = saved_tool[:5] + (boom,)
+    try:
+        import contextlib
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            rc4 = M.main(['--слід', str(itr), '-e', '🜂 【「час」】\n» 🜔час'])
+    finally:
+        M.TOOLS['час'] = saved_tool
+    v4 = run(['--перевірити-слід', str(itr)], env).stdout
+    check(rc4 == 4 and 'ВНУТРІШНЯ ПОМИЛКА' in v4 and '"останній_виклик"' in itr.read_text(encoding='utf-8'),
+          'код 4: слід називає внутрішню помилку й останній виклик інструмента', v4)
     it = M.Interp(lambda *a, **k: None, out=io.StringIO())
     it.replay = ([{'подія': 'інструмент', 'назва': 'час', 'аргументи': [], 'значення': 'x'}], {'x': '2026'})
     try:
