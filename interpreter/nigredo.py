@@ -136,9 +136,10 @@ GLYPHS = {
           '「число:0..100」 межі (рядок, список — довжина); 「рядок:a|b」 перелік; 【S】 — кожен елемент; '
           '『「поле」 S 「поле?」 S』 — поля (зайві — помилка; 「…」 「будь-що」 — дозволити інші)', 'перевірене({0} за схемою {1})', 'дані'),
     'χ': (1, 'χ текст | χ елемент', 'XML: рядок → елемент 『「тег」 … 「атрибути」 『…』 「текст」 … 「діти」 【…】』 (простори імен '
-          'знято з тегів; DTD і сутності — заборонено); елемент → рядок XML', 'xml({0})', 'дані'),
+          'знято з тегів; DTD і сутності — заборонено); елемент → рядок XML (назви — лише XML Name)', 'xml({0})', 'дані'),
     '↘': (2, '↘ елемент 「шлях」', 'XPath-підмножина: a/b — діти, //b — будь-де нижче, * — будь-який, [@атр=\'x\'] '
-          '[дитина=\'x\'] [n] — відбір, …/@атр — значення атрибутів; /a… — від самого елемента. → список',
+          '[дитина=\'x\'] [n] — відбір, …/@атр — значення атрибутів; /a… — від самого елемента. → список вузлів '
+          'без повторів, у порядку документа; інше (.., text(), !=) — помилка',
           'знайти в {0} шлях {1}', 'дані'),
     '⇡': (1, '⇡ рядок', 'великими літерами', 'великими({0})', 'дані'),
     '⊏': (3, '⊏ x від до', 'зріз рядка чи списку [від, до); відʼємні — з кінця; до ∅ — до кінця', '{0}[{1}…{2}]', 'дані'),
@@ -2168,64 +2169,121 @@ def check_schema(x, sch, path, errs, pos, depth=0):
 XML_MAX_DEPTH = 500
 
 
-def xml_parse(text, pos, max_size):
+def xml_name_ok(name):
+    """Назва тегу чи атрибута для запису: підмножина XML Name — літера або «_», далі літери, цифри, «-», «.», «_»
+    і знаки, що поєднуються; один префікс «x:» дозволено. Нічого, що змінило б будову документа (суд 8)."""
+    parts = name.split(':')
+    if len(parts) > 2:
+        return False
+    for p in parts:
+        if not p or not (p[0].isalpha() or p[0] == '_'):
+            return False
+        for ch in p[1:]:
+            if not (ch.isalnum() or ch in '-._' or unicodedata.category(ch) in ('Mn', 'Mc')):
+                return False
+    return True
+
+
+def xml_char_bad(s):
+    """Перший символ, якого не може бути в XML 1.0 (керівні, крім \\t \\n \\r; сурогати; U+FFFE/FFFF), або None."""
+    for ch in s:
+        o = ord(ch)
+        if (o < 0x20 and ch not in '\t\n\r') or 0xD800 <= o <= 0xDFFF or o in (0xFFFE, 0xFFFF):
+            return ch
+    return None
+
+
+def xml_parse(text, pos, max_size, charge):
     """XML → елемент (словник): тег (без простору імен), простір (якщо є), атрибути, текст (власний, без країв), діти.
-    DTD і сутності заборонено (XXE, «мільярд сміхів»): у документах даних вони не потрібні."""
-    import xml.etree.ElementTree as ET
-    import re as _re
-    if _re.search(r'<!\s*(DOCTYPE|ENTITY)', text, _re.I):
+    DTD і сутності заборонено (XXE, «мільярд сміхів»): у документах даних вони не потрібні. Заборону ставить сам
+    розбирач — <!DOCTYPE у коментарі чи CDATA не заважає (суд 8)."""
+    import xml.parsers.expat as expat
+    charge(len(text))
+
+    def forbid(*a):
         raise NgrError('χ: DTD і сутності (<!DOCTYPE, <!ENTITY) заборонено — небезпечні (XXE, «мільярд сміхів»)', pos)
-    try:
-        root = ET.fromstring(text.removeprefix('\ufeff'))
-    except ET.ParseError as e:
-        raise NgrError(f'χ: не XML ({e})', pos)
 
-    def local(name):
-        return name.rsplit('}', 1)[1] if name.startswith('{') else name, \
-            name[1:].split('}', 1)[0] if name.startswith('{') else None
+    def local(name):               # expat з простором: «uri}назва»
+        return (name.rsplit('}', 1)[1], name.split('}', 1)[0]) if '}' in name else (name, None)
+    stack, top = [], []            # [словник, частини тексту, діти]
 
-    def conv(el, depth):
-        if depth > XML_MAX_DEPTH:
+    def start(name, attrib):
+        if len(stack) >= XML_MAX_DEPTH:
             raise NgrError(f'χ: вкладеність глибша за {XML_MAX_DEPTH}', pos)
-        tag, ns = local(el.tag)
-        attrs = {local(k)[0]: V(v) for k, v in el.attrib.items()}
-        text_ = ((el.text or '') + ''.join(ch.tail or '' for ch in el)).strip()
+        charge(1)
+        tag, ns = local(name)
+        attrs = {}
+        for k, v in attrib.items():
+            nm = local(k)[0]
+            if nm in attrs:          # p:x і q:x — не зливати мовчки (суд 8)
+                raise NgrError(f'χ: у «{safe(tag)}» два атрибути «{safe(nm)}» з різних просторів імен — '
+                               f'назви атрибутів тут без простору, тож їх не розрізнити', pos)
+            attrs[nm] = V(v)
         d = {'тег': V(tag)}
         if ns:
             d['простір'] = V(ns)
         d['атрибути'] = V(attrs)
-        d['текст'] = V(text_)
-        d['діти'] = V([conv(ch, depth + 1) for ch in el])
-        return V(d)
-    res = conv(root, 1)
+        stack.append((d, [], []))
+
+    def end(name):
+        d, parts, kids = stack.pop()
+        d['текст'] = V(''.join(parts).strip())
+        d['діти'] = V(kids)
+        (stack[-1][2] if stack else top).append(V(d))
+
+    def chars(data):
+        if stack:
+            stack[-1][1].append(data)
+    p = expat.ParserCreate(namespace_separator='}')
+    p.StartDoctypeDeclHandler = forbid
+    p.EntityDeclHandler = forbid
+    p.StartElementHandler, p.EndElementHandler, p.CharacterDataHandler = start, end, chars
+    try:
+        p.Parse(text.removeprefix('\ufeff'), True)
+    except expat.ExpatError as e:
+        raise NgrError(f'χ: не XML ({expat.errors.messages[e.code]}: рядок {e.lineno}, стовпець {e.offset})', pos)
+    if len(top) != 1:
+        raise NgrError('χ: не XML (немає кореневого елемента)', pos)
+    res = top[0]
     if res.n > max_size:
         raise NgrError(f'χ: документ завеликий (понад --розмір {max_size})', pos)
     return res
 
 
-def xml_write(el, pos):
-    """Елемент (словник з тег / атрибути / текст / діти) → рядок XML (екрановано; простір — як xmlns)."""
+def xml_write(el, pos, charge):
+    """Елемент (словник з тег / атрибути / текст / діти) → рядок XML. Назви — лише XML Name, керівних символів
+    немає: дані не змінять будови документа, а χ прочитає записане назад (суд 8)."""
     import xml.etree.ElementTree as ET
+
+    def value(v, what, tag):
+        s = show(v)
+        bad = xml_char_bad(s)
+        if bad is not None:
+            raise NgrError(f'χ: {what} елемента «{safe(tag)}» має символ U+{ord(bad):04X}, якого не буває в XML', pos)
+        return s
 
     def build(x, depth, parent_ns=None):
         if depth > XML_MAX_DEPTH:
             raise NgrError(f'χ: вкладеність глибша за {XML_MAX_DEPTH}', pos)
+        charge(1)
         if not isinstance(x.v, dict) or not isinstance(x.v.get('тег', V(None)).v, str):
             raise NgrError('χ: елемент — словник із 「тег」 (рядок) і, за бажанням, 「атрибути」 「текст」 「діти」', pos)
         d = x.v
         tag = d['тег'].v
+        if not xml_name_ok(tag):
+            raise NgrError(f'χ: «{safe(tag)}» — не назва тегу XML (літера чи _, далі літери, цифри, - . _)', pos)
         attrs = d.get('атрибути', V({})).v
         if not isinstance(attrs, dict):
             raise NgrError(f'χ: 「атрибути」 елемента «{safe(tag)}» — словник', pos)
-        try:
-            node = ET.Element(tag, {k: show(v) for k, v in attrs.items()})
-        except ValueError as e:
-            raise NgrError(f'χ: {e}', pos)
+        for k in attrs:
+            if not xml_name_ok(k) or k == 'xmlns' or k.startswith('xmlns:'):
+                raise NgrError(f'χ: «{safe(k)}» — не назва атрибута XML (у «{safe(tag)}»; простір — ключем 「простір」)', pos)
+        node = ET.Element(tag, {k: value(v, f'атрибут «{safe(k)}»', tag) for k, v in attrs.items()})
         ns = d.get('простір', V(None)).v
         if isinstance(ns, str) and ns != parent_ns:
-            node.set('xmlns', ns)
+            node.set('xmlns', value(V(ns), 'простір', tag))
         t = d.get('текст', V('')).v
-        node.text = show(V(t)) if t not in (None, '') else None
+        node.text = value(V(t), 'текст', tag) if t not in (None, '') else None
         kids = d.get('діти', V([])).v
         if not isinstance(kids, list):
             raise NgrError(f'χ: 「діти」 елемента «{safe(tag)}» — список', pos)
@@ -2238,70 +2296,120 @@ def xml_write(el, pos):
         raise NgrError(f'χ: {e}', pos)
 
 
-def xml_path(root, path, pos):
-    """↘: підмножина XPath над елементами з χ. Без «/» на початку — від дітей елемента; «/a» — сам елемент має бути a."""
+XPATH_HELP = ('є: a/b, //b, *, [n], [@атр=\'x\'], [дитина=\'x\'], …/@атр, //@атр, /a… від самого елемента; '
+              'текст — §e 「текст」, батька й text() немає')
+
+
+def xml_path(root, path, pos, charge):
+    """↘: підмножина XPath над елементами з χ — як у XPath: вузли без повторів, у порядку документа; [n] — n-й серед
+    своїх сусідів; //b від кореня бачить і сам корінь. Усе поза підмножиною — помилка, не тихий 【】; кожен
+    відвіданий вузол — крок (суд 8)."""
     import re as _re
     if not path:
         raise NgrError('↘: порожній шлях', pos)
-    attr = None
-    m = _re.search(r'/@([^/\[\]]+)$', path) or _re.fullmatch(r'@([^/\[\]]+)', path)
-    if m:
-        attr = m.group(1)
-        path = path[:m.start()] if m.start() else ''
-    steps = []                     # (вниз_будь-де, імʼя, [умови])
-    absolute = path.startswith('/') and not path.startswith('//')
-    rest = path[1:] if absolute else path
-    for raw in _re.findall(r'(/?/?)([^/\[]+(?:\[[^\]]*\])*)', '/' + rest if rest and not rest.startswith('/') else rest):
-        sep, step = raw
-        mm = _re.fullmatch(r'([^\[]+)((?:\[[^\]]*\])*)', step)
-        if not mm:
-            raise NgrError(f'↘: не розібрати крок «{safe(step)}»', pos)
-        conds = _re.findall(r'\[([^\]]*)\]', mm.group(2))
-        steps.append((sep == '//', mm.group(1).strip().split(':')[-1], conds))     # x:Рядок — локальна назва
-    if not steps and attr is None:
-        raise NgrError(f'↘: не розібрати шлях «{safe(path)}»', pos)
+
+    def bad(what):
+        raise NgrError(f'↘: {what} — поза підмножиною XPath ({XPATH_HELP})', pos)
+    name_re = r'(?:\*|[^\W\d][\w.\-]*(?::[^\W\d][\w.\-]*)?)'
+    cond_re = r"\[\s*(?:\d+|@?[^\W\d][\w.\-]*(?::[^\W\d][\w.\-]*)?\s*=\s*(?:'[^']*'|\"[^\"]*\"))\s*\]"
+    tok = _re.fullmatch(rf'((?:/|//)?)((?:{name_re}(?:{cond_re})*)(?:(?:/|//){name_re}(?:{cond_re})*)*)?'
+                        rf'(?:(^|/|//)@({name_re}))?', path)
+    only = _re.fullmatch(rf'(//|/)?@({name_re})', path)     # лише атрибут: @a, //@a (жадібний розбір нижче
+    if only:                                                  # прочитав би «//@a» як «/» + «/@a»)
+        lead, body, attr_sep, attr = '', '', only.group(1) or '', only.group(2)
+    elif not tok or (not tok.group(2) and tok.group(4) is None):
+        bad(f'шлях «{safe(path)}»')
+    else:
+        lead, body, attr_sep, attr = tok.group(1), tok.group(2) or '', tok.group(3), tok.group(4)
+    if attr == '*':
+        bad('@*')
+    steps = []                     # (вниз_будь-де, локальна назва, [умови])
+    for sep, step in _re.findall(rf'(^|/|//)({name_re}(?:{cond_re})*)', body):
+        nm = _re.match(name_re, step).group(0)
+        conds = _re.findall(r'\[([^\]]*)\]', step[len(nm):])
+        steps.append((sep == '//', nm.split(':')[-1], conds))
+    absolute = lead == '/'
+    if lead == '//' and steps:
+        steps[0] = (True,) + steps[0][1:]
+
+    def check(e):
+        charge(1)
+        if not isinstance(e.v, dict) or not isinstance(e.v.get('тег', V(None)).v, str):
+            raise NgrError('↘: вузол — не елемент (словник із 「тег」 — рядок)', pos)
+        for key, typ, tn in (('атрибути', dict, 'словник'), ('діти', list, 'список'), ('текст', str, 'рядок')):
+            if key in e.v and not isinstance(e.v[key].v, typ):
+                raise NgrError(f'↘: 「{key}」 елемента «{safe(e.v["тег"].v)}» — {tn}', pos)
+        return e
 
     def kids(e):
-        return e.v['діти'].v if isinstance(e.v, dict) and isinstance(e.v.get('діти', V(None)).v, list) else []
+        k = e.v.get('діти')
+        return [check(x) for x in k.v] if k is not None else []
 
-    def desc(e):
-        out = []
-        for k in kids(e):
-            out.append(k)
-            out.extend(desc(k))
-        return out
+    def attrs(e):
+        a = e.v.get('атрибути')
+        return a.v if a is not None else {}
+
+    def text_of(e):
+        t = e.v.get('текст')
+        return t.v if t is not None else ''
+
+    order = {}                     # id → порядок документа (глибина спершу, як у XPath)
+    stack = [check(root)]
+    while stack:
+        e = stack.pop()
+        if id(e) not in order:
+            order[id(e)] = len(order)
+            stack.extend(reversed(kids(e)))
 
     def ok(e, cond, idx):
         cond = cond.strip()
-        if _re.fullmatch(r'\d+', cond):
+        if cond.isdigit():
             return idx == int(cond)
-        mm = _re.fullmatch(r"(@?)([^=\s]+)\s*=\s*'([^']*)'", cond) or _re.fullmatch(r'(@?)([^=\s]+)\s*=\s*"([^"]*)"', cond)
-        if not mm:
-            raise NgrError(f'↘: умова «{safe(cond)}» — лише [@атр=\'x\'], [дитина=\'x\'] або [n]', pos)
+        mm = _re.fullmatch(r"(@?)([^=\s]+)\s*=\s*(?:'([^']*)'|\"([^\"]*)\")", cond)
+        want = mm.group(3) if mm.group(3) is not None else mm.group(4)
+        name = mm.group(2).split(':')[-1]
         if mm.group(1):
-            v = e.v['атрибути'].v.get(mm.group(2))
-            return v is not None and v.v == mm.group(3)
-        return any(k.v['тег'].v == mm.group(2) and k.v['текст'].v == mm.group(3) for k in kids(e))
+            v = attrs(e).get(name)
+            return v is not None and v.v == want
+        return any(k.v['тег'].v == name and text_of(k) == want for k in kids(e))
 
-    def name_ok(e, name):
-        return name == '*' or e.v['тег'].v == name
-    if not isinstance(root.v, dict) or not isinstance(root.v.get('тег', V(None)).v, str):
-        raise NgrError('↘: перший аргумент — елемент із χ (словник із 「тег」)', pos)
-    cur = [root]
-    for n, (anywhere, name, conds) in enumerate(steps):
-        if absolute and n == 0:
-            pool = [[root]]
-        else:
-            pool = [desc(e) if anywhere else kids(e) for e in cur]
+    def uniq(nodes):
+        seen, out = set(), []
+        for e in nodes:
+            if id(e) not in seen:
+                seen.add(id(e))
+                out.append(e)
+        return sorted(out, key=lambda e: order.get(id(e), 0))
+
+    # контекст: «документ» над коренем, щоб //b і /a бачили сам корінь
+    doc = V({'тег': V(''), 'діти': V([root])})
+    cur = [doc] if (absolute or lead == '//' or (not steps and attr_sep == '//')) else [root]
+
+    def self_or_below(nodes):      # нащадки-або-сам кожного; спільні піддерева — один раз
+        seen, out = set(), []
+        stack = list(reversed(nodes))
+        while stack:
+            e = stack.pop()
+            if id(e) in seen:
+                continue
+            seen.add(id(e))
+            out.append(e)
+            stack.extend(reversed(kids(e)))
+        return out
+    for anywhere, name, conds in steps:
+        parents = self_or_below(cur) if anywhere else cur
         nxt = []
-        for group in pool:
-            sel = [e for e in group if name_ok(e, name)]
+        for p in parents:          # [n] — серед дітей одного батька, як у XPath
+            sel = [k for k in kids(p) if name == '*' or k.v['тег'].v == name]
             for c in conds:
-                sel = [e for i, e in enumerate(sel, 1) if ok(e, c, i)]
+                sel = [k for i, k in enumerate(sel, 1) if ok(k, c, i)]
             nxt.extend(sel)
-        cur = nxt
+        cur = uniq(nxt)
     if attr is not None:
-        return V([e.v['атрибути'].v[attr] for e in cur if attr in e.v['атрибути'].v])
+        if attr_sep == '//':
+            cur = self_or_below(cur)
+        name = attr.split(':')[-1]
+        return V([attrs(e)[name] for e in cur if name in attrs(e)])
     return V(cur)
 
 
@@ -3815,13 +3923,13 @@ class Interp:
         if g == 'χ':
             x = a[0].v
             if isinstance(x, str):
-                return xml_parse(x, pos, self.max_size)
+                return xml_parse(x, pos, self.max_size, lambda k: self.work(k, pos))
             if isinstance(x, dict):
-                return V(xml_write(a[0], pos))
+                return V(xml_write(a[0], pos, lambda k: self.step(pos)))
             raise NgrError(f'χ: очікувався рядок XML або елемент (словник), а не {kind(a[0])}', pos)
         if g == '↘':
             self.need(a[0], 'словник', g, pos)
-            return xml_path(a[0], self.need(a[1], 'рядок', g, pos), pos)
+            return xml_path(a[0], self.need(a[1], 'рядок', g, pos), pos, lambda k: self.step(pos))
         if g == '▦':
             import csv
             import io as _io
