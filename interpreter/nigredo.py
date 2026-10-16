@@ -1329,8 +1329,9 @@ class Trace:
     """Слід веде інтерпретатор, а не програма. JSONL; кожен запис підписано HMAC-SHA256 ключем власника
     (теку власника програма не бачить) і зчеплено з попереднім. Останній запис — «кінець» або «помилка»."""
 
-    def __init__(self, outs, key, limit=MAX_TRACE):
+    def __init__(self, outs, key, limit=MAX_TRACE, stores=()):
         self.outs, self.key, self.prev, self.n = outs, key, '0' * 16, 0
+        self.stores, self.kept = list(stores), set()   # СЛІД.дані: точні результати інструментів для --повторити
         self.depth, self.bytes, self.limit = 0, 0, limit
         self.tl = threading.local()     # ‖: записи з потоку дії — у його буфер, потім у порядку елементів
 
@@ -1356,6 +1357,59 @@ class Trace:
         for o in self.outs:
             o.write(line)
             o.flush()
+
+    def keep(self, x):
+        """Записати точне значення в сховище (раз на вміст) і повернути його sha256 — для запису в слід."""
+        e = enc_v(x)
+        h = enc_hash(e)
+        if h not in self.kept and self.stores:
+            self.kept.add(h)
+            line = json.dumps({'sha256': h, 'значення': e}, ensure_ascii=False) + '\n'
+            self.bytes += len(line.encode())
+            if self.bytes > self.limit:
+                raise Fatal(f'слід перевищив {self.limit} байтів (--слід-розмір) — програму зупинено')
+            for o in self.stores:
+                o.write(line)
+                o.flush()
+        return h
+
+
+def enc_v(x):
+    """Точне кодування значення для сховища повтору (типи, великі числа, десяткові, порядок ключів, впевненість)."""
+    v = x.v
+    if isinstance(v, bool) or v is None or isinstance(v, str):
+        e = v
+    elif isinstance(v, int):
+        e = {'ц': str(v)}
+    elif isinstance(v, (Decimal, float)):
+        e = {'д': str(v)}
+    elif isinstance(v, list):
+        e = {'л': [enc_v(i) for i in v]}
+    elif isinstance(v, dict):
+        e = {'с': [[k, enc_v(i)] for k, i in v.items()]}
+    else:
+        raise TypeError(f'не кодується: {kind(x)}')
+    return e if x.c == 1 and x.s == 1 else {'в': repr(x.c), 'б': repr(x.s), 'з': e}
+
+
+def dec_v(e):
+    if isinstance(e, dict) and 'з' in e:
+        x = dec_v(e['з'])
+        return V(x.v, float(e['в']), float(e['б']))
+    if isinstance(e, dict):
+        (k, val), = e.items()
+        if k == 'ц':
+            return V(int(val))
+        if k == 'д':
+            return V(Decimal(val))
+        if k == 'л':
+            return V([dec_v(i) for i in val])
+        return V({kk: dec_v(i) for kk, i in val})
+    return V(e)
+
+
+def enc_hash(e):
+    return hashlib.sha256(json.dumps(e, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
 def _bad_str(x):
@@ -2467,6 +2521,8 @@ class Interp:
 
         self.depth = 0
         self.defer_node = None  # тіло ‖, чий виклик інструмента відкладено
+        self.ends = 0           # скільки записів «інструмент» уже зроблено (номер виклику для повтору)
+        self.replay = None      # --повторити: (записи «інструмент», сховище значень)
 
     def tool_begin(self, name, args, pos):
         """Перевірка прав, впевненість аргументів і запис «виклик» — до дії (для ‖ — по черзі, до паралельних дій)."""
@@ -2485,14 +2541,33 @@ class Interp:
         return {'назва': name, 'аргументи': args, 'слід': targs, 'ac': ac, 'pos': pos, 'агент': self.agent}
 
     def tool_do(self, job):
-        """Сама дія (у ‖ — у своєму потоці; записи сліду з потоку — у його буфер)."""
+        """Сама дія (у ‖ — у своєму потоці; записи сліду з потоку — у його буфер). У повторі — записане."""
+        if self.replay is not None:
+            return self.replayed(job)
         try:
             return TOOLS[job['назва']][5](self, job['pos'], *job['аргументи']), None
         except (NgrError, Fatal) as e:
             return None, e
 
+    def replayed(self, job):
+        recs, store = self.replay
+        i = job.get('№', self.ends)
+        if i >= len(recs):
+            raise Fatal(f'повтор розійшовся зі слідом: виклик №{i + 1} ({job["назва"]}) — у сліді їх лише {len(recs)}')
+        r = recs[i]
+        if r.get('назва') != job['назва'] or r.get('аргументи') != job['слід']:
+            show_args = lambda a: safe(' '.join(x if isinstance(x, str) else '…' for x in a or []))[:120]   # noqa: E731
+            raise Fatal(f'повтор розійшовся зі слідом на виклику №{i + 1}: у сліді {r.get("назва")} '
+                        f'{show_args(r.get("аргументи"))}, а програма — {job["назва"]} {show_args(job["слід"])}')
+        if 'помилка' in r:
+            return None, NgrError(r['помилка'], job['pos'], float(r.get('впевненість', 1.0)))
+        if r.get('значення') not in store:
+            raise Fatal(f'повтор: значення виклику №{i + 1} немає у сховищі (СЛІД.дані) — слід записано без нього')
+        return dec_v(store[r['значення']]), None
+
     def tool_end(self, job, outcome):
         res, err = outcome
+        self.ends += 1
         name, targs, ac = job['назва'], job['слід'], job['ac']
         if err is not None:
             if isinstance(err, Fatal):
@@ -2502,9 +2577,12 @@ class Interp:
             raise err
         c = min([res.c, ac] + ([self.world_c] if name in WORLD_READERS else [])
                 + ([self.decided_c] if name == 'час' else []))
+        keep = getattr(self.trace, 'keep', None)
+        stored = {'значення': keep(res)} if keep else {}     # сирий результат — для --повторити
         res = capc(res, c) if c < 1 else res
         self.taint(c)
-        self.trace('інструмент', агент=job['агент'], назва=name, аргументи=targs, результат=trace_val(res), впевненість=c)
+        self.trace('інструмент', агент=job['агент'], назва=name, аргументи=targs, результат=trace_val(res), впевненість=c,
+                   **stored)
         return res
 
     def parallel(self, lst, fn, pos, fnode):
@@ -2519,6 +2597,8 @@ class Interp:
             jobs = [self.each('‖', i, fn, [x], pos) for i, x in enumerate(items)]
         finally:
             self.pc, self.defer_node = saved, saved_node
+        for i, j in enumerate(jobs):                         # номер виклику — порядок записів «інструмент»
+            j.v[1]['№'] = self.ends + i
         trace = self.trace
 
         def run(job):
@@ -3623,8 +3703,63 @@ USAGE = f"""Nigredo {VERSION}
     --розмір N             найбільший рядок/список (типово {MAX_SIZE})
   ngr --перевірити [--json] ФАЙЛ   усі помилки до запуску (розбір, типи, регулярки) і печатка — без виконання
   ngr --перевірити-слід ФАЙЛ [ПРОГРАМА]   (з програмою — ще й чи слід саме від неї)
+  ngr --повторити СЛІД [ПРОГРАМА]   виконати знову без дій у світі: інструменти повертають записане (СЛІД.дані);
+                           ті самі аргументи, тека, зерно; наприкінці — чи збігся вивід і завершення
   ngr --памʼятка           згенерувати памʼятку для агентів
 """
+
+
+def load_replay(tpath, program=None):
+    """Слід для --повторити: цілий (і від цієї програми, якщо її дано) + сховище значень, звірене з хешами."""
+    msg = verify_trace(tpath, program)
+    if not msg.startswith('✓'):
+        return None, f'✗ повторити неможливо: {msg}'
+    recs = [json.loads(line) for line in open(tpath, encoding='utf-8', newline='').read().split('\n') if line]
+    store = {}
+    try:
+        with open(tpath + '.дані', encoding='utf-8') as f:
+            for line in f:
+                r = json.loads(line)
+                if enc_hash(r['значення']) != r['sha256']:
+                    return None, '✗ сховище значень (СЛІД.дані) змінено: вміст не збігається з хешем'
+                store[r['sha256']] = r['значення']
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return None, f'✗ сховище значень (СЛІД.дані) не прочитати: {e}'
+    tools = [r for r in recs if r.get('подія') == 'інструмент']
+    lost = [i + 1 for i, r in enumerate(tools) if 'помилка' not in r and r.get('значення') not in store]
+    if lost:
+        return None, (f'✗ повторити неможливо: для викликів №{", ".join(map(str, lost[:5]))} немає значень '
+                      f'(слід записано без СЛІД.дані або старою версією)')
+    return {'початок': recs[0], 'інструменти': tools, 'сховище': store, 'вивід': [r.get('текст') for r in recs
+            if r.get('подія') == 'вивід'], 'кінець': recs[-1]}, None
+
+
+def replay_report(replay, new_trace, ends):
+    """Чи збігся повтор із записаним: вивід, кількість викликів, завершення."""
+    recs = [json.loads(line) for line in open(new_trace, encoding='utf-8', newline='').read().split('\n') if line]
+    out = [r.get('текст') for r in recs if r.get('подія') == 'вивід']
+    end_old, end_new = replay['кінець'], recs[-1] if recs else {}
+    same_end = end_old.get('подія') == end_new.get('подія') and end_old.get('повідомлення') == end_new.get('повідомлення')
+    used = ends
+    problems = []
+    if out != replay['вивід']:
+        k = next((i for i, (a, b) in enumerate(zip(out, replay['вивід'])) if a != b), min(len(out), len(replay['вивід'])))
+        problems.append(f'вивід інший з рядка {k + 1}')
+    if used != len(replay['інструменти']):
+        problems.append(f'викликів інструментів {used}, а в сліді {len(replay["інструменти"])}')
+    if not same_end:
+        problems.append(f'завершення інше: було «{end_old.get("подія")}», тепер «{end_new.get("подія")}»')
+    if problems:
+        print(f'✗ повтор розійшовся зі слідом: {"; ".join(problems)}', file=sys.stderr)
+        return 5
+    if replay['початок'].get('інтерпретатор') != INTERP_SHA:
+        print('  (слід записано іншою версією інтерпретатора — повтор перевіряє й те, що поведінка не змінилася)',
+              file=sys.stderr)
+    print(f'✓ повтор збігся зі слідом: {used} викликів інструментів (без дій у світі), {len(out)} записів виводу, '
+          f'завершення «{end_new.get("подія")}»; слід повтору: {new_trace}', file=sys.stderr)
+    return 0
 
 
 def main(argv):
@@ -3658,6 +3793,12 @@ def main(argv):
             msg = verify_trace(tpath, rest[0] if rest else None)
             print(verify_trace(tpath, rest[0] if rest else None, True) if js else msg)
             return 0 if msg.startswith('✓') else 1
+        if a == '--повторити':
+            opts['mode'], opts['replay'] = 'повторити', next(it, None)
+            if opts['replay'] is None:
+                print('✗ --повторити СЛІД [ПРОГРАМА]', file=sys.stderr)
+                return 2
+            continue
         if a in ('--печатка', '--розбір', '--перевірити'):
             opts['mode'] = a[2:]
         elif a == '--слід':
@@ -3690,6 +3831,36 @@ def main(argv):
             except (OSError, UnicodeDecodeError) as e:
                 print(f'✗ {a}: {getattr(e, "strerror", None) or e}', file=sys.stderr)
                 return 2
+    replay = None
+    if opts['mode'] == 'повторити':
+        replay, err = load_replay(opts['replay'], path)
+        if err:
+            print(err, file=sys.stderr)
+            return 1
+        head = replay['початок']
+        if src is None:
+            if head.get('програма') == '<-e>':
+                src, path, opts['dir'] = head.get('код'), '<-e>', head.get('тека')
+                if src is None:
+                    print('✗ у сліді немає коду -e програми (старий слід) — повторити неможливо', file=sys.stderr)
+                    return 1
+            else:
+                path = os.path.join(head.get('тека', ''), os.path.basename(str(head.get('програма'))))
+                try:
+                    raw = open(path, 'rb').read()
+                    src = raw.decode('utf-8')
+                except (OSError, UnicodeDecodeError) as e:
+                    print(f'✗ програму сліду не прочитати ({safe(path)}): {e} — дайте шлях: --повторити СЛІД ПРОГРАМА',
+                          file=sys.stderr)
+                    return 1
+        sha_now = hashlib.sha256(raw if path != '<-e>' else src.encode()).hexdigest()
+        if sha_now != head.get('sha256'):
+            print('✗ програма не та, що в сліді (sha256 інший) — повторюється лише та сама програма', file=sys.stderr)
+            return 1
+        lim = head.get('ліміти') or {}
+        prog_args = list(head.get('аргументи') or [])
+        opts.update(seed=lim.get('зерно', 0), steps=lim.get('кроки', DEFAULT_STEPS), size=lim.get('розмір', MAX_SIZE),
+                    tsize=lim.get('слід', MAX_TRACE))
     if src is None:
         print(USAGE, file=sys.stderr)
         return 2
@@ -3748,7 +3919,8 @@ def main(argv):
         info['sha256'] = hashlib.sha256(raw if path != '<-e>' else src.encode()).hexdigest()
         print(json.dumps(info, ensure_ascii=False, indent=1) if opts['json'] else seal_report(prog, allowed, source, cwd, dir_extra))
         return 0 if info['в_межах'] else 3
-    missing = check_program(prog, allowed, cwd) if prog else []
+    # повтор нічого не робить у світі — дозволи власника не потрібні (і можуть уже змінитися)
+    missing = check_program(prog, allowed, cwd) if prog and not replay else []
     sha = hashlib.sha256(raw if path != '<-e>' else src.encode()).hexdigest()
     key = owner_key()
     os.makedirs(os.path.join(OWNER_HOME, 'сліди'), mode=0o700, exist_ok=True)
@@ -3777,7 +3949,12 @@ def main(argv):
         return 3
     if extra_stderr:
         outs.append(sys.stderr)
-    trace = Trace(outs, key, opts['tsize'])
+    try:
+        stores = [open(tp + '.дані', 'x', encoding='utf-8') for tp in paths]
+    except OSError as e:
+        print(f'✗ не вдалося створити сховище значень сліду: {e}', file=sys.stderr)
+        return 3
+    trace = Trace(outs, key, opts['tsize'], stores)
     code = 0
     shown_args = [a.encode('utf-8', 'surrogateescape').decode('utf-8', 'backslashreplace') for a in prog_args]
     try:
@@ -3785,7 +3962,8 @@ def main(argv):
               sha256=sha, аргументи=shown_args,
               час=datetime.now(timezone.utc).isoformat(timespec='seconds'), запуск=os.urandom(6).hex(),
               тека=safe(cwd), дозволи_власника=safe(source), дозволено=allowed,
-              ліміти={'кроки': opts['steps'], 'розмір': opts['size'], 'слід': opts['tsize'], 'зерно': opts['seed']})
+              ліміти={'кроки': opts['steps'], 'розмір': opts['size'], 'слід': opts['tsize'], 'зерно': opts['seed']},
+              **({'код': src} if path == '<-e>' else {}), **({'повтор': safe(os.path.realpath(opts['replay']))} if replay else {}))
         if shown_args != prog_args:
             trace('відмова', причина='аргумент — не UTF-8 (неповний символ)')
             print('✗ аргумент програми — не UTF-8 (неповний символ); запуск відхилено', file=sys.stderr)
@@ -3793,7 +3971,7 @@ def main(argv):
         if perr:
             trace('відмова', причина='помилка до запуску', повідомлення=safe(str(perr)))
             print(perr, file=sys.stderr)
-            return 2
+            return replay_report(replay, main_trace, 0) if replay else 2
         if missing:
             trace('відмова', бракує=missing)
             print(f'✗ печатка просить більше, ніж дозволив власник: {", ".join(missing)}\n'
@@ -3801,13 +3979,23 @@ def main(argv):
             return 3
         interp = Interp(trace, seed=opts['seed'], steps=opts['steps'], cwd=cwd, argv=prog_args, protected=paths,
                         max_size=opts['size'])
+        if replay:
+            interp.replay = (replay['інструменти'], replay['сховище'])
         try:
-            interp.run(prog)
-            trace('кінець', кроків=opts['steps'] - interp.steps_left)
+            try:
+                interp.run(prog)
+                trace('кінець', кроків=opts['steps'] - interp.steps_left)
+            finally:
+                if replay:
+                    sys.stdout.flush()
+            if replay:
+                return replay_report(replay, main_trace, interp.ends)
         except NgrError as e:
             trace('помилка', повідомлення=safe(str(e)))
             print(safe(str(e)), file=sys.stderr)
             code = 1
+            if replay:
+                return replay_report(replay, main_trace, interp.ends)
         except BrokenPipeError:                      # читач закрив вивід (| head) — тихо, без «вади мови»
             os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
             trace('помилка', повідомлення='вивід обірвано: читач закрив трубу')
@@ -3828,6 +4016,8 @@ def main(argv):
         for o in outs:
             if o is not sys.stderr:
                 o.close()
+        for o in locals().get('stores', []):
+            o.close()
 
 
 def entry():
