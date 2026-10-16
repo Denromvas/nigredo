@@ -308,6 +308,14 @@ def main():
     got2 = run(['--повторити', str(rp / 'е.jsonl')], env)
     check(got.returncode == 1 and got2.returncode == 0 and got2.stdout == got.stdout and 'завершення «помилка»' in got2.stderr,
           'повтор: -e програма (код у сліді), завершення помилкою — те саме', got2.stdout + got2.stderr)
+    # --сухо: читання — так, записи й надсилання — ні (результат з впевненістю 0), наприкінці — перелік
+    got = run(['--сухо', '-e', f'🜂 【「читати:{DATA}」 「писати:{DATA / "звіти"}」 「послати:127.0.0.1:{port}」】\n'
+               f'← n ρ 🜔читати 「продажі.json」\n🜔писати 「{DATA / "звіти" / "сухо.txt"}」 〔{{n}}〕\n'
+               f'» ± 🜔послати 「http://127.0.0.1:{port}/x」 「СЕКРЕТ」\n» n'], env)
+    check(got.returncode == 0 and got.stdout.split('\n')[:1] == ['0'] and not (DATA / 'звіти' / 'сухо.txt').exists()
+          and '2 дій не виконано' in got.stderr and 'мережа.послати' in got.stderr and 'сухо.txt' in got.stderr,
+          '--сухо: запис і надсилання не виконано (впевненість 0), читання — так, у звіті — обидві дії',
+          got.stdout + got.stderr)
     # кілька інструментів на одне обмеження: кожен — окремий дозвіл, кожен звіряється з власником
     got = run(['--печатка', '-e', f'🜂 【「читати писати:{DATA}」】\n» 1'], env)
     check(got.returncode == 3 and 'файл.писати:' in got.stdout + got.stderr and 'файл.читати' in got.stdout,
