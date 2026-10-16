@@ -5,6 +5,7 @@
 Таблиці GLYPHS і TOOLS нижче — єдине джерело правди: з них генеруються
 памʼятка (`--памʼятка`) і переклад (`--розбір`).
 """
+import functools
 import hashlib
 import hmac
 import json
@@ -212,10 +213,11 @@ class V:
 
 
 class Fn:
-    __slots__ = ('params', 'body', 'env', 'name', 'mod')
+    __slots__ = ('params', 'body', 'env', 'name', 'mod', 'simple')
 
     def __init__(self, params, body, env, name=None):
         self.params, self.body, self.env, self.name = params, body, env, name
+        self.simple = all(isinstance(p, str) for p in params)   # без розбору 【a b】 — швидкий виклик
         e = env                                   # функція модуля: (шлях, печатка модуля) — права при виклику
         while e is not None and '\0модуль' not in e:
             e = e.get('\0parent')
@@ -365,6 +367,7 @@ IGNORABLE = ((0x00AD, 0x00AD), (0x034F, 0x034F), (0x061C, 0x061C), (0x115F, 0x11
              (0x1D173, 0x1D17A), (0xE0000, 0xE0FFF))
 
 
+@functools.lru_cache(maxsize=65536)
 def invisible(ch):
     """Одне правило видимості для всієї мови: керівні, форматні, роздільники рядків, приватні, непризначені,
     сурогати, Default_Ignorable (U+034F, теги U+E00xx, ZWSP…), нестандартні пробіли, заповнювачі (U+3164, U+2800)."""
@@ -375,6 +378,8 @@ def invisible(ch):
 
 def hidden(text, allow='\n\t'):
     """Невидимі символи тексту (крім allow). Селектор вигляду емодзі (U+FE0E/F) одразу після значка — видимий."""
+    if not any(invisible(ch) for ch in set(text) if ch not in allow):   # швидко: різних символів зазвичай мало
+        return []
     return [ch for i, ch in enumerate(text) if ch not in allow and invisible(ch)
             and not (ch in '︎️' and i and unicodedata.category(text[i - 1]) == 'So')]
 
@@ -1179,6 +1184,10 @@ def total_type(node):
     return None
 
 
+INT_FAST = {'＋': lambda x, y: x + y, '－': lambda x, y: x - y, '×': lambda x, y: x * y, '‰': lambda x, y: x % y,
+            '‹': lambda x, y: x < y, '›': lambda x, y: x > y, '≤': lambda x, y: x <= y, '≥': lambda x, y: x >= y,
+            '＝': lambda x, y: x == y, '≠': lambda x, y: x != y}
+NEED_FAST = {'рядок': str, 'список': list, 'словник': dict}
 LAZY_GLYPHS = set('¿☂‖∀μφ⇅⊞∫№Σ↻')   # гліфи, що самі вирішують, які аргументи й коли обчислювати
 OWN_CONF = set('≈±⚗►▶🜃🜍🜄§⌂ρκ')     # гліфи, що самі встановлюють впевненість результату
 NEVER_FAILS = set('σ±＝≠¬∧∨ρ⇣⇡⊢↺∋»κ✎⊳✂＋－×‹›≤≥Δ⌂🜄🜃')     # падіння цих не залежить від значень аргументів
@@ -3116,6 +3125,17 @@ class Interp:
         f = fn.v
         if len(f.params) != len(args):
             raise NgrError(f'функція чекає {len(f.params)} аргумент(и), а дано {len(args)}', pos, min(fn.c, self.cpc))
+        if fn.c >= 1 and f.mod is None and f.simple:      # швидкий шлях: pc, taint, права не змінюються
+            self.depth += 1
+            if self.depth > MAX_DEPTH:
+                self.depth -= 1
+                raise Fatal('надто глибока рекурсія', pos)
+            env = dict(zip(f.params, args))
+            env['\0parent'] = f.env
+            try:
+                return self.eval(f.body, env)
+            finally:
+                self.depth -= 1
         self.depth += 1
         if self.depth > MAX_DEPTH:
             raise Fatal('надто глибока рекурсія', pos)
@@ -3153,6 +3173,8 @@ class Interp:
             self.depth -= 1
 
     def need(self, x, k, g, pos):
+        if type(x.v) is NEED_FAST.get(k):           # швидко: точний тип (bool окремо від int — тут не трапляється)
+            return x.v
         if kind(x) != k:
             raise NgrError(f'{g}: очікувалося {k}, а не {kind(x)} {brief(x, 40)}', pos)
         return x.v
@@ -3483,6 +3505,10 @@ class Interp:
         raise NgrError(f'{g}: очікувався список або рядок, а не {kind(x)}', pos, min(x.c, self.cpc))
 
     def prim(self, g, a, pos):
+        if len(a) == 2 and g in INT_FAST and type(a[0].v) is int and type(a[1].v) is int:   # цілі — точні й так
+            x, y = a[0].v, a[1].v
+            if g != '‰' or y != 0:
+                return V(INT_FAST[g](x, y))
         n = lambda i: self.num(a[i], g, pos)      # noqa: E731
         b = lambda i: self.boolean(a[i], g, pos)  # noqa: E731
         if g == '＋':
