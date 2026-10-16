@@ -758,6 +758,8 @@ class Parser:
         self.agent_names = {skeleton("головний"): "головний"}   # скелет імені субагента → імʼя
         self.ctx = [('stmt', 0)]    # ('stmt', відступ інструкції) або ('items',) усередині 【】『』
         self.head = -1              # індекс токена, з якого почалася поточна інструкція
+        self.frames = []            # незавершені вирази [початок, [(початок, кінець, вкладені)…]] — для підказки арності
+        self.last_span = None       # (початок, кінець, вкладені) щойно розібраного виразу
 
     def peek(self):
         return self.t[self.i]
@@ -780,7 +782,51 @@ class Parser:
                 self.i += 1
                 continue
             raise StaticError('рядок закінчився, а виразові бракує аргументу (щоб продовжити вираз на '
-                              'наступному рядку, зробіть там більший відступ)', tok[2])
+                              'наступному рядку, зробіть там більший відступ)' + self.hungry(), tok[2])
+
+    def tok_text(self, t):
+        k, v = t[0], t[1]
+        if k == 'str':
+            v = v if len(v) <= 12 else v[:10] + '…'
+            return '「' + v.replace('\n', '\\n') + '」'
+        if k == 'tpart':
+            return v if len(v) <= 12 else v[:10] + '…'
+        return str(v)
+
+    def shape(self, span, limit=300):
+        """Як розібрано вираз: кожен вираз з аргументами — у дужках (підказка, коли не зійшлася арність)."""
+        def go(s, e, kids, top=False):
+            out, i, k = [], s, 0
+            while i < e:
+                if k < len(kids) and kids[k][0] == i:
+                    out.append(go(*kids[k]))
+                    i = kids[k][1]
+                    k += 1
+                    continue
+                if self.t[i][0] != 'nl':
+                    out.append(self.tok_text(self.t[i]))
+                i += 1
+            text = ' '.join(out)
+            return f'({text})' if kids and not top and self.t[s][0] not in ('open', 'topen') else text
+        text = go(*span, top=True)
+        return text if len(text) <= limit else text[:limit] + ' …'
+
+    def hungry(self):
+        """Які вирази ще чекають аргументів — найглибші спершу."""
+        out = []
+        for start, kids in reversed(self.frames):
+            if start >= self.i or self.t[start][0] in ('open', 'topen'):
+                continue
+            k, v, pos = self.t[start]
+            if k == 'glyph' and v in GLYPHS and isinstance(GLYPHS[v][0], int):
+                out.append(f'{v} ({pos[0]}:{pos[1]}) бере {GLYPHS[v][0]}, є {len(kids)}')
+            elif k == 'name' and self.lookup(v):
+                out.append(f'{v} ({pos[0]}:{pos[1]}) бере {self.lookup(v)}, є {len(kids)}')
+            else:
+                out.append(f'{self.tok_text(self.t[start])} ({pos[0]}:{pos[1]})')
+            if len(out) == 3:
+                break
+        return (' — чекають аргументів: ' + '; '.join(out)) if out else ''
 
     def lookup(self, name):
         for s in reversed(self.scopes):
@@ -822,11 +868,31 @@ class Parser:
             self.ctx.pop()
             after = self.peek()
             if after[0] not in ('nl', 'eof', 'close'):
+                rest = []
+                for t in self.t[self.i:]:
+                    if t[0] in ('nl', 'eof'):
+                        break
+                    rest.append(self.tok_text(t))
                 raise StaticError('вираз уже завершено, а в рядку ще щось є — зайве чи бракує аргументу раніше? '
-                                  '(кілька виразів в одному рядку розділяйте ¦)', after[2])
+                                  '(кілька виразів в одному рядку розділяйте ¦)'
+                                  f' — розібрано: {self.shape(self.last_span)} — зайве: {" ".join(rest)[:120]}', after[2])
 
     def expr(self):
+        start, kids = self.i, []
+        self.frames.append([start, kids])
+        try:
+            node = self.expr_()
+        finally:
+            self.frames.pop()
+        self.last_span = (start, self.i, kids)
+        if self.frames:
+            self.frames[-1][1].append(self.last_span)
+        return node
+
+    def expr_(self):
         self.cont_nl()
+        if self.frames[-1][0] < self.i:                 # перенос рядка — вираз починається далі
+            self.frames[-1][0] = self.i
         kind_, val, pos = self.next()
         if kind_ == 'num' or kind_ == 'str':
             return ('lit', pos, val)
@@ -886,9 +952,11 @@ class Parser:
         if kind_ in ('hclose', 'tclose', 'hopen', 'tpart'):
             raise StaticError(f'«{val}» тут не очікувалося — бракує виразу в шаблоні', pos)
         if kind_ == 'close':
-            raise StaticError(f'«{val}» тут не очікувалося — бракує аргументу', pos)
+            self.i -= 1
+            raise StaticError(f'«{val}» тут не очікувалося — бракує аргументу' + self.hungry(), pos)
         if kind_ == 'eof' or kind_ == 'nl':
-            raise StaticError('бракує аргументу: вираз обірвався', pos)
+            self.i -= 1
+            raise StaticError('бракує аргументу: вираз обірвався' + self.hungry(), pos)
         return self.glyph(val, pos)
 
     def items(self, close):
@@ -4123,6 +4191,9 @@ def cheatsheet():
             '» ≋ т 「(\\d{4})-(\\d{2})-(\\d{2})」 「\\3.\\2.\\1」', '```', '',
             '## Пастки', '',
             '- `＝0 ‰n 3` — спершу гліф, потім аргументи: «остача n на 3 дорівнює 0».',
+            '- Не зійшлася арність — помилка каже, як розібрано рядок: `розібрано: ¿ (＝ a 0) (÷ s 2) 2` (кожен вираз',
+            '  з аргументами — у дужках) і `чекають аргументів: ÷ (4:9) бере 2, є 1`. Вираз довший за рядок — розбийте',
+            '  на `←` проміжні імена.',
             '- Імена склеюються з цифрами: `n15` — одне імʼя; пишіть `n 15`.',
             '- Однолітерні імена з різних абеток — двійники (r і г, x і х, p і р, a і а, o і о, c і с, e і е, y і у):',
             '  програму не приймуть. Беріть імена одного письма або довші (рядок, група).',
