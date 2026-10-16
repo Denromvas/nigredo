@@ -34,7 +34,7 @@ _spec.loader.exec_module(NIGREDO)
 def clean(text):
     """Слова програми — для моделі-отримувача: кожен невидимий символ (керівні, bidi, теги U+E00xx, ZWSP, U+2028,
     заповнювачі…) — як ⟨U+XXXX⟩, тож прихованого тексту немає."""
-    return NIGREDO.visible(text)
+    return NIGREDO.visible(text, bracket=False)     # вивід ngr уже позначено; тут — лише страховка від невидимого
 
 
 def bad_text(*texts):

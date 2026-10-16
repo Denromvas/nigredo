@@ -42,7 +42,7 @@ def ask(model, prompt):
     if r.returncode:
         raise RuntimeError(f'claude: код {r.returncode}: {r.stderr[-300:]}')
     m = re.search(r'```[^\n]*\n(.*?)```', r.stdout, re.S)
-    return (m.group(1) if m else r.stdout).strip() + '\n'
+    return (m.group(1) if m else r.stdout).strip() + '\n', r.stdout
 
 
 def execute(task, lang, code):
@@ -84,13 +84,13 @@ def main(models):
                 res = []
                 for attempt in (1, 2):
                     try:
-                        code = ask(model, prompt)
+                        code, raw = ask(model, prompt)
                     except Exception as e:           # noqa: BLE001
                         res.append({'спроба': attempt, 'помилка_моделі': str(e)})
                         break
                     rc, out, err = execute(task, lang, code)
                     ok = rc == 0 and norm(out) == want
-                    res.append({'спроба': attempt, 'гаразд': ok, 'код': code, 'код_виходу': rc,
+                    res.append({'спроба': attempt, 'гаразд': ok, 'код': code, 'відповідь': raw, 'код_виходу': rc,
                                 'вивід': out[-2000:], 'помилки': err[-2000:]})
                     if ok:
                         break
@@ -108,7 +108,7 @@ def report(models, rows):
     L = ['# М2: правильність з першої спроби на задачах поза памʼяткою', '',
          f'Задачі — `bench/м2/{SET}/` ({len(TASKS)}; їх немає ні в памʼятці, ні в мірилі). Модель пише в `claude -p` '
          'без інструментів, у порожній теці; для Nigredo має лише памʼятку. ✓1 — з першої спроби, ✓2 — з другої '
-         '(бачила свій код, вивід і очікуваний вивід), ✗ — ні. Сирі відповіді — `bench/м2/прогони{SUFFIX}/`.', '']
+         '(бачила свій код, вивід і очікуваний вивід), ✗ — ні. Повні відповіді моделей (і витягнутий код) — `bench/м2/прогони{SUFFIX}/` (поле «відповідь» — з 2026-10-16; раніше зберігався лише перший блок коду). Python-код моделей виконується без меж (тимчасова тека, права процесу).', '']
     for model in models:
         L += [f'## {model}', '', '| Задача | Python | Nigredo |', '|---|---|---|']
         tot = {'py': [0, 0], 'ngr': [0, 0]}
