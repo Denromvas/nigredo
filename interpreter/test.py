@@ -651,6 +651,13 @@ def main():
                          capture_output=True, text=True, env=dict(env, NIGREDO_WORKDIR=str(work)))
     res = {m['id']: m.get('result', {}) for m in map(json.loads, got.stdout.splitlines())}
     txt = lambda i: '\n'.join(c['text'] for c in res[i]['content'])      # noqa: E731
+    (work / 'а.тест.ngr').write_text('🜂\n🜍 ＋ 1 1 λs ＝ s 2\n', encoding='utf-8')
+    got_t = subprocess.run([sys.executable, str(mcp)], input=json.dumps({'jsonrpc': '2.0', 'id': 9, 'method': 'tools/call',
+                           'params': {'name': 'nigredo_testy', 'arguments': {}}}) + '\n',
+                           capture_output=True, text=True, env=dict(env, NIGREDO_WORKDIR=str(work)))
+    tres = json.loads(got_t.stdout.splitlines()[0])['result']
+    check(not tres.get('isError') and '"пройшли": 1' in tres['content'][0]['text'], 'MCP: nigredo_testy проганяє *.тест.ngr робочої теки',
+          got_t.stdout[-400:])
     check(not res[4].get('isError') and '✓ повтор збігся' in txt(4) and res[5].get('isError')
           and '1 дій не виконано' in txt(6) and not (DATA / 'звіти' / 'mcp_сухо.txt').exists(),
           'MCP: nigredo_povtoryty (лише сліди власника) і nigredo_vykonaty з suho', got.stdout[-800:] + got.stderr)
