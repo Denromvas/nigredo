@@ -700,7 +700,7 @@ def main():
     import importlib.util
     import io
     import itertools
-    os.environ.setdefault('NIGREDO_HOME', str(home))
+    os.environ['NIGREDO_HOME'] = str(home)         # той самий ключ сліду, що й у підпроцесів (env)
     spec = importlib.util.spec_from_file_location('nigredo_тест', ROOT / 'interpreter' / 'nigredo.py')
     M = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(M)
