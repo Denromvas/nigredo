@@ -1,0 +1,10 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nfrom collections import Counter\n\nwith open(\"дані/користувачі.json\", encoding=\"utf-8\") as f:\n    users = json.load(f)\n\ncounts = Counter()\nfor u in users:\n    email = u.get(\"email\")\n    if isinstance(email, str):\n        e = email.strip().lower()\n        if e:\n            counts[e] += 1\n\nfor email in sorted(counts):\n    if counts[email] > 1:\n        print(email, counts[email])\n",
+  "код_виходу": 0,
+  "вивід": "olia@example.com 3\npetro@example.com 2\n",
+  "помилки": ""
+ }
+]

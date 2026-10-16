@@ -1,0 +1,10 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import os\nfrom collections import Counter\n\ncounts = Counter()\nwith open(os.path.join(\"дані\", \"лог.txt\"), encoding=\"utf-8\") as f:\n    for line in f:\n        parts = line.split(None, 2)\n        if len(parts) < 2 or parts[1] != \"ERROR\":\n            continue\n        t = parts[0]\n        if \"T\" not in t:\n            continue\n        hour = t.split(\"T\", 1)[1][:2]\n        if hour.isdigit():\n            counts[int(hour)] += 1\n\nfor h in sorted(counts):\n    print(f\"{h:02d}: {counts[h]}\")\n",
+  "код_виходу": 0,
+  "вивід": "09: 3\n11: 1\n13: 1\n",
+  "помилки": ""
+ }
+]

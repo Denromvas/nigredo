@@ -1,0 +1,10 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import re\nfrom pathlib import Path\n\nШЛЯХ = Path(\"дані\") / \"заголовки.txt\"\n\n\ndef зробити_slug(рядок):\n    # Кожна послідовність символів, що не є латинською літерою чи цифрою, стає одним дефісом.\n    # Перевірка лише по ASCII, щоб не зачепити символи, які після lower() стали б латинськими.\n    slug = re.sub(r\"[^A-Za-z0-9]+\", \"-\", рядок).strip(\"-\")\n    return slug.lower()\n\n\ndef main():\n    with ШЛЯХ.open(encoding=\"utf-8\") as f:\n        for рядок in f:\n            рядок = рядок.rstrip(\"\\r\\n\")\n            if рядок == \"\":\n                continue\n            print(зробити_slug(рядок))\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "код_виходу": 0,
+  "вивід": "hello-world\nnigredo-0-6-released\nc-python-a-comparison\n100-pure-text\n",
+  "помилки": ""
+ }
+]

@@ -1,0 +1,10 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nfrom collections import defaultdict\n\nwith open(\"дані/склад.json\", encoding=\"utf-8\") as f:\n    склад = json.load(f)\n\nwith open(\"дані/замовлення.json\", encoding=\"utf-8\") as f:\n    замовлення = json.load(f)\n\nзамовлено = defaultdict(int)\nfor з in замовлення:\n    замовлено[з[\"товар\"]] += з[\"кількість\"]\n\nfor товар in sorted(замовлено):\n    є = склад.get(товар, 0)\n    if замовлено[товар] > є:\n        print(f\"{товар}: бракує {замовлено[товар] - є}\")\n",
+  "код_виходу": 0,
+  "вивід": "гайка: бракує 10\nдюбель: бракує 5\n",
+  "помилки": ""
+ }
+]

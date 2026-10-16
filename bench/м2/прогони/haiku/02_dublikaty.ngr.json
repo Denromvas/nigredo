@@ -1,0 +1,10 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "🜂 「адреси, що повторюються」 【「читати:дані」】\n← text 🜔читати 「дані/користувачі.json」\n← users δ text\n← addrs μ users λrow ⊢ ⇣ §row 「email」\n← groups ⊞ addrs λk k\n← dups φ ε groups λpair › ρ §pair 1 1\n← sorted ⇅ dups λpair §pair 0\n∀ sorted λpair » 〔{§pair 0} {ρ §pair 1}〕\n",
+  "код_виходу": 0,
+  "вивід": "olia@example.com 3\npetro@example.com 2\n",
+  "помилки": ""
+ }
+]

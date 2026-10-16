@@ -1,0 +1,10 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import csv\nfrom collections import defaultdict\n\n# Порядок українського алфавіту для сортування імен\nАЛФАВІТ = \"абвгґдеєжзиіїйклмнопрстуфхцчшщьюя\"\n\n\ndef ключ_імені(s):\n    s = s.lower()\n    return [АЛФАВІТ.index(c) if c in АЛФАВІТ else len(АЛФАВІТ) + ord(c) for c in s]\n\n\nsums = defaultdict(int)\ncounts = defaultdict(int)\n\nwith open(\"дані/оцінки.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n    for row in csv.DictReader(f):\n        name = (row.get(\"студент\") or \"\").strip()\n        bal = (row.get(\"бал\") or \"\").strip()\n        if not name or not bal:\n            continue\n        sums[name] += int(bal)\n        counts[name] += 1\n\nresults = []\nfor name in sums:\n    # Середнє в десятих, половина вгору, без похибок float: floor(sum/count*10 + 1/2)\n    tenths = (2 * sums[name] * 10 + counts[name]) // (2 * counts[name])\n    results.append((tenths, name))\n\nresults.sort(key=lambda t: (-t[0], ключ_імені(t[1])))\n\nfor tenths, name in results:\n    print(f\"{name} {tenths // 10}.{tenths % 10}\")\n",
+  "код_виходу": 0,
+  "вивід": "Олена 9.5\nАндрій 8.7\nБогдан 8.3\n",
+  "помилки": ""
+ }
+]

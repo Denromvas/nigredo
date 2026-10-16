@@ -1,0 +1,10 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "from datetime import date, timedelta\n\nstart = date(2026, 10, 1)\nend = date(2026, 12, 31)\nholidays = {date(2026, 11, 12), date(2026, 12, 24)}\n\nd = start\nwhile d <= end:\n    if d not in holidays:\n        print(d.isoformat())\n    d += timedelta(days=14)\n",
+  "код_виходу": 0,
+  "вивід": "2026-10-01\n2026-10-15\n2026-10-29\n2026-11-26\n2026-12-10\n",
+  "помилки": ""
+ }
+]

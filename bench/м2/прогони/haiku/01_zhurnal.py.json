@@ -1,0 +1,10 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "from collections import Counter\nfrom pathlib import Path\n\nшлях = Path(\"дані\") / \"лог.txt\"\nпомилки = Counter()\n\nwith шлях.open(encoding=\"utf-8-sig\") as файл:\n    for рядок in файл:\n        частини = рядок.split(maxsplit=2)\n        if len(частини) < 2:\n            continue\n        час, рівень = частини[0], частини[1]\n        if рівень != \"ERROR\" or \"T\" not in час:\n            continue\n        година = час.split(\"T\", 1)[1][:2]\n        помилки[година] += 1\n\nfor година in sorted(помилки):\n    print(f\"{година}: {помилки[година]}\")\n",
+  "код_виходу": 0,
+  "вивід": "09: 3\n11: 1\n13: 1\n",
+  "помилки": ""
+ }
+]

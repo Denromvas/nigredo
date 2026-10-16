@@ -1,0 +1,10 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import sqlite3\nfrom pathlib import Path\n\nшлях = Path(\"дані\") / \"база.db\"\n\nз_бд = sqlite3.connect(шлях)\ntry:\n    рядки = з_бд.execute(\n        \"\"\"\n        SELECT місто, SUM(сума) AS загалом\n        FROM продажі\n        WHERE місто IS NOT NULL\n        GROUP BY місто\n        ORDER BY загалом DESC, місто\n        LIMIT 2\n        \"\"\"\n    ).fetchall()\nfinally:\n    з_бд.close()\n\nfor місто, сума in рядки:\n    print(f\"{місто}: {сума}\")\n",
+  "код_виходу": 0,
+  "вивід": "Одеса: 490\nКиїв: 370\n",
+  "помилки": ""
+ }
+]
