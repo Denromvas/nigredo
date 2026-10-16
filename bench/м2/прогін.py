@@ -4,6 +4,7 @@
 теці (не може підглянути еталон). Для Nigredo — лише памʼятка. Друга спроба: модель бачить свій код і вивід.
 
     python3 bench/м2/прогін.py sonnet haiku        # результати: bench/м2/прогони/, bench/м2/РЕЗУЛЬТАТИ.md
+    python3 bench/м2/прогін.py --набір задачі2 sonnet haiku   # складний набір: прогони2/, РЕЗУЛЬТАТИ2.md
 """
 import json
 import os
@@ -16,10 +17,12 @@ import tempfile
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
-TASKS = sorted(p for p in (HERE / 'задачі').iterdir() if p.is_dir())
+SET = sys.argv[sys.argv.index('--набір') + 1] if '--набір' in sys.argv else 'задачі'
+SUFFIX = SET.removeprefix('задачі')                  # '' для першого набору, '2' для другого
+TASKS = sorted(p for p in (HERE / SET).iterdir() if p.is_dir())
 MEMO = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
 NGR = ROOT / 'interpreter' / 'ngr.py'
-OUT = HERE / 'прогони'
+OUT = HERE / f'прогони{SUFFIX}'
 
 INTRO = {
     'py': 'Напиши програму на Python 3 (лише стандартна бібліотека), що розвʼязує задачу. Програму запустять із '
@@ -103,9 +106,9 @@ def main(models):
 
 def report(models, rows):
     L = ['# М2: правильність з першої спроби на задачах поза памʼяткою', '',
-         f'Задачі — `bench/м2/задачі/` ({len(TASKS)}; їх немає ні в памʼятці, ні в мірилі). Модель пише в `claude -p` '
+         f'Задачі — `bench/м2/{SET}/` ({len(TASKS)}; їх немає ні в памʼятці, ні в мірилі). Модель пише в `claude -p` '
          'без інструментів, у порожній теці; для Nigredo має лише памʼятку. ✓1 — з першої спроби, ✓2 — з другої '
-         '(бачила свій код, вивід і очікуваний вивід), ✗ — ні. Сирі відповіді — `bench/м2/прогони/`.', '']
+         '(бачила свій код, вивід і очікуваний вивід), ✗ — ні. Сирі відповіді — `bench/м2/прогони{SUFFIX}/`.', '']
     for model in models:
         L += [f'## {model}', '', '| Задача | Python | Nigredo |', '|---|---|---|']
         tot = {'py': [0, 0], 'ngr': [0, 0]}
@@ -122,9 +125,10 @@ def report(models, rows):
         n = len(TASKS)
         L += ['', f'**З першої спроби:** Python {tot["py"][0]}/{n}, Nigredo {tot["ngr"][0]}/{n}. '
                   f'**За дві спроби:** Python {tot["py"][1]}/{n}, Nigredo {tot["ngr"][1]}/{n}.', '']
-    (HERE / 'РЕЗУЛЬТАТИ.md').write_text('\n'.join(L), encoding='utf-8')
+    (HERE / f'РЕЗУЛЬТАТИ{SUFFIX}.md').write_text('\n'.join(L), encoding='utf-8')
     print('\n'.join(L))
 
 
 if __name__ == '__main__':
-    main(sys.argv[1:] or ['sonnet'])
+    args = [a for i, a in enumerate(sys.argv[1:]) if a != '--набір' and sys.argv[i] != '--набір']
+    main(args or ['sonnet'])
