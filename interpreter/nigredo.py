@@ -370,9 +370,12 @@ def hidden(text, allow='\n\t'):
             and not (ch in '︎️' and i and unicodedata.category(text[i - 1]) == 'So')]
 
 
-def visible(text, allow='\n\t'):
-    """Текст для виводу й сліду: кожен невидимий символ (крім allow) — як ⟨U+XXXX⟩; прихованого каналу немає."""
+def visible(text, allow='\n\t', bracket=True):
+    """Текст для виводу й сліду: кожен невидимий символ (крім allow) — як ⟨U+XXXX⟩; прихованого каналу немає.
+    bracket=False — для тексту, який уже пройшов visible (MCP): не екранувати позначки вдруге."""
     bad = set(hidden(text, allow))
+    if bracket and '⟨' in text:                  # справжній ⟨ — теж кодом: «⟨U+200B⟩» у тексті ≠ невидимий U+200B (суд 7)
+        bad.add('⟨')
     return ''.join(f'⟨U+{ord(ch):04X}⟩' if ch in bad else ch for ch in text) if bad else text
 
 
@@ -990,6 +993,9 @@ class Parser:
                 raise StaticError('печатка: 🜂 「намір」 【「дозвіл」 …】, 🜂 【「дозвіл」 …】 або сама 🜂', pos)
             if intent[2]:
                 plain_text(intent[2], 'намір печатки', pos)
+            if self.peek()[0] in ('nl', 'eof'):          # 🜂 「намір」 — намір без дозволів
+                self.cap_stack.append({})
+                return ('seal', pos, intent[2], {})
             _, caps = self.caps_literal('печатки', pos)
             self.cap_stack.append(caps)
             return ('seal', pos, intent[2], caps)
@@ -1475,7 +1481,7 @@ def _verify(path, program=None):
     Підсумок цілого сліду каже й те, що отримувачу важливо без читання сліду: спроби поза правами («заборонено»),
     перехоплені помилки, підсумовані (не повністю записані) значення, теку й аргументи запуску."""
     key, prev, n, last, head = owner_key(), '0' * 16, 0, None, None
-    denied, caught, summed, modules, dry = [], 0, 0, [], False
+    denied, caught, summed, modules, dry, raised = [], 0, 0, [], False, 0
     info = {}
     try:
         st = os.stat(path)
@@ -1503,11 +1509,14 @@ def _verify(path, program=None):
         if n == 0:
             head = rec
         if rec.get('подія') == 'заборонено':
-            what = rec.get('шлях') or rec.get('субагент') or rec.get('аргументи') or ''
+            what = rec.get('шлях') or rec.get('адреса') or rec.get('субагент') or rec.get('аргументи') or ''
             denied.append(f'{rec.get("агент", "?")}: {rec.get("назва") or "делегування"} '
                           f'{safe(str(what))[:80]} — {rec.get("причина") or "бракує прав"}')
         caught += rec.get('подія') == 'помилку перехоплено'
         dry = dry or rec.get('подія') == 'сухо'
+        if rec.get('подія') == 'впевненість' and isinstance(rec.get('стало'), (int, float)) and \
+                isinstance(rec.get('було'), (int, float)) and rec['стало'] > rec['було']:
+            raised += 1
         if rec.get('подія') == 'модуль':
             modules.append((rec.get('шлях'), rec.get('файл'), rec.get('sha256')))
         summed += _summarized(rec)
@@ -1549,6 +1558,9 @@ def _verify(path, program=None):
                      + ('' if program is not None else ' — щоб звірити з файлами, перевірте слід разом із програмою'))
     if caught:
         notes.append(f'перехоплено помилок (☂): {caught}')
+    if raised:
+        notes.append(f'⚠ програма ПІДНЯЛА впевненість (≈) {raised} раз(и) — це твердження автора, а не перевірка')
+    info['піднято_впевненість'] = raised
     if summed:
         notes.append(f'⚠ значень записано лише підсумком (довжина, sha256, початок): {summed}')
     mode = (f' — ПОВТОР сліду {safe(str(head.get("повтор")))}: жоден інструмент не діяв, «інструмент» — записані значення'
@@ -1979,7 +1991,10 @@ def _iso(s, pos):
     from datetime import date as _d
     if not isinstance(s, str):
         raise NgrError(f'◷: дата — рядок ISO (2026-10-15 або 2026-10-15T09:30:00), а не {type(s).__name__}', pos)
+    import re as _re
     try:
+        if not _re.fullmatch(r'\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})?)?', s):
+            raise ValueError
         return _d.fromisoformat(s) if len(s) == 10 else datetime.fromisoformat(s.replace('Z', '+00:00'))
     except ValueError:
         raise NgrError(f'◷: «{safe(s)[:40]}» — не дата ISO (2026-10-15 або 2026-10-15T09:30:00)', pos)
@@ -2074,6 +2089,7 @@ def _http(it, pos, tool, url, body=None):
     ok = parts and parts.scheme in ('http', 'https') and not parts.username and not parts.password and (
         (parts.hostname in allowed and port in (None, 80, 443)) or f'{parts.hostname}:{port}' in allowed)
     if not ok:
+        it.trace('заборонено', агент=it.agent, назва=tool, адреса=safe(str(u)), причина='хост, порт чи адреса поза печаткою')
         raise NgrError(f'{tool}: «{u}» поза дозволеним ({", ".join(allowed)}; інший порт, ніж 80/443, '
                        f'треба дозволити явно як хост:порт; без логіна в адресі)', pos)
 
@@ -2112,6 +2128,7 @@ def t_send(it, pos, url, body):
 
 # SQLite: лише дії з білого списку (authorizer) і жодного ATTACH (ліміт 0) — VACUUM INTO та ATTACH пишуть файли
 # поза текою з печатки. Читання — ще й файл лише на читання. Кроки SQLite списуються з --кроки.
+DB_MAX_BYTES = 64 * 1024 * 1024        # найбільша база для бд.писати
 DB_INFO_PRAGMAS = {'table_info', 'table_xinfo', 'table_list', 'index_list', 'index_info', 'index_xinfo',
                    'foreign_key_list'}
 DB_READ_ACTS = {20, 21, 31, 33}                        # READ SELECT FUNCTION RECURSIVE
@@ -2140,6 +2157,8 @@ def _db(it, pos, tool, p, sql, params, write):
     acts = DB_WRITE_ACTS if write else DB_READ_ACTS
 
     def auth(action, a1, a2, db, view):
+        if action == 31 and (a2 or '').lower() == 'load_extension':
+            return sqlite3.SQLITE_DENY
         if action in acts or (action == 19 and a1 in DB_INFO_PRAGMAS):
             return sqlite3.SQLITE_OK
         return sqlite3.SQLITE_DENY
@@ -2157,6 +2176,9 @@ def _db(it, pos, tool, p, sql, params, write):
         raise NgrError(f'{tool}: {e}: {p.v}', pos)
     try:
         con.setlimit(sqlite3.SQLITE_LIMIT_ATTACHED, 0)
+        if write:                        # база не росте без меж (zeroblob заповнив би диск телефона)
+            page = con.execute('PRAGMA page_size').fetchone()[0]
+            con.execute(f'PRAGMA max_page_count = {DB_MAX_BYTES // page}')
         con.set_authorizer(auth)
         con.set_progress_handler(progress, 1000)
         try:
@@ -2205,7 +2227,8 @@ def t_db_write(it, pos, p, sql, params):
 
 
 PROC_CAP, PROC_TIME = 1_000_000, 60
-DRY_SUPPRESS = {'файл.писати': None, 'бд.писати': 0, 'мережа.послати': '‹сухо›', 'процес': '‹сухо›', 'агент': '‹сухо›'}
+DRY_SUPPRESS = {'файл.писати': None, 'бд.писати': 0, 'мережа.послати': '‹сухо›', 'мережа.взяти': '‹сухо›',
+                'процес': '‹сухо›', 'агент': '‹сухо›'}   # взяти теж: адреса сама виносить дані назовні (суд 7)
 PAR_MAX = 8                    # ‖: найбільше одночасних дій
 PARALLEL_TOOLS = ('мережа.взяти', 'мережа.послати', 'агент', 'процес', 'бд.читати', 'файл.читати', 'файл.список',
                   'оракул', 'час')   # ‖: дії без спільного стану (не жереб; не запис — порядок записів був би випадковим)
@@ -3140,7 +3163,9 @@ class Interp:
                     if r and (r < 0) != (Decimal(y) < 0):
                         r += Decimal(y)
                 return V(r)
-            with decimal.localcontext(DEC_CTX):
+            ctx = DEC_CTX.copy()                     # 28 цифр ПІСЛЯ цілої частини: ⌊ ÷ великих — правильне ціле
+            ctx.prec = 28 + max(0, Decimal(x).adjusted() - Decimal(y).adjusted() + 1)
+            with decimal.localcontext(ctx):
                 if isinstance(x, int) and isinstance(y, int):
                     return V(x // y if x % y == 0 else Decimal(x) / Decimal(y))
                 return V(Decimal(x) / Decimal(y))
@@ -3326,8 +3351,25 @@ class Interp:
         if g == '▦':
             import csv
             import io as _io
-            rows = list(csv.DictReader(_io.StringIO(self.need(a[0], 'рядок', g, pos))))
-            return V([V({str(k): V(v if v is not None else '') for k, v in r.items() if k is not None}) for r in rows])
+            text = self.need(a[0], 'рядок', g, pos)
+            csv.field_size_limit(max(len(text), 1))      # довге поле — не «внутрішня помилка» (суд 7)
+            try:
+                rd = list(csv.reader(_io.StringIO(text), strict=True))
+            except csv.Error as e:
+                raise NgrError(f'▦: не CSV ({e})', pos)
+            if not rd:
+                return V([])
+            head = rd[0]
+            if len(set(head)) != len(head):
+                raise NgrError(f'▦: однакові заголовки ({", ".join(head)}) — значення загубилися б', pos)
+            out = []
+            for i, r in enumerate(rd[1:], 2):
+                if not r:
+                    continue                             # порожній рядок
+                if len(r) != len(head):
+                    raise NgrError(f'▦: рядок {i} має {len(r)} полів, а заголовків {len(head)} — нічого не губимо мовчки', pos)
+                out.append(V(dict(zip(head, (V(x) for x in r)))))
+            return V(out)
         if g in '⇣⇡':
             x = self.need(a[0], 'рядок', g, pos)
             return V(x.lower() if g == '⇣' else x.upper())
@@ -3671,6 +3713,8 @@ def cheatsheet():
             '- Імена склеюються з цифрами: `n15` — одне імʼя; пишіть `n 15`.',
             '- `∧ ∨` обчислюють ОБИДВА боки (не як and/or у Python): `∧ › ρxs 0 ＝ §xs 0 1` впаде на порожньому',
             '  списку; захист — `¿ › ρxs 0 ＝ §xs 0 1 ○` (¿ обчислює лише потрібну гілку).',
+            '- SQLite рахує дроби у float: `SUM(сума)` дає `0.30000000000000004`; гроші — сумуйте в Nigredo (`∫`) або',
+            '  зберігайте копійками (INTEGER).',
             '- `＋` зʼєднує рядки лише з рядками: `＋「№」 σn`; коротше — шаблон `〔№{n}〕`.',
             '- Функцію, названу `←`, викликають просто: `факт 10`; передати як значення — `∘факт`.',
             '  Функцію-значення (параметр) викликають `► f x`.',
@@ -3811,9 +3855,8 @@ def load_replay(tpath, program=None):
             if r.get('подія') == 'вивід'], 'кінець': recs[-1]}, None
 
 
-def dry_report(done):
-    print(f'── --сухо: {len(done)} дій не виконано' + (':' if done else ' (програма нічого не змінює у світі)'),
-          file=sys.stderr)
+def dry_report(done, decided=1.0):
+    print(f'── --сухо: {len(done)} дій не виконано' + (':' if done else ' (жодної дії назовні)'), file=sys.stderr)
     unsure = 0
     for name, args, ac in done:
         shown = ' '.join(a if isinstance(a, str) else f'‹{a.get("довжина")} символів›' for a in args)
@@ -3821,6 +3864,9 @@ def dry_report(done):
         if ac < 1:                   # аргументи чи сам вибір цієї дії залежать від невідомого (впевненість < 1)
             mark, unsure = f'  ⚠ залежить від невідомого (впевненість {ac:.2g}) — справжній запуск може зробити інше', unsure + 1
         print(f'  {name} {safe(shown)[:300]}{mark}', file=sys.stderr)
+    if decided < 1:
+        print(f'  ⚠ рішення програми залежали від невідомих у сухому прогоні значень (впевненість {decided:.2g}): '
+              f'справжній запуск може піти іншим шляхом і зробити дії, яких тут немає', file=sys.stderr)
     if unsure:
         print(f'  ⚠ {unsure} з {len(done)} дій обрано чи складено за значеннями, яких сухий прогін не знає (зокрема за '
               f'результатами придушених дій): перелік — не обіцянка того, що зробить справжній запуск', file=sys.stderr)
@@ -3946,6 +3992,11 @@ def main(argv):
                     print(f'✗ програму сліду не прочитати ({safe(path)}): {e} — дайте шлях: --повторити СЛІД ПРОГРАМА',
                           file=sys.stderr)
                     return 1
+        if path != '<-e>':               # програма — це й її модулі: звірити sha256 кожного (суд 7)
+            msg = verify_trace(opts['replay'], path)
+            if not msg.startswith('✓'):
+                print(f'✗ повторити неможливо: {msg}', file=sys.stderr)
+                return 1
         sha_now = hashlib.sha256(raw if path != '<-e>' else src.encode()).hexdigest()
         if sha_now != head.get('sha256'):
             print('✗ програма не та, що в сліді (sha256 інший) — повторюється лише та сама програма', file=sys.stderr)
@@ -4085,12 +4136,12 @@ def main(argv):
                 if replay or opts.get('dry'):
                     sys.stdout.flush()
             if opts.get('dry'):
-                dry_report(interp.dry)
+                dry_report(interp.dry, min(interp.decided_c, interp.halt_c, interp.pc))
             if replay:
                 return replay_report(replay, main_trace, interp.ends)
         except NgrError as e:
-            if interp.dry:
-                dry_report(interp.dry)
+            if interp.dry is not None:
+                dry_report(interp.dry, min(interp.decided_c, interp.halt_c, interp.pc))
             trace('помилка', повідомлення=safe(str(e)))
             print(safe(str(e)), file=sys.stderr)
             code = 1
