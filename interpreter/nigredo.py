@@ -1565,6 +1565,10 @@ def _verify(path, program=None):
     info['піднято_впевненість'] = raised
     if summed:
         notes.append(f'⚠ значень записано лише підсумком (довжина, sha256, початок): {summed}')
+    if last == 'помилка' and lines and '"внутрішня": true' in lines[-1]:
+        notes.insert(0, '⚠ ВНУТРІШНЯ ПОМИЛКА інтерпретатора (код 4): вада мови, а не програми; останній виклик інструмента '
+                        '(якщо був) — у записі «помилка»')
+        info['внутрішня_помилка'] = True
     mode = (f' — ПОВТОР сліду {safe(str(head.get("повтор")))}: жоден інструмент не діяв, «інструмент» — записані значення'
             if head.get('повтор') else ' — СУХИЙ ПРОГІН: записи, надсилання, процеси й агенти НЕ виконувалися, їхні '
             '«інструмент» — заглушки з впевненістю 0' if dry else '')
@@ -2129,12 +2133,17 @@ def t_send(it, pos, url, body):
 
 # SQLite: лише дії з білого списку (authorizer) і жодного ATTACH (ліміт 0) — VACUUM INTO та ATTACH пишуть файли
 # поза текою з печатки. Читання — ще й файл лише на читання. Кроки SQLite списуються з --кроки.
+DB_STEPS_PER_SEC = 1_000_000         # кроків за секунду роботи запиту SQLite (на додачу до 10 за 1000 інструкцій)
 DB_MAX_BYTES = 64 * 1024 * 1024        # найбільша база для бд.писати
 DB_INFO_PRAGMAS = {'table_info', 'table_xinfo', 'table_list', 'index_list', 'index_info', 'index_xinfo',
                    'foreign_key_list'}
-DB_READ_ACTS = {20, 21, 31, 33}                        # READ SELECT FUNCTION RECURSIVE
-DB_WRITE_ACTS = DB_READ_ACTS | {1, 2, 7, 8, 9, 10, 11, 16, 17, 18, 23, 26}   # 16/17 — DROP TRIGGER/VIEW (суд 7)   # CREATE/DROP INDEX TABLE TRIGGER VIEW,
-#                                                                     DELETE INSERT UPDATE ALTER
+def _db_acts():
+    import sqlite3 as q                  # іменовані сталі SQLite, а не числа (суд 7: 13/14 замість 16/17)
+    read = {q.SQLITE_READ, q.SQLITE_SELECT, q.SQLITE_FUNCTION, q.SQLITE_RECURSIVE}
+    write = read | {q.SQLITE_INSERT, q.SQLITE_UPDATE, q.SQLITE_DELETE, q.SQLITE_CREATE_TABLE, q.SQLITE_DROP_TABLE,
+                    q.SQLITE_ALTER_TABLE, q.SQLITE_CREATE_INDEX, q.SQLITE_DROP_INDEX, q.SQLITE_REINDEX,
+                    q.SQLITE_CREATE_VIEW, q.SQLITE_DROP_VIEW, q.SQLITE_CREATE_TRIGGER, q.SQLITE_DROP_TRIGGER}
+    return read, write
 
 
 def _db(it, pos, tool, p, sql, params, write):
@@ -2155,7 +2164,7 @@ def _db(it, pos, tool, p, sql, params, write):
             args.append(int(v) if v == int(v) and abs(v) < 2 ** 63 else str(v))
         else:
             raise NgrError(f'{tool}: параметр — рядок, число, істинність чи ∅, а не {kind(x)}', pos)
-    acts = DB_WRITE_ACTS if write else DB_READ_ACTS
+    acts = _db_acts()[1 if write else 0]
 
     def auth(action, a1, a2, db, view):
         if action == 31 and (a2 or '').lower() == 'load_extension':
@@ -2167,8 +2176,12 @@ def _db(it, pos, tool, p, sql, params, write):
         raise NgrError(f'{tool}: немає такого файлу: {p.v}', pos)
     deadline = min(time.monotonic() + 30, getattr(it, 'par_deadline', None) or float('inf'))   # у ‖ — спільні 30 с
 
-    def progress():                 # ~1000 інструкцій SQLite ≈ 10 кроків Nigredo за часом
-        it.steps_left -= 10
+    last = [time.monotonic()]
+
+    def progress():                 # ~1000 інструкцій SQLite ≈ 10 кроків, і ще кроки за часом потоку: у ‖ потоки
+        now = time.monotonic()      # змагаються, тож лише «за інструкції» межа слабшала б у рази (суд 7)
+        it.steps_left -= 10 + int((now - last[0]) * DB_STEPS_PER_SEC)
+        last[0] = now
         return it.steps_left < 0 or time.monotonic() > deadline
     try:
         con = sqlite3.connect(f'file:{urllib.request.pathname2url(real)}?mode={"rwc" if write else "ro"}', uri=True,
@@ -2265,13 +2278,19 @@ def cmd_within(s, g):
 
 
 def resolve_cmd(name):
-    """Справжній шлях виконуваного файла: абсолютний або з абсолютних тек PATH (жодної поточної теки)."""
+    """(шлях, яким запускати, справжній шлях) виконуваного файла: абсолютний або з абсолютних тек PATH (жодної
+    поточної теки). Запускати — через знайдене імʼя (симлінк), щоб і скрипт, і busybox бачили дозволену назву;
+    перевіряти — і його, і ціль (None, якщо немає)."""
     import shutil
     if os.path.isabs(name):
-        return os.path.realpath(name) if os.path.isfile(name) and os.access(name, os.X_OK) else None
-    path = os.pathsep.join(d for d in os.environ.get('PATH', '').split(os.pathsep) if os.path.isabs(d))
-    found = shutil.which(name, path=path) if '/' not in name else None
-    return os.path.realpath(found) if found else None
+        found = name if os.path.isfile(name) and os.access(name, os.X_OK) else None
+    else:
+        path = os.pathsep.join(d for d in os.environ.get('PATH', '').split(os.pathsep) if os.path.isabs(d))
+        found = shutil.which(name, path=path) if '/' not in name else None
+    if not found:
+        return None
+    via = os.path.join(os.path.realpath(os.path.dirname(os.path.abspath(found))), os.path.basename(found))
+    return via, os.path.realpath(found)
 
 
 def t_proc(it, pos, argv):
@@ -2285,16 +2304,18 @@ def t_proc(it, pos, argv):
                  причина='команди немає в печатці')
         raise NgrError(f'процес: «{safe(" ".join(args))}» поза дозволеним ({", ".join(it.caps["процес"])}; '
                        f'дозвіл — початок команди за словами)', pos)
-    exe = resolve_cmd(args[0])
-    if exe is None:
+    found = resolve_cmd(args[0])
+    if found is None:
         raise NgrError(f'процес: команди «{safe(args[0])}» немає (шукаю лише в абсолютних теках PATH)', pos)
-    if any(inside(exe, os.path.realpath(os.path.join(it.cwd, w))) for t in WRITE_TOOLS for w in it.seal_caps.get(t, [])):
-        raise NgrError(f'процес: «{safe(exe)}» лежить у теці, куди програмі дозволено писати', pos)
+    via, exe = found
+    if any(inside(x, os.path.realpath(os.path.join(it.cwd, w))) for x in found
+           for t in WRITE_TOOLS for w in it.seal_caps.get(t, [])):    # ні симлінк, ні ціль — не з теки запису
+        raise NgrError(f'процес: «{safe(via)}» чи його ціль лежить у теці, куди програмі дозволено писати', pos)
     import signal
     import subprocess                     # ліниво: процеси потрібні рідко, а імпорт коштує ~10 мс запуску
     try:
         # argv[0] — як дозволено, а не ціль симлінка: busybox/toybox обирають команду за argv[0] (суд 7)
-        pr = subprocess.Popen(args, executable=exe, cwd=it.cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        pr = subprocess.Popen(args, executable=via, cwd=it.cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, start_new_session=True)
     except OSError as e:
         raise NgrError(f'процес: {e}', pos)
@@ -2525,9 +2546,9 @@ def check_program(prog, allowed, cwd):
             for x in n:
                 yield from mods(x)
     for sc in prog[2][0][3].get('процес', []):       # виконуваний файл, який могла написати програма, — теж
-        exe = resolve_cmd(sc.split(' ')[0])
-        if exe and any(inside(exe, w) for w in writable):
-            missing.append(f'процес:{sc} ({safe(exe)} лежить у теці, куди програмам дозволено писати)')
+        found = resolve_cmd(sc.split(' ')[0])
+        if found and any(inside(x, w) for x in found for w in writable):
+            missing.append(f'процес:{sc} ({safe(found[0])} чи його ціль лежить у теці, куди програмам дозволено писати)')
     for m in mods(prog):            # код, який могла написати програма, — не модуль (як «права теки» для теки запису)
         if any(inside(m[6], w) for w in writable):
             missing.append(f'модуль {safe(m[2])} лежить у теці, куди програмам дозволено писати')
@@ -2604,6 +2625,7 @@ class Interp:
         self.tl = threading.local()   # для дії інструмента (і в потоці ‖): справжні шляхи, які він узяв
         self.ends = 0           # скільки записів «інструмент» уже зроблено (номер виклику для повтору)
         self.par_deadline = None   # ‖: спільний ліміт часу запитів SQLite
+        self.last_call = None      # останній розпочатий виклик інструмента (для сліду внутрішньої помилки)
         self.replay = None      # --повторити: (записи «інструмент», сховище значень)
         self.dry = None         # --сухо: список придушених дій (записи, надсилання, процеси, агенти)
 
@@ -2618,6 +2640,7 @@ class Interp:
                            f'викликано там, де цього дозволу немає)', pos)
         ac = min([self.cpc] + [a.c for a in args])
         self.taint(ac)
+        self.last_call = {'назва': name, 'аргументи': targs}   # якщо інтерпретатор упаде (код 4) — у слід
         if name in WORLD_WRITERS:
             self.trace('виклик', агент=self.agent, назва=name, аргументи=targs)   # до дії: видно, навіть якщо процес уб'ють
             self.world_c = min(self.world_c, ac)
@@ -3568,7 +3591,13 @@ def par(node, text):
 
 
 def explain_program(prog):
-    return '\n'.join(explain(s) for s in prog[2])
+    lines = [explain(s) for s in prog[2]]
+    seal = prog[2][0][3] if prog[2] and prog[2][0][0] == 'seal' else {}
+    one = [t for t, sc in seal.items() if TOOLS[t][4] == 'тека' and len(sc) == 1]
+    if one:                           # шлях один раз: де саме шукатиметься файл (суд 7)
+        lines.insert(1, '(шляхи ' + ', '.join(one) + ': від теки програми; якщо там такого шляху немає — від єдиної теки '
+                     'з печатки; справжній шлях — у сліді, поле «шлях»)')
+    return '\n'.join(lines)
 
 
 def seal_info(prog, allowed, source, cwd, dir_extra=None):
@@ -4197,7 +4226,8 @@ def main(argv):
             trace('помилка', повідомлення='вивід обірвано: читач закрив трубу')
             code = 1
         except Exception as e:                       # вада інтерпретатора: чесно, без трасування Python
-            trace('помилка', внутрішня=True, повідомлення=f'{type(e).__name__}: {e}')
+            trace('помилка', внутрішня=True, повідомлення=f'{type(e).__name__}: {e}',
+                  **({'останній_виклик': interp.last_call} if getattr(interp, 'last_call', None) else {}))
             print(f'✗ внутрішня помилка інтерпретатора Nigredo ({type(e).__name__}: {e}) — це вада мови, '
                   f'не програми; слід: {main_trace}', file=sys.stderr)
             code = 4
