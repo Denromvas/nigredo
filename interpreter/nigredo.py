@@ -184,16 +184,17 @@ class V:
     def __init__(self, v, c=1.0, s=None):
         self.v, self.c = v, c
         self.s = c if s is None else s
-        # логічний розмір (спільні посилання рахуються стільки разів, скільки трапляються)
-        if isinstance(v, str):
-            self.n = len(v) + 1
-        elif isinstance(v, list):
-            self.n = 1 + sum(e.n for e in v)
-        elif isinstance(v, dict):
-            self.n = 1 + sum(len(k) + e.n for k, e in v.items())
-        elif isinstance(v, int) and not isinstance(v, bool):
+        # логічний розмір (спільні посилання рахуються стільки разів, скільки трапляються); точний тип — швидко
+        t = type(v)
+        if t is int:
             self.n = 1 + v.bit_length() // 3            # ≈ десяткових цифр
-        elif isinstance(v, Decimal) and v.is_finite():
+        elif t is str:
+            self.n = len(v) + 1
+        elif t is list:
+            self.n = 1 + sum(e.n for e in v)
+        elif t is dict:
+            self.n = 1 + sum(len(k) + e.n for k, e in v.items())
+        elif t is Decimal and v.is_finite():
             self.n = 1 + abs(v.adjusted()) + len(v.as_tuple().digits)
         else:
             self.n = 1
@@ -1137,6 +1138,8 @@ def total_type(node):
     return None
 
 
+LAZY_GLYPHS = set('¿☂‖∀μφ⇅⊞∫№Σ↻')   # гліфи, що самі вирішують, які аргументи й коли обчислювати
+OWN_CONF = set('≈±⚗►▶🜃🜍🜄§⌂ρκ')     # гліфи, що самі встановлюють впевненість результату
 NEVER_FAILS = set('σ±＝≠¬∧∨ρ⇣⇡⊢↺∋»κ✎⊳✂＋－×‹›≤≥Δ⌂🜄🜃')     # падіння цих не залежить від значень аргументів
 PURE_GLYPHS = set('＋－×÷‰⌊≅⌗＝≠‹›≤≥∧∨¬¿ρ§✂⁀σνδΔ∋⇄⊢⇣⇡⊏⊳⌕≋↺↑κ✎…±⌂')
 
@@ -2678,7 +2681,7 @@ class Interp:
         """Межі памʼяті: одне значення, ціле, сумарно створене."""
         if res.n > self.max_size:
             raise Fatal(f'{g}: значення завелике (логічний розмір {res.n} > --розмір {self.max_size})', pos)
-        if isinstance(res.v, int) and not isinstance(res.v, bool) and res.v.bit_length() > MAX_INT_BITS:
+        if type(res.v) is int and res.v.bit_length() > MAX_INT_BITS:
             raise Fatal(f'{g}: число завелике (понад {MAX_INT_BITS} біт)', pos)
         if res.n > 1:
             self.work(res.n, pos)
@@ -2755,7 +2758,7 @@ class Interp:
 
     def exact(self, f, x, y, g, pos):
         """＋ － × з десятковими — точно (до 60 значущих цифр) або помилка, а не тихе округлення."""
-        if isinstance(x, int) and isinstance(y, int):
+        if type(x) is int and type(y) is int:
             return f(x, y)
         with decimal.localcontext(EXACT_CTX):
             try:
@@ -2764,9 +2767,12 @@ class Interp:
                 raise NgrError(f'{g}: точний результат довший за 60 значущих цифр — округліть (≅) або ділить (÷)', pos)
 
     def num(self, x, g, pos):
-        if isinstance(x.v, bool) or not isinstance(x.v, NUM):
-            raise NgrError(f'{g}: очікувалося число, а не {kind(x)} {brief(x, 40)}', pos)
-        return Decimal(repr(x.v)) if isinstance(x.v, float) else x.v     # ± дає float — в арифметиці лише десяткові
+        t = type(x.v)
+        if t is int or t is Decimal:
+            return x.v
+        if t is float:
+            return Decimal(repr(x.v))                 # ± дає float — в арифметиці лише десяткові
+        raise NgrError(f'{g}: очікувалося число, а не {kind(x)} {brief(x, 40)}', pos)
 
     def boolean(self, x, g, pos):
         if not isinstance(x.v, bool):
@@ -2775,7 +2781,9 @@ class Interp:
 
     def eval(self, node, env):
         k, pos = node[0], node[1]
-        self.step(pos)
+        self.steps_left -= 1                      # = self.step(pos), без виклику: eval — найгарячіше місце
+        if self.steps_left < 0:
+            raise Fatal('перевищено ліміт кроків (--кроки)', pos)
         if k == 'lit':
             return V(node[2], self.cpc)
         if k == 'var':
@@ -2888,6 +2896,8 @@ class Interp:
         return res
 
     def op(self, g, argn, env, pos):
+        if g not in LAZY_GLYPHS:                  # звичайний гліф: аргументи — завжди всі, одразу (швидкий шлях)
+            return self.strict(g, [self.eval(a, env) for a in argn], pos)
         E = lambda i: self.eval(argn[i], env)   # noqa: E731
         if g == '¿':
             c = E(0)
@@ -3015,8 +3025,12 @@ class Interp:
             self.fn_effects(argn[2], cc)
             self.halt_risk(cc, argn[1], argn[2], called=True)
             return capc(s, cc) if cc < s.c else s
-        args = [E(i) for i in range(len(argn))]
-        self.taint(min([1.0] + [a.c for a in args]))   # будь-яка операція може впасти — це видно ☂
+        return self.strict(g, [E(i) for i in range(len(argn))], pos)
+
+    def strict(self, g, args, pos):
+        """Гліф з обчисленими аргументами: межі, сама дія, канал завершення, впевненість результату."""
+        amin = min([1.0] + [a.c for a in args])
+        self.taint(amin)                          # будь-яка операція може впасти — це видно ☂
         if g in HEAVY:
             self.work(sum(a.n for a in args), pos)
         try:
@@ -3024,16 +3038,16 @@ class Interp:
         except Fatal:
             raise
         except NgrError as e:
-            e.c = min([e.c, self.cpc] + [a.c for a in args])
+            e.c = min(e.c, self.cpc, amin)
             raise
         except RecursionError:
-            raise NgrError(f'{g}: значення вкладене надто глибоко', pos, min([self.cpc] + [a.c for a in args]))
+            raise NgrError(f'{g}: значення вкладене надто глибоко', pos, min(self.cpc, amin))
         except decimal.DecimalException as e:
-            raise NgrError(f'{g}: десяткове число поза межами ({type(e).__name__})', pos, min([self.cpc] + [a.c for a in args]))
-        if g not in NEVER_FAILS and not (g == '§' and isinstance(args[0].v, dict)):
-            self.halt_risk(min([1.0] + [a.c for a in args]), ('op', pos, '☠', []))   # могло впасти — і не впало
-        if g not in ('≈', '±', '⚗', '►', '▶', '🜃', '🜍', '🜄', '§', '⌂', 'ρ', 'κ'):
-            c = min([res.c] + [a.c for a in args])
+            raise NgrError(f'{g}: десяткове число поза межами ({type(e).__name__})', pos, min(self.cpc, amin))
+        if amin < 1 and g not in NEVER_FAILS and not (g == '§' and isinstance(args[0].v, dict)):
+            self.halt_risk(amin, ('op', pos, '☠', []))   # могло впасти — і не впало
+        if g not in OWN_CONF:
+            c = min(res.c, amin)
             if isinstance(res.v, (list, dict)):        # вміст лишає свою впевненість; будова — від аргументів
                 res = V(res.v, min(res.c, c), min([res.s] + [a.s for a in args]))
             elif c < res.c:
