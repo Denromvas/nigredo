@@ -1,0 +1,10 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nfrom datetime import date, timedelta\n\nСЬОГОДНІ = date(2026, 10, 15)\n\nwith open(\"дані/рахунки.json\", encoding=\"utf-8\") as f:\n    рахунки = json.load(f)\n\nпрострочені = []\nfor р in рахунки:\n    if р[\"сплачено\"]:\n        continue\n    термін = date.fromisoformat(р[\"дата\"]) + timedelta(days=int(р[\"днів_на_оплату\"]))\n    if термін < СЬОГОДНІ:\n        прострочені.append((р[\"номер\"], (СЬОГОДНІ - термін).days))\n\nпрострочені.sort(key=lambda x: (-x[1], x[0]))\nfor номер, днів in прострочені:\n    print(f\"{номер}: {днів} днів\")\n",
+  "код_виходу": 0,
+  "вивід": "Р-1: 30 днів\nР-0: 7 днів\nР-4: 7 днів\n",
+  "помилки": ""
+ }
+]

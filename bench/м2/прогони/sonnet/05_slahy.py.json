@@ -1,0 +1,10 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import re\n\nwith open(\"дані/заголовки.txt\", encoding=\"utf-8\") as f:\n    for line in f:\n        line = line.rstrip(\"\\r\\n\")\n        if not line.strip():\n            continue\n        slug = re.sub(r\"[^a-z0-9]+\", \"-\", line.lower()).strip(\"-\")\n        print(slug)\n",
+  "код_виходу": 0,
+  "вивід": "hello-world\nnigredo-0-6-released\nc-python-a-comparison\n100-pure-text\n",
+  "помилки": ""
+ }
+]

@@ -1,0 +1,10 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import re\nfrom pathlib import Path\n\nSEP = r\"[ \\t\\-()]*\"\nPATTERN = re.compile(\n    r\"(?<!\\d)\\+?\"\n    r\"(?:3\" + SEP + \"8\" + SEP + \"0|0)\"\n    r\"(?:\" + SEP + r\"\\d){9}\"\n    r\"(?!\\d)\"\n)\n\n\ndef normalize(raw: str) -> str:\n    digits = re.sub(r\"\\D\", \"\", raw)\n    if digits.startswith(\"380\"):\n        return \"+\" + digits\n    return \"+38\" + digits\n\n\ndef main() -> None:\n    text = Path(\"дані/контакти.txt\").read_text(encoding=\"utf-8\", errors=\"replace\")\n    numbers = {normalize(m.group(0)) for m in PATTERN.finditer(text)}\n    for number in sorted(numbers):\n        print(number)\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "код_виходу": 0,
+  "вивід": "+380442223344\n+380501112233\n+380507654321\n+380671234567\n",
+  "помилки": ""
+ }
+]

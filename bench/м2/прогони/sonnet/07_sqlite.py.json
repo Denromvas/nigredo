@@ -1,0 +1,10 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import sqlite3\n\ncon = sqlite3.connect(\"дані/база.db\")\nrows = con.execute(\n    \"SELECT місто, SUM(сума) AS разом FROM продажі \"\n    \"GROUP BY місто ORDER BY разом DESC LIMIT 2\"\n).fetchall()\ncon.close()\n\nfor місто, разом in rows:\n    print(f\"{місто}: {разом}\")\n",
+  "код_виходу": 0,
+  "вивід": "Одеса: 490\nКиїв: 370\n",
+  "помилки": ""
+ }
+]

@@ -1,0 +1,10 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import csv\nfrom decimal import Decimal, ROUND_HALF_UP\nfrom collections import defaultdict\n\nsums = defaultdict(int)\ncounts = defaultdict(int)\n\nwith open(\"дані/оцінки.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n    for row in csv.DictReader(f):\n        name = row[\"студент\"].strip()\n        sums[name] += int(row[\"бал\"].strip())\n        counts[name] += 1\n\nresult = []\nfor name in sums:\n    avg = (Decimal(sums[name]) / Decimal(counts[name])).quantize(\n        Decimal(\"0.1\"), rounding=ROUND_HALF_UP\n    )\n    result.append((name, avg))\n\nresult.sort(key=lambda x: (-x[1], x[0]))\n\nfor name, avg in result:\n    print(f\"{name} {avg:.1f}\")\n",
+  "код_виходу": 0,
+  "вивід": "Олена 9.5\nАндрій 8.7\nБогдан 8.3\n",
+  "помилки": ""
+ }
+]

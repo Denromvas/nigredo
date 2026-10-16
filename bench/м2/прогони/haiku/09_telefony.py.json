@@ -1,0 +1,10 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import re\nfrom pathlib import Path\n\nSEP = r'[\\s\\-()]*'\nTAIL = rf'(?:{SEP}\\d){{9}}'\nP_INTL = rf'\\+?{SEP}3{SEP}8{SEP}0{TAIL}'\nP_LOCAL = rf'\\(?0{TAIL}'\nNUMBER_RE = re.compile(rf'(?<!\\d)(?:{P_INTL}|{P_LOCAL})(?!\\d)')\n\n\ndef main():\n    text = Path('дані', 'контакти.txt').read_text(encoding='utf-8')\n    found = set()\n    for m in NUMBER_RE.finditer(text):\n        digits = re.sub(r'\\D', '', m.group())\n        if len(digits) == 12 and digits.startswith('380'):\n            found.add('+' + digits)\n        elif len(digits) == 10 and digits.startswith('0'):\n            found.add('+38' + digits)\n    for number in sorted(found):\n        print(number)\n\n\nif __name__ == '__main__':\n    main()\n",
+  "код_виходу": 0,
+  "вивід": "+380442223344\n+380501112233\n+380507654321\n+380671234567\n",
+  "помилки": ""
+ }
+]
