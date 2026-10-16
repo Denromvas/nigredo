@@ -249,6 +249,20 @@ def main():
           'послати: JSON без втрат, тіло повністю в сліді', got.stdout + got.stderr)
     got = run(['-e', f'🜂 【「послати:127.0.0.1:{port}」】\n» 🜔послати 「http://127.0.0.1:1/x」 「a」'], env)
     check(got.returncode == 1 and 'поза дозволеним' in got.stderr, 'послати: інший порт — відмова під час виконання', got.stderr)
+    # шлях один раз: відносний шлях поза дозволом — відносно єдиної теки з печатки; межа та сама
+    got = run(['-e', f'🜂 【「читати:{DATA}」】\n» ρ δ🜔читати 「продажі.json」'], env)
+    check(got.returncode == 0 and got.stdout.strip().isdigit(), 'шлях один раз: файл відносно теки з печатки', got.stderr)
+    got = run(['-e', f'🜂 【「читати:{DATA / "звіти"}」】\n» 🜔читати 「../продажі.json」'], env)
+    check(got.returncode == 1 and 'поза дозволеним' in got.stderr, 'шлях один раз: «..» з теки печатки — відмова', got.stderr)
+    got = run(['-e', f'🜂 【「читати:{DATA}」 「читати:{DATA / "звіти"}」】\n» 🜔читати 「продажі.json」'], env)
+    check(got.returncode == 1 and 'поза дозволеним' in got.stderr, 'шлях один раз: дві теки — без здогадів', got.stderr)
+    got = run(['-e', f'🜂 【「писати:{DATA / "звіти"}」 「читати:{DATA}」】\n🜔писати 「шлях_раз.txt」 「ок」\n'
+               f'» 🜔читати 「звіти/шлях_раз.txt」'], env)
+    check(got.stdout == 'ок\n', 'шлях один раз: запис у теку з печатки', got.stdout + got.stderr)
+    got = run(['-e', f'🜂 【「читати:{DATA}」】\n» 🜁 「в」 【「читати:{DATA}/продажі.json」】 ρ 🜔читати 「продажі.json」'], env)
+    check(got.returncode == 0, 'шлях один раз: дозволено один файл — відносно його теки', got.stderr)
+    got = run(['-e', f'🜂 【「читати:{DATA}」】\n» 🜁 「в」 【「читати:{DATA}/продажі.json」】 🜔читати 「продажі.csv」'], env)
+    check(got.returncode == 1 and 'поза дозволеним' in got.stderr, 'шлях один раз: інший файл поруч — відмова', got.stderr)
     # SQLite і процеси — окремий власник: бд у тимчасовій теці, команди — точним початком
     bh, bd = tmp / 'власник_бд', tmp / 'бд'
     bh.mkdir()

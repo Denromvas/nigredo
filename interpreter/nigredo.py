@@ -1478,14 +1478,25 @@ def _path_ok(it, tool, p, pos, write=False):
     if '\0' in p or any(invisible(ch) for ch in p):
         it.trace('заборонено', агент=it.agent, назва=tool, шлях=safe(p), причина='керівні чи невидимі символи в шляху')
         raise NgrError(f'{tool}: у шляху керівні чи невидимі символи', pos)
+    def allowed(real):
+        if inside(real, OWNER_HOME) or real in it.protected:
+            it.trace('заборонено', агент=it.agent, назва=tool, шлях=safe(p), причина='тека власника або слід')
+            raise NgrError(f'{tool}: «{safe(p)}» — це тека власника або слід; програмі туди не можна', pos)
+        check = os.path.dirname(real) if write else real
+        for base in it.caps[tool]:
+            b = os.path.realpath(os.path.join(it.cwd, base))
+            if check == b or check.startswith(b + os.sep) or (not write and real == b):
+                return True
+        return False
     real = os.path.realpath(os.path.join(it.cwd, p))
-    if inside(real, OWNER_HOME) or real in it.protected:
-        it.trace('заборонено', агент=it.agent, назва=tool, шлях=safe(p), причина='тека власника або слід')
-        raise NgrError(f'{tool}: «{safe(p)}» — це тека власника або слід; програмі туди не можна', pos)
-    check = os.path.dirname(real) if write else real
-    for base in it.caps[tool]:
-        b = os.path.realpath(os.path.join(it.cwd, base))
-        if check == b or check.startswith(b + os.sep) or (not write and real == b):
+    if allowed(real):
+        return real
+    # шлях один раз: відносний шлях поза дозволом — відносно єдиної теки з печатки (🜔читати 「x.json」 при 「читати:дані」)
+    # (дозволено один файл — відносно його теки; перевірка однаково пропустить лише сам файл)
+    if not os.path.isabs(p) and len(it.caps[tool]) == 1:
+        base = os.path.realpath(os.path.join(it.cwd, it.caps[tool][0]))
+        real = os.path.realpath(os.path.join(os.path.dirname(base) if os.path.isfile(base) else base, p))
+        if allowed(real):
             return real
     it.trace('заборонено', агент=it.agent, назва=tool, шлях=safe(p), причина='поза дозволеною текою')
     raise NgrError(f'{tool}: «{safe(p)}» поза дозволеним ({", ".join(safe(x) for x in it.caps[tool])})', pos)
@@ -3331,7 +3342,9 @@ def cheatsheet():
            'Назви інструментів короткі (`читати писати список взяти`); повні (`файл.читати`, `мережа.взяти`) — синоніми,',
            'і в `--печатка`, `--розбір` та сліді показано саме повні.', '',
            'Дозвіл для файлів — тека (і все в ній); для мережі — хост (порти 80/443) або `хост:порт`;',
-           'для агента — імʼя з реєстру. Теку власника (`~/.nigredo`) дозволити не можна.', '',
+           'для агента — імʼя з реєстру. Теку власника (`~/.nigredo`) дозволити не можна.',
+           'Шлях один раз: якщо для інструмента в печатці одна тека, пишіть шлях відносно неї —',
+           '`🜂 【「читати:дані」】` і `🜔читати 「x.json」` (спершу шукається від теки програми; межа та сама).', '',
            ]
     groups = {}
     for g, (ar, sig, desc, _, grp) in GLYPHS.items():
