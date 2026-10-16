@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nigredo — пісочниця</title>
+<meta name="description" content="Nigredo 0.6-dev у браузері: печатка, розбір, перевірка до запуску, слід. Справжній інтерпретатор у Pyodide.">
+<style>
+:root{--bg:#07060d;--panel:#100e1a;--line:#2a2540;--ink:#ecebff;--dim:#9a96b5;--violet:#9b6bff;--teal:#3ff2d6;
+--gold:#ffcf6b;--rose:#ff5fa2;--ok:#5be38a;--mono:"JetBrains Mono","DejaVu Sans Mono",ui-monospace,monospace}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#f6f5fb;--panel:#fff;--line:#d9d5ea;--ink:#16132a;
+--dim:#5d5878;--violet:#6b3fe0;--teal:#0d8f7d;--gold:#9a6b00;--rose:#c2185b;--ok:#1d7f43}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:20px 16px 8px;max-width:1200px;margin:auto}
+h1{margin:0;font-size:22px;letter-spacing:.5px}h1 b{color:var(--violet)}
+.sub{color:var(--dim);margin:4px 0 0;font-size:14px}
+main{max-width:1200px;margin:auto;padding:8px 16px 40px;display:grid;gap:14px;grid-template-columns:1fr}
+@media(min-width:900px){main{grid-template-columns:1.1fr 1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+select,button,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px}
+select{padding:7px 8px;max-width:100%;flex:1 1 220px}
+button{padding:7px 12px;cursor:pointer}button:hover{border-color:var(--violet)}
+button.go{background:var(--violet);border-color:var(--violet);color:#fff}
+button:disabled{opacity:.5;cursor:wait}
+textarea{width:100%;font-family:var(--mono);font-size:14px;padding:10px;resize:vertical;tab-size:2}
+#code{min-height:240px}#perms{min-height:90px;font-size:12px}#py{min-height:90px;font-size:13px}
+pre{margin:0;white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size:13px}
+.out{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;min-height:60px;max-height:420px;overflow:auto}
+.lbl{color:var(--dim);font-size:12px;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.8px}
+.err{color:var(--rose)}.okc{color:var(--ok)}.dim{color:var(--dim)}
+.badge{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--dim)}
+details summary{cursor:pointer;color:var(--dim);font-size:13px}
+footer{max-width:1200px;margin:auto;padding:0 16px 30px;color:var(--dim);font-size:13px}
+a{color:var(--teal)}
+</style>
+</head>
+<body>
+<header>
+<h1><b>Nigredo</b> — пісочниця <span class="badge">0.6-dev</span></h1>
+<p class="sub">Мова для ШІ-агентів: кожна програма першим рядком оголошує дозволи (печатку), інтерпретатор не дає
+вийти за них і веде підписаний слід. Тут працює справжній інтерпретатор (Python у браузері, Pyodide) — без мережі,
+процесів і потоків: <code>взяти</code>, <code>процес</code>, <code>‖</code> у браузері дадуть помилку.</p>
+<p class="sub" id="state">Завантаження Pyodide…</p>
+</header>
+<main>
+<section class="card">
+<div class="row"><select id="pick" aria-label="приклад"></select></div>
+<div class="lbl">Програма на Nigredo</div>
+<textarea id="code" spellcheck="false" aria-label="код Nigredo"></textarea>
+<div class="row" style="margin-top:8px">
+<button class="go" id="b-run" disabled>Виконати</button>
+<button id="b-check" disabled>Перевірити до запуску</button>
+<button id="b-seal" disabled>Печатка</button>
+<button id="b-expl" disabled>Розбір</button>
+<button id="b-trace" disabled>Слід</button>
+</div>
+<details style="margin-top:10px"><summary>Дозволи власника (їх пише людина, а не програма)</summary>
+<textarea id="perms" spellcheck="false" aria-label="дозволи власника"></textarea></details>
+<div id="pybox" hidden>
+<div class="lbl">Те саме на Python</div>
+<textarea id="py" spellcheck="false" aria-label="код Python"></textarea>
+<div class="row" style="margin-top:8px"><button id="b-py" disabled>Виконати Python</button></div>
+</div>
+</section>
+<section class="card">
+<div class="lbl">Що вийшло</div>
+<div class="out"><pre id="out" class="dim">Виберіть приклад або напишіть свою програму.</pre></div>
+<div id="note" class="sub"></div>
+</section>
+</main>
+<footer>Код мови, специфікація й протоколи судів над нею — <a href="https://github.com/Denromvas/nigredo">github.com/Denromvas/nigredo</a>.
+Сторінку зібрала програма на Nigredo (<code>site/пісочниця/пісочниця.ngr</code>).</footer>
+<script id="data" type="application/json">{"версія": "0.6-dev", "приклади": [{"група": "приклади", "назва": "ahent: опитати провидців, довіряти лише впевненим відповідям, перевірити жереб", "код": "🜂 「опитати провидців, довіряти лише впевненим відповідям, перевірити жереб」 【「оракул」 「жереб」】\n🜄 「поріг」 0.6\n\n※ кожне питання — окремому субагентові, якому дозволено лише оракула\n← спитати λq 🜁 「провидець」 「спитати оракула」 【「оракул」】 🜔оракул q\n← питання 【「чи світ чорніє?」 「чи золото вже близько?」 「чи ртуть жива?」 「чи сіль тверда?」 「чи сірка горить?」】\n← відповіді μпитання λq 『「питання」 q 「відповідь」 спитати q』\n\n← опис λв 《\n  ← від §в 「відповідь」\n  ＋ §в 「питання」 ＋ 「 — 」 ¿ ≥ ±від 🜃「поріг」\n    ＋ σвід ＋ 「 (」 ＋ σ±від 「)」\n    ＋ 「сумнів (」 ＋ σ±від 「), питаю людину」\n》\n∀ відповіді λв » опис в\n\n※ лише впевнені відповіді (кожне рішення відсіву — у сліді)\n← впевнені ⚗ μвідповіді λв §в 「відповідь」 🜃「поріг」\n» ＋ 「впевнених: 」 σρвпевнені\n\n※ перевірка: шестигранний жереб дає 1…6\n← кістка 🜍 🜔жереб 6 λk ∧ ≥k 1 ≤k 6\n» ＋ 「кістка: 」 σкістка\n\n※ щит: перевірка, що має впасти, — помилку перехоплено\n» ☂ 🜍 「ртуть」 λx ›ρx 10 λe ＋ 「щит: 」 e\n\n※ впевненість не «відмивається»: розвилка успадковує впевненість умови\n← сумнівне ≈ ● 0.3\n» ± ¿ сумнівне 「так」 「ні」\n", "опис": ""}, {"група": "приклади", "назва": "chysla: числа: рекурсія, відсів, згортка, стан", "код": "🜂 「числа: рекурсія, відсів, згортка, стан」 【】\n\n※ факторіал — рекурсивна функція\n← факт λn ¿ ≤n 1 1 ×n факт －n 1\n» факт 10\n\n※ прості до 30: n ≥ 2 і жоден d з 2…n−1 не ділить n\n← просте λn ∧ ≥n 2 ＝0 ρ φ…2 －n 1 λd ＝0 ‰n d\n» φ…1 30 λn просте n\n\n※ сума квадратів 1…10 — згортка\n» Σ μ…1 10 λx ×x x 0 Λa x ＋a x\n\n※ Фібоначчі: стан 【a b крок】 → 【b a+b крок+1】, поки крок < 20\n» §↻【0 1 0】 λs ‹§s 2 20 λs 【§s 1 ＋§s 0 §s 1 ＋§s 2 1】 0\n\n※ ділення: націло — ціле, інакше дріб; цифри будь-якого письма рівні\n» ÷10 4 ¦ » ÷12 4 ¦ » ＝42 ４２\n", "опис": ""}, {"група": "приклади", "назва": "fajly: порахувати продажі за магазинами і записати звіт", "код": "🜂 「порахувати продажі за магазинами і записати звіт」 【「файл.читати:дані」 「файл.писати:дані/звіти」】\n← продажі δ 🜔файл.читати 「дані/продажі.json」\n← магазини ↑ κ Σ продажі 『』 Λd p ✎d §p「магазин」 ０\n← сума λм Σ φпродажі λp ＝§p「магазин」 м 0 Λa p ＋a §p「сума」\n← рядки μмагазини λм ＋ м ＋ 「: 」 σ сума м\n← разом Σ продажі 0 Λa p ＋a §p「сума」\n🜔файл.писати 「дані/звіти/разом.txt」 ＋ ⁀рядки 「\\n」 ＋ 「\\nРазом: 」 σразом\n» 🜔файл.читати 「дані/звіти/разом.txt」\n", "опис": ""}, {"група": "приклади", "назва": "pryvit: привітатися", "код": "🜂 「привітатися」 【】\n» 「Привіт, світе!」\n", "опис": ""}, {"група": "приклади", "назва": "riadky: рядки: шаблони, регістр, зрізи, регулярні вирази", "код": "🜂 「рядки: шаблони, регістр, зрізи, регулярні вирази」 【】\n← ціни 『「кава」 245.5 「чай」 120』\n∀ κціни λk » 〔{k}: {⌗ §ціни k 2} грн〕\n\n← текст 「Агент ЧИТАЄ програму. Програма каже, що їй можна; агент вирішує.」\n← слова ⌕ ⇣текст 「\\w+」\n» 〔слів: {ρслова}, перше: {§слова 0}, «агент» — {ρ φ слова λw ＝w 「агент」} рази〕\n» ⊏ 「почорніння」 2 ¯3\n» ⊳ 「абвгд」 「вг」\n\n← листи 「info@example.net, ops-team+alerts@mail.example.org; не адреса: a@b」\n∀ ⌕ листи 「[\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+」 λa » 〔адреса: {a}〕\n» ≋ 「2026-10-15」 「(\\d+)-(\\d+)-(\\d+)」 「\\3.\\2.\\1」\n» ⌕ 「ключ=1; інший=22」 「(\\w+)=(\\d+)」\n", "опис": ""}, {"група": "приклади", "назва": "rozbir", "код": "🜂\n※ пари словника ε, сума ∫ і розбір 【a b】 у параметрах λ/Λ\n← ціни 『「хліб」 18.50 「молоко」 42.10 「сир」 0.1』\n» ∫ εціни λ【назва ціна】 ціна\n∀ ⇅ εціни λ【н ц】 －0 ц λ【н ц】 » 〔{н}: {⌗ ц 2}〕\n» Σ 【【1 2】 【3 4】】 0 Λсума 【a b】 ＋сума ×a b\n» ∫ 【0.1 0.2】 λx x\n← n ≈ 【「певне」 7】 0.4\n» ± ► λ【слово число】 число n\n※ № — скільки разів трапляється кожен ключ (у порядку появи)\n» № ✂ 「так ні так так」 「 」 λw w\n", "опис": "пари словника ε, сума ∫ і розбір 【a b】 у параметрах λ/Λ"}, {"група": "приклади", "назва": "xml", "код": "🜂\n※ XML: χ розбирає й пише, ↘ шукає (підмножина XPath); DTD заборонено\n← д χ 「<Накладна номер=\"7\" xmlns=\"urn:x\"><Рядок код=\"1\"><Товар>чай<\/Товар><Сума>12.50<\/Сума><\/Рядок><Рядок код=\"2\"><Товар>мед<\/Товар><Сума>245<\/Сума><\/Рядок><\/Накладна>」\n» §д 「тег」\n» ∫ ↘ д 「Рядок/Сума」 λe ν§e 「текст」\n» ↘ д 「Рядок/@код」\n» ↘ д 「/Накладна/@номер」\n» μ ↘ д 「//Рядок[@код='2']/Товар」 λe §e 「текст」\n» μ ↘ д 「Рядок[Товар='чай']」 λe §§e 「атрибути」 「код」\n» ρ ↘ д 「//*」\n» χ 『「тег」 「Звіт」 「атрибути」 『「дата」 「2026-10-16」』 「діти」 【『「тег」 「Сума」 「текст」 12.50』 『「тег」 「Примітка」 「текст」 「<а & б>」』】』\n» ☂ χ 「<!DOCTYPE x [<!ENTITY a \"b\">]><x>&a;<\/x>」 λe e\n» ☂ χ 「<x><y><\/x>」 λe e\n", "опис": "XML: χ розбирає й пише, ↘ шукає (підмножина XPath); DTD заборонено"}, {"група": "помилки", "назва": "01. Рядок плюс число", "код": "🜂 「т」 【】\n← n 5\n» ＋ 「всього: 」 n\n", "python": "n = 5\nprint('всього: ' + n)\n", "опис": "клас: помилка. ", "висне": false}, {"група": "помилки", "назва": "02. Описка в імені", "код": "🜂 「т」 【】\n← total 5\n» totl\n", "python": "total = 5\nprint(totl)\n", "опис": "клас: помилка. ", "висне": false}, {"група": "помилки", "назва": "03. Бракує аргументу функції", "код": "🜂 「т」 【】\n← f Λa b ＋a b\n» f 1\n", "python": "def f(a, b):\n    return a + b\nprint(f(1))\n", "опис": "клас: помилка. ", "висне": false}, {"група": "помилки", "назва": "04. Порівняння рядка з числом", "код": "🜂 「т」 【】\n» ¿ › 「5」 3 「так」 「ні」\n", "python": "if '5' > 3:\n    print('так')\n", "опис": "клас: помилка. ", "висне": false}, {"група": "помилки", "назва": "05. Катастрофічний регулярний вираз", "код": "🜂 「т」 【】\n» ⌕ 「aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!」 「(a+)+$」\n", "python": "import re\nprint(re.findall(r'(a+)+$', 'a' * 40 + '!'))\n", "опис": "клас: модель. у Nigredo рушій регулярок без відкатів — такий шаблон не висне, помилки немає", "висне": true}, {"група": "помилки", "назва": "06. Запис поза дозволеною текою", "код": "🜂 「т」 【「файл.писати:/etc」】\n🜔файл.писати 「/etc/nigredo-bench」 「x」\n", "python": "open('/etc/nigredo-bench', 'w').write('x')\n", "опис": "клас: модель. дозволи — це М4 (у Python їх немає)", "висне": false}, {"група": "помилки", "назва": "07. Двійник імені (кирилична х)", "код": "🜂 「т」 【】\n← x 1\n» х\n", "python": "x = 1\nprint(х)\n", "опис": "клас: помилка. ", "висне": false}, {"група": "помилки", "назва": "08. Виклик числа як функції", "код": "🜂 「т」 【】\n← n 5\n» ► n 2\n", "python": "n = 5\nprint(n(2))\n", "опис": "клас: помилка. ", "висне": false}, {"група": "помилки", "назва": "09. Мережа без дозволу", "код": "🜂 「т」 【】\n» 🜔мережа.взяти 「http://example.com」\n", "python": "import urllib.request\nprint(urllib.request.urlopen('http://example.com').read()[:10])\n", "опис": "клас: модель. дозволи — це М4 (у Python їх немає)", "висне": false}, {"група": "помилки", "назва": "10. Випадкове перепризначення", "код": "🜂 「т」 【】\n← total 10\n← total 0\n» total\n", "python": "total = 10\ntotal = 0\nprint(total)\n", "опис": "клас: модель. у Python перепризначення законне", "висне": false}, {"група": "помилки", "назва": "11. Незакритий рядок", "код": "🜂 「т」 【】\n» 「привіт\n", "python": "print('привіт)\n", "опис": "клас: помилка. ", "висне": false}, {"група": "помилки", "назва": "12. Індекс списку рядком", "код": "🜂 「т」 【】\n» § 【1 2】 「a」\n", "python": "xs = [1, 2]\nprint(xs['a'])\n", "опис": "клас: помилка. ", "висне": false}, {"група": "помилки", "назва": "13. Ділення на нуль", "код": "🜂 「т」 【】\n» ÷ 1 0\n", "python": "print(1 / 0)\n", "опис": "клас: помилка. ", "висне": false}, {"група": "помилки", "назва": "14. Описка в ключі словника", "код": "🜂 「т」 【】\n← d 『「name」 「кава」』\n» §d 「naem」\n", "python": "d = {'name': 'кава'}\nprint(d['naem'])\n", "опис": "клас: помилка. ", "висне": false}, {"група": "помилки", "назва": "15. Тип через параметр функції", "код": "🜂 「т」 【】\n← f λx ＋ x 「a」\n» f 1\n", "python": "def f(x):\n    return x + 'a'\nprint(f(1))\n", "опис": "клас: помилка. ", "висне": false}, {"група": "помилки", "назва": "16. Ділення на обчислений нуль", "код": "🜂 「т」 【】\n← z － 5 5\n» ÷ 1 z\n", "python": "z = 5 - 5\nprint(1 / z)\n", "опис": "клас: помилка. ", "висне": false}, {"група": "помилки", "назва": "17. Індекс поза межами", "код": "🜂 「т」 【】\n» § 【1 2】 5\n", "python": "xs = [1, 2]\nprint(xs[5])\n", "опис": "клас: помилка. ", "висне": false}, {"група": "помилки", "назва": "18. Не число з рядка", "код": "🜂 「т」 【】\n» ν 「abc」\n", "python": "print(int('abc'))\n", "опис": "клас: помилка. ", "висне": false}], "дані": {"продажі.json": "[{\"магазин\": \"Чернівці-1\", \"сума\": 1200.5},\n {\"магазин\": \"Хотин\", \"сума\": 830},\n {\"магазин\": \"Чернівці-1\", \"сума\": 99.5},\n {\"магазин\": \"Кіцмань\", \"сума\": 410},\n {\"магазин\": \"Хотин\", \"сума\": 70}]\n"}}</script>
+<script id="perms0" type="application/json">{"дозволено": ["оракул", "жереб", "час", "читати:/пісочниця/дані", "список:/пісочниця/дані", "писати:/пісочниця/звіти", "писати:/пісочниця/дані/звіти", "бд.читати:/пісочниця/дані", "бд.писати:/пісочниця/звіти"]}</script>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const DATA = JSON.parse($('data').textContent);
+const btns = ['b-run', 'b-check', 'b-seal', 'b-expl', 'b-trace', 'b-py'];
+let py = null;
+$('perms').value = JSON.stringify(JSON.parse($('perms0').textContent), null, 1);
+for (const g of ['приклади', 'помилки']) {
+  const og = document.createElement('optgroup');
+  og.label = g === 'приклади' ? 'Приклади' : 'Навмисні помилки: Nigredo проти Python';
+  DATA.приклади.forEach((e, i) => { if (e.група === g) { const o = new Option(e.назва, i); og.appendChild(o); } });
+  $('pick').appendChild(og);
+}
+function choose(i) {
+  const e = DATA.приклади[i];
+  $('code').value = e.код;
+  $('pybox').hidden = !e.python;
+  $('py').value = e.python || '';
+  $('b-py').dataset.hang = e.висне ? '1' : '';
+  $('note').textContent = e.опис || '';
+  $('out').textContent = e.група === 'помилки'
+    ? 'Натисніть «Перевірити до запуску» для Nigredo і «Виконати Python» — порівняйте, хто впіймає помилку раніше.'
+    : 'Натисніть «Виконати».';
+  $('out').className = 'dim';
+}
+$('pick').onchange = () => choose($('pick').value);
+choose(0);
+
+const HARNESS = `
+import sys, io, os, json, contextlib, traceback
+for d in ('/власник', '/пісочниця/дані', '/пісочниця/звіти'):
+    os.makedirs(d, exist_ok=True)
+os.environ['NIGREDO_HOME'] = '/власник'
+sys.path.insert(0, '/ngr')
+import nigredo
+
+def ngr(args):
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        try:
+            code = nigredo.main(args)
+        except SystemExit as e:
+            code = e.code
+        except BaseException as e:
+            code = 4
+            print(f'✗ {type(e).__name__}: {e}', file=sys.stderr)
+    return json.dumps([code, out.getvalue(), err.getvalue()], ensure_ascii=False)
+
+def last_trace():
+    d = '/власник/сліди'
+    fs = sorted((os.path.join(d, f) for f in os.listdir(d) if f.endswith('.jsonl')), key=os.path.getmtime) if os.path.isdir(d) else []
+    return fs[-1] if fs else ''
+
+def pyrun(src):
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+        try:
+            exec(compile(src, 'рішення.py', 'exec'), {'__name__': '__main__'})
+            code = 0
+        except BaseException:
+            code = 1
+            print(traceback.format_exc(limit=1).strip().splitlines()[-1])
+    return json.dumps([code, out.getvalue()], ensure_ascii=False)
+`;
+
+async function boot() {
+  try {
+    py = await loadPyodide();
+    $('state').textContent = 'Завантаження інтерпретатора Nigredo…';
+    await py.loadPackage('sqlite3');
+    const [src, twins] = await Promise.all([fetch('nigredo.py').then(r => r.text()), fetch('dviyniky.tsv').then(r => r.text())]);
+    py.FS.mkdirTree('/ngr');
+    py.FS.writeFile('/ngr/nigredo.py', src);
+    py.FS.writeFile('/ngr/двійники.tsv', twins);
+    py.runPython(HARNESS);
+    py.FS.mkdirTree('/пісочниця/дані');
+    for (const [name, text] of Object.entries(DATA.дані)) py.FS.writeFile('/пісочниця/дані/' + name, text);
+    btns.forEach(b => $(b).disabled = false);
+    $('state').textContent = 'Готово. Nigredo ' + DATA.версія + ' працює у вашому браузері.';
+  } catch (e) {
+    $('state').textContent = 'Не вдалося завантажити: ' + e;
+  }
+}
+
+function show(text, cls) { $('out').textContent = text; $('out').className = cls || ''; }
+
+function call(args) {
+  py.FS.writeFile('/власник/дозволи.json', $('perms').value);
+  py.FS.writeFile('/пісочниця/програма.ngr', $('code').value);
+  const [code, out, err] = JSON.parse(py.globals.get('ngr')(py.toPy(args)));
+  return { code, out, err };
+}
+function report(r, what) {
+  const meaning = {0: '✓ гаразд', 1: 'помилка під час виконання', 2: 'помилка до запуску', 3: 'поза дозволами власника', 4: 'вада інтерпретатора'};
+  const head = `${what} — код ${r.code} (${meaning[r.code] || '?'})\n\n`;
+  show(head + (r.out || '') + (r.err ? (r.out ? '\n' : '') + r.err : ''), r.code === 0 ? '' : 'err');
+}
+$('b-run').onclick = () => report(call(['/пісочниця/програма.ngr']), 'Виконання');
+$('b-check').onclick = () => report(call(['--перевірити', '/пісочниця/програма.ngr']), 'Перевірка до запуску (без виконання)');
+$('b-seal').onclick = () => report(call(['--печатка', '/пісочниця/програма.ngr']), 'Печатка (без виконання)');
+$('b-expl').onclick = () => report(call(['--розбір', '/пісочниця/програма.ngr']), 'Розбір для людини (без виконання)');
+$('b-trace').onclick = () => {
+  const t = py.globals.get('last_trace')();
+  if (!t) return show('Сліду ще немає — спершу виконайте програму.', 'dim');
+  const lines = py.FS.readFile(t, {encoding: 'utf8'}).trim().split('\n').map(l => {
+    const r = JSON.parse(l); const skip = new Set(['№', 'подія', 'глибина', 'попередній', 'хеш']);
+    const rest = Object.entries(r).filter(([k]) => !skip.has(k)).map(([k, v]) => k + '=' + (typeof v === 'string' ? v : JSON.stringify(v)));
+    return `${r['№']}. ${r['подія']}  ${rest.join('  ')}`.slice(0, 400);
+  });
+  const v = JSON.parse(py.globals.get('ngr')(py.toPy(['--перевірити-слід', t, '/пісочниця/програма.ngr'])));
+  show('Підписаний слід останнього запуску (веде інтерпретатор, а не програма):\n\n' + lines.join('\n') + '\n\nПеревірка сліду:\n' + (v[1] || v[2]), v[0] === 0 ? '' : 'err');
+};
+$('b-py').onclick = () => {
+  if ($('b-py').dataset.hang) return show('Python тут не запускаємо: цей шаблон у звичайному рушії регулярок перебирає '
+    + 'варіанти хвилинами (ReDoS) і завісив би вкладку. Nigredo виконує той самий шаблон за лінійний час.', 'err');
+  const [code, out] = JSON.parse(py.globals.get('pyrun')($('py').value));
+  show(`Python — ${code === 0 ? 'виконано без помилки' : 'упав під час виконання'}\n\n${out}`, code === 0 ? '' : 'err');
+};
+boot();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import os\nimport sys\n\n\ndef читати_імена(шлях):\n    імена = {}\n    with open(шлях, encoding=\"utf-8\") as f:\n        for рядок in f:\n            назва = рядок.strip()\n            if not назва:\n                continue\n            ключ = назва.casefold()\n            if ключ not in імена:\n                імена[ключ] = назва\n    return імена\n\n\ndef main():\n    базова = os.path.join(os.getcwd(), \"дані\")\n    вчора = читати_імена(os.path.join(базова, \"вчора.txt\"))\n    сьогодні = читати_імена(os.path.join(базова, \"сьогодні.txt\"))\n\n    додано = [сьогодні[k] for k in сьогодні if k not in вчора]\n    зникло = [вчора[k] for k in вчора if k not in сьогодні]\n    лишилось = sum(1 for k in сьогодні if k in вчора)\n\n    def форматувати(список):\n        if not список:\n            return \"—\"\n        return \", \".join(sorted(список, key=lambda s: s.casefold()))\n\n    print(f\"додано: {форматувати(додано)}\")\n    print(f\"зникло: {форматувати(зникло)}\")\n    print(f\"лишилось: {лишилось}\")\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "відповідь": "```python\nimport os\nimport sys\n\n\ndef читати_імена(шлях):\n    імена = {}\n    with open(шлях, encoding=\"utf-8\") as f:\n        for рядок in f:\n            назва = рядок.strip()\n            if not назва:\n                continue\n            ключ = назва.casefold()\n            if ключ not in імена:\n                імена[ключ] = назва\n    return імена\n\n\ndef main():\n    базова = os.path.join(os.getcwd(), \"дані\")\n    вчора = читати_імена(os.path.join(базова, \"вчора.txt\"))\n    сьогодні = читати_імена(os.path.join(базова, \"сьогодні.txt\"))\n\n    додано = [сьогодні[k] for k in сьогодні if k not in вчора]\n    зникло = [вчора[k] for k in вчора if k not in сьогодні]\n    лишилось = sum(1 for k in сьогодні if k in вчора)\n\n    def форматувати(список):\n        if not список:\n            return \"—\"\n        return \", \".join(sorted(список, key=lambda s: s.casefold()))\n\n    print(f\"додано: {форматувати(додано)}\")\n    print(f\"зникло: {форматувати(зникло)}\")\n    print(f\"лишилось: {лишилось}\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n",
+  "код_виходу": 0,
+  "вивід": "додано: Богдан, Марко\nзникло: Анна, Денис\nлишилось: 2\n",
+  "помилки": ""
+ }
+]

@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nfrom pathlib import Path\n\nдані = Path(\"дані\")\n\nwith open(дані / \"початок.json\", encoding=\"utf-8\") as f:\n    початок = json.load(f)\nwith open(дані / \"рух.json\", encoding=\"utf-8\") as f:\n    рух = json.load(f)\n\nзалишок = dict(початок)\nперший_час = {}\n\nfor подія in рух:\n    товар = подія[\"товар\"]\n    залишок[товар] = залишок.get(товар, 0) + int(подія[\"зміна\"])\n    if залишок[товар] < 0 and товар not in перший_час:\n        перший_час[товар] = подія[\"час\"]\n\nif not перший_час:\n    print(\"усе гаразд\")\nelse:\n    for товар in sorted(перший_час):\n        print(f\"{товар}: {перший_час[товар]}\")\n",
+  "відповідь": "```python\nimport json\nfrom pathlib import Path\n\nдані = Path(\"дані\")\n\nwith open(дані / \"початок.json\", encoding=\"utf-8\") as f:\n    початок = json.load(f)\nwith open(дані / \"рух.json\", encoding=\"utf-8\") as f:\n    рух = json.load(f)\n\nзалишок = dict(початок)\nперший_час = {}\n\nfor подія in рух:\n    товар = подія[\"товар\"]\n    залишок[товар] = залишок.get(товар, 0) + int(подія[\"зміна\"])\n    if залишок[товар] < 0 and товар not in перший_час:\n        перший_час[товар] = подія[\"час\"]\n\nif not перший_час:\n    print(\"усе гаразд\")\nelse:\n    for товар in sorted(перший_час):\n        print(f\"{товар}: {перший_час[товар]}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "болт: 09:20\nгайка: 09:10\n",
+  "помилки": ""
+ }
+]

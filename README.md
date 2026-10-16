@@ -5,6 +5,10 @@
 **A programming language for AI agents — and a black box for humans.** Agents write and read it; the human
 owner always knows what a program *may* do before it runs and can verify what it *did* afterwards.
 
+**Try it in the browser:** [denromvas.github.io/nigredo](https://denromvas.github.io/nigredo/) — the real interpreter
+(Pyodide): examples, the seal, the human translation, checks before running, the signed trace, and the benchmark's
+deliberate mistakes side by side with the same Python. / **Пісочниця в браузері** — те саме українською.
+
 ```
 🜂 「poll the seers, keep confident answers」 【「оракул」】
 ← answers μ【「чи сіль тверда?」 「чи сірка горить?」】 λq
