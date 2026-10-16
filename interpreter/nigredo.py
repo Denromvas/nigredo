@@ -130,6 +130,10 @@ GLYPHS = {
     '◷': (2, '◷ дата дата або ◷ дата дні', 'дати ISO (2026-10-15, 2026-10-15T09:30:00+03:00): дві дати — скільки днів від першої '
           'до другої (дріб, якщо є час); дата й число — дата через стільки днів', 'дати({0}, {1})', 'дані'),
     '▦': (1, '▦ текст', 'CSV → список словників (перший рядок — заголовки; значення — рядки)', 'csv({0})', 'дані'),
+    '✓': (2, '✓ значення схема', 'перевірити за схемою й повернути значення (інакше — помилка з усіма розбіжностями). '
+          'Схема: 「число」 「ціле」 「рядок」 「дата」 「●/○」 「∅」 「будь-що」 「список」 「словник」; …? — ще й ∅; '
+          '「число:0..100」 межі (рядок, список — довжина); 「рядок:a|b」 перелік; 【S】 — кожен елемент; '
+          '『「поле」 S 「поле?」 S』 — поля (зайві — помилка; 「…」 「будь-що」 — дозволити інші)', 'перевірене({0} за схемою {1})', 'дані'),
     'χ': (1, 'χ текст | χ елемент', 'XML: рядок → елемент 『「тег」 … 「атрибути」 『…』 「текст」 … 「діти」 【…】』 (простори імен '
           'знято з тегів; DTD і сутності — заборонено); елемент → рядок XML', 'xml({0})', 'дані'),
     '↘': (2, '↘ елемент 「шлях」', 'XPath-підмножина: a/b — діти, //b — будь-де нижче, * — будь-який, [@атр=\'x\'] '
@@ -176,7 +180,7 @@ ASCII_HINTS = {
     '{': '『 … 』', '}': '『 … 』', '"': '「 … 」', "'": '「 … 」', '#': '※', ';': '¦', ':': '←',
     'µ': 'μ (грецька мю)', '−': '－', '’': 'ʼ', '＞': '›', '＜': '‹', '.': '… (ряд) або 0.5 (дріб)',
     '@': '∘ (функція як значення)', '«': '「 … 」', '»': '» (це друк; рядок — 「 … 」)',
-    '∈': '∋ (чи містить: ∋ x y)', 'ϵ': 'ε (пари словника) або ∋ (чи містить)', '∑': '∫ (сума: ∫ xs λx число) або Σ (згортка)',
+    '✔': '✓ (перевірити за схемою)', '∈': '∋ (чи містить: ∋ x y)', 'ϵ': 'ε (пари словника) або ∋ (чи містить)', '∑': '∫ (сума: ∫ xs λx число) або Σ (згортка)',
     '∥': '‖ (паралельно)', '∏': 'Σ з × (добуток: Σ xs 1 Λa x ×a x)',
 }
 
@@ -1229,7 +1233,7 @@ TYPE_REQ = {
     '∧': [(_B, _B)], '∨': [(_B, _B)], '¬': [(_B,)], '¿': [(_B, _A, _A)],
     'ρ': [(_S,), (_L,), (_D,)], '§': [(_L, _N), (_S, _N), (_D, _S)], '✂': [(_S, _S)], '⁀': [(_L, _S)],
     '⇄': [(_S, _S, _S)], '⊢': [(_S,)], '⇣': [(_S,)], '⇡': [(_S,)], 'ν': [(_S,)], 'δ': [(_S,)],
-    '◷': [(_S, _S), (_S, _N)], '▦': [(_S,)], 'χ': [(_S,), (_D,)], '↘': [(_D, _S)],
+    '◷': [(_S, _S), (_S, _N)], '▦': [(_S,)], 'χ': [(_S,), (_D,)], '↘': [(_D, _S)], '✓': [(_A, _S), (_A, _L), (_A, _D)],
     '⌕': [(_S, _S)], '≋': [(_S, _S, _S)], '⊏': [(c, a, b) for c in (_S, _L) for a in (_N, 'none') for b in (_N, 'none')],
     '⊳': [(_S, _S), (_L, _A)], '∋': [(_S, _S), (_L, _A), (_D, _S)], 'κ': [(_D,)], 'ε': [(_D,)], '↑': [(_L,)],
     '↺': [(_S,), (_L,)], '✎': [(_D, _S, _A)], '⚗': [(_L, _N)], '≈': [(_A, _N)],
@@ -2019,6 +2023,81 @@ def regex(pat, g, pos):
             _RX_CACHE.clear()
         _RX_CACHE[pat] = r
     return r
+
+
+SCHEMA_TYPES = {'число', 'ціле', 'рядок', 'дата', '●/○', 'істинність', '∅', 'ніщо', 'будь-що', 'список', 'словник'}
+
+
+def check_schema(x, sch, path, errs, pos, depth=0):
+    """✓: x проти схеми (дані мови). Розбіжності — у errs як «шлях: що не так»; кривa схема — помилка одразу."""
+    if depth > 200:
+        raise NgrError('✓: схема вкладена надто глибоко', pos)
+    where = path or 'значення'
+    sv, v = sch.v, x.v
+    if isinstance(sv, str):
+        t, _, rest = sv.partition(':')
+        nullable = t.endswith('?')
+        t = t.rstrip('?')
+        if t not in SCHEMA_TYPES:
+            raise NgrError(f'✓: невідомий тип у схемі «{safe(sv)}» (є: {", ".join(sorted(SCHEMA_TYPES))})', pos)
+        if v is None and (nullable or t in ('∅', 'ніщо', 'будь-що')):
+            return
+        ok = {'число': isinstance(v, NUM) and not isinstance(v, bool),
+              'ціле': isinstance(v, int) and not isinstance(v, bool) or isinstance(v, Decimal) and v == v.to_integral_value(),
+              'рядок': isinstance(v, str), 'дата': isinstance(v, str), '●/○': isinstance(v, bool), 'істинність': isinstance(v, bool),
+              '∅': v is None, 'ніщо': v is None, 'будь-що': True, 'список': isinstance(v, list), 'словник': isinstance(v, dict)}[t]
+        if t == 'дата' and ok:
+            try:
+                _iso(v, pos)
+            except NgrError:
+                ok = False
+        if not ok:
+            errs.append(f'{where}: очікувалося {sv}, а не {kind(x)} {brief(x, 30)}')
+            return
+        if rest:
+            if '..' in rest:
+                lo, _, hi = rest.partition('..')
+                try:
+                    lo_, hi_ = (Decimal(lo) if lo.strip() else None), (Decimal(hi) if hi.strip() else None)
+                except decimal.InvalidOperation:
+                    raise NgrError(f'✓: межі «{safe(rest)}» — числа: 0..100, 1.., ..50', pos)
+                n = len(v) if isinstance(v, (str, list, dict)) else v
+                if not isinstance(n, NUM) or isinstance(n, bool):
+                    raise NgrError(f'✓: межі «{safe(rest)}» — для числа, рядка чи списку', pos)
+                if (lo_ is not None and n < lo_) or (hi_ is not None and n > hi_):
+                    what = 'довжина ' if isinstance(v, (str, list, dict)) else ''
+                    errs.append(f'{where}: {what}{fmt_num(n) if isinstance(n, NUM) else n} поза {rest}')
+            elif show(x) not in rest.split('|'):
+                errs.append(f'{where}: {brief(x, 30)} — не з переліку {rest}')
+        return
+    if isinstance(sv, list):
+        if not isinstance(v, list):
+            errs.append(f'{where}: очікувався список, а не {kind(x)}')
+            return
+        if len(sv) > 1:
+            raise NgrError('✓: схема списку — 【S】 (один елемент-схема) або 【】 (будь-який список)', pos)
+        if sv:
+            for i, e in enumerate(v):
+                check_schema(e, sv[0], f'{path}[{i}]', errs, pos, depth + 1)
+                if len(errs) > 50:
+                    return
+        return
+    if isinstance(sv, dict):
+        if not isinstance(v, dict):
+            errs.append(f'{where}: очікувався словник, а не {kind(x)}')
+            return
+        fields = {k.rstrip('?'): (k.endswith('?'), s_) for k, s_ in sv.items() if k != '…'}
+        for k, (opt, s_) in fields.items():
+            if k in v:
+                check_schema(v[k], s_, f'{path}.{k}' if path else k, errs, pos, depth + 1)
+            elif not opt:
+                errs.append(f'{(path + ".") if path else ""}{k}: бракує поля')
+        if '…' not in sv:
+            extra = [k for k in v if k not in fields]
+            if extra:
+                errs.append(f'{where}: зайві поля {", ".join(safe(k) for k in extra[:5])} (дозволити — 「…」 「будь-що」)')
+        return
+    raise NgrError(f'✓: схема — рядок-тип, 【S】 або 『поле S …』, а не {kind(sch)}', pos)
 
 
 XML_MAX_DEPTH = 500
@@ -3634,6 +3713,13 @@ class Interp:
             raise NgrError(f'∋: очікувався рядок, список чи словник, а не {kind(a[0])}', pos)
         if g == '◷':
             return V(date_op(a[0].v, a[1].v, pos))
+        if g == '✓':
+            errs = []
+            check_schema(a[0], a[1], '', errs, pos)
+            if errs:
+                more = f' … ще {len(errs) - 10}' if len(errs) > 10 else ''
+                raise NgrError('✓: не відповідає схемі: ' + '; '.join(errs[:10]) + more, pos)
+            return a[0]
         if g == 'χ':
             x = a[0].v
             if isinstance(x, str):
