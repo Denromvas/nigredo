@@ -3397,7 +3397,15 @@ class Interp:
 
     def op(self, g, argn, env, pos):
         if g not in LAZY_GLYPHS:                  # звичайний гліф: аргументи — завжди всі, одразу (швидкий шлях)
-            return self.strict(g, [self.eval(a, env) for a in argn], pos)
+            args = [self.eval(a, env) for a in argn]
+            if g in INT_FAST and len(args) == 2:      # певні цілі в певному контексті: те саме, що strict + prim
+                x, y = args
+                if (type(x.v) is int and type(y.v) is int and x.c >= 1 and y.c >= 1 and self.pc >= 1
+                        and self.halt_c >= 1 and (g != '‰' or y.v) and (g != '×' or x.v.bit_length() + y.v.bit_length() <= MAX_INT_BITS)):
+                    if g in HEAVY:
+                        self.work(x.n + y.n, pos)
+                    return V(INT_FAST[g](x.v, y.v))
+            return self.strict(g, args, pos)
         E = lambda i: self.eval(argn[i], env)   # noqa: E731
         if g == '¿':
             c = E(0)
