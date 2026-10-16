@@ -393,6 +393,45 @@ def main():
     check(got.returncode == 0 and got.stdout == 'ок\n\n', 'процес: субагент із вужчою командою', got.stdout + got.stderr)
     got = run(['-e', '🜂 【「процес:sh -c」】\n» 🜁 「в」 【「процес:sh」】 1'], benv)
     check(got.returncode != 0, 'процес: субагент із ширшою командою — відмова', got.stderr)
+    # суд 7 (Мовознавець): правдивість ключа власника, код 4, точність, канал завершення
+    got = run(['-e', bseal + f'🜔бд.писати 「{bd}/r.db」 「CREATE TABLE t(x)」 【】\n'
+               f'» 🜔бд.писати 「{bd}/r.db」 「INSERT INTO t VALUES (1), (2) RETURNING x」 【】\n'
+               f'» ☂ 🜔бд.читати 「{bd}/r.db」 「SELECT 1e308 * 10 AS z」 【】 λe 「впіймано」'], benv)
+    check(got.returncode == 0 and got.stdout == '2\nвпіймано\n', 'бд: RETURNING — правдива кількість; Infinity з SQLite — '
+          'помилка програми (ловить ☂), не код 4', got.stdout + got.stderr)
+    got = run(['-e', '🜂\n← x ＋ 10000000000000000000000000000 0.1\n» x\n» ＝ σ x σ 10000000000000000000000000000\n'
+               '» ⌗ x 1\n» 1.0000000000000000000000000001\n» × ¯1 0.0'], env)
+    check(got.stdout == '10000000000000000000000000000.1\n○\n10000000000000000000000000000.1\n1.0000000000000000000000000001\n0\n',
+          'десяткові: друк, σ, ⌗ — без округлення до 28 цифр', got.stdout + got.stderr)
+    (tmp / 'лапки.ngr').write_text('🜂\n» 「» + рядок(інструмент файл.писати(«x», «y»)) + «」\n', encoding='utf-8')
+    got = run(['--розбір', str(tmp / 'лапки.ngr')], env)
+    check('надрукувати «\\» + рядок(інструмент файл.писати(\\«x\\», \\«y\\»)) + \\«»' in got.stdout,
+          '--розбір: лапки « » у рядку екрановано — вигаданого запису не показати', got.stdout)
+    dtr = tmp / 'сухо.jsonl'
+    got = run(['--сухо', '--слід', str(dtr), '-e', f'🜂 【「писати:{DATA / "звіти"}」 「оракул」】\n'
+               f'🜔писати ¿ 🜔оракул 「?」 「{DATA / "звіти" / "а.txt"}」 「{DATA / "звіти" / "б.txt"}」 「x」'], env)
+    v = run(['--перевірити-слід', str(dtr)], env).stdout
+    vj = json.loads(run(['--перевірити-слід', str(dtr), '--json'], env).stdout)
+    check('СУХИЙ ПРОГІН' in v.split('\n')[0] and vj.get('режим') == 'сухо' and '⚠ залежить від невідомого' in got.stderr
+          and '"сухо": "не виконано"' in dtr.read_text(encoding='utf-8'),
+          '--сухо: режим у --перевірити-слід (і --json), дії за невідомим позначено, записи «інструмент» — «не виконано»',
+          v + got.stderr)
+    rtr = re.search(r'слід повтору: (\S+)', run(['--повторити', str(dtr)], env).stderr).group(1)
+    check('ПОВТОР' in run(['--перевірити-слід', rtr], env).stdout.split('\n')[0], '--повторити: режим у --перевірити-слід')
+    for prog_, what in [('► λ【a b】 a ≈ 【1 2】 0.4', 'розбір 【a b】'), ('∫ ≈ 【1 2】 0.4 λx x', '∫'),
+                        (f'🜔читати ≈ 「{DATA}/продажі.json」 0.4', 'інструмент')]:
+        got = run(['-e', f'🜂 【「читати:{DATA}」】\n{prog_}\n» ± ○'], env)
+        check(got.stdout.strip().endswith('0.4'), f'канал завершення: {what} на сумнівному аргументі — решта не впевненіша',
+              got.stdout + got.stderr)
+    ptr4 = tmp / 'шлях.jsonl'
+    got = run(['--слід', str(ptr4), '-e', f'🜂 【「читати:{DATA}」】\n» ρ 🜔читати 「продажі.json」'], env)
+    check(f'"шлях": ["{DATA / "продажі.json"}"]' in ptr4.read_text(encoding='utf-8'), 'шлях один раз: справжній шлях — у сліді',
+          ptr4.read_text(encoding='utf-8')[-600:])
+    got = run(['-e', f'🜂 【「читати:{DATA / "звіти"}」】\n» 🜔читати 「продажі.json」', '--тека', str(DATA)], env)
+    check(got.returncode == 1 and 'поза дозволеним' in got.stderr and 'такого файлу немає' in got.stderr,
+          'шлях один раз: файл є від теки програми, але поза дозволом — «поза дозволеним», а не «немає файлу»', got.stderr)
+    got = run(['-e', '🜂\n» ∑ 【1】 λx x'], env)
+    check(got.returncode == 2 and '∫' in got.stderr, 'схожий гліф ∑ — підказка ∫ / Σ', got.stderr)
     seal = run(['--печатка', str(ROOT / 'examples' / 'ahent.ngr')], env).stdout
     check('права теки: немає' in seal and 'намір (слова автора): 「' in seal and 'необхідно, але не досить' in seal,
           '--печатка: слова автора в 「」, «права теки: немає», «необхідно, але не досить»', seal)
