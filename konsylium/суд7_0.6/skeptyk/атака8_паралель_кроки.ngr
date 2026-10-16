@@ -1,0 +1,3 @@
+🜂 「‖: 8 нескінченних SQLite-запитів разом — чи спільний ліміт кроків»」 【「бд.читати:дані」】
+← q 「WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c) SELECT count(*) AS n FROM c」
+» ‖ … 1 8 λi 🜔бд.читати 「база.db」 q 【】

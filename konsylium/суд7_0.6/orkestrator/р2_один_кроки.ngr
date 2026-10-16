@@ -1,0 +1,2 @@
+🜂 「кроки»」 【「бд.читати:дані」】
+» ☂ ‖ 【1】 λx 🜔бд.читати 「база.db」 「WITH RECURSIVE r(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM r) SELECT max(i) FROM r」 【】 λe e

@@ -1,0 +1,6 @@
+🜂 「DROP VIEW на справжньому поданні (аудитор 8_1а)」 【「бд.писати:звіти」】
+← в λq ☂ σ 🜔бд.писати 「р2_в.db」 q 【】 λe e
+» ＋ 「1: 」 в 「CREATE TABLE IF NOT EXISTS t(a)」
+» ＋ 「2: 」 в 「CREATE VIEW IF NOT EXISTS v AS SELECT a FROM t」
+» ＋ 「3 DROP VIEW: 」 в 「DROP VIEW v」
+» ＋ 「4 DROP TABLE: 」 в 「DROP TABLE IF EXISTS інша」
