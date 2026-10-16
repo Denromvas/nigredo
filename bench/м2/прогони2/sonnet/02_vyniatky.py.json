@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import re\nfrom collections import defaultdict\n\nTS = re.compile(r'^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})')\nEXC = re.compile(r'^[ \\t]+([^\\W\\d][\\w.$]*):(?:\\s|$)')\n\nrecords = []  # [час, тип або None]\ncur = None\nwith open('дані/журнал.txt', encoding='utf-8', errors='replace') as f:\n    for line in f:\n        line = line.rstrip('\\r\\n')\n        m = TS.match(line)\n        if m:\n            cur = [m.group(1), None]\n            records.append(cur)\n        elif line[:1] in (' ', '\\t'):\n            if cur is not None:\n                e = EXC.match(line)\n                if e:\n                    cur[1] = e.group(1)\n        else:\n            cur = None\n\nstat = defaultdict(list)\nfor t, typ in records:\n    if typ:\n        stat[typ].append(t)\n\nfor typ, times in sorted(stat.items(), key=lambda kv: (-len(kv[1]), kv[0])):\n    print(f\"{typ}: {len(times)} (перший {min(times)}, останній {max(times)})\")\n",
+  "відповідь": "```python\nimport re\nfrom collections import defaultdict\n\nTS = re.compile(r'^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})')\nEXC = re.compile(r'^[ \\t]+([^\\W\\d][\\w.$]*):(?:\\s|$)')\n\nrecords = []  # [час, тип або None]\ncur = None\nwith open('дані/журнал.txt', encoding='utf-8', errors='replace') as f:\n    for line in f:\n        line = line.rstrip('\\r\\n')\n        m = TS.match(line)\n        if m:\n            cur = [m.group(1), None]\n            records.append(cur)\n        elif line[:1] in (' ', '\\t'):\n            if cur is not None:\n                e = EXC.match(line)\n                if e:\n                    cur[1] = e.group(1)\n        else:\n            cur = None\n\nstat = defaultdict(list)\nfor t, typ in records:\n    if typ:\n        stat[typ].append(t)\n\nfor typ, times in sorted(stat.items(), key=lambda kv: (-len(kv[1]), kv[0])):\n    print(f\"{typ}: {len(times)} (перший {min(times)}, останній {max(times)})\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "ValueError: 2 (перший 2026-10-14 09:15:02, останній 2026-10-14 12:30:30)\nKeyError: 1 (перший 2026-10-14 09:20:11, останній 2026-10-14 09:20:11)\nRuntimeError: 1 (перший 2026-10-14 10:01:00, останній 2026-10-14 10:01:00)\n",
+  "помилки": ""
+ }
+]

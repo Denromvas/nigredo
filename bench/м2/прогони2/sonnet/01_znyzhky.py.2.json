@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nfrom decimal import Decimal, ROUND_HALF_UP\n\nwith open(\"дані/замовлення.json\", encoding=\"utf-8\") as f:\n    замовлення = json.load(f, parse_float=Decimal)\nwith open(\"дані/коди.json\", encoding=\"utf-8\") as f:\n    коди = json.load(f)\n\nсуми = {}\nfor з in замовлення:\n    код = з.get(\"код\")\n    знижка = Decimal(0)\n    if код is not None and str(код) in коди:\n        знижка = Decimal(str(коди[str(код)]))\n    for п in з.get(\"позиції\", []):\n        ціна = Decimal(str(п[\"ціна\"]))\n        к = Decimal(str(п[\"кількість\"]))\n        в = (ціна * к * (100 - знижка) / 100).quantize(\n            Decimal(\"0.01\"), rounding=ROUND_HALF_UP\n        )\n        суми[п[\"категорія\"]] = суми.get(п[\"категорія\"], Decimal(0)) + в\n\nfor кат, с in sorted(суми.items(), key=lambda x: (-x[1], x[0])):\n    print(f\"{кат}: {с:.2f}\")\n",
+  "відповідь": "```python\nimport json\nfrom decimal import Decimal, ROUND_HALF_UP\n\nwith open(\"дані/замовлення.json\", encoding=\"utf-8\") as f:\n    замовлення = json.load(f, parse_float=Decimal)\nwith open(\"дані/коди.json\", encoding=\"utf-8\") as f:\n    коди = json.load(f)\n\nсуми = {}\nfor з in замовлення:\n    код = з.get(\"код\")\n    знижка = Decimal(0)\n    if код is not None and str(код) in коди:\n        знижка = Decimal(str(коди[str(код)]))\n    for п in з.get(\"позиції\", []):\n        ціна = Decimal(str(п[\"ціна\"]))\n        к = Decimal(str(п[\"кількість\"]))\n        в = (ціна * к * (100 - знижка) / 100).quantize(\n            Decimal(\"0.01\"), rounding=ROUND_HALF_UP\n        )\n        суми[п[\"категорія\"]] = суми.get(п[\"категорія\"], Decimal(0)) + в\n\nfor кат, с in sorted(суми.items(), key=lambda x: (-x[1], x[0])):\n    print(f\"{кат}: {с:.2f}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "напої: 584.87\nїжа: 265.33\n",
+  "помилки": ""
+ }
+]

@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import csv\nfrom decimal import Decimal, localcontext\nfrom fractions import Fraction\n\n\ndef median(xs):\n    xs = sorted(xs)\n    n = len(xs)\n    mid = n // 2\n    if n % 2:\n        return xs[mid]\n    return (xs[mid - 1] + xs[mid]) / 2\n\n\ndef fmt(q):\n    with localcontext() as ctx:\n        ctx.prec = 10000\n        d = Decimal(q.numerator) / Decimal(q.denominator)\n        return format(d.normalize(), \"f\")\n\n\ndef main():\n    vals = {}\n    with open(\"дані/виміри.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n        for row in csv.DictReader(f):\n            name = (row.get(\"датчик\") or \"\").strip()\n            if not name:\n                continue\n            lst = vals.setdefault(name, [])\n            raw = (row.get(\"значення\") or \"\").strip()\n            if raw:\n                lst.append(Fraction(raw))\n\n    for name in sorted(vals):\n        xs = vals[name]\n        if xs:\n            print(f\"{name}: {fmt(median(xs))}\")\n        else:\n            print(f\"{name}: —\")\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "відповідь": "```python\nimport csv\nfrom decimal import Decimal, localcontext\nfrom fractions import Fraction\n\n\ndef median(xs):\n    xs = sorted(xs)\n    n = len(xs)\n    mid = n // 2\n    if n % 2:\n        return xs[mid]\n    return (xs[mid - 1] + xs[mid]) / 2\n\n\ndef fmt(q):\n    with localcontext() as ctx:\n        ctx.prec = 10000\n        d = Decimal(q.numerator) / Decimal(q.denominator)\n        return format(d.normalize(), \"f\")\n\n\ndef main():\n    vals = {}\n    with open(\"дані/виміри.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n        for row in csv.DictReader(f):\n            name = (row.get(\"датчик\") or \"\").strip()\n            if not name:\n                continue\n            lst = vals.setdefault(name, [])\n            raw = (row.get(\"значення\") or \"\").strip()\n            if raw:\n                lst.append(Fraction(raw))\n\n    for name in sorted(vals):\n        xs = vals[name]\n        if xs:\n            print(f\"{name}: {fmt(median(xs))}\")\n        else:\n            print(f\"{name}: —\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n",
+  "код_виходу": 0,
+  "вивід": "А: 2.5\nБ: 2\nВ: —\nГ: 0.15\nД: 3\n",
+  "помилки": ""
+ }
+]

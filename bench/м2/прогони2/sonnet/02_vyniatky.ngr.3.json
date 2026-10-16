@@ -1,0 +1,20 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": false,
+  "код": "Спершу гляну формат даних.\n\n\n<invoke name=\"Bash\">\n<parameter name=\"command\">cd /tmp/м2-qz3b2szd && ls дані && wc -l дані/журнал.txt && head -40 дані/журнал.txt && grep -E '^\\s+\\S+: ' дані/журнал.txt | sed 's/^\\s*//' | cut -c1-60 | sort | uniq -c | sort -rn | head -30</parameter>\n</invoke>\neo\n\n\n<invoke name=\"Bash\">\n<parameter name=\"command\">cd /tmp/м2-qz3b2szd && ls -la . дані 2>&1 | head</parameter>\n</invoke>\n\n\n\n<invoke name=\"Bash\">\n<parameter name=\"command\">pwd; ls -la</parameter>\n</invoke>\n",
+  "відповідь": "Спершу гляну формат даних.\n\n\n<invoke name=\"Bash\">\n<parameter name=\"command\">cd /tmp/м2-qz3b2szd && ls дані && wc -l дані/журнал.txt && head -40 дані/журнал.txt && grep -E '^\\s+\\S+: ' дані/журнал.txt | sed 's/^\\s*//' | cut -c1-60 | sort | uniq -c | sort -rn | head -30</parameter>\n</invoke>\neo\n\n\n<invoke name=\"Bash\">\n<parameter name=\"command\">cd /tmp/м2-qz3b2szd && ls -la . дані 2>&1 | head</parameter>\n</invoke>\n\n\n\n<invoke name=\"Bash\">\n<parameter name=\"command\">pwd; ls -la</parameter>\n</invoke>\n",
+  "код_виходу": 2,
+  "вивід": "",
+  "помилки": "✗ 1:26 невідомий символ «.» — може, … (ряд) або 0.5 (дріб)?\n"
+ },
+ {
+  "спроба": 2,
+  "гаразд": true,
+  "код": "🜂 「винятки в журналі」 【「читати:дані」】\n← txt 🜔читати 「журнал.txt」\n← рек Σ ✂ txt 「\\n」 【】 Λa ln 《\n  ← ts ⌕ ln 「^(\\d{4}-\\d{2}-\\d{2}) (\\d{2}:\\d{2}:\\d{2})」\n  ← ex ⌕ ln 「^\\s+([\\w.]+)(:)(?:\\s|$)」\n  ¿ › ρts 0\n    ＋ a 【【〔{§§ts 0 0} {§§ts 0 1}〕 ∅】】\n    ¿ ∧ › ρex 0 › ρa 0\n      ＋ ⊏ a 0 －ρa 1 【【§ § a ¯1 0 §§ex 0 0】】\n      a\n》\n← вин φ рек λr ≠ §r 1 ∅\n← гр ⊞ вин λr §r 1\n← рядки μ εгр λ【k v】 【k ρv §§v 0 0 §§v ¯1 0】\n∀ ⇅ рядки λp 【－0 §p 1 §p 0】 λp » 〔{§p 0}: {§p 1} (перший {§p 2}, останній {§p 3})〕\n",
+  "відповідь": "```\n🜂 「винятки в журналі」 【「читати:дані」】\n← txt 🜔читати 「журнал.txt」\n← рек Σ ✂ txt 「\\n」 【】 Λa ln 《\n  ← ts ⌕ ln 「^(\\d{4}-\\d{2}-\\d{2}) (\\d{2}:\\d{2}:\\d{2})」\n  ← ex ⌕ ln 「^\\s+([\\w.]+)(:)(?:\\s|$)」\n  ¿ › ρts 0\n    ＋ a 【【〔{§§ts 0 0} {§§ts 0 1}〕 ∅】】\n    ¿ ∧ › ρex 0 › ρa 0\n      ＋ ⊏ a 0 －ρa 1 【【§ § a ¯1 0 §§ex 0 0】】\n      a\n》\n← вин φ рек λr ≠ §r 1 ∅\n← гр ⊞ вин λr §r 1\n← рядки μ εгр λ【k v】 【k ρv §§v 0 0 §§v ¯1 0】\n∀ ⇅ рядки λp 【－0 §p 1 §p 0】 λp » 〔{§p 0}: {§p 1} (перший {§p 2}, останній {§p 3})〕\n```\n",
+  "код_виходу": 0,
+  "вивід": "ValueError: 2 (перший 2026-10-14 09:15:02, останній 2026-10-14 12:30:30)\nKeyError: 1 (перший 2026-10-14 09:20:11, останній 2026-10-14 09:20:11)\nRuntimeError: 1 (перший 2026-10-14 10:01:00, останній 2026-10-14 10:01:00)\n",
+  "помилки": ""
+ }
+]

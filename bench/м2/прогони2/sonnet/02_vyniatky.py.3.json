@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import re\nfrom collections import defaultdict\n\nTS = re.compile(r'^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})')\nEXC = re.compile(r'^[ \\t]+([^\\W\\d][\\w.$]*):(?:\\s|$)')\n\nstats = defaultdict(list)\ncur_time = None\ncur_type = None\n\n\ndef flush():\n    if cur_time is not None and cur_type is not None:\n        stats[cur_type].append(cur_time)\n\n\nwith open('дані/журнал.txt', encoding='utf-8', errors='replace') as f:\n    for line in f:\n        line = line.rstrip('\\r\\n')\n        m = TS.match(line)\n        if m:\n            flush()\n            cur_time = m.group(1)\n            cur_type = None\n        elif line[:1] in (' ', '\\t'):\n            if cur_time is not None:\n                e = EXC.match(line)\n                if e:\n                    cur_type = e.group(1)\nflush()\n\nfor t, times in sorted(stats.items(), key=lambda kv: (-len(kv[1]), kv[0])):\n    print(f\"{t}: {len(times)} (перший {min(times)}, останній {max(times)})\")\n",
+  "відповідь": "```python\nimport re\nfrom collections import defaultdict\n\nTS = re.compile(r'^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})')\nEXC = re.compile(r'^[ \\t]+([^\\W\\d][\\w.$]*):(?:\\s|$)')\n\nstats = defaultdict(list)\ncur_time = None\ncur_type = None\n\n\ndef flush():\n    if cur_time is not None and cur_type is not None:\n        stats[cur_type].append(cur_time)\n\n\nwith open('дані/журнал.txt', encoding='utf-8', errors='replace') as f:\n    for line in f:\n        line = line.rstrip('\\r\\n')\n        m = TS.match(line)\n        if m:\n            flush()\n            cur_time = m.group(1)\n            cur_type = None\n        elif line[:1] in (' ', '\\t'):\n            if cur_time is not None:\n                e = EXC.match(line)\n                if e:\n                    cur_type = e.group(1)\nflush()\n\nfor t, times in sorted(stats.items(), key=lambda kv: (-len(kv[1]), kv[0])):\n    print(f\"{t}: {len(times)} (перший {min(times)}, останній {max(times)})\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "ValueError: 2 (перший 2026-10-14 09:15:02, останній 2026-10-14 12:30:30)\nKeyError: 1 (перший 2026-10-14 09:20:11, останній 2026-10-14 09:20:11)\nRuntimeError: 1 (перший 2026-10-14 10:01:00, останній 2026-10-14 10:01:00)\n",
+  "помилки": ""
+ }
+]

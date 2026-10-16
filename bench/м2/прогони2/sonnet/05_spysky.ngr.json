@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "🜂 「що змінилося між вчора і сьогодні」 【「читати:дані」】\n← nm λtxt 《\n  ← rows φ μ ✂ txt 「\\n」 λw ⊢ w λw › ρ w 0\n  Σ rows 『』 Λd w ¿ ∋ d ⇣ w d ✎ d ⇣ w w\n》\n← yd nm 🜔читати 「вчора.txt」\n← td nm 🜔читати 「сьогодні.txt」\n← ad μ ↑ φ κ td λk ¬ ∋ yd k λk §td k\n← gone μ ↑ φ κ yd λk ¬ ∋ td k λk §yd k\n← stay ρ φ κ td λk ∋ yd k\n← fmt λls ¿ ＝ ρ ls 0 「—」 ⁀ ls 「, 」\n» 〔додано: {fmt ad}〕\n» 〔зникло: {fmt gone}〕\n» 〔лишилось: {stay}〕\n",
+  "відповідь": "```\n🜂 「що змінилося між вчора і сьогодні」 【「читати:дані」】\n← nm λtxt 《\n  ← rows φ μ ✂ txt 「\\n」 λw ⊢ w λw › ρ w 0\n  Σ rows 『』 Λd w ¿ ∋ d ⇣ w d ✎ d ⇣ w w\n》\n← yd nm 🜔читати 「вчора.txt」\n← td nm 🜔читати 「сьогодні.txt」\n← ad μ ↑ φ κ td λk ¬ ∋ yd k λk §td k\n← gone μ ↑ φ κ yd λk ¬ ∋ td k λk §yd k\n← stay ρ φ κ td λk ∋ yd k\n← fmt λls ¿ ＝ ρ ls 0 「—」 ⁀ ls 「, 」\n» 〔додано: {fmt ad}〕\n» 〔зникло: {fmt gone}〕\n» 〔лишилось: {stay}〕\n```\n",
+  "код_виходу": 0,
+  "вивід": "додано: Богдан, Марко\nзникло: Анна, Денис\nлишилось: 2\n",
+  "помилки": ""
+ }
+]

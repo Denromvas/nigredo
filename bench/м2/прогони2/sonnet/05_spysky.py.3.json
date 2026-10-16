@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import os\n\n\ndef read_names(path):\n    names = {}\n    with open(path, encoding=\"utf-8\") as f:\n        for line in f:\n            name = line.strip()\n            if not name:\n                continue\n            key = name.casefold()\n            if key not in names:\n                names[key] = name\n    return names\n\n\ndef fmt(keys, source):\n    if not keys:\n        return \"—\"\n    items = sorted(keys, key=lambda k: (k, source[k]))\n    return \", \".join(source[k] for k in items)\n\n\ndef main():\n    yesterday = read_names(os.path.join(\"дані\", \"вчора.txt\"))\n    today = read_names(os.path.join(\"дані\", \"сьогодні.txt\"))\n\n    added = today.keys() - yesterday.keys()\n    gone = yesterday.keys() - today.keys()\n    stayed = today.keys() & yesterday.keys()\n\n    print(\"додано: \" + fmt(added, today))\n    print(\"зникло: \" + fmt(gone, yesterday))\n    print(\"лишилось: \" + str(len(stayed)))\n\n\nmain()\n",
+  "відповідь": "```python\nimport os\n\n\ndef read_names(path):\n    names = {}\n    with open(path, encoding=\"utf-8\") as f:\n        for line in f:\n            name = line.strip()\n            if not name:\n                continue\n            key = name.casefold()\n            if key not in names:\n                names[key] = name\n    return names\n\n\ndef fmt(keys, source):\n    if not keys:\n        return \"—\"\n    items = sorted(keys, key=lambda k: (k, source[k]))\n    return \", \".join(source[k] for k in items)\n\n\ndef main():\n    yesterday = read_names(os.path.join(\"дані\", \"вчора.txt\"))\n    today = read_names(os.path.join(\"дані\", \"сьогодні.txt\"))\n\n    added = today.keys() - yesterday.keys()\n    gone = yesterday.keys() - today.keys()\n    stayed = today.keys() & yesterday.keys()\n\n    print(\"додано: \" + fmt(added, today))\n    print(\"зникло: \" + fmt(gone, yesterday))\n    print(\"лишилось: \" + str(len(stayed)))\n\n\nmain()\n```\n",
+  "код_виходу": 0,
+  "вивід": "додано: Богдан, Марко\nзникло: Анна, Денис\nлишилось: 2\n",
+  "помилки": ""
+ }
+]

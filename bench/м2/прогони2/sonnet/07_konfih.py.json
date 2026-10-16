@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nimport sys\n\n\ndef fmt(v):\n    if isinstance(v, str):\n        return v\n    return json.dumps(v, ensure_ascii=False)\n\n\ndef main():\n    with open(\"дані/конфіги.json\", encoding=\"utf-8\") as f:\n        cfg = json.load(f)\n\n    out = []\n    for name in sorted(cfg):\n        chain = []\n        seen = set()\n        cur = name\n        cyclic = False\n        while cur is not None and cur in cfg:\n            if cur in seen:\n                cyclic = True\n                break\n            seen.add(cur)\n            chain.append(cur)\n            cur = cfg[cur].get(\"успадковує\")\n        if cyclic:\n            out.append(f\"{name}: цикл\")\n            continue\n        vals = {}\n        for n in reversed(chain):\n            vals.update(cfg[n].get(\"значення\") or {})\n        items = \", \".join(f\"{k}={fmt(vals[k])}\" for k in sorted(vals))\n        out.append(f\"{name}: {items}\")\n\n    sys.stdout.buffer.write((\"\\n\".join(out) + \"\\n\").encode(\"utf-8\"))\n\n\nmain()\n",
+  "відповідь": "```python\nimport json\nimport sys\n\n\ndef fmt(v):\n    if isinstance(v, str):\n        return v\n    return json.dumps(v, ensure_ascii=False)\n\n\ndef main():\n    with open(\"дані/конфіги.json\", encoding=\"utf-8\") as f:\n        cfg = json.load(f)\n\n    out = []\n    for name in sorted(cfg):\n        chain = []\n        seen = set()\n        cur = name\n        cyclic = False\n        while cur is not None and cur in cfg:\n            if cur in seen:\n                cyclic = True\n                break\n            seen.add(cur)\n            chain.append(cur)\n            cur = cfg[cur].get(\"успадковує\")\n        if cyclic:\n            out.append(f\"{name}: цикл\")\n            continue\n        vals = {}\n        for n in reversed(chain):\n            vals.update(cfg[n].get(\"значення\") or {})\n        items = \", \".join(f\"{k}={fmt(vals[k])}\" for k in sorted(vals))\n        out.append(f\"{name}: {items}\")\n\n    sys.stdout.buffer.write((\"\\n\".join(out) + \"\\n\").encode(\"utf-8\"))\n\n\nmain()\n```\n",
+  "код_виходу": 0,
+  "вивід": "а: цикл\nб: цикл\nбаза: порт=80, хост=localhost\nв: цикл\nрозробка: налагодження=true, порт=8080, хост=localhost\nтест: налагодження=true, порт=8080, хост=test.local\n",
+  "помилки": ""
+ }
+]

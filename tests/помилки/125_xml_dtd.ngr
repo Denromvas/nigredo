@@ -1,0 +1,4 @@
+※ очікується: 1 DTD і сутності
+※ «мільярд сміхів» і XXE: DTD у XML заборонено
+🜂
+» χ 「<!DOCTYPE л [<!ENTITY a "aaaaaaaaaa"><!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">]><л>&b;</л>」

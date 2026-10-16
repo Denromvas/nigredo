@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nfrom decimal import Decimal\nfrom fractions import Fraction\n\nwith open(\"дані/поділ.json\", encoding=\"utf-8\") as f:\n    d = json.load(f)\n\ns = Decimal(d[\"сума\"])\ntotal_kop = int(s * 100)\nw = d[\"ваги\"]\nsw = sum(w.values())\n\nfloors = {}\nrems = {}\nfor name, v in w.items():\n    fr = Fraction(total_kop * v, sw)\n    fl = fr.numerator // fr.denominator\n    floors[name] = fl\n    rems[name] = fr - fl\n\nleft = total_kop - sum(floors.values())\norder = sorted(w, key=lambda n: (-rems[n], n))\nfor n in order[:left]:\n    floors[n] += 1\n\nfor n in sorted(w):\n    k = floors[n]\n    print(f\"{n}: {k // 100}.{k % 100:02d}\")\n",
+  "відповідь": "```python\nimport json\nfrom decimal import Decimal\nfrom fractions import Fraction\n\nwith open(\"дані/поділ.json\", encoding=\"utf-8\") as f:\n    d = json.load(f)\n\ns = Decimal(d[\"сума\"])\ntotal_kop = int(s * 100)\nw = d[\"ваги\"]\nsw = sum(w.values())\n\nfloors = {}\nrems = {}\nfor name, v in w.items():\n    fr = Fraction(total_kop * v, sw)\n    fl = fr.numerator // fr.denominator\n    floors[name] = fl\n    rems[name] = fr - fl\n\nleft = total_kop - sum(floors.values())\norder = sorted(w, key=lambda n: (-rems[n], n))\nfor n in order[:left]:\n    floors[n] += 1\n\nfor n in sorted(w):\n    k = floors[n]\n    print(f\"{n}: {k // 100}.{k % 100:02d}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "Анна: 500.00\nДенис: 166.67\nОля: 166.67\nПетро: 166.66\n",
+  "помилки": ""
+ }
+]

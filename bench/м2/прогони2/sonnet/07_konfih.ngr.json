@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "🜂 【「читати:дані」】\n← cfg δ 🜔читати 「конфіги.json」\n← fmt λx ☂ ＋ 「」 x λe Δ x\n← walk λp ↻ 『「n」 p 「s」 【】 「c」 ○』\n  λs ∧ ≠ §s 「n」 ∅ ¬ §s 「c」\n  λs ¿ ∋ §s 「s」 §s 「n」 ✎ s 「c」 ● 《\n    ← en ¿ ∋ cfg §s 「n」 §cfg §s 「n」 『』\n    ✎ ✎ s 「s」 ＋ §s 「s」 【§s 「n」】 「n」 §en 「успадковує」\n  》\n∀ ↑ κ cfg λn 《\n  ← w walk n\n  » ¿ §w 「c」 〔{n}: цикл〕 《\n    ← r Σ ↺ §w 「s」 『』 Λa m\n      Σ ε ¿ ∋ cfg m §§cfg m 「значення」 『』 a Λb kv ✎ b §kv 0 §kv 1\n    ← pairs μ ↑ κ r λk 〔{k}={fmt §r k}〕\n    ← joined ⁀ pairs 「, 」\n    〔{n}: {joined}〕\n  》\n》\n",
+  "відповідь": "```\n🜂 【「читати:дані」】\n← cfg δ 🜔читати 「конфіги.json」\n← fmt λx ☂ ＋ 「」 x λe Δ x\n← walk λp ↻ 『「n」 p 「s」 【】 「c」 ○』\n  λs ∧ ≠ §s 「n」 ∅ ¬ §s 「c」\n  λs ¿ ∋ §s 「s」 §s 「n」 ✎ s 「c」 ● 《\n    ← en ¿ ∋ cfg §s 「n」 §cfg §s 「n」 『』\n    ✎ ✎ s 「s」 ＋ §s 「s」 【§s 「n」】 「n」 §en 「успадковує」\n  》\n∀ ↑ κ cfg λn 《\n  ← w walk n\n  » ¿ §w 「c」 〔{n}: цикл〕 《\n    ← r Σ ↺ §w 「s」 『』 Λa m\n      Σ ε ¿ ∋ cfg m §§cfg m 「значення」 『』 a Λb kv ✎ b §kv 0 §kv 1\n    ← pairs μ ↑ κ r λk 〔{k}={fmt §r k}〕\n    ← joined ⁀ pairs 「, 」\n    〔{n}: {joined}〕\n  》\n》\n```\n",
+  "код_виходу": 0,
+  "вивід": "а: цикл\nб: цикл\nбаза: порт=80, хост=localhost\nв: цикл\nрозробка: налагодження=true, порт=8080, хост=localhost\nтест: налагодження=true, порт=8080, хост=test.local\n",
+  "помилки": ""
+ }
+]
