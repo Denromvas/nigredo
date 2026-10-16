@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nigredo — пісочниця</title>
+<meta name="description" content="Nigredo {ВЕРСІЯ} у браузері: печатка, розбір, перевірка до запуску, слід. Справжній інтерпретатор у Pyodide.">
+<style>
+:root{--bg:#07060d;--panel:#100e1a;--line:#2a2540;--ink:#ecebff;--dim:#9a96b5;--violet:#9b6bff;--teal:#3ff2d6;
+--gold:#ffcf6b;--rose:#ff5fa2;--ok:#5be38a;--mono:"JetBrains Mono","DejaVu Sans Mono",ui-monospace,monospace}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#f6f5fb;--panel:#fff;--line:#d9d5ea;--ink:#16132a;
+--dim:#5d5878;--violet:#6b3fe0;--teal:#0d8f7d;--gold:#9a6b00;--rose:#c2185b;--ok:#1d7f43}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:20px 16px 8px;max-width:1200px;margin:auto}
+h1{margin:0;font-size:22px;letter-spacing:.5px}h1 b{color:var(--violet)}
+.sub{color:var(--dim);margin:4px 0 0;font-size:14px}
+main{max-width:1200px;margin:auto;padding:8px 16px 40px;display:grid;gap:14px;grid-template-columns:1fr}
+@media(min-width:900px){main{grid-template-columns:1.1fr 1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+select,button,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px}
+select{padding:7px 8px;max-width:100%;flex:1 1 220px}
+button{padding:7px 12px;cursor:pointer}button:hover{border-color:var(--violet)}
+button.go{background:var(--violet);border-color:var(--violet);color:#fff}
+button:disabled{opacity:.5;cursor:wait}
+textarea{width:100%;font-family:var(--mono);font-size:14px;padding:10px;resize:vertical;tab-size:2}
+#code{min-height:240px}#perms{min-height:90px;font-size:12px}#py{min-height:90px;font-size:13px}
+pre{margin:0;white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size:13px}
+.out{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;min-height:60px;max-height:420px;overflow:auto}
+.lbl{color:var(--dim);font-size:12px;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.8px}
+.err{color:var(--rose)}.okc{color:var(--ok)}.dim{color:var(--dim)}
+.badge{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--dim)}
+details summary{cursor:pointer;color:var(--dim);font-size:13px}
+footer{max-width:1200px;margin:auto;padding:0 16px 30px;color:var(--dim);font-size:13px}
+a{color:var(--teal)}
+</style>
+</head>
+<body>
+<header>
+<h1><b>Nigredo</b> — пісочниця <span class="badge">{ВЕРСІЯ}</span></h1>
+<p class="sub">Мова для ШІ-агентів: кожна програма першим рядком оголошує дозволи (печатку), інтерпретатор не дає
+вийти за них і веде підписаний слід. Тут працює справжній інтерпретатор (Python у браузері, Pyodide) — без мережі,
+процесів і потоків: <code>взяти</code>, <code>процес</code>, <code>‖</code> у браузері дадуть помилку.</p>
+<p class="sub" id="state">Завантаження Pyodide…</p>
+</header>
+<main>
+<section class="card">
+<div class="row"><select id="pick" aria-label="приклад"></select></div>
+<div class="lbl">Програма на Nigredo</div>
+<textarea id="code" spellcheck="false" aria-label="код Nigredo"></textarea>
+<div class="row" style="margin-top:8px">
+<button class="go" id="b-run" disabled>Виконати</button>
+<button id="b-check" disabled>Перевірити до запуску</button>
+<button id="b-seal" disabled>Печатка</button>
+<button id="b-expl" disabled>Розбір</button>
+<button id="b-trace" disabled>Слід</button>
+</div>
+<details style="margin-top:10px"><summary>Дозволи власника (їх пише людина, а не програма)</summary>
+<textarea id="perms" spellcheck="false" aria-label="дозволи власника"></textarea></details>
+<div id="pybox" hidden>
+<div class="lbl">Те саме на Python</div>
+<textarea id="py" spellcheck="false" aria-label="код Python"></textarea>
+<div class="row" style="margin-top:8px"><button id="b-py" disabled>Виконати Python</button></div>
+</div>
+</section>
+<section class="card">
+<div class="lbl">Що вийшло</div>
+<div class="out"><pre id="out" class="dim">Виберіть приклад або напишіть свою програму.</pre></div>
+<div id="note" class="sub"></div>
+</section>
+</main>
+<footer>Код мови, специфікація й протоколи судів над нею — <a href="https://github.com/Denromvas/nigredo">github.com/Denromvas/nigredo</a>.
+Сторінку зібрала програма на Nigredo (<code>site/пісочниця/пісочниця.ngr</code>).</footer>
+<script id="data" type="application/json">{ПРИКЛАДИ}</script>
+<script id="perms0" type="application/json">{ДОЗВОЛИ}</script>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const DATA = JSON.parse($('data').textContent);
+const btns = ['b-run', 'b-check', 'b-seal', 'b-expl', 'b-trace', 'b-py'];
+let py = null;
+$('perms').value = JSON.stringify(JSON.parse($('perms0').textContent), null, 1);
+for (const g of ['приклади', 'помилки']) {
+  const og = document.createElement('optgroup');
+  og.label = g === 'приклади' ? 'Приклади' : 'Навмисні помилки: Nigredo проти Python';
+  DATA.приклади.forEach((e, i) => { if (e.група === g) { const o = new Option(e.назва, i); og.appendChild(o); } });
+  $('pick').appendChild(og);
+}
+function choose(i) {
+  const e = DATA.приклади[i];
+  $('code').value = e.код;
+  $('pybox').hidden = !e.python;
+  $('py').value = e.python || '';
+  $('b-py').dataset.hang = e.висне ? '1' : '';
+  $('note').textContent = e.опис || '';
+  $('out').textContent = e.група === 'помилки'
+    ? 'Натисніть «Перевірити до запуску» для Nigredo і «Виконати Python» — порівняйте, хто впіймає помилку раніше.'
+    : 'Натисніть «Виконати».';
+  $('out').className = 'dim';
+}
+$('pick').onchange = () => choose($('pick').value);
+choose(0);
+
+const HARNESS = `
+import sys, io, os, json, contextlib, traceback
+for d in ('/власник', '/пісочниця/дані', '/пісочниця/звіти'):
+    os.makedirs(d, exist_ok=True)
+os.environ['NIGREDO_HOME'] = '/власник'
+sys.path.insert(0, '/ngr')
+import nigredo
+
+def ngr(args):
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        try:
+            code = nigredo.main(args)
+        except SystemExit as e:
+            code = e.code
+        except BaseException as e:
+            code = 4
+            print(f'✗ {type(e).__name__}: {e}', file=sys.stderr)
+    return json.dumps([code, out.getvalue(), err.getvalue()], ensure_ascii=False)
+
+def last_trace():
+    d = '/власник/сліди'
+    fs = sorted((os.path.join(d, f) for f in os.listdir(d) if f.endswith('.jsonl')), key=os.path.getmtime) if os.path.isdir(d) else []
+    return fs[-1] if fs else ''
+
+def pyrun(src):
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+        try:
+            exec(compile(src, 'рішення.py', 'exec'), {'__name__': '__main__'})
+            code = 0
+        except BaseException:
+            code = 1
+            print(traceback.format_exc(limit=1).strip().splitlines()[-1])
+    return json.dumps([code, out.getvalue()], ensure_ascii=False)
+`;
+
+async function boot() {
+  try {
+    py = await loadPyodide();
+    $('state').textContent = 'Завантаження інтерпретатора Nigredo…';
+    await py.loadPackage('sqlite3');
+    const [src, twins] = await Promise.all([fetch('nigredo.py').then(r => r.text()), fetch('dviyniky.tsv').then(r => r.text())]);
+    py.FS.mkdirTree('/ngr');
+    py.FS.writeFile('/ngr/nigredo.py', src);
+    py.FS.writeFile('/ngr/двійники.tsv', twins);
+    py.runPython(HARNESS);
+    py.FS.mkdirTree('/пісочниця/дані');
+    for (const [name, text] of Object.entries(DATA.дані)) py.FS.writeFile('/пісочниця/дані/' + name, text);
+    btns.forEach(b => $(b).disabled = false);
+    $('state').textContent = 'Готово. Nigredo ' + DATA.версія + ' працює у вашому браузері.';
+  } catch (e) {
+    $('state').textContent = 'Не вдалося завантажити: ' + e;
+  }
+}
+
+function show(text, cls) { $('out').textContent = text; $('out').className = cls || ''; }
+
+function call(args) {
+  py.FS.writeFile('/власник/дозволи.json', $('perms').value);
+  py.FS.writeFile('/пісочниця/програма.ngr', $('code').value);
+  const [code, out, err] = JSON.parse(py.globals.get('ngr')(py.toPy(args)));
+  return { code, out, err };
+}
+function report(r, what) {
+  const meaning = {0: '✓ гаразд', 1: 'помилка під час виконання', 2: 'помилка до запуску', 3: 'поза дозволами власника', 4: 'вада інтерпретатора'};
+  const head = `${what} — код ${r.code} (${meaning[r.code] || '?'})\n\n`;
+  show(head + (r.out || '') + (r.err ? (r.out ? '\n' : '') + r.err : ''), r.code === 0 ? '' : 'err');
+}
+$('b-run').onclick = () => report(call(['/пісочниця/програма.ngr']), 'Виконання');
+$('b-check').onclick = () => report(call(['--перевірити', '/пісочниця/програма.ngr']), 'Перевірка до запуску (без виконання)');
+$('b-seal').onclick = () => report(call(['--печатка', '/пісочниця/програма.ngr']), 'Печатка (без виконання)');
+$('b-expl').onclick = () => report(call(['--розбір', '/пісочниця/програма.ngr']), 'Розбір для людини (без виконання)');
+$('b-trace').onclick = () => {
+  const t = py.globals.get('last_trace')();
+  if (!t) return show('Сліду ще немає — спершу виконайте програму.', 'dim');
+  const lines = py.FS.readFile(t, {encoding: 'utf8'}).trim().split('\n').map(l => {
+    const r = JSON.parse(l); const skip = new Set(['№', 'подія', 'глибина', 'попередній', 'хеш']);
+    const rest = Object.entries(r).filter(([k]) => !skip.has(k)).map(([k, v]) => k + '=' + (typeof v === 'string' ? v : JSON.stringify(v)));
+    return `${r['№']}. ${r['подія']}  ${rest.join('  ')}`.slice(0, 400);
+  });
+  const v = JSON.parse(py.globals.get('ngr')(py.toPy(['--перевірити-слід', t, '/пісочниця/програма.ngr'])));
+  show('Підписаний слід останнього запуску (веде інтерпретатор, а не програма):\n\n' + lines.join('\n') + '\n\nПеревірка сліду:\n' + (v[1] || v[2]), v[0] === 0 ? '' : 'err');
+};
+$('b-py').onclick = () => {
+  if ($('b-py').dataset.hang) return show('Python тут не запускаємо: цей шаблон у звичайному рушії регулярок перебирає '
+    + 'варіанти хвилинами (ReDoS) і завісив би вкладку. Nigredo виконує той самий шаблон за лінійний час.', 'err');
+  const [code, out] = JSON.parse(py.globals.get('pyrun')($('py').value));
+  show(`Python — ${code === 0 ? 'виконано без помилки' : 'упав під час виконання'}\n\n${out}`, code === 0 ? '' : 'err');
+};
+boot();
+</script>
+</body>
+</html>

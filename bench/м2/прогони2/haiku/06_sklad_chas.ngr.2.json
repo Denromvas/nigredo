@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "🜂 「товари в мінусі: перший момент」 【「читати:дані」】\n※ рух — події в часі; початок — залишки на старті\n← rows δ 🜔читати 「дані/рух.json」\n← start δ 🜔читати 「дані/початок.json」\n← empty δ 「{}」\n※ стан: 【залишки, перші моменти мінусу】\n← fin Σ rows 【start empty】 Λ acc ev 《\n  ← t §ev 「товар」\n  ← bal §acc 0\n  ← firsts §acc 1\n  ← old ¿ ∋ bal t §bal t 0\n  ← new ＋ old §ev 「зміна」\n  ← bal2 ✎ bal t new\n  ← hit ∧ ‹ new 0 ¬ ∋ firsts t\n  ← firsts2 ¿ hit ✎ firsts t §ev 「час」 firsts\n  【bal2 firsts2】\n》\n← fl §fin 1\n← keys ↑ κ fl\n¿ ＝ ρ keys 0 » 「усе гаразд」 ∀ keys λt » 〔{t}: {§fl t}〕\n",
+  "відповідь": "```\n🜂 「товари в мінусі: перший момент」 【「читати:дані」】\n※ рух — події в часі; початок — залишки на старті\n← rows δ 🜔читати 「дані/рух.json」\n← start δ 🜔читати 「дані/початок.json」\n← empty δ 「{}」\n※ стан: 【залишки, перші моменти мінусу】\n← fin Σ rows 【start empty】 Λ acc ev 《\n  ← t §ev 「товар」\n  ← bal §acc 0\n  ← firsts §acc 1\n  ← old ¿ ∋ bal t §bal t 0\n  ← new ＋ old §ev 「зміна」\n  ← bal2 ✎ bal t new\n  ← hit ∧ ‹ new 0 ¬ ∋ firsts t\n  ← firsts2 ¿ hit ✎ firsts t §ev 「час」 firsts\n  【bal2 firsts2】\n》\n← fl §fin 1\n← keys ↑ κ fl\n¿ ＝ ρ keys 0 » 「усе гаразд」 ∀ keys λt » 〔{t}: {§fl t}〕\n```\n",
+  "код_виходу": 0,
+  "вивід": "болт: 09:20\nгайка: 09:10\n",
+  "помилки": ""
+ }
+]

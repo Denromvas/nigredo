@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import os\n\n\ndef читати(шлях):\n    імена = {}\n    with open(шлях, encoding=\"utf-8-sig\") as f:\n        for рядок in f:\n            ім = рядок.strip()\n            if ім:\n                імена.setdefault(ім.casefold(), ім)\n    return імена\n\n\ndef список(словник):\n    if not словник:\n        return \"—\"\n    return \", \".join(словник[k] for k in sorted(словник))\n\n\nвчора = читати(os.path.join(\"дані\", \"вчора.txt\"))\nсьогодні = читати(os.path.join(\"дані\", \"сьогодні.txt\"))\n\nдодано = {k: v for k, v in сьогодні.items() if k not in вчора}\nзникло = {k: v for k, v in вчора.items() if k not in сьогодні}\nлишилось = sum(1 for k in сьогодні if k in вчора)\n\nprint(f\"додано: {список(додано)}\")\nprint(f\"зникло: {список(зникло)}\")\nprint(f\"лишилось: {лишилось}\")\n",
+  "відповідь": "```python\nimport os\n\n\ndef читати(шлях):\n    імена = {}\n    with open(шлях, encoding=\"utf-8-sig\") as f:\n        for рядок in f:\n            ім = рядок.strip()\n            if ім:\n                імена.setdefault(ім.casefold(), ім)\n    return імена\n\n\ndef список(словник):\n    if not словник:\n        return \"—\"\n    return \", \".join(словник[k] for k in sorted(словник))\n\n\nвчора = читати(os.path.join(\"дані\", \"вчора.txt\"))\nсьогодні = читати(os.path.join(\"дані\", \"сьогодні.txt\"))\n\nдодано = {k: v for k, v in сьогодні.items() if k not in вчора}\nзникло = {k: v for k, v in вчора.items() if k not in сьогодні}\nлишилось = sum(1 for k in сьогодні if k in вчора)\n\nprint(f\"додано: {список(додано)}\")\nprint(f\"зникло: {список(зникло)}\")\nprint(f\"лишилось: {лишилось}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "додано: Богдан, Марко\nзникло: Анна, Денис\nлишилось: 2\n",
+  "помилки": ""
+ }
+]

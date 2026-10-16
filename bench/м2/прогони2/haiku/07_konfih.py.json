@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nimport os\n\nШЛЯХ = os.path.join(\"дані\", \"конфіги.json\")\n\nwith open(ШЛЯХ, encoding=\"utf-8\") as f:\n    конфіги = json.load(f)\n\n\ndef ланцюжок(назва):\n    шлях = []\n    поточна = назва\n    while поточна is not None and поточна in конфіги:\n        if поточна in шлях:\n            return None\n        шлях.append(поточна)\n        поточна = конфіги[поточна].get(\"успадковує\")\n    return шлях\n\n\ndef форматувати(значення):\n    if isinstance(значення, str):\n        return значення\n    return json.dumps(значення, ensure_ascii=False)\n\n\nfor назва in sorted(конфіги):\n    шлях = ланцюжок(назва)\n    if шлях is None:\n        print(f\"{назва}: цикл\")\n        continue\n    підсумок = {}\n    for предок in reversed(шлях):\n        підсумок.update(конфіги[предок].get(\"значення\", {}))\n    пари = [f\"{ключ}={форматувати(підсумок[ключ])}\" for ключ in sorted(підсумок)]\n    print(f\"{назва}: {', '.join(пари)}\" if пари else f\"{назва}:\")\n",
+  "відповідь": "```python\nimport json\nimport os\n\nШЛЯХ = os.path.join(\"дані\", \"конфіги.json\")\n\nwith open(ШЛЯХ, encoding=\"utf-8\") as f:\n    конфіги = json.load(f)\n\n\ndef ланцюжок(назва):\n    шлях = []\n    поточна = назва\n    while поточна is not None and поточна in конфіги:\n        if поточна in шлях:\n            return None\n        шлях.append(поточна)\n        поточна = конфіги[поточна].get(\"успадковує\")\n    return шлях\n\n\ndef форматувати(значення):\n    if isinstance(значення, str):\n        return значення\n    return json.dumps(значення, ensure_ascii=False)\n\n\nfor назва in sorted(конфіги):\n    шлях = ланцюжок(назва)\n    if шлях is None:\n        print(f\"{назва}: цикл\")\n        continue\n    підсумок = {}\n    for предок in reversed(шлях):\n        підсумок.update(конфіги[предок].get(\"значення\", {}))\n    пари = [f\"{ключ}={форматувати(підсумок[ключ])}\" for ключ in sorted(підсумок)]\n    print(f\"{назва}: {', '.join(пари)}\" if пари else f\"{назва}:\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "а: цикл\nб: цикл\nбаза: порт=80, хост=localhost\nв: цикл\nрозробка: налагодження=true, порт=8080, хост=localhost\nтест: налагодження=true, порт=8080, хост=test.local\n",
+  "помилки": ""
+ }
+]
