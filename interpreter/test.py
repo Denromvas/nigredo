@@ -555,6 +555,21 @@ def main():
         if r.returncode == 0 and r.stdout.strip() and float(r.stdout.split()[-1]) >= 1:
             leaks.append(f'{g_} {args_}')
     check(not leaks, 'канал завершення: КОЖЕН гліф після сумнівного «могло впасти» — не впевненіший', ', '.join(leaks))
+    # XML (χ ↘)
+    xml_ = ('<s:Виписка xmlns:s="urn:bank"><s:Рух тип="прихід"><s:Сума>100.25</s:Сума></s:Рух>'
+            '<s:Рух тип="видаток"><s:Сума>40</s:Сума></s:Рух><s:Рух тип="прихід"><s:Сума>0.75</s:Сума></s:Рух></s:Виписка>')
+    got = run(['-e', f'🜂\n← в χ 「{xml_}」\n» ∫ ↘ в 「s:Рух[@тип=\'прихід\']/s:Сума」 λe ν§e 「текст」\n» §в 「простір」\n'
+               f'» ＝ χ χ в в\n» ρ ↘ в 「//Сума」'], env)
+    check(got.stdout == '101\nurn:bank\n●\n3\n', 'XML: простори імен (s:Рух — локальна назва), відбір, сума, χ χ — без втрат',
+          got.stdout + got.stderr)
+    deep = '<a>' * 700 + '</a>' * 700
+    got = run(['-e', f'🜂\n» ☂ χ 「{deep}」 λe 「глибоко」'], env)
+    check(got.stdout == 'глибоко\n', 'XML: надто глибока вкладеність — помилка програми, не код 4', got.stdout + got.stderr[-200:])
+    got = run(['-e', '🜂\n» ☂ χ 『「тег」 「a b」』 λe 「погано」\n» ☂ χ 『「атрибути」 『』』 λe 「без тегу」\n'
+               '» χ 『「тег」 「x」 「атрибути」 『「a」 「\\"&<」』』'], env)
+    check(got.stdout.startswith('без тегу\n') or 'без тегу' in got.stdout, 'XML: запис — без тегу помилка; атрибути екрановано',
+          got.stdout + got.stderr)
+    check('&quot;&amp;&lt;' in got.stdout, 'XML: значення атрибута екрановано при записі', got.stdout)
     got = run(['-e', '🜂 「лише намір」\n» 1'], env)
     check(got.returncode == 0, 'печатка лише з наміром (без 【】) — без дозволів')
     seal = run(['--печатка', str(ROOT / 'examples' / 'ahent.ngr')], env).stdout

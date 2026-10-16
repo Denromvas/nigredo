@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import csv\nfrom datetime import date, timedelta\nfrom collections import defaultdict\n\nrooms = defaultdict(list)\nwith open(\"дані/бронювання.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n    for row in csv.DictReader(f):\n        room = row[\"кімната\"].strip()\n        a = date.fromisoformat(row[\"з\"].strip())\n        b = date.fromisoformat(row[\"по\"].strip())\n        if b < a:\n            a, b = b, a\n        rooms[room].append((a, b))\n\none = timedelta(days=1)\nfor room in sorted(rooms):\n    merged = []\n    for a, b in sorted(rooms[room]):\n        if merged and a <= merged[-1][1] + one:\n            if b > merged[-1][1]:\n                merged[-1][1] = b\n        else:\n            merged.append([a, b])\n    total = sum((b - a).days + 1 for a, b in merged)\n    parts = \", \".join(f\"{a.isoformat()}..{b.isoformat()}\" for a, b in merged)\n    print(f\"{room}: {parts} ({total} днів)\")\n",
+  "відповідь": "```python\nimport csv\nfrom datetime import date, timedelta\nfrom collections import defaultdict\n\nrooms = defaultdict(list)\nwith open(\"дані/бронювання.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n    for row in csv.DictReader(f):\n        room = row[\"кімната\"].strip()\n        a = date.fromisoformat(row[\"з\"].strip())\n        b = date.fromisoformat(row[\"по\"].strip())\n        if b < a:\n            a, b = b, a\n        rooms[room].append((a, b))\n\none = timedelta(days=1)\nfor room in sorted(rooms):\n    merged = []\n    for a, b in sorted(rooms[room]):\n        if merged and a <= merged[-1][1] + one:\n            if b > merged[-1][1]:\n                merged[-1][1] = b\n        else:\n            merged.append([a, b])\n    total = sum((b - a).days + 1 for a, b in merged)\n    parts = \", \".join(f\"{a.isoformat()}..{b.isoformat()}\" for a, b in merged)\n    print(f\"{room}: {parts} ({total} днів)\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "101: 2026-10-01..2026-10-06, 2026-10-10..2026-10-15 (12 днів)\n102: 2026-10-01..2026-10-02, 2026-10-05..2026-10-05 (3 днів)\n",
+  "помилки": ""
+ }
+]

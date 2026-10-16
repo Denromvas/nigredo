@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import re\nimport sys\nfrom collections import Counter\n\ndef main():\n    pat = re.compile(r'https?://[^\\s]+', re.IGNORECASE)\n    cnt = Counter()\n    with open('дані/запити.log', encoding='utf-8', errors='replace') as f:\n        for line in f:\n            m = pat.search(line)\n            if not m:\n                continue\n            addr = m.group(0)\n            rest = addr.split('://', 1)[1]\n            domain = re.split(r'[/:]', rest, 1)[0].lower()\n            if domain.startswith('www.'):\n                domain = domain[4:]\n            if domain:\n                cnt[domain] += 1\n    items = sorted(cnt.items(), key=lambda x: (-x[1], x[0]))[:3]\n    for d, n in items:\n        print(f\"{d} {n}\")\n\nmain()\n",
+  "відповідь": "```python\nimport re\nimport sys\nfrom collections import Counter\n\ndef main():\n    pat = re.compile(r'https?://[^\\s]+', re.IGNORECASE)\n    cnt = Counter()\n    with open('дані/запити.log', encoding='utf-8', errors='replace') as f:\n        for line in f:\n            m = pat.search(line)\n            if not m:\n                continue\n            addr = m.group(0)\n            rest = addr.split('://', 1)[1]\n            domain = re.split(r'[/:]', rest, 1)[0].lower()\n            if domain.startswith('www.'):\n                domain = domain[4:]\n            if domain:\n                cnt[domain] += 1\n    items = sorted(cnt.items(), key=lambda x: (-x[1], x[0]))[:3]\n    for d, n in items:\n        print(f\"{d} {n}\")\n\nmain()\n```\n",
+  "код_виходу": 0,
+  "вивід": "example.com 3\napi.example.com 2\ndocs.python.org 2\n",
+  "помилки": "/tmp/м2-run-ql871ngw/рішення.py:15: DeprecationWarning: 'maxsplit' is passed as positional argument\n  domain = re.split(r'[/:]', rest, 1)[0].lower()\n"
+ }
+]

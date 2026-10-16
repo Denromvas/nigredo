@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import csv\nfrom decimal import Decimal, getcontext\n\ngetcontext().prec = 200\n\n\ndef fmt(d):\n    if d == 0:\n        return \"0\"\n    return format(d.normalize(), \"f\")\n\n\ndef main():\n    groups = {}\n    with open(\"дані/виміри.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n        r = csv.reader(f)\n        next(r, None)\n        for row in r:\n            if not row:\n                continue\n            name = row[0].strip()\n            val = row[1].strip() if len(row) > 1 else \"\"\n            lst = groups.setdefault(name, [])\n            if val != \"\":\n                lst.append(Decimal(val))\n\n    for name in sorted(groups):\n        vals = sorted(groups[name])\n        n = len(vals)\n        if n == 0:\n            print(f\"{name}: —\")\n            continue\n        if n % 2:\n            m = vals[n // 2]\n        else:\n            m = (vals[n // 2 - 1] + vals[n // 2]) / 2\n        print(f\"{name}: {fmt(m)}\")\n\n\nmain()\n",
+  "відповідь": "```python\nimport csv\nfrom decimal import Decimal, getcontext\n\ngetcontext().prec = 200\n\n\ndef fmt(d):\n    if d == 0:\n        return \"0\"\n    return format(d.normalize(), \"f\")\n\n\ndef main():\n    groups = {}\n    with open(\"дані/виміри.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n        r = csv.reader(f)\n        next(r, None)\n        for row in r:\n            if not row:\n                continue\n            name = row[0].strip()\n            val = row[1].strip() if len(row) > 1 else \"\"\n            lst = groups.setdefault(name, [])\n            if val != \"\":\n                lst.append(Decimal(val))\n\n    for name in sorted(groups):\n        vals = sorted(groups[name])\n        n = len(vals)\n        if n == 0:\n            print(f\"{name}: —\")\n            continue\n        if n % 2:\n            m = vals[n // 2]\n        else:\n            m = (vals[n // 2 - 1] + vals[n // 2]) / 2\n        print(f\"{name}: {fmt(m)}\")\n\n\nmain()\n```\n",
+  "код_виходу": 0,
+  "вивід": "А: 2.5\nБ: 2\nВ: —\nГ: 0.15\nД: 3\n",
+  "помилки": ""
+ }
+]

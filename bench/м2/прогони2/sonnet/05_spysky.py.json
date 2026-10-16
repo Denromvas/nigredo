@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import os\n\n\ndef read_names(path):\n    result = {}\n    with open(path, encoding=\"utf-8\") as f:\n        for line in f:\n            name = line.strip()\n            if not name:\n                continue\n            key = name.casefold()\n            if key not in result:\n                result[key] = name\n    return result\n\n\ndef fmt(names):\n    names = sorted(names, key=lambda s: (s.casefold(), s))\n    return \", \".join(names) if names else \"—\"\n\n\ndef main():\n    base = \"дані\"\n    yesterday = read_names(os.path.join(base, \"вчора.txt\"))\n    today = read_names(os.path.join(base, \"сьогодні.txt\"))\n\n    added = [today[k] for k in today if k not in yesterday]\n    gone = [yesterday[k] for k in yesterday if k not in today]\n    kept = [k for k in today if k in yesterday]\n\n    print(\"додано: \" + fmt(added))\n    print(\"зникло: \" + fmt(gone))\n    print(\"лишилось: \" + str(len(kept)))\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "відповідь": "```python\nimport os\n\n\ndef read_names(path):\n    result = {}\n    with open(path, encoding=\"utf-8\") as f:\n        for line in f:\n            name = line.strip()\n            if not name:\n                continue\n            key = name.casefold()\n            if key not in result:\n                result[key] = name\n    return result\n\n\ndef fmt(names):\n    names = sorted(names, key=lambda s: (s.casefold(), s))\n    return \", \".join(names) if names else \"—\"\n\n\ndef main():\n    base = \"дані\"\n    yesterday = read_names(os.path.join(base, \"вчора.txt\"))\n    today = read_names(os.path.join(base, \"сьогодні.txt\"))\n\n    added = [today[k] for k in today if k not in yesterday]\n    gone = [yesterday[k] for k in yesterday if k not in today]\n    kept = [k for k in today if k in yesterday]\n\n    print(\"додано: \" + fmt(added))\n    print(\"зникло: \" + fmt(gone))\n    print(\"лишилось: \" + str(len(kept)))\n\n\nif __name__ == \"__main__\":\n    main()\n```\n",
+  "код_виходу": 0,
+  "вивід": "додано: Богдан, Марко\nзникло: Анна, Денис\nлишилось: 2\n",
+  "помилки": ""
+ }
+]

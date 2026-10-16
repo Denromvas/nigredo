@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import re\nfrom collections import Counter\n\npattern = re.compile(r'https?://[^\\s]+', re.IGNORECASE)\n\ncounter = Counter()\nwith open('дані/запити.log', encoding='utf-8', errors='replace') as f:\n    for line in f:\n        m = pattern.search(line)\n        if not m:\n            continue\n        url = m.group(0)\n        rest = url.split('://', 1)[1]\n        domain = re.split(r'[/:]', rest, 1)[0].lower()\n        if domain.startswith('www.'):\n            domain = domain[4:]\n        if domain:\n            counter[domain] += 1\n\ntop = sorted(counter.items(), key=lambda x: (-x[1], x[0]))[:3]\nfor domain, n in top:\n    print(f'{domain} {n}')\n",
+  "відповідь": "```python\nimport re\nfrom collections import Counter\n\npattern = re.compile(r'https?://[^\\s]+', re.IGNORECASE)\n\ncounter = Counter()\nwith open('дані/запити.log', encoding='utf-8', errors='replace') as f:\n    for line in f:\n        m = pattern.search(line)\n        if not m:\n            continue\n        url = m.group(0)\n        rest = url.split('://', 1)[1]\n        domain = re.split(r'[/:]', rest, 1)[0].lower()\n        if domain.startswith('www.'):\n            domain = domain[4:]\n        if domain:\n            counter[domain] += 1\n\ntop = sorted(counter.items(), key=lambda x: (-x[1], x[0]))[:3]\nfor domain, n in top:\n    print(f'{domain} {n}')\n```\n",
+  "код_виходу": 0,
+  "вивід": "example.com 3\napi.example.com 2\ndocs.python.org 2\n",
+  "помилки": "/tmp/м2-run-ugryn1f7/рішення.py:14: DeprecationWarning: 'maxsplit' is passed as positional argument\n  domain = re.split(r'[/:]', rest, 1)[0].lower()\n"
+ }
+]

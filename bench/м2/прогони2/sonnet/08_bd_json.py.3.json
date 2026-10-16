@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nimport sqlite3\nfrom collections import defaultdict\n\n\ndef main():\n    with open(\"дані/клієнти.json\", encoding=\"utf-8\") as f:\n        клієнти = json.load(f)\n\n    з = sqlite3.connect(\"дані/база.db\")\n    try:\n        рядки = з.execute(\n            \"SELECT клієнт_id, SUM(сума) FROM оплати WHERE статус = 'ок' GROUP BY клієнт_id\"\n        ).fetchall()\n    finally:\n        з.close()\n\n    суми = defaultdict(int)\n    імена = defaultdict(set)\n    for кid, сума in рядки:\n        ключ = str(кid)\n        if ключ not in клієнти:\n            continue\n        регіон = клієнти[ключ][\"регіон\"]\n        суми[регіон] += сума or 0\n        імена[регіон].add(клієнти[ключ][\"імʼя\"])\n\n    for регіон in sorted(суми, key=lambda р: (-суми[р], р)):\n        print(f\"{регіон}: {суми[регіон]} ({', '.join(sorted(імена[регіон]))})\")\n\n\nmain()\n",
+  "відповідь": "```python\nimport json\nimport sqlite3\nfrom collections import defaultdict\n\n\ndef main():\n    with open(\"дані/клієнти.json\", encoding=\"utf-8\") as f:\n        клієнти = json.load(f)\n\n    з = sqlite3.connect(\"дані/база.db\")\n    try:\n        рядки = з.execute(\n            \"SELECT клієнт_id, SUM(сума) FROM оплати WHERE статус = 'ок' GROUP BY клієнт_id\"\n        ).fetchall()\n    finally:\n        з.close()\n\n    суми = defaultdict(int)\n    імена = defaultdict(set)\n    for кid, сума in рядки:\n        ключ = str(кid)\n        if ключ not in клієнти:\n            continue\n        регіон = клієнти[ключ][\"регіон\"]\n        суми[регіон] += сума or 0\n        імена[регіон].add(клієнти[ключ][\"імʼя\"])\n\n    for регіон in sorted(суми, key=lambda р: (-суми[р], р)):\n        print(f\"{регіон}: {суми[регіон]} ({', '.join(sorted(імена[регіон]))})\")\n\n\nmain()\n```\n",
+  "код_виходу": 0,
+  "вивід": "захід: 240 (Денис, Оля)\nсхід: 75 (Петро)\n",
+  "помилки": ""
+ }
+]

@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nfrom decimal import Decimal\nfrom fractions import Fraction\n\nwith open(\"дані/поділ.json\", encoding=\"utf-8\") as f:\n    d = json.load(f)\n\nкопійки = int(Decimal(d[\"сума\"]) * 100)\nваги = d[\"ваги\"]\nвсього = sum(ваги.values())\n\nчастки = {}\nзалишки = {}\nfor імя, w in ваги.items():\n    точно = Fraction(копійки * w, всього) if всього else Fraction(0)\n    ц = точно.numerator // точно.denominator\n    частки[імя] = ц\n    залишки[імя] = точно - ц\n\nлишилось = копійки - sum(частки.values())\nпорядок = sorted(ваги, key=lambda n: (-залишки[n], n))\nfor n in порядок[:лишилось]:\n    частки[n] += 1\n\nfor n in sorted(ваги):\n    к = частки[n]\n    print(f\"{n}: {к // 100}.{к % 100:02d}\")\n",
+  "відповідь": "```python\nimport json\nfrom decimal import Decimal\nfrom fractions import Fraction\n\nwith open(\"дані/поділ.json\", encoding=\"utf-8\") as f:\n    d = json.load(f)\n\nкопійки = int(Decimal(d[\"сума\"]) * 100)\nваги = d[\"ваги\"]\nвсього = sum(ваги.values())\n\nчастки = {}\nзалишки = {}\nfor імя, w in ваги.items():\n    точно = Fraction(копійки * w, всього) if всього else Fraction(0)\n    ц = точно.numerator // точно.denominator\n    частки[імя] = ц\n    залишки[імя] = точно - ц\n\nлишилось = копійки - sum(частки.values())\nпорядок = sorted(ваги, key=lambda n: (-залишки[n], n))\nfor n in порядок[:лишилось]:\n    частки[n] += 1\n\nfor n in sorted(ваги):\n    к = частки[n]\n    print(f\"{n}: {к // 100}.{к % 100:02d}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "Анна: 500.00\nДенис: 166.67\nОля: 166.67\nПетро: 166.66\n",
+  "помилки": ""
+ }
+]

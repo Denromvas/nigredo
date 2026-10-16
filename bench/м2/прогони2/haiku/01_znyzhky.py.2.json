@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nfrom collections import defaultdict\nfrom decimal import Decimal, ROUND_HALF_UP\nfrom pathlib import Path\n\nDATA = Path(\"дані\")\nCENT = Decimal(\"0.01\")\n\n\ndef load(name):\n    with open(DATA / name, encoding=\"utf-8\") as f:\n        return json.load(f)\n\n\ndef main():\n    orders = load(\"замовлення.json\")\n    codes = load(\"коди.json\")\n\n    totals = defaultdict(Decimal)\n    for order in orders:\n        discount = Decimal(str(codes.get(order.get(\"код\"), 0)))\n        for item in order[\"позиції\"]:\n            price = Decimal(str(item[\"ціна\"]))\n            qty = Decimal(str(item[\"кількість\"]))\n            revenue = (price * qty * (100 - discount) / 100).quantize(\n                CENT, rounding=ROUND_HALF_UP\n            )\n            totals[item[\"категорія\"]] += revenue\n\n    for category, total in sorted(totals.items(), key=lambda kv: (-kv[1], kv[0])):\n        print(f\"{category}: {total:.2f}\")\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "відповідь": "```python\nimport json\nfrom collections import defaultdict\nfrom decimal import Decimal, ROUND_HALF_UP\nfrom pathlib import Path\n\nDATA = Path(\"дані\")\nCENT = Decimal(\"0.01\")\n\n\ndef load(name):\n    with open(DATA / name, encoding=\"utf-8\") as f:\n        return json.load(f)\n\n\ndef main():\n    orders = load(\"замовлення.json\")\n    codes = load(\"коди.json\")\n\n    totals = defaultdict(Decimal)\n    for order in orders:\n        discount = Decimal(str(codes.get(order.get(\"код\"), 0)))\n        for item in order[\"позиції\"]:\n            price = Decimal(str(item[\"ціна\"]))\n            qty = Decimal(str(item[\"кількість\"]))\n            revenue = (price * qty * (100 - discount) / 100).quantize(\n                CENT, rounding=ROUND_HALF_UP\n            )\n            totals[item[\"категорія\"]] += revenue\n\n    for category, total in sorted(totals.items(), key=lambda kv: (-kv[1], kv[0])):\n        print(f\"{category}: {total:.2f}\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n",
+  "код_виходу": 0,
+  "вивід": "напої: 584.87\nїжа: 265.33\n",
+  "помилки": ""
+ }
+]

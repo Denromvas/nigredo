@@ -130,6 +130,11 @@ GLYPHS = {
     '◷': (2, '◷ дата дата або ◷ дата дні', 'дати ISO (2026-10-15, 2026-10-15T09:30:00+03:00): дві дати — скільки днів від першої '
           'до другої (дріб, якщо є час); дата й число — дата через стільки днів', 'дати({0}, {1})', 'дані'),
     '▦': (1, '▦ текст', 'CSV → список словників (перший рядок — заголовки; значення — рядки)', 'csv({0})', 'дані'),
+    'χ': (1, 'χ текст | χ елемент', 'XML: рядок → елемент 『「тег」 … 「атрибути」 『…』 「текст」 … 「діти」 【…】』 (простори імен '
+          'знято з тегів; DTD і сутності — заборонено); елемент → рядок XML', 'xml({0})', 'дані'),
+    '↘': (2, '↘ елемент 「шлях」', 'XPath-підмножина: a/b — діти, //b — будь-де нижче, * — будь-який, [@атр=\'x\'] '
+          '[дитина=\'x\'] [n] — відбір, …/@атр — значення атрибутів; /a… — від самого елемента. → список',
+          'знайти в {0} шлях {1}', 'дані'),
     '⇡': (1, '⇡ рядок', 'великими літерами', 'великими({0})', 'дані'),
     '⊏': (3, '⊏ x від до', 'зріз рядка чи списку [від, до); відʼємні — з кінця; до ∅ — до кінця', '{0}[{1}…{2}]', 'дані'),
     '⊳': (2, '⊳ x що', 'позиція підрядка в рядку чи елемента в списку; ¯1 — немає', 'позиція {1} у {0}', 'дані'),
@@ -1200,7 +1205,7 @@ TYPE_REQ = {
     '∧': [(_B, _B)], '∨': [(_B, _B)], '¬': [(_B,)], '¿': [(_B, _A, _A)],
     'ρ': [(_S,), (_L,), (_D,)], '§': [(_L, _N), (_S, _N), (_D, _S)], '✂': [(_S, _S)], '⁀': [(_L, _S)],
     '⇄': [(_S, _S, _S)], '⊢': [(_S,)], '⇣': [(_S,)], '⇡': [(_S,)], 'ν': [(_S,)], 'δ': [(_S,)],
-    '◷': [(_S, _S), (_S, _N)], '▦': [(_S,)],
+    '◷': [(_S, _S), (_S, _N)], '▦': [(_S,)], 'χ': [(_S,), (_D,)], '↘': [(_D, _S)],
     '⌕': [(_S, _S)], '≋': [(_S, _S, _S)], '⊏': [(c, a, b) for c in (_S, _L) for a in (_N, 'none') for b in (_N, 'none')],
     '⊳': [(_S, _S), (_L, _A)], '∋': [(_S, _S), (_L, _A), (_D, _S)], 'κ': [(_D,)], 'ε': [(_D,)], '↑': [(_L,)],
     '↺': [(_S,), (_L,)], '✎': [(_D, _S, _A)], '⚗': [(_L, _N)], '≈': [(_A, _N)],
@@ -1211,7 +1216,7 @@ TYPE_REQ = {
 TYPE_RES = {'∫': _N, '－': _N, '×': _N, '÷': _N, '‰': _N, '⌊': _N, '≅': _N, 'ρ': _N, 'ν': _N, '±': _N, '⊳': _N,
             '＝': _B, '≠': _B, '‹': _B, '›': _B, '≤': _B, '≥': _B, '∧': _B, '∨': _B, '¬': _B, '∋': _B,
             'σ': _S, '⌗': _S, '⁀': _S, '⇄': _S, '⊢': _S, '⇣': _S, '⇡': _S, '≋': _S, 'Δ': _S,
-            '▦': _L, 'ε': _L, '‖': _L, '✂': _L, 'μ': _L, 'φ': _L, '⇅': _L, '↑': _L, '⌕': _L, 'κ': _L, '…': _L, '⚗': _L, '⌂': _L,
+            '▦': _L, 'ε': _L, '↘': _L, '‖': _L, '✂': _L, 'μ': _L, 'φ': _L, '⇅': _L, '↑': _L, '⌕': _L, 'κ': _L, '…': _L, '⚗': _L, '⌂': _L,
             '⊞': _D, '№': _D, '✎': _D, '∀': 'none', '»': 'none', '🜄': 'none', '☠': 'none'}
 TOOL_TYPES = {'оракул': ((_A,), _B), 'жереб': ((_N,), _N), 'час': ((), _S), 'файл.читати': ((_S,), _S),
               'файл.писати': ((_S, _S), 'none'), 'файл.список': ((_S,), _L), 'мережа.взяти': ((_S,), _S),
@@ -1990,6 +1995,146 @@ def regex(pat, g, pos):
             _RX_CACHE.clear()
         _RX_CACHE[pat] = r
     return r
+
+
+XML_MAX_DEPTH = 500
+
+
+def xml_parse(text, pos, max_size):
+    """XML → елемент (словник): тег (без простору імен), простір (якщо є), атрибути, текст (власний, без країв), діти.
+    DTD і сутності заборонено (XXE, «мільярд сміхів»): у документах даних вони не потрібні."""
+    import xml.etree.ElementTree as ET
+    import re as _re
+    if _re.search(r'<!\s*(DOCTYPE|ENTITY)', text, _re.I):
+        raise NgrError('χ: DTD і сутності (<!DOCTYPE, <!ENTITY) заборонено — небезпечні (XXE, «мільярд сміхів»)', pos)
+    try:
+        root = ET.fromstring(text.removeprefix('\ufeff'))
+    except ET.ParseError as e:
+        raise NgrError(f'χ: не XML ({e})', pos)
+
+    def local(name):
+        return name.rsplit('}', 1)[1] if name.startswith('{') else name, \
+            name[1:].split('}', 1)[0] if name.startswith('{') else None
+
+    def conv(el, depth):
+        if depth > XML_MAX_DEPTH:
+            raise NgrError(f'χ: вкладеність глибша за {XML_MAX_DEPTH}', pos)
+        tag, ns = local(el.tag)
+        attrs = {local(k)[0]: V(v) for k, v in el.attrib.items()}
+        text_ = ((el.text or '') + ''.join(ch.tail or '' for ch in el)).strip()
+        d = {'тег': V(tag)}
+        if ns:
+            d['простір'] = V(ns)
+        d['атрибути'] = V(attrs)
+        d['текст'] = V(text_)
+        d['діти'] = V([conv(ch, depth + 1) for ch in el])
+        return V(d)
+    res = conv(root, 1)
+    if res.n > max_size:
+        raise NgrError(f'χ: документ завеликий (понад --розмір {max_size})', pos)
+    return res
+
+
+def xml_write(el, pos):
+    """Елемент (словник з тег / атрибути / текст / діти) → рядок XML (екрановано; простір — як xmlns)."""
+    import xml.etree.ElementTree as ET
+
+    def build(x, depth, parent_ns=None):
+        if depth > XML_MAX_DEPTH:
+            raise NgrError(f'χ: вкладеність глибша за {XML_MAX_DEPTH}', pos)
+        if not isinstance(x.v, dict) or not isinstance(x.v.get('тег', V(None)).v, str):
+            raise NgrError('χ: елемент — словник із 「тег」 (рядок) і, за бажанням, 「атрибути」 「текст」 「діти」', pos)
+        d = x.v
+        tag = d['тег'].v
+        attrs = d.get('атрибути', V({})).v
+        if not isinstance(attrs, dict):
+            raise NgrError(f'χ: 「атрибути」 елемента «{safe(tag)}» — словник', pos)
+        try:
+            node = ET.Element(tag, {k: show(v) for k, v in attrs.items()})
+        except ValueError as e:
+            raise NgrError(f'χ: {e}', pos)
+        ns = d.get('простір', V(None)).v
+        if isinstance(ns, str) and ns != parent_ns:
+            node.set('xmlns', ns)
+        t = d.get('текст', V('')).v
+        node.text = show(V(t)) if t not in (None, '') else None
+        kids = d.get('діти', V([])).v
+        if not isinstance(kids, list):
+            raise NgrError(f'χ: 「діти」 елемента «{safe(tag)}» — список', pos)
+        for k in kids:
+            node.append(build(k, depth + 1, ns if isinstance(ns, str) else parent_ns))
+        return node
+    try:
+        return ET.tostring(build(el, 1), encoding='unicode')
+    except ValueError as e:
+        raise NgrError(f'χ: {e}', pos)
+
+
+def xml_path(root, path, pos):
+    """↘: підмножина XPath над елементами з χ. Без «/» на початку — від дітей елемента; «/a» — сам елемент має бути a."""
+    import re as _re
+    if not path:
+        raise NgrError('↘: порожній шлях', pos)
+    attr = None
+    m = _re.search(r'/@([^/\[\]]+)$', path) or _re.fullmatch(r'@([^/\[\]]+)', path)
+    if m:
+        attr = m.group(1)
+        path = path[:m.start()] if m.start() else ''
+    steps = []                     # (вниз_будь-де, імʼя, [умови])
+    i, absolute = 0, path.startswith('/') and not path.startswith('//')
+    rest = path[1:] if absolute else path
+    for raw in _re.findall(r'(/?/?)([^/\[]+(?:\[[^\]]*\])*)', '/' + rest if rest and not rest.startswith('/') else rest):
+        sep, step = raw
+        mm = _re.fullmatch(r'([^\[]+)((?:\[[^\]]*\])*)', step)
+        if not mm:
+            raise NgrError(f'↘: не розібрати крок «{safe(step)}»', pos)
+        conds = _re.findall(r'\[([^\]]*)\]', mm.group(2))
+        steps.append((sep == '//', mm.group(1).strip().split(':')[-1], conds))     # x:Рядок — локальна назва
+    if not steps and attr is None:
+        raise NgrError(f'↘: не розібрати шлях «{safe(path)}»', pos)
+
+    def kids(e):
+        return e.v['діти'].v if isinstance(e.v, dict) and isinstance(e.v.get('діти', V(None)).v, list) else []
+
+    def desc(e):
+        out = []
+        for k in kids(e):
+            out.append(k)
+            out.extend(desc(k))
+        return out
+
+    def ok(e, cond, idx):
+        cond = cond.strip()
+        if _re.fullmatch(r'\d+', cond):
+            return idx == int(cond)
+        mm = _re.fullmatch(r"(@?)([^=\s]+)\s*=\s*'([^']*)'", cond) or _re.fullmatch(r'(@?)([^=\s]+)\s*=\s*"([^"]*)"', cond)
+        if not mm:
+            raise NgrError(f'↘: умова «{safe(cond)}» — лише [@атр=\'x\'], [дитина=\'x\'] або [n]', pos)
+        if mm.group(1):
+            v = e.v['атрибути'].v.get(mm.group(2))
+            return v is not None and v.v == mm.group(3)
+        return any(k.v['тег'].v == mm.group(2) and k.v['текст'].v == mm.group(3) for k in kids(e))
+
+    def name_ok(e, name):
+        return name == '*' or e.v['тег'].v == name
+    if not isinstance(root.v, dict) or not isinstance(root.v.get('тег', V(None)).v, str):
+        raise NgrError('↘: перший аргумент — елемент із χ (словник із 「тег」)', pos)
+    cur = [root]
+    for n, (anywhere, name, conds) in enumerate(steps):
+        if absolute and n == 0:
+            pool = [[root]]
+        else:
+            pool = [desc(e) if anywhere else kids(e) for e in cur]
+        nxt = []
+        for group in pool:
+            sel = [e for e in group if name_ok(e, name)]
+            for c in conds:
+                sel = [e for i, e in enumerate(sel, 1) if ok(e, c, i)]
+            nxt.extend(sel)
+        cur = nxt
+    if attr is not None:
+        return V([e.v['атрибути'].v[attr] for e in cur if attr in e.v['атрибути'].v])
+    return V(cur)
 
 
 def _iso(s, pos):
@@ -3410,6 +3555,16 @@ class Interp:
             raise NgrError(f'∋: очікувався рядок, список чи словник, а не {kind(a[0])}', pos)
         if g == '◷':
             return V(date_op(a[0].v, a[1].v, pos))
+        if g == 'χ':
+            x = a[0].v
+            if isinstance(x, str):
+                return xml_parse(x, pos, self.max_size)
+            if isinstance(x, dict):
+                return V(xml_write(a[0], pos))
+            raise NgrError(f'χ: очікувався рядок XML або елемент (словник), а не {kind(a[0])}', pos)
+        if g == '↘':
+            self.need(a[0], 'словник', g, pos)
+            return xml_path(a[0], self.need(a[1], 'рядок', g, pos), pos)
         if g == '▦':
             import csv
             import io as _io
@@ -3783,6 +3938,7 @@ def cheatsheet():
             '- Імена склеюються з цифрами: `n15` — одне імʼя; пишіть `n 15`.',
             '- `∧ ∨` обчислюють ОБИДВА боки (не як and/or у Python): `∧ › ρxs 0 ＝ §xs 0 1` впаде на порожньому',
             '  списку; захист — `¿ › ρxs 0 ＝ §xs 0 1 ○` (¿ обчислює лише потрібну гілку).',
+            '- `χ` пише числа як число (12.50 → 12.5); суми в XML — рядком `⌗ x 2`.',
             '- SQLite рахує дроби у float: `SUM(сума)` дає `0.30000000000000004`; гроші — сумуйте в Nigredo (`∫`) або',
             '  зберігайте копійками (INTEGER).',
             '- `＋` зʼєднує рядки лише з рядками: `＋「№」 σn`; коротше — шаблон `〔№{n}〕`.',
