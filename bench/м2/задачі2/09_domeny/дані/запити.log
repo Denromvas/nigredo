@@ -1,0 +1,8 @@
+GET https://www.Example.com/a 200
+POST http://api.example.com:8080/v1 500
+GET https://example.com 200
+GET https://docs.python.org/3/ 200
+x http://API.example.com/health 200
+GET https://www.docs.python.org/x 404
+GET https://ukr.net/ 200
+GET http://example.com:80/ 301

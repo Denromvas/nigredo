@@ -1,0 +1,15 @@
+2026-10-14 09:15:02 ERROR обробка замовлення
+  Traceback (most recent call last):
+    File "a.py", line 3
+  ValueError: погана сума
+2026-10-14 09:16:00 INFO гаразд
+2026-10-14 09:20:11 ERROR знову
+  Traceback (most recent call last):
+  KeyError: 'id'
+2026-10-14 10:01:00 ERROR обгорнуто
+  ValueError: перша
+  During handling of the above exception, another exception occurred:
+  RuntimeError: друга
+2026-10-14 11:00:00 WARN без винятку: ValueError у тексті не рахується
+2026-10-14 12:30:30 ERROR кінець
+  ValueError: ще раз
