@@ -44,7 +44,10 @@ class Server(http.server.BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))) or b'{}')
         self.reply(json.dumps({'прийнято': True, '№': 7, 'отримано': body.get('сума')}, ensure_ascii=False), 'application/json')
 
+    hits = 0                  # скільки запитів отримав сервер (М7: під час повтору — жодного)
+
     def reply(self, text, ctype):
+        Server.hits += 1
         data = text.encode()
         self.send_response(200)
         self.send_header('Content-Type', f'{ctype}; charset=utf-8')
@@ -70,6 +73,28 @@ def run(cmd, cwd, env, times, reset):
         if p.returncode:
             return out, time.perf_counter() - t0, p.stderr.strip().splitlines()[-1:] or [f'код {p.returncode}']
     return out, time.perf_counter() - t0, None
+
+
+def held_out():
+    """М3 на відкладеному наборі: програми, які моделі написали з першої спроби обома мовами для задач bench/м2
+    (мову не налаштовували під ці задачі, рішення — не автора мови)."""
+    ratios, n = [], 0
+    for d in sorted((BENCH / 'м2').glob('прогони*/*')):
+        if not d.is_dir():
+            continue
+        for py in sorted(d.glob('*.py.json')):
+            ng = py.with_name(py.name.replace('.py.json', '.ngr.json'))
+            if not ng.exists():
+                continue
+            a, b = (json.loads(f.read_text(encoding='utf-8')) for f in (py, ng))
+            if a and b and a[0].get('гаразд') and b[0].get('гаразд'):
+                n += 1
+                ratios.append(tokens(b[0]['код'])['o200k_base'] / tokens(a[0]['код'])['o200k_base'])
+    if not ratios:
+        return '- **М3 на відкладеному наборі:** немає прогонів bench/м2.'
+    return (f'- **М3 на відкладеному наборі** (рішення моделей з першої спроби обома мовами, bench/м2, {n} пар): медіана '
+            f'Nigredo/Python з печаткою — **{statistics.median(ratios):.2f}** (задачі, під які мову не скорочували; програми '
+            f'писав не автор мови, а моделі з памʼяткою).')
 
 
 def main():
@@ -114,10 +139,11 @@ def main():
                 out, dt, err = run(cmd, d, dict(env, NIGREDO_TRACE_PATH_FILE=str(tpf)) if lang == 'ngr' else env,
                                    times, reset)
                 if lang == 'ngr':                                           # М7: останній запуск — повторити зі сліду
+                    hits0 = Server.hits
                     rp = subprocess.run([sys.executable, str(NGR), '--повторити', tpf.read_text(encoding='utf-8'),
                                          str(prog)], cwd=d, env=env, capture_output=True, text=True, timeout=120)
                     replayed = rp.returncode == 0 and rp.stdout == out[len(out) - len(rp.stdout):] and \
-                        '✓ повтор збігся' in rp.stderr
+                        '✓ повтор збігся' in rp.stderr and Server.hits == hits0      # і сервер не отримав жодного запиту
             finally:
                 if prog != src:
                     prog.unlink()
@@ -199,7 +225,8 @@ def report(rows, bugs=(), falses=()):
               f'- **М1 покриття:** Nigredo {n_ok}/{len(rows)}, Python {p_ok}/{len(rows)}.',
               (f'- **М3 довжина:** медіана Nigredo/Python **з печаткою — {tok_seal:.2f}**, без печаток — {tok:.2f} '
                f'({len(both)} спільних задач; умова 1.0: ≤ 1.00 з печаткою).') if tok else '- **М3:** немає спільних задач.',
-              f'- **М4 гарантії:** печатка й слід — у {n_ok} задачах Nigredo; у Python — 0 (нема чим обмежити й перевірити).',
+              f'- **М4 гарантії** (властивість мови, не вимір): печатка й слід — у {n_ok} задачах Nigredo; у самому Python '
+              f'такого засобу немає (обмежувати й перевіряти — засобами ОС і зовнішніми інструментами).',
               (f'- **М6 швидкість:** медіана часу Nigredo/Python = {spd:.2f} на всіх {len(both)} задачах з правильним '
                f'виводом обох, зокрема повільних (умова 1.0: ≤ 3.00).') if spd else '',
               (f'- **М5 помилки до запуску** (лише справжні помилки, {len(real)}): Nigredo {sum(b["ngr"] for b in real)}, '
@@ -207,9 +234,12 @@ def report(rows, bugs=(), falses=()):
                f'Ще {len(bugs) - len(real)} випадки — властивості моделі Nigredo (дозволи, перепризначення, регулярки без '
                f'відкатів), їх порівнювати з Python нечесно. Хибні тривоги на {len(falses)} правильних програмах: {fp}. '
                f'Умова 1.0: більше, ніж Python + pyflakes, і 0 хибних тривог.') if bugs else '',
-              f'- **М7 відтворюваність:** `ngr --повторити` останнього запуску збігся зі слідом у '
+              held_out(),
+              f'- **М7 відтворюваність** (перевірка наявності, не міра: повтор із записаними відповідями збігається за '
+              f'побудовою): `ngr --повторити` останнього запуску збігся зі слідом у '
               f'{sum(bool(r["ngr"] and r["ngr"].get("повтор")) for r in rows)} з {sum(bool(r["ngr"]) for r in rows)} '
-              f'задач Nigredo (без жодної дії у світі); у Python — 0 (нема сліду).',
+              f'задач Nigredo, і тестовий сервер під час повторів не отримав жодного запиту; Python як мова такого засобу '
+              f'не має (є зовнішні бібліотеки record/replay, напр. для HTTP).',
               '- **М2** — окремий прогін моделей на задачах поза памʼяткою: `bench/м2/РЕЗУЛЬТАТИ.md`.']
     if bugs:
         lines += ['', '## М5: навмисні помилки — чи впіймано до запуску', '',

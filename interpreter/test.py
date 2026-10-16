@@ -73,6 +73,15 @@ class Redirect(http.server.BaseHTTPRequestHandler):
         pass
 
 
+def type_sigs():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('nigredo_сиг', ROOT / 'interpreter' / 'nigredo.py')
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return {g: [[m.TYPE_NAMES.get(t, 'будь-що') for t in sig] for sig in sigs] for g, sigs in m.TYPE_REQ.items()
+            if g not in m.LAZY_GLYPHS and sigs}
+
+
 def main():
     tmp = pathlib.Path(tempfile.mkdtemp(prefix='ngr-test-'))
     home = tmp / 'власник'
@@ -393,6 +402,161 @@ def main():
     check(got.returncode == 0 and got.stdout == 'ок\n\n', 'процес: субагент із вужчою командою', got.stdout + got.stderr)
     got = run(['-e', '🜂 【「процес:sh -c」】\n» 🜁 「в」 【「процес:sh」】 1'], benv)
     check(got.returncode != 0, 'процес: субагент із ширшою командою — відмова', got.stderr)
+    # суд 7 (Мовознавець): правдивість ключа власника, код 4, точність, канал завершення
+    got = run(['-e', bseal + f'🜔бд.писати 「{bd}/r.db」 「CREATE TABLE t(x)」 【】\n'
+               f'» 🜔бд.писати 「{bd}/r.db」 「INSERT INTO t VALUES (1), (2) RETURNING x」 【】\n'
+               f'» ☂ 🜔бд.читати 「{bd}/r.db」 「SELECT 1e308 * 10 AS z」 【】 λe 「впіймано」'], benv)
+    check(got.returncode == 0 and got.stdout == '2\nвпіймано\n', 'бд: RETURNING — правдива кількість; Infinity з SQLite — '
+          'помилка програми (ловить ☂), не код 4', got.stdout + got.stderr)
+    got = run(['-e', '🜂\n← x ＋ 10000000000000000000000000000 0.1\n» x\n» ＝ σ x σ 10000000000000000000000000000\n'
+               '» ⌗ x 1\n» 1.0000000000000000000000000001\n» × ¯1 0.0'], env)
+    check(got.stdout == '10000000000000000000000000000.1\n○\n10000000000000000000000000000.1\n1.0000000000000000000000000001\n0\n',
+          'десяткові: друк, σ, ⌗ — без округлення до 28 цифр', got.stdout + got.stderr)
+    (tmp / 'лапки.ngr').write_text('🜂\n» 「» + рядок(інструмент файл.писати(«x», «y»)) + «」\n', encoding='utf-8')
+    got = run(['--розбір', str(tmp / 'лапки.ngr')], env)
+    check('надрукувати «\\» + рядок(інструмент файл.писати(\\«x\\», \\«y\\»)) + \\«»' in got.stdout,
+          '--розбір: лапки « » у рядку екрановано — вигаданого запису не показати', got.stdout)
+    dtr = tmp / 'сухо.jsonl'
+    got = run(['--сухо', '--слід', str(dtr), '-e', f'🜂 【「писати:{DATA / "звіти"}」 「оракул」】\n'
+               f'🜔писати ¿ 🜔оракул 「?」 「{DATA / "звіти" / "а.txt"}」 「{DATA / "звіти" / "б.txt"}」 「x」'], env)
+    v = run(['--перевірити-слід', str(dtr)], env).stdout
+    vj = json.loads(run(['--перевірити-слід', str(dtr), '--json'], env).stdout)
+    check('СУХИЙ ПРОГІН' in v.split('\n')[0] and vj.get('режим') == 'сухо' and '⚠ залежить від невідомого' in got.stderr
+          and '"сухо": "не виконано"' in dtr.read_text(encoding='utf-8'),
+          '--сухо: режим у --перевірити-слід (і --json), дії за невідомим позначено, записи «інструмент» — «не виконано»',
+          v + got.stderr)
+    rtr = re.search(r'слід повтору: (\S+)', run(['--повторити', str(dtr)], env).stderr).group(1)
+    check('ПОВТОР' in run(['--перевірити-слід', rtr], env).stdout.split('\n')[0], '--повторити: режим у --перевірити-слід')
+    for prog_, what in [('► λ【a b】 a ≈ 【1 2】 0.4', 'розбір 【a b】'), ('∫ ≈ 【1 2】 0.4 λx x', '∫'),
+                        (f'🜔читати ≈ 「{DATA}/продажі.json」 0.4', 'інструмент')]:
+        got = run(['-e', f'🜂 【「читати:{DATA}」】\n{prog_}\n» ± ○'], env)
+        check(got.stdout.strip().endswith('0.4'), f'канал завершення: {what} на сумнівному аргументі — решта не впевненіша',
+              got.stdout + got.stderr)
+    ptr4 = tmp / 'шлях.jsonl'
+    got = run(['--слід', str(ptr4), '-e', f'🜂 【「читати:{DATA}」】\n» ρ 🜔читати 「продажі.json」'], env)
+    check(f'"шлях": ["{DATA / "продажі.json"}"]' in ptr4.read_text(encoding='utf-8'), 'шлях один раз: справжній шлях — у сліді',
+          ptr4.read_text(encoding='utf-8')[-600:])
+    ptr5 = tmp / 'шлях2.jsonl'
+    got = run(['--слід', str(ptr5), '-e', f'🜂 【「читати:{DATA / "звіти"}」】\n» 🜔читати 「продажі.json」', '--тека', str(DATA)], env)
+    check(got.returncode == 1 and 'поза дозволеним' in got.stderr and '"заборонено"' in ptr5.read_text(encoding='utf-8'),
+          'шлях один раз: наявний файл поза дозволом — відмова й «заборонено», а не інший файл', got.stderr)
+    (DATA / 'звіти' / 'продажі.json').unlink(missing_ok=True)      # чистий стан (не від попереднього прогону)
+    got = run(['-e', f'🜂 【「писати:{DATA / "звіти"}」】\n🜔писати 「продажі.json」 「x」', '--тека', str(DATA)], env)
+    check(got.returncode == 1 and not (DATA / 'звіти' / 'продажі.json').exists(),
+          'шлях один раз: запис у наявний файл поза дозволом — відмова, а не тихо в теку з печатки', got.stderr)
+    got = run(['-e', f'🜂 【「писати:{DATA / "звіти"}」】\n🜔писати 「звіти/../продажі.json」 「x」', '--тека', str(DATA)], env)
+    check(got.returncode == 1, 'шлях один раз: «теку/../файл» — не переносити в теку з печатки', got.stderr)
+    got = run(['-e', '🜂\n» ▦ δ 「"\\\\ufeffa,b\\\\n1,2"」'], env)
+    check(got.stdout == '【『「a」 「1」 「b」 「2」』】\n', '▦: BOM на початку знято (не частина ключа)', got.stdout)
+    got = run(['-e', '🜂\n» ∑ 【1】 λx x'], env)
+    check(got.returncode == 2 and '∫' in got.stderr, 'схожий гліф ∑ — підказка ∫ / Σ', got.stderr)
+    # суд 7 (Скептик)
+    ntr = tmp / 'мережа_заборонено.jsonl'
+    got = run(['--слід', str(ntr), '-e', f'🜂 【「взяти:127.0.0.1:{port}」】\n» ☂ 🜔взяти 「http://example.com/витік?секрет=1」 λe 「ні」'], env)
+    v = run(['--перевірити-слід', str(ntr)], env).stdout
+    check('спроб поза правами («заборонено»): 1' in v and 'example.com' in v,
+          'мережа поза печаткою — «заборонено» у сліді й підсумку (спроба витоку не проходить як чистий запуск)', v)
+    got = run(['--сухо', '-e', f'🜂 【「взяти:127.0.0.1:{port}」 「оракул」】\n← т 🜔взяти 〔http://127.0.0.1:{port}/сайт/x〕\n'
+               f'» ± т\n¿ ＝ т 「‹сухо›」 » 「сухо!」 » 「справжній」'], env)
+    check(got.stdout.startswith('0\n') and 'мережа.взяти' in got.stderr and 'рішення програми залежали від невідомих' in got.stderr,
+          '--сухо: взяти теж не виконується (адреса виносить дані); попередження, що рішення залежали від невідомого',
+          got.stdout + got.stderr)
+    md = tmp / 'повтор_модуль'
+    md.mkdir()
+    (md / 'м.ngr').write_text('🜂\n← f λx ＋ x 1\n', encoding='utf-8')
+    (md / 'п.ngr').write_text('🜂\n⊃ 「м.ngr」 【「f」】\n» f 1\n', encoding='utf-8')
+    run(['--слід', str(md / 'с.jsonl'), str(md / 'п.ngr')], env)
+    (md / 'м.ngr').write_text('🜂\n← f λx ＋ x 100\n', encoding='utf-8')
+    got = run(['--повторити', str(md / 'с.jsonl')], env)
+    check(got.returncode == 1 and 'ІНШИЙ' in got.stderr, '--повторити: модуль змінено — відмова (звіряє sha256 модулів)', got.stderr)
+    for csv_, what in [('「a,a\n1,2」', 'однакові заголовки'), ('「a,b\n1,2,3」', 'полів'), ('「a,b\n1」', 'полів'),
+                       ('「a\n\"незакрита」', 'не CSV')]:
+        got = run(['-e', f'🜂\n» ☂ ▦ {csv_} λe e'], env)
+        check(got.returncode == 0 and what in got.stdout, f'▦: {what} — помилка, а не тиха втрата', got.stdout + got.stderr)
+    got = run(['-e', '🜂\n» ρ §§▦ ＋ 「a\n」 ⁀ μ …1 200000 λi 「x」 「」 0 「a」'], env)
+    check(got.stdout == '200000\n', '▦: дуже довге поле — не код 4', got.stdout + got.stderr[-300:])
+    got = run(['-e', '🜂\n» ☂ ◷ 「2026-W42-1」 1 λe 「ні」\n» ☂ ◷ 「20261015」 1 λe 「ні」\n» ◷ 「2026-10-15T09:30Z」 1'], env)
+    check(got.stdout == 'ні\nні\n2026-10-16T09:30:00+00:00\n', '◷: лише обіцяний ISO-формат', got.stdout + got.stderr)
+    got = run(['-e', '🜂\n» ⌊ ÷ 1000000000000000000000000000000 7'], env)
+    check(got.stdout == '142857142857142857142857142857\n', '⌊ ÷ великих цілих — правильне ціле', got.stdout + got.stderr)
+    rtr2 = tmp / 'піднято.jsonl'
+    run(['--слід', str(rtr2), '-e', '🜂 【「оракул」】\n» ≈ 🜔оракул 「?」 1'], env)
+    check('ПІДНЯЛА впевненість' in run(['--перевірити-слід', str(rtr2)], env).stdout, '≈, що підняв впевненість, — у підсумку сліду')
+    got = run(['-e', '🜂\n» δ 「"\\u200b"」\n» 「⟨U+200B⟩」'], env)
+    a1, a2 = got.stdout.split('\n')[:2]
+    check(a1 != a2 and a1 == '⟨U+200B⟩', 'невидимий символ і текст «⟨U+200B⟩» — розрізняються у виводі', got.stdout)
+    got = run(['-e', bseal + f'» ☂ 🜔бд.писати 「{bd}/велика.db」 「CREATE TABLE b AS SELECT zeroblob(70000000) AS z」 【】 λe 「межа」'], benv)
+    check(got.stdout == 'межа\n', 'бд.писати: база не росте понад межу (zeroblob)', got.stdout + got.stderr)
+    str_ = tmp / 'бд_заборонено.jsonl'
+    run(['--слід', str(str_), '-e', bseal + f'» ☂ 🜔бд.читати 「{bd}/a.db」 「DELETE FROM t」 【】 λe 1\n'
+         f"» ☂ 🜔бд.писати 「{bd}/a.db」 「ATTACH '{tmp}/x.db' AS x」 【】 λe 2"], benv)
+    check('спроб поза правами («заборонено»): 2' in run(['--перевірити-слід', str(str_)], benv).stdout,
+          'SQLite: відмови білого списку (зміна через бд.читати, ATTACH) — «заборонено» в підсумку сліду')
+    # суд 7 (Новачок)
+    got = run(['-e', bseal + f'» ☂ ρ 🜔бд.читати 「{bd}/a.db」 「SELECT group_concat(hex(zeroblob(200000000))) AS z」 【】 λe 「межа」'], benv)
+    check(got.stdout == 'межа\n', 'бд.читати: памʼять SQLite обмежено — помилка програми, не код 4', got.stdout + got.stderr[-300:])
+    got = run(['--перевірити', '-e', '🜂\n» ‖ 【1】 λx x\n» ‖ 【1】 λx ＋ x 1'], env)
+    check(got.stdout.count('‖ список') == 2, '--перевірити: усі помилки ‖, а не лише перша', got.stdout)
+    short = run(['--памʼятка-коротка'], env).stdout
+    check('бд.читати:тека' in short and 'процес:git status' in short and '‖ список' in short and 'Шлях' in short,
+          'коротка памʼятка (MCP): дозволи бд/процес, правило шляхів, обмеження ‖', short[:500])
+    # суд 7 (Аудитор)
+    got = run(['-e', bseal + f'🜔бд.писати 「{bd}/v.db」 「CREATE TABLE t(x)」 【】\n🜔бд.писати 「{bd}/v.db」 「CREATE VIEW в AS SELECT x FROM t」 【】\n'
+               f'🜔бд.писати 「{bd}/v.db」 「CREATE TRIGGER тр AFTER INSERT ON t BEGIN SELECT 1; END」 【】\n'
+               f'🜔бд.писати 「{bd}/v.db」 「DROP VIEW в」 【】\n» 🜔бд.писати 「{bd}/v.db」 「DROP TRIGGER тр」 【】'], benv)
+    check(got.returncode == 0, 'бд.писати: DROP VIEW і DROP TRIGGER — дозволено, як обіцяє печатка', got.stderr)
+    got = run(['-e', '🜂 【「процес:sh」】\n» 🜔процес 【「sh」 「-c」 「echo $0」】'], benv)
+    check(got.stdout == 'sh\n\n', 'процес: argv[0] — як дозволено (busybox/toybox не обрати іншу команду)', got.stdout + got.stderr)
+    got = run(['--сухо', '-e', f'🜂 【「писати читати:{DATA / "звіти"}」】\n🜔писати 「{DATA / "звіти" / "с.txt"}」 「x」\n'
+               f'» ± 🜔читати 「{DATA / "звіти" / "звіт_є.txt"}」'.replace('звіт_є.txt', 'шлях_раз.txt')], env)
+    check(got.stdout == '0\n', '--сухо: читання після придушеного запису — невідоме (світ уже не той)', got.stdout + got.stderr)
+    got = run(['-e', '🜂 【「оракул」】\n← д 『「а」 1』\n← в 🜔оракул 「?」\n◷ ¿ ¬в 「2026-10-01」 「не дата」 0\n» ± σ д\n» ± ρ д'], env)
+    vals = got.stdout.split()
+    check(len(vals) == 2 and all(float(v) < 1 for v in vals), 'канал завершення: σ, ρ давніх значень після сумнівного '
+          '«могло впасти» — не впевненіші (суд 7)', got.stdout + got.stderr)
+    # суд 7 (Оркестратор)
+    got = run(['-e', bseal + f'» ☂ 🜔бд.читати 「{bd}/a.db」 「SELECT length(randomblob(200000000)) AS n」 【】 λe 「межа」\n'
+               f'🜔бд.писати 「{bd}/тр.db」 「CREATE TABLE ж(x)」 【】\n🜔бд.писати 「{bd}/тр.db」 「CREATE TABLE в(x)」 【】\n'
+               f'🜔бд.писати 「{bd}/тр.db」 「INSERT INTO в VALUES (1), (2), (3)」 【】\n'
+               f'🜔бд.писати 「{bd}/тр.db」 「CREATE TRIGGER т AFTER INSERT ON ж BEGIN DELETE FROM в; END」 【】\n'
+               f'» 🜔бд.писати 「{bd}/тр.db」 「INSERT INTO ж VALUES (1)」 【】'], benv)
+    check(got.stdout == 'межа\n4\n', 'SQLite: значення понад --розмір — помилка; зміни тригерів — у кількості змінених рядків',
+          got.stdout + got.stderr)
+    # суд 7, раунд 2
+    got = run(['-e', bseal + f'🜔бд.писати 「{bd}/і.db」 「CREATE TABLE t(x)」 【】\n🜔бд.писати 「{bd}/і.db」 「CREATE INDEX ix ON t(x)」 【】\n'
+               f'🜔бд.писати 「{bd}/і.db」 「CREATE TRIGGER тр AFTER INSERT ON t BEGIN SELECT 1; END」 【】\n'
+               f'🜔бд.писати 「{bd}/і.db」 「DROP INDEX ix」 【】\n» 🜔бд.писати 「{bd}/і.db」 「DROP TABLE t」 【】'], benv)
+    check(got.returncode == 0, 'бд.писати: кожна дія з опису (CREATE/DROP INDEX, DROP TABLE з тригером) — дозволена', got.stderr)
+    multi = tmp / 'мульти'
+    multi.mkdir()
+    (multi / 'multi').write_text('#!/bin/sh\necho "вибрано: $(basename "$0")"\n')
+    (multi / 'multi').chmod(0o755)
+    os.symlink(multi / 'multi', multi / 'ехо2')
+    mh = tmp / 'власник_мульти'
+    mh.mkdir()
+    (mh / 'дозволи.json').write_text(json.dumps({'дозволено': ['процес:ехо2']}, ensure_ascii=False), encoding='utf-8')
+    got = run(['-e', '🜂 【「процес:ехо2」】\n» 🜔процес 【「ехо2」】'],
+              dict(env, NIGREDO_HOME=str(mh), PATH=f'{multi}{os.pathsep}{os.environ.get("PATH", "")}'))
+    check(got.stdout == 'вибрано: ехо2\n\n', 'процес: багатокомандний файл (як busybox) бачить дозволене імʼя, а не ціль симлінка',
+          got.stdout + got.stderr)
+    got = run(['-e', '🜂\n» ☂ ▦ 「клієнт,сума\nПетро,1,50」 λe 「помилка」'], env)
+    check(got.stdout == 'помилка\n', '▦: десяткова кома (зайве поле) — помилка, а не тихо загублені копійки', got.stdout)
+    got = run(['--розбір', '-e', f'🜂 【「читати:{DATA}」】\n» 🜔читати 「x.json」'], env)
+    check('від єдиної теки з печатки' in got.stdout, '--розбір: правило «шлях один раз» названо', got.stdout)
+    sample = {'число': '3', 'рядок': '「аб」', 'список': '【1 2】', 'словник': '『「а」 1』', '●/○': '●', 'функція': 'λx x',
+              'будь-що': '1'}
+    halt = '🜂 【「оракул」】\n← в 🜔оракул 「?」\n◷ ¿ ¬в 「2026-10-01」 「не дата」 0\n'
+    leaks = []
+    for g_, sigs in type_sigs().items():
+        if g_ in '≈±⌂':
+            continue
+        args_ = ' '.join(sample.get(t, '1') for t in sigs[0])
+        r = run(['-e', halt + f'» ± {g_} {args_}'], env)
+        if r.returncode == 0 and r.stdout.strip() and float(r.stdout.split()[-1]) >= 1:
+            leaks.append(f'{g_} {args_}')
+    check(not leaks, 'канал завершення: КОЖЕН гліф після сумнівного «могло впасти» — не впевненіший', ', '.join(leaks))
+    got = run(['-e', '🜂 「лише намір」\n» 1'], env)
+    check(got.returncode == 0, 'печатка лише з наміром (без 【】) — без дозволів')
     seal = run(['--печатка', str(ROOT / 'examples' / 'ahent.ngr')], env).stdout
     check('права теки: немає' in seal and 'намір (слова автора): 「' in seal and 'необхідно, але не досить' in seal,
           '--печатка: слова автора в 「」, «права теки: немає», «необхідно, але не досить»', seal)
@@ -425,6 +589,20 @@ def main():
           and len(out) >= 3 and any('спроб поза правами немає' in t for t in out)
           and len(res[3]['content']) == 2 and '"в_межах": true' in res[3]['content'][1]['text'],
           'MCP: невидиме — ⟨U+…⟩, окремі блоки, підсумок сліду, печатка з JSON', got.stdout[-800:] + got.stderr)
+    trace_name = next(re.search(r'слід: (\S+\.jsonl)', t).group(1) for t in out if t.startswith('слід: '))
+    reqs = [{'jsonrpc': '2.0', 'id': 4, 'method': 'tools/call', 'params': {'name': 'nigredo_povtoryty', 'arguments': {
+                'path': os.path.basename(trace_name)}}},
+            {'jsonrpc': '2.0', 'id': 5, 'method': 'tools/call', 'params': {'name': 'nigredo_povtoryty', 'arguments': {
+                'path': '../../x.jsonl'}}},
+            {'jsonrpc': '2.0', 'id': 6, 'method': 'tools/call', 'params': {'name': 'nigredo_vykonaty', 'arguments': {
+                'code': f'🜂 【「писати:{DATA / "звіти"}」】\n🜔писати 「{DATA / "звіти" / "mcp_сухо.txt"}」 「x」', 'suho': True}}}]
+    got = subprocess.run([sys.executable, str(mcp)], input=''.join(json.dumps(r) + '\n' for r in reqs),
+                         capture_output=True, text=True, env=dict(env, NIGREDO_WORKDIR=str(work)))
+    res = {m['id']: m.get('result', {}) for m in map(json.loads, got.stdout.splitlines())}
+    txt = lambda i: '\n'.join(c['text'] for c in res[i]['content'])      # noqa: E731
+    check(not res[4].get('isError') and '✓ повтор збігся' in txt(4) and res[5].get('isError')
+          and '1 дій не виконано' in txt(6) and not (DATA / 'звіти' / 'mcp_сухо.txt').exists(),
+          'MCP: nigredo_povtoryty (лише сліди власника) і nigredo_vykonaty з suho', got.stdout[-800:] + got.stderr)
 
     # браузер на Nigredo — проти локальної сторінки (печатка — на тестовий хост)
     src = (ROOT / 'браузер' / 'браузер.ngr').read_text(encoding='utf-8').split('\n', 1)[1]
@@ -470,6 +648,21 @@ def main():
     spec.loader.exec_module(M)
     import decimal
     decimal.setcontext(M.DEC_CTX.copy())
+    itr = tmp / 'внутрішня.jsonl'                     # код 4: у сліді — внутрішня помилка й останній виклик (суд 7)
+    saved_tool = M.TOOLS['час']
+
+    def boom(*a):
+        raise RuntimeError('імітована вада')
+    M.TOOLS['час'] = saved_tool[:5] + (boom,)
+    try:
+        import contextlib
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            rc4 = M.main(['--слід', str(itr), '-e', '🜂 【「час」】\n» 🜔час'])
+    finally:
+        M.TOOLS['час'] = saved_tool
+    v4 = run(['--перевірити-слід', str(itr)], env).stdout
+    check(rc4 == 4 and 'ВНУТРІШНЯ ПОМИЛКА' in v4 and '"останній_виклик"' in itr.read_text(encoding='utf-8'),
+          'код 4: слід називає внутрішню помилку й останній виклик інструмента', v4)
     it = M.Interp(lambda *a, **k: None, out=io.StringIO())
     it.replay = ([{'подія': 'інструмент', 'назва': 'час', 'аргументи': [], 'значення': 'x'}], {'x': '2026'})
     try:
