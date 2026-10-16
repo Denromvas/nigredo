@@ -18,6 +18,7 @@ import tempfile
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 SET = sys.argv[sys.argv.index('--набір') + 1] if '--набір' in sys.argv else 'задачі'
+RUNS = int(sys.argv[sys.argv.index('--повторів') + 1]) if '--повторів' in sys.argv else 1   # незалежних прогонів на задачу
 SUFFIX = SET.removeprefix('задачі')                  # '' для першого набору, '2' для другого
 TASKS = sorted(p for p in (HERE / SET).iterdir() if p.is_dir())
 MEMO = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
@@ -74,11 +75,11 @@ def main(models):
         for task in TASKS:
             text = (task / 'завдання.md').read_text(encoding='utf-8')
             want = norm((task / 'очікується.txt').read_text(encoding='utf-8'))
-            for lang in ('py', 'ngr'):
-                base = OUT / model / f'{task.name}.{lang}'
-                done = base.with_suffix(f'.{lang}.json')
+            for lang, run_i in [(l, r) for r in range(RUNS) for l in ('py', 'ngr')]:
+                base = OUT / model / (f'{task.name}.{lang}' if run_i == 0 else f'{task.name}.{lang}.{run_i + 1}')
+                done = base.with_suffix(base.suffix + '.json') if run_i else base.with_suffix(f'.{lang}.json')
                 if done.exists():                       # продовжує після обриву
-                    rows[(model, task.name, lang)] = json.loads(done.read_text(encoding='utf-8'))
+                    rows.setdefault((model, task.name, lang), []).append(json.loads(done.read_text(encoding='utf-8')))
                     continue
                 prompt = INTRO[lang] + text
                 res = []
@@ -99,8 +100,8 @@ def main(models):
                               f'Очікувався вивід:\n{want}\n\nВиправ програму.')
                 done.parent.mkdir(parents=True, exist_ok=True)
                 done.write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding='utf-8')
-                rows[(model, task.name, lang)] = res
-                print(model, task.name, lang, ['✓' if r.get('гаразд') else '✗' for r in res], flush=True)
+                rows.setdefault((model, task.name, lang), []).append(res)
+                print(model, task.name, lang, run_i + 1, ['✓' if r.get('гаразд') else '✗' for r in res], flush=True)
     report(models, rows)
 
 
@@ -115,20 +116,29 @@ def report(models, rows):
         for task in TASKS:
             cells = []
             for lang in ('py', 'ngr'):
-                res = rows.get((model, task.name, lang), [])
-                ok = [r['спроба'] for r in res if r.get('гаразд')]
-                cells.append(f'✓{ok[0]}' if ok else ('помилка моделі' if res and 'помилка_моделі' in res[-1] else '✗'))
-                if ok:
-                    tot[lang][0] += ok[0] == 1
-                    tot[lang][1] += 1
+                runs = rows.get((model, task.name, lang), [])
+                firsts = [next((r['спроба'] for r in res if r.get('гаразд')), None) for res in runs]
+                one, two = sum(f == 1 for f in firsts), sum(f is not None for f in firsts)
+                if len(runs) == 1:
+                    res = runs[0]
+                    cells.append(f'✓{firsts[0]}' if firsts[0] else ('помилка моделі' if res and 'помилка_моделі' in res[-1] else '✗'))
+                else:
+                    cells.append(f'{one}/{len(runs)} (за 2 спроби {two}/{len(runs)})')
+                tot[lang][0] += one
+                tot[lang][1] += two
+                tot[lang].append(len(runs))
             L.append(f'| {task.name} | {cells[0]} | {cells[1]} |')
-        n = len(TASKS)
-        L += ['', f'**З першої спроби:** Python {tot["py"][0]}/{n}, Nigredo {tot["ngr"][0]}/{n}. '
-                  f'**За дві спроби:** Python {tot["py"][1]}/{n}, Nigredo {tot["ngr"][1]}/{n}.', '']
-    (HERE / f'РЕЗУЛЬТАТИ{SUFFIX}.md').write_text('\n'.join(L), encoding='utf-8')
+        np_, nn = sum(tot['py'][2:]), sum(tot['ngr'][2:])
+        L += ['', f'**З першої спроби:** Python {tot["py"][0]}/{np_}, Nigredo {tot["ngr"][0]}/{nn}. '
+                  f'**За дві спроби:** Python {tot["py"][1]}/{np_}, Nigredo {tot["ngr"][1]}/{nn}.', '']
+    out = HERE / f'РЕЗУЛЬТАТИ{SUFFIX}.md'
+    old = out.read_text(encoding='utf-8') if out.exists() else ''
+    keep = old[old.index('\n## Висновок'):] if '\n## Висновок' in old else ''   # висновок пише людина — не стирати
+    out.write_text('\n'.join(L) + keep, encoding='utf-8')
     print('\n'.join(L))
 
 
 if __name__ == '__main__':
-    args = [a for i, a in enumerate(sys.argv[1:]) if a != '--набір' and sys.argv[i] != '--набір']
+    args = [a for i, a in enumerate(sys.argv[1:]) if a not in ('--набір', '--повторів')
+            and sys.argv[i] not in ('--набір', '--повторів')]
     main(args or ['sonnet'])

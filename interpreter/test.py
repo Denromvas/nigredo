@@ -427,9 +427,17 @@ def main():
     got = run(['--слід', str(ptr4), '-e', f'🜂 【「читати:{DATA}」】\n» ρ 🜔читати 「продажі.json」'], env)
     check(f'"шлях": ["{DATA / "продажі.json"}"]' in ptr4.read_text(encoding='utf-8'), 'шлях один раз: справжній шлях — у сліді',
           ptr4.read_text(encoding='utf-8')[-600:])
-    got = run(['-e', f'🜂 【「читати:{DATA / "звіти"}」】\n» 🜔читати 「продажі.json」', '--тека', str(DATA)], env)
-    check(got.returncode == 1 and 'поза дозволеним' in got.stderr and 'такого файлу немає' in got.stderr,
-          'шлях один раз: файл є від теки програми, але поза дозволом — «поза дозволеним», а не «немає файлу»', got.stderr)
+    ptr5 = tmp / 'шлях2.jsonl'
+    got = run(['--слід', str(ptr5), '-e', f'🜂 【「читати:{DATA / "звіти"}」】\n» 🜔читати 「продажі.json」', '--тека', str(DATA)], env)
+    check(got.returncode == 1 and 'поза дозволеним' in got.stderr and '"заборонено"' in ptr5.read_text(encoding='utf-8'),
+          'шлях один раз: наявний файл поза дозволом — відмова й «заборонено», а не інший файл', got.stderr)
+    got = run(['-e', f'🜂 【「писати:{DATA / "звіти"}」】\n🜔писати 「продажі.json」 「x」', '--тека', str(DATA)], env)
+    check(got.returncode == 1 and not (DATA / 'звіти' / 'продажі.json').exists(),
+          'шлях один раз: запис у наявний файл поза дозволом — відмова, а не тихо в теку з печатки', got.stderr)
+    got = run(['-e', f'🜂 【「писати:{DATA / "звіти"}」】\n🜔писати 「звіти/../продажі.json」 「x」', '--тека', str(DATA)], env)
+    check(got.returncode == 1, 'шлях один раз: «теку/../файл» — не переносити в теку з печатки', got.stderr)
+    got = run(['-e', '🜂\n» ▦ δ 「"\\\\ufeffa,b\\\\n1,2"」'], env)
+    check(got.stdout == '【『「a」 「1」 「b」 「2」』】\n', '▦: BOM на початку знято (не частина ключа)', got.stdout)
     got = run(['-e', '🜂\n» ∑ 【1】 λx x'], env)
     check(got.returncode == 2 and '∫' in got.stderr, 'схожий гліф ∑ — підказка ∫ / Σ', got.stderr)
     # суд 7 (Скептик)
@@ -469,6 +477,11 @@ def main():
     check(a1 != a2 and a1 == '⟨U+200B⟩', 'невидимий символ і текст «⟨U+200B⟩» — розрізняються у виводі', got.stdout)
     got = run(['-e', bseal + f'» ☂ 🜔бд.писати 「{bd}/велика.db」 「CREATE TABLE b AS SELECT zeroblob(70000000) AS z」 【】 λe 「межа」'], benv)
     check(got.stdout == 'межа\n', 'бд.писати: база не росте понад межу (zeroblob)', got.stdout + got.stderr)
+    str_ = tmp / 'бд_заборонено.jsonl'
+    run(['--слід', str(str_), '-e', bseal + f'» ☂ 🜔бд.читати 「{bd}/a.db」 「DELETE FROM t」 【】 λe 1\n'
+         f"» ☂ 🜔бд.писати 「{bd}/a.db」 「ATTACH '{tmp}/x.db' AS x」 【】 λe 2"], benv)
+    check('спроб поза правами («заборонено»): 2' in run(['--перевірити-слід', str(str_)], benv).stdout,
+          'SQLite: відмови білого списку (зміна через бд.читати, ATTACH) — «заборонено» в підсумку сліду')
     got = run(['-e', '🜂 「лише намір」\n» 1'], env)
     check(got.returncode == 0, 'печатка лише з наміром (без 【】) — без дозволів')
     seal = run(['--печатка', str(ROOT / 'examples' / 'ahent.ngr')], env).stdout
