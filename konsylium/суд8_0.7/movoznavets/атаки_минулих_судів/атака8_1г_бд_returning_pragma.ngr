@@ -1,0 +1,10 @@
+🜂 「SQLite: чи правдива кількість змін з RETURNING; які PRAGMA проходять у бд.читати」 【「бд.читати:дані」 「бд.писати:звіти」】
+» 〔створити: {🜔бд.писати 「р.db」 「CREATE TABLE t(x)」 【】}〕
+» 〔звичайний INSERT: {🜔бд.писати 「р.db」 「INSERT INTO t VALUES (1)」 【】}〕
+» 〔INSERT RETURNING: {🜔бд.писати 「р.db」 「INSERT INTO t VALUES (2), (3) RETURNING x」 【】}〕
+» 〔UPDATE RETURNING: {🜔бд.писати 「р.db」 「UPDATE t SET x = x + 10 RETURNING x」 【】}〕
+» 〔DELETE (скільки рядків було): {🜔бд.писати 「р.db」 「DELETE FROM t」 【】}〕
+» ☂ 🜔бд.читати 「база.db」 「PRAGMA journal_mode=WAL」 【】 λe ＋ 「pr1: 」 e
+» ☂ 🜔бд.читати 「база.db」 「PRAGMA query_only=0」 【】 λe ＋ 「pr2: 」 e
+» ☂ 🜔бд.читати 「база.db」 「PRAGMA user_version=5」 【】 λe ＋ 「pr3: 」 e
+» ☂ 🜔бд.читати 「база.db」 「PRAGMA user_version」 【】 λe ＋ 「pr4: 」 e

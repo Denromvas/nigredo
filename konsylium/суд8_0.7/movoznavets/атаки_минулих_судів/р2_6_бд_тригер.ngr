@@ -1,0 +1,12 @@
+🜂 「р2: тригер — правдивість «змінено рядків» і DROP TRIGGER/VIEW」 【「бд.писати:звіти」】
+← б 「р2_тригер.db」
+» 〔створити важливе: {🜔бд.писати б 「CREATE TABLE важливе(a)」 【】}〕
+» 〔3 рядки: {🜔бд.писати б 「INSERT INTO важливе VALUES (1),(2),(3)」 【】}〕
+» 〔журнал: {🜔бд.писати б 「CREATE TABLE журнал(x)」 【】}〕
+» 〔тригер: {🜔бд.писати б 「CREATE TRIGGER т AFTER INSERT ON журнал BEGIN DELETE FROM важливе; END」 【】}〕
+» 〔INSERT у журнал: {🜔бд.писати б 「INSERT INTO журнал VALUES (1)」 【】}〕
+» 〔DELETE з важливе (скільки лишилось): {🜔бд.писати б 「DELETE FROM важливе」 【】}〕
+» 〔в: {🜔бд.писати б 「CREATE VIEW в AS SELECT 1」 【】}〕
+» ☂ 🜔бд.писати б 「DROP TRIGGER т」 【】 λe ＋ 「DROP TRIGGER: 」 e
+» ☂ 🜔бд.писати б 「DROP VIEW в」 【】 λe ＋ 「DROP VIEW: 」 e
+» ☂ 🜔бд.писати б 「DROP TABLE журнал」 【】 λe ＋ 「DROP TABLE: 」 e

@@ -1,0 +1,16 @@
+🜂 「межа процес: лише echo, ls, sh -c echo」 【「процес:echo」 「процес:sh -c echo」】
+← спроба Λ назва команда » 〔{назва}: {☂ Δ 🜔процес команда λe ＋ 「ВІДМОВА: 」 e}〕
+▶ ∘спроба 「echo」 【「echo」 「привіт」】
+▶ ∘спроба 「id напряму」 【「id」】
+▶ ∘спроба 「sh -c echo; id」 【「sh」 「-c」 「echo а; id」】
+▶ ∘спроба 「sh -c echo && id」 【「sh」 「-c」 「echo а && id」】
+▶ ∘спроба 「sh -c echo $(id)」 【「sh」 「-c」 「echo $(id)」】
+▶ ∘спроба 「sh -c echo `id`」 【「sh」 「-c」 「echo `id`」】
+▶ ∘спроба 「sh -c echo | id」 【「sh」 「-c」 「echo | id」】
+▶ ∘спроба 「sh -c echo\nid」 【「sh」 「-c」 「echo а\nid」】
+▶ ∘спроба 「sh -c echo-id」 【「sh」 「-c」 「echo-id」】
+▶ ∘спроба 「sh -c 'echo' a b」 【「sh」 「-c」 「echo」 「id」】
+▶ ∘спроба 「абсолютний /bin/echo」 【「/bin/echo」 「а」】
+▶ ∘спроба 「відносний ./echo」 【「./echo」 「а」】
+▶ ∘спроба 「echo з пробілом」 【「echo id」】
+▶ ∘спроба 「echo -e」 【「echo」 「-e」 「\\x41」】

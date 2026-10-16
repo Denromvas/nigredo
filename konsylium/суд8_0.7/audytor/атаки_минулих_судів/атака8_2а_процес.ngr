@@ -1,0 +1,16 @@
+🜂 「процес: обхід початку команди」 【「процес:sh -c echo」 「процес:echo」 「процес:ls」】
+← пр λa ☂ 🜔процес a λe 〔ВІДМОВА: {e}〕
+» пр 【「sh」 「-c」 「echo ok; id」】
+» пр 【「sh」 「-c」 「echo $(id)」】
+» пр 【「sh」 「-c」 「echo」 「id」】
+» пр 【「sh」 「-c」 「echo」 「-c」 「id」】
+» пр 【「sh」 「-c」 「echo $0 $1」 「id」】
+» пр 【「sh」 「-c」 「echo」】
+» пр 【「/bin/sh」 「-c」 「echo」】
+» пр 【「/bin/echo」 「абсолютний」】
+» пр 【「sh」 「-c」 「echo」 「;id」】
+» пр 【「sh」 「-ce」 「echo」】
+» пр 【「sh」 「-c」 「echo 」】
+» пр 【「sh」 「-c」 「echo\tid」】
+» пр 【「echo」 「-e」 「a\\nb」】
+» пр 【「ls」 「/root/.nigredo」】
