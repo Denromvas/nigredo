@@ -978,7 +978,9 @@ class Parser:
         if TOOLS[name][4] == 'команда' and scope.strip() and not (
                 os.path.isabs(w := scope.strip().split(' ')[0]) or '/' not in w):
             raise StaticError(f'«{name}»: команда — імʼя з PATH (git) або абсолютний шлях, не відносний', pos)
-        caps.setdefault(name, []).extend([s.strip()] if (s := scope.strip()) else [])
+        lst = caps.setdefault(name, [])
+        if (s := scope.strip()) and s not in lst:      # дубль — один раз
+            lst.append(s)
 
     def glyph(self, g, pos):
         if g == '🜂':
@@ -1623,14 +1625,13 @@ def _path_ok(it, tool, p, pos, write=False):
         return real
     # шлях один раз: відносний шлях поза дозволом — відносно єдиної теки з печатки (🜔читати 「x.json」 при 「читати:дані」)
     # (дозволено один файл — відносно його теки; перевірка однаково пропустить лише сам файл)
-    if not os.path.isabs(p) and len(it.caps[tool]) == 1:
+    # лише коли шляху від теки програми немає (а для шляху з текою — і самої теки): назвали наявне поза дозволом —
+    # відмова, а не тихо інший файл (суд 7)
+    named = os.path.exists(first) or ('/' in p.rstrip('/') and os.path.isdir(os.path.dirname(first)))
+    if not os.path.isabs(p) and len(it.caps[tool]) == 1 and not named:
         base = os.path.realpath(os.path.join(it.cwd, it.caps[tool][0]))
         real = os.path.realpath(os.path.join(os.path.dirname(base) if os.path.isfile(base) else base, p))
         if allowed(real):
-            if not write and not os.path.exists(real) and os.path.exists(first):   # не ховати справжню причину
-                it.trace('заборонено', агент=it.agent, назва=tool, шлях=safe(p), причина='поза дозволеною текою')
-                raise NgrError(f'{tool}: «{safe(p)}» поза дозволеним ({", ".join(safe(x) for x in it.caps[tool])}); '
-                               f'відносно теки з печатки («{safe(real)}») такого файлу немає', pos)
             if seen is not None:
                 seen.append(safe(real))
             return real
@@ -2209,13 +2210,32 @@ def _db(it, pos, tool, p, sql, params, write):
                 raise Fatal('перевищено ліміт кроків (--кроки)', pos)
             if time.monotonic() > deadline:
                 raise NgrError(f'{tool}: запит довший за 30 с', pos)
+            denied = any(w in str(e) for w in ('not authorized', 'authorization denied', 'too many attached',
+                                               'readonly database'))
+            if denied:
+                it.trace('заборонено', агент=it.agent, назва=tool, шлях=safe(p.v), запит=safe(sql.v)[:500],
+                         причина='дія SQLite поза дозволеним')
             msg = 'дія поза дозволеним (лише ' + ('SELECT' if not write else 'SELECT, INSERT, UPDATE, DELETE, '
                                                   'CREATE/DROP/ALTER') + '; без ATTACH, VACUUM, PRAGMA)' \
-                if any(w in str(e) for w in ('not authorized', 'authorization denied', 'too many attached')) \
-                else 'лише одна інструкція SQL за раз' if 'one statement at a time' in str(e) else str(e)
+                if denied else 'лише одна інструкція SQL за раз' if 'one statement at a time' in str(e) \
+                else sql_err(str(e))
             raise NgrError(f'{tool}: {msg}', pos)
     finally:
         con.close()
+
+
+SQL_ERRORS = [('Incorrect number of bindings', 'кількість «?» у запиті не дорівнює кількості параметрів'),
+              ('no such table', 'немає такої таблиці'), ('no such column', 'немає такого стовпця'),
+              ('syntax error', 'синтаксична помилка SQL'), ('UNIQUE constraint failed', 'порушено унікальність'),
+              ('NOT NULL constraint failed', 'порожнє значення там, де заборонено'), ('database is locked', 'база зайнята'),
+              ('database or disk is full', 'база досягла межі розміру'), ('unable to open', 'не вдалося відкрити базу')]
+
+
+def sql_err(msg):
+    for en, uk in SQL_ERRORS:
+        if en in msg:
+            return f'{uk} ({msg})'
+    return msg
 
 
 def t_db_read(it, pos, p, sql, params):
@@ -3351,7 +3371,7 @@ class Interp:
         if g == '▦':
             import csv
             import io as _io
-            text = self.need(a[0], 'рядок', g, pos)
+            text = self.need(a[0], 'рядок', g, pos).removeprefix('\ufeff')   # BOM з 1С/Excel — не частина ключа
             csv.field_size_limit(max(len(text), 1))      # довге поле — не «внутрішня помилка» (суд 7)
             try:
                 rd = list(csv.reader(_io.StringIO(text), strict=True))
@@ -3699,11 +3719,11 @@ def cheatsheet():
             '← з_пдв λц 《', '  ← база §ціни ц', '  × база 1.2', '》',
             '» з_пдв 「хліб」',
             '» ☂ ν「не число」 λe ＋「не вийшло: 」 e', '```', '',
-            '```', '🜂 「оцінки: середнє за предметом, найкращий перший」 【】',
-            '← о 【『「предмет」 「хімія」 「бал」 9』 『「предмет」 「алхімія」 「бал」 12』 『「предмет」 「хімія」 「бал」 10』】',
-            '← г ⊞ о λp §p 「предмет」',
-            '← с μ εг λ【k l】 【k ÷ ∫ l λp §p 「бал」 ρl】',
-            '∀ ⇅ с λ【k v】 【－0 v k】 λ【k v】 » 〔{k}: {⌗ v 1}〕', '```', '',
+            '```', '🜂 「найдорожчий товар у кожній категорії」',
+            '← т 【『「назва」 「кава」 「кат」 「напої」 「ціна」 120』 『「назва」 「сир」 「кат」 「їжа」 「ціна」 310』 '
+            '『「назва」 「чай」 「кат」 「напої」 「ціна」 90』】',
+            '∀ ⇅ ε⊞ т λp §p 「кат」 λ【k l】 k λ【k l】 《 ← н §⇅ l λp －0 §p 「ціна」 0 ¦ » 〔{k}: {§н 「назва」} ({§н 「ціна」})〕 》',
+            '```', '',
             '```', '🜂 「дати й заміна регулярними виразами」 【】',
             '← т 「Звіт 2026-10-15, оплата 2026-11-01. ДЕДЛАЙН!」',
             '∀ ⌕ т 「(\\d{4})-(\\d{2})-(\\d{2})」 λd » 〔{§d 2}.{§d 1}.{§d 0}〕',
