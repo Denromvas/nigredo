@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import re\nfrom collections import Counter\nfrom pathlib import Path\n\nADDRESS = re.compile(r\"https?://\\S+\")\n\n\ndef домен_адреси(адреса):\n    хост = адреса.split(\"://\", 1)[1]\n    хост = re.split(r\"[/:]\", хост, maxsplit=1)[0].lower()\n    if хост.startswith(\"www.\"):\n        хост = хост[4:]\n    return хост\n\n\ndef main():\n    лічильник = Counter()\n    шлях = Path(\"дані\") / \"запити.log\"\n    with шлях.open(encoding=\"utf-8\") as f:\n        for рядок in f:\n            for адреса in ADDRESS.findall(рядок):\n                домен = домен_адреси(адреса)\n                if домен:\n                    лічильник[домен] += 1\n    for домен, n in sorted(лічильник.items(), key=lambda x: (-x[1], x[0]))[:3]:\n        print(f\"{домен} {n}\")\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "відповідь": "```python\nimport re\nfrom collections import Counter\nfrom pathlib import Path\n\nADDRESS = re.compile(r\"https?://\\S+\")\n\n\ndef домен_адреси(адреса):\n    хост = адреса.split(\"://\", 1)[1]\n    хост = re.split(r\"[/:]\", хост, maxsplit=1)[0].lower()\n    if хост.startswith(\"www.\"):\n        хост = хост[4:]\n    return хост\n\n\ndef main():\n    лічильник = Counter()\n    шлях = Path(\"дані\") / \"запити.log\"\n    with шлях.open(encoding=\"utf-8\") as f:\n        for рядок in f:\n            for адреса in ADDRESS.findall(рядок):\n                домен = домен_адреси(адреса)\n                if домен:\n                    лічильник[домен] += 1\n    for домен, n in sorted(лічильник.items(), key=lambda x: (-x[1], x[0]))[:3]:\n        print(f\"{домен} {n}\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n",
+  "код_виходу": 0,
+  "вивід": "example.com 3\napi.example.com 2\ndocs.python.org 2\n",
+  "помилки": ""
+ }
+]
