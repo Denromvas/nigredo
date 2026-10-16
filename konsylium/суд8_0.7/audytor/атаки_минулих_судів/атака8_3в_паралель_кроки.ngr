@@ -1,0 +1,2 @@
+🜂 「‖: кілька нескінченних запитів одночасно — гонитва за кроки, зависання, слід」 【「бд.читати:дані」】
+» ‖ 【1 2 3 4】 λx 🜔бд.читати 「база.db」 「WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM c) SELECT max(i) AS m FROM c」 【】

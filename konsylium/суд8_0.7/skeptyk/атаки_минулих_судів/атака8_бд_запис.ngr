@@ -1,0 +1,19 @@
+🜂 「SQLite: записати поза текою або обійти білий список」 【「бд.писати:звіти」 「бд.читати:дані」】
+← в λq ☂ σ 🜔бд.писати 「а.db」 q 【】 λe ＋ 「відмова: 」 e
+» ＋ 「1 ATTACH: 」 в 「ATTACH DATABASE '/root/ai-agents/Nigredo/konsylium/суд7_0.6/skeptyk/x.db' AS x」
+» ＋ 「2 VACUUM INTO: 」 в 「VACUUM INTO '/root/ai-agents/Nigredo/konsylium/суд7_0.6/skeptyk/x.db'」
+» ＋ 「3 CREATE: 」 в 「CREATE TABLE IF NOT EXISTS t(a)」
+» ＋ 「4 тригер з ATTACH: 」 в 「CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT load_extension('x'); END」
+» ＋ 「5 INSERT: 」 в 「INSERT INTO t VALUES (1)」
+» ＋ 「6 RETURNING: 」 в 「INSERT INTO t VALUES (2) RETURNING a」
+» ＋ 「7 PRAGMA: 」 в 「PRAGMA journal_mode=WAL」
+» ＋ 「8 у CTE: 」 в 「WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < 1000) INSERT INTO t SELECT x FROM c」
+» ＋ 「9 два запити: 」 в 「INSERT INTO t VALUES (3); DROP TABLE t」
+» ＋ 「10 BEGIN: 」 в 「BEGIN」
+» ＋ 「11 view з pragma: 」 в 「CREATE VIEW v AS SELECT * FROM pragma_database_list」
+» ＋ 「12 temp: 」 в 「CREATE TEMP TABLE tt(a)」
+» ＋ 「13 virtual: 」 в 「CREATE VIRTUAL TABLE f USING fts5(a)」
+» ＋ 「14 file-шлях: 」 ☂ σ 🜔бд.писати 「file:/root/ai-agents/Nigredo/konsylium/суд7_0.6/skeptyk/y.db」 「CREATE TABLE z(a)」 【】 λe ＋ 「відмова: 」 e
+» ＋ 「15 ?mode у шляху: 」 ☂ Δ 🜔бд.читати 「база.db?mode=rwc」 「SELECT 1 AS a」 【】 λe ＋ 「відмова: 」 e
+» ＋ 「16 читати з DELETE: 」 ☂ Δ 🜔бд.читати 「база.db」 「DELETE FROM замовлення RETURNING *」 【】 λe ＋ 「відмова: 」 e
+» ＋ 「17 читати з WITH…DELETE: 」 ☂ Δ 🜔бд.читати 「база.db」 「WITH a AS (SELECT 1) DELETE FROM замовлення」 【】 λe ＋ 「відмова: 」 e

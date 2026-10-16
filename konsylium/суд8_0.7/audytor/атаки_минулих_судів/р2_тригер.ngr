@@ -1,0 +1,9 @@
+🜂 「тригер і памʼять SQLite」 【「бд.писати:звіти」】
+← w λq 🜔бд.писати 「звіти/тригер.db」 q 【】
+» w 「CREATE TABLE важливе(x)」
+» w 「INSERT INTO важливе VALUES(1),(2),(3)」
+» w 「CREATE TABLE журнал(x)」
+» w 「CREATE TRIGGER т AFTER INSERT ON журнал BEGIN DELETE FROM важливе; END」
+» 〔INSERT у журнал, змінено: {w 「INSERT INTO журнал VALUES(1)」}〕
+» 〔лишилось у важливе (DELETE рахує): {w 「DELETE FROM важливе」}〕
+» 〔randomblob 30 МБ усередині запиту: {w 「INSERT INTO журнал SELECT length(randomblob(30000000))」}〕

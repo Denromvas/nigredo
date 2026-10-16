@@ -1,0 +1,3 @@
+🜂 「р2: ‖ і ліміт кроків — N нескінченних запитів (N — аргумент)」 【「бд.читати:дані」】
+← q 「WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM r) SELECT count(*) AS c FROM r」
+» ‖ … 1 ν § ⌂ 0 λx 🜔бд.читати 「база.db」 q 【】
