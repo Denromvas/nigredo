@@ -3214,6 +3214,8 @@ class Interp:
             if self.try_stack:
                 self.taint(val.c)          # усе, з чим працює тіло ☂, може визначити успіх чи помилку
             return val
+        if k == 'op':                          # найчастіший вузол — раніше за решту (швидкість)
+            return self.sized(self.op(node[2], node[3], env, pos), node[2], pos)
         if k == 'list':
             return self.sized(mk([self.eval(e, env) for e in node[2]], self.cpc), '【】', pos)
         if k == 'tmpl':                    # 〔текст {вираз}〕: рядок, не впевненіший за жодну підстановку
