@@ -1,0 +1,4 @@
+🜂 「‖ і ліміт кроків: N нескінченних CTE」 【「бд.читати:дані」】
+← n ν § ⌂ 0
+← q 「WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM c) SELECT count(*) FROM c」
+» ‖ … 1 n λi 🜔бд.читати 「дані/база.db」 q 【】

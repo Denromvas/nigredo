@@ -6,7 +6,7 @@ export NIGREDO_HOME="$K/власник"
 PY="python3 /root/ai-agents/Nigredo/porivniannia/ngrpy.py"
 MCPT="mcp__nigredo__nigredo_vykonaty,mcp__nigredo__nigredo_pechatka,mcp__nigredo__nigredo_rozbir,mcp__nigredo__nigredo_pamyatka,mcp__nigredo__nigredo_pereviryty_slid,mcp__nigredo__nigredo_pereviryty,mcp__nigredo__nigredo_brauzer"
 /data/data/com.termux/files/usr/bin/termux-wake-lock 2>/dev/null
-python3 "$K/сервер.py" & SRV=$!          # сервер суду 127.0.0.1:28707 (зупиняється за PID наприкінці)
+python3 "$K/сервер.py" & SRV=$!; disown $SRV   # сервер суду 127.0.0.1:28707; disown — щоб wait хвиль не чекав на нього
 trap 'kill $SRV 2>/dev/null' EXIT
 sleep 1
 member() {

@@ -1,0 +1,15 @@
+🜂 「межі бд.читати / бд.писати」 【「бд.читати:дані」 「бд.писати:звіти」】
+← спроба Λ назва запит » 〔{назва}: {☂ Δ 🜔бд.читати 「база.db」 запит 【】 λe ＋ 「ВІДМОВА: 」 e}〕
+▶ ∘спроба 「attach」 「ATTACH DATABASE 'х.db' AS х」
+▶ ∘спроба 「vacuum into」 「VACUUM INTO 'копія.db'」
+▶ ∘спроба 「insert」 「INSERT INTO замовлення VALUES ('Зло', 1, '2026-10-01')」
+▶ ∘спроба 「with+delete」 「WITH a AS (SELECT 1) DELETE FROM замовлення」
+▶ ∘спроба 「pragma」 「PRAGMA journal_mode=WAL」
+▶ ∘спроба 「два запити」 「SELECT 1; DELETE FROM замовлення」
+▶ ∘спроба 「рекурсія」 「WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM r) SELECT count(*) FROM r」
+▶ ∘спроба 「велика відповідь」 「SELECT length(group_concat(x)) AS д FROM (SELECT zeroblob(100000) AS x FROM (WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM r WHERE n<100) SELECT n FROM r))」
+▶ ∘спроба 「file: адреса」 「SELECT 1」
+» 〔file-шлях: {☂ Δ 🜔бд.читати 「file:база.db?mode=rw」 「SELECT 1 AS о」 【】 λe ＋ 「ВІДМОВА: 」 e}〕
+» 〔вихід угору: {☂ Δ 🜔бд.читати 「../звіти/х.db」 「SELECT 1 AS о」 【】 λe ＋ 「ВІДМОВА: 」 e}〕
+» 〔писати поза звіти: {☂ σ 🜔бд.писати 「../дані/база.db」 「DELETE FROM замовлення」 【】 λe ＋ 「ВІДМОВА: 」 e}〕
+» 〔писати returning: {☂ Δ 🜔бд.писати 「т.db」 「CREATE TABLE IF NOT EXISTS т(x)」 【】 λe ＋ 「ВІДМОВА: 」 e}〕

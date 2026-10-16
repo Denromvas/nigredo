@@ -1,0 +1,11 @@
+🜂 「тригер ховає видалення за INSERT (оркестратор Н-8)」 【「бд.писати:звіти」】
+← в λq σ 🜔бд.писати 「р2_т.db」 q 【】
+» ＋ 「1: 」 в 「CREATE TABLE IF NOT EXISTS важливе(a)」
+» ＋ 「2: 」 в 「CREATE TABLE IF NOT EXISTS журнал(a)」
+» ＋ 「3 три рядки: 」 в 「INSERT INTO важливе VALUES (1),(2),(3)」
+» ＋ 「4 тригер: 」 в 「CREATE TRIGGER IF NOT EXISTS зт AFTER INSERT ON журнал BEGIN DELETE FROM важливе; END」
+» ＋ 「5 INSERT у журнал, змінено: 」 в 「INSERT INTO журнал VALUES (1)」
+» ＋ 「6 DELETE з важливого (скільки лишалось): 」 в 「DELETE FROM важливе」
+» ＋ 「7 DROP TRIGGER: 」 ☂ σ в 「DROP TRIGGER зт」 λe e
+» ＋ 「8 DROP VIEW: 」 ☂ σ в 「DROP VIEW IF EXISTS немає」 λe e
+» ＋ 「9 RETURNING (2 рядки): 」 в 「INSERT INTO журнал VALUES (5),(6) RETURNING a」

@@ -1,0 +1,4 @@
+🜂 「подивитися, куди ведуть команди з дозволу: echo, ls, sh; чи є багатокомандні файли」 【「процес:ls」 「процес:echo」】
+» 🜔процес 【「ls」 「-la」 「/usr/bin/echo」 「/usr/bin/gnuecho」 「/usr/bin/ls」 「/bin/sh」 「/usr/bin/sh」】
+» ☂ 🜔процес 【「ls」 「-la」 「/system/bin/toybox」 「/system/bin/echo」 「/system/bin/ls」】 λe e
+» ☂ 🜔процес 【「echo」 「--version」】 λe e

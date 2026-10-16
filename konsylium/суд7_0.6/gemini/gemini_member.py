@@ -74,7 +74,14 @@ def materials(spec=True):
              f'# bench/РЕЗУЛЬТАТИ.md\n{(NGR / "bench" / "РЕЗУЛЬТАТИ.md").read_text()}',
              f'# bench/м2/РЕЗУЛЬТАТИ.md\n{(NGR / "bench" / "м2" / "РЕЗУЛЬТАТИ.md").read_text()}',
              f'# Підсумок суду 6\n{(K.parent / "суд6_0.5" / "protokol" / "ПІДСУМОК.md").read_text()}']
-    parts += [f'# Вміст дані/{f.name} у твоїй теці\n{f.read_text()}' for f in sorted((HERE / 'дані').iterdir()) if f.is_file()]
+    for f in sorted((HERE / 'дані').iterdir()):
+        if f.suffix == '.db':                       # SQLite — двійковий: лише схема
+            import sqlite3
+            schema = '\n'.join(r[0] for r in sqlite3.connect(f'file:{f}?mode=ro', uri=True).execute(
+                'SELECT sql FROM sqlite_master'))
+            parts.append(f'# дані/{f.name} у твоїй теці — SQLite, схема:\n{schema}')
+        elif f.is_file():
+            parts.append(f'# Вміст дані/{f.name} у твоїй теці\n{f.read_text()}')
     if spec:
         parts.append(f'# spec/SPEC.md\n{(NGR / "spec" / "SPEC.md").read_text()}')
         for f in sorted((NGR / 'tests' / 'помилки').glob('*.ngr')):

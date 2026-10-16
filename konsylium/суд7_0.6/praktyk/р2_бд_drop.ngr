@@ -1,0 +1,6 @@
+🜂 「SQLite: DROP TABLE без тригера; таблиця з тригером」 【「бд.писати:звіти」】
+← б 「звіти/р2.db」
+» 〔1 {🜔бд.писати б 「CREATE TABLE IF NOT EXISTS проста(x)」 【】}〕
+» 〔2 DROP TABLE проста: {☂ 🜔бд.писати б 「DROP TABLE проста」 【】 λe e}〕
+» 〔3 DROP TABLE журнал (з тригером): {☂ 🜔бд.писати б 「DROP TABLE журнал」 【】 λe e}〕
+» 〔4 ALTER TABLE журнал RENAME: {☂ 🜔бд.писати б 「ALTER TABLE журнал RENAME TO ж2」 【】 λe e}〕

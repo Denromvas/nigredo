@@ -1,0 +1,18 @@
+🜂 「SQLite: зміни через бд.читати, обхід білого списку, ліміти」 【「бд.читати:дані」 「бд.писати:звіти」】
+※ бд.читати: не-SELECT, що починається з WITH; дві інструкції; RETURNING; функції
+» ☂ 🜔бд.читати 「база.db」 「WITH x AS (SELECT 1) DELETE FROM замовлення WHERE 0」 【】 λe ＋ 「р1: 」 e
+» ☂ 🜔бд.читати 「база.db」 「SELECT 1 AS a; DELETE FROM замовлення WHERE 0」 【】 λe ＋ 「р2: 」 e
+» ☂ 🜔бд.читати 「база.db」 「SELECT load_extension('немає') AS a」 【】 λe ＋ 「р3: 」 e
+» ☂ 🜔бд.читати 「база.db」 「SELECT sqlite_version() AS v, randomblob(4) IS NOT NULL AS b」 【】 λe ＋ 「р4: 」 e
+» ☂ 🜔бд.читати 「база.db」 「PRAGMA table_info(замовлення)」 【】 λe ＋ 「р5: 」 e
+※ бд.писати: заборонене білим списком
+» ☂ 🜔бд.писати 「т.db」 「CREATE TABLE IF NOT EXISTS t(x)」 【】 λe ＋ 「п0: 」 e
+» ☂ 🜔бд.писати 「т.db」 「ATTACH 'інша.db' AS i」 【】 λe ＋ 「п1: 」 e
+» ☂ 🜔бд.писати 「т.db」 「VACUUM INTO 'копія.db'」 【】 λe ＋ 「п2: 」 e
+» ☂ 🜔бд.писати 「т.db」 「PRAGMA journal_mode=WAL」 【】 λe ＋ 「п3: 」 e
+» ☂ 🜔бд.писати 「т.db」 「CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END」 【】 λe ＋ 「п4: 」 e
+» ☂ 🜔бд.писати 「т.db」 「INSERT INTO t VALUES (1) RETURNING x」 【】 λe ＋ 「п5: 」 e
+» ☂ 🜔бд.писати 「т.db」 「CREATE VIEW v AS SELECT * FROM t」 【】 λe ＋ 「п6: 」 e
+» ☂ 🜔бд.писати 「т.db」 「BEGIN」 【】 λe ＋ 「п7: 」 e
+※ рекурсія: ліміт кроків
+» ☂ 🜔бд.читати 「база.db」 「WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM r) SELECT max(n) AS m FROM r」 【】 λe ＋ 「л1: 」 e

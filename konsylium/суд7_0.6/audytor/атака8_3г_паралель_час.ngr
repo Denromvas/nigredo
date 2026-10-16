@@ -1,0 +1,3 @@
+🜂 「‖: 16 нескінченних запитів — чи час обмежено чимось, крім 30 с на запит」 【「бд.читати:дані」】
+» ☂ ‖ … 1 16 λx 🜔бд.читати 「база.db」 「WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM c) SELECT max(i) AS m FROM c」 【】 λe e
+» ☂ ‖ … 1 16 λx 🜔бд.читати 「база.db」 「WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM c) SELECT max(i) AS m FROM c」 【】 λe e

@@ -1,0 +1,2 @@
+Пишіть на info@example.net або support@example.com.
+Неправильні: @ніхто, test@, a@b. Ще один: ops-team+alerts@mail.example.org — для тривог.
