@@ -35,13 +35,15 @@ INTRO = {
 }
 
 
-def ask(model, prompt):
+def ask(model, prompt, retry=True):
     with tempfile.TemporaryDirectory(prefix='м2-') as empty:
         r = subprocess.run(['claude', '-p', '--model', model, '--tools', '', '--no-session-persistence',
                             '--strict-mcp-config'], input=prompt, cwd=empty, capture_output=True, text=True,
                            timeout=900)
     if r.returncode:
         raise RuntimeError(f'claude: код {r.returncode}: {r.stderr[-300:]}')
+    if retry and ('<invoke' in r.stdout or '```' not in r.stdout):   # спробувала «запустити» замість дати код — ще раз
+        return ask(model, prompt + '\n\nІнструментів немає: відповідай одразу кодом в одному блоці ``` … ```.', False)
     m = re.search(r'```[^\n]*\n(.*?)```', r.stdout, re.S)
     return (m.group(1) if m else r.stdout).strip() + '\n', r.stdout
 
