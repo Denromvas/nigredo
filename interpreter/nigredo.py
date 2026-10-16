@@ -674,6 +674,8 @@ def narrower(tool, child, parent):
     """Обмеження субагента — те саме або вужче: для тек — підтека (без виходу через ..), інакше точний збіг."""
     if child == parent:
         return True
+    if TOOLS.get(tool, (0, '', '', False, ''))[4] == 'команда':
+        return cmd_within(child, parent)
     if TOOLS.get(tool, (0, '', '', False, ''))[4] != 'тека':
         return False
     c, p = os.path.normpath(child), os.path.normpath(parent)
@@ -925,6 +927,9 @@ class Parser:
                 raise StaticError(f'невідомий інструмент у дозволах: «{name}»', e[1])
             if TOOLS[name][3] and not scope.strip() and not inherit:
                 raise StaticError(f'«{name}» потребує обмеження: «{name}:{TOOLS[name][4]}»', e[1])
+            if TOOLS[name][4] == 'команда' and scope.strip() and not (
+                    os.path.isabs(w := scope.strip().split(' ')[0]) or '/' not in w):
+                raise StaticError(f'«{name}»: команда — імʼя з PATH (git) або абсолютний шлях, не відносний', e[1])
             caps.setdefault(name, []).extend([s.strip()] if (s := scope.strip()) else [])
         return node, caps
 
@@ -1011,8 +1016,8 @@ class Parser:
         return ('op', pos, g, [self.expr() for _ in range(ar)])
 
 
-WORLD_WRITERS = {'жереб', 'файл.писати', 'агент', 'мережа.взяти', 'мережа.послати'}      # змінюють стан, який потім можна прочитати
-WORLD_READERS = {'жереб', 'файл.читати', 'файл.список', 'файл.писати', 'агент', 'мережа.взяти', 'мережа.послати'}
+WORLD_WRITERS = {'жереб', 'файл.писати', 'бд.писати', 'процес', 'агент', 'мережа.взяти', 'мережа.послати'}      # змінюють стан, який потім можна прочитати
+WORLD_READERS = {'жереб', 'файл.читати', 'файл.список', 'файл.писати', 'бд.читати', 'бд.писати', 'процес', 'агент', 'мережа.взяти', 'мережа.послати'}
 _EFFECTS = {}
 FN_SLOTS = {'∀': (1,), 'μ': (1,), 'φ': (1,), '⇅': (1,), '⊞': (1,), 'Σ': (2,), '↻': (1, 2), '☂': (1,), '🜍': (1,)}
 
@@ -1156,7 +1161,7 @@ TYPE_RES = {'－': _N, '×': _N, '÷': _N, '‰': _N, '⌊': _N, '≅': _N, 'ρ'
             '⊞': _D, '✎': _D, '∀': 'none', '»': 'none', '🜄': 'none', '☠': 'none'}
 TOOL_TYPES = {'оракул': ((_A,), _B), 'жереб': ((_N,), _N), 'час': ((), _S), 'файл.читати': ((_S,), _S),
               'файл.писати': ((_S, _S), 'none'), 'файл.список': ((_S,), _L), 'мережа.взяти': ((_S,), _S),
-              'мережа.послати': ((_S, _A), _S),
+              'мережа.послати': ((_S, _A), _S), 'бд.читати': ((_S, _S, _L), _L), 'бд.писати': ((_S, _S, _L), _N), 'процес': ((_L,), _S),
               'агент': ((_S, _S), _S)}
 
 
@@ -1970,6 +1975,174 @@ def t_send(it, pos, url, body):
     return _http(it, pos, 'мережа.послати', url, body)
 
 
+# SQLite: лише дії з білого списку (authorizer) і жодного ATTACH (ліміт 0) — VACUUM INTO та ATTACH пишуть файли
+# поза текою з печатки. Читання — ще й файл лише на читання. Кроки SQLite списуються з --кроки.
+DB_INFO_PRAGMAS = {'table_info', 'table_xinfo', 'table_list', 'index_list', 'index_info', 'index_xinfo',
+                   'foreign_key_list'}
+DB_READ_ACTS = {20, 21, 31, 33}                        # READ SELECT FUNCTION RECURSIVE
+DB_WRITE_ACTS = DB_READ_ACTS | {1, 2, 7, 8, 9, 10, 11, 13, 14, 18, 23, 26}   # CREATE/DROP INDEX TABLE TRIGGER VIEW,
+#                                                                     DELETE INSERT UPDATE ALTER
+
+
+def _db(it, pos, tool, p, sql, params, write):
+    import sqlite3
+    import time
+    import urllib.request
+    real = _path_ok(it, tool, p.v, pos, write=write)
+    if not isinstance(sql.v, str):
+        raise NgrError(f'{tool}: запит має бути рядком', pos)
+    if not isinstance(params.v, list):
+        raise NgrError(f'{tool}: параметри — список (для ? у запиті), а не {kind(params)}', pos)
+    args = []
+    for x in params.v:              # дробове — текстом, щоб не втратити точність (колонка REAL/NUMERIC перетворить)
+        v = x.v
+        if isinstance(v, bool) or isinstance(v, int) or v is None or isinstance(v, str):
+            args.append(int(v) if isinstance(v, bool) else v)
+        elif isinstance(v, (Decimal, float)):
+            args.append(int(v) if v == int(v) and abs(v) < 2 ** 63 else str(v))
+        else:
+            raise NgrError(f'{tool}: параметр — рядок, число, істинність чи ∅, а не {kind(x)}', pos)
+    acts = DB_WRITE_ACTS if write else DB_READ_ACTS
+
+    def auth(action, a1, a2, db, view):
+        if action in acts or (action == 19 and a1 in DB_INFO_PRAGMAS):
+            return sqlite3.SQLITE_OK
+        return sqlite3.SQLITE_DENY
+    if not write and not os.path.isfile(real):
+        raise NgrError(f'{tool}: немає такого файлу: {p.v}', pos)
+    deadline = time.monotonic() + 30
+
+    def progress():                 # ~1000 інструкцій SQLite ≈ 10 кроків Nigredo за часом
+        it.steps_left -= 10
+        return it.steps_left < 0 or time.monotonic() > deadline
+    try:
+        con = sqlite3.connect(f'file:{urllib.request.pathname2url(real)}?mode={"rwc" if write else "ro"}', uri=True,
+                              isolation_level=None, timeout=5)
+    except sqlite3.Error as e:
+        raise NgrError(f'{tool}: {e}: {p.v}', pos)
+    try:
+        con.setlimit(sqlite3.SQLITE_LIMIT_ATTACHED, 0)
+        con.set_authorizer(auth)
+        con.set_progress_handler(progress, 1000)
+        try:
+            cur = con.execute(sql.v, args)
+            if write:
+                return V(max(cur.rowcount, 0))
+            cols = [d[0] for d in cur.description or []]
+            if len(set(cols)) != len(cols):
+                raise NgrError(f'{tool}: однакові назви стовпців ({", ".join(cols)}) — дайте різні через AS', pos)
+            rows, size = [], 1
+            for r in cur:
+                row = {}
+                for k, x in zip(cols, r):
+                    if isinstance(x, bytes):
+                        raise NgrError(f'{tool}: стовпець «{k}» — двійкові дані; візьміть hex({k})', pos)
+                    row[k] = V(Decimal(repr(x)) if isinstance(x, float) else x)
+                rows.append(V(row))
+                size += rows[-1].n
+                if size > it.max_size:
+                    raise NgrError(f'{tool}: відповідь завелика (понад --розмір {it.max_size}); додайте LIMIT', pos)
+            return V(rows)
+        except sqlite3.Error as e:
+            if it.steps_left < 0:
+                raise Fatal('перевищено ліміт кроків (--кроки)', pos)
+            if time.monotonic() > deadline:
+                raise NgrError(f'{tool}: запит довший за 30 с', pos)
+            msg = 'дія поза дозволеним (лише ' + ('SELECT' if not write else 'SELECT, INSERT, UPDATE, DELETE, '
+                                                  'CREATE/DROP/ALTER') + '; без ATTACH, VACUUM, PRAGMA)' \
+                if any(w in str(e) for w in ('not authorized', 'authorization denied', 'too many attached')) \
+                else 'лише одна інструкція SQL за раз' if 'one statement at a time' in str(e) else str(e)
+            raise NgrError(f'{tool}: {msg}', pos)
+    finally:
+        con.close()
+
+
+def t_db_read(it, pos, p, sql, params):
+    return _db(it, pos, 'бд.читати', p, sql, params, False)
+
+
+def t_db_write(it, pos, p, sql, params):
+    return _db(it, pos, 'бд.писати', p, sql, params, True)
+
+
+PROC_CAP, PROC_TIME = 1_000_000, 60
+
+
+def cmd_within(s, g):
+    """Команда s — та сама або вужча за g: g — початок s за словами («git status» ⊆ «git»)."""
+    a, b = s.split(' '), g.split(' ')
+    return a[:len(b)] == b
+
+
+def resolve_cmd(name):
+    """Справжній шлях виконуваного файла: абсолютний або з абсолютних тек PATH (жодної поточної теки)."""
+    import shutil
+    if os.path.isabs(name):
+        return os.path.realpath(name) if os.path.isfile(name) and os.access(name, os.X_OK) else None
+    path = os.pathsep.join(d for d in os.environ.get('PATH', '').split(os.pathsep) if os.path.isabs(d))
+    found = shutil.which(name, path=path) if '/' not in name else None
+    return os.path.realpath(found) if found else None
+
+
+def t_proc(it, pos, argv):
+    if not isinstance(argv.v, list) or not argv.v or not all(isinstance(x.v, str) for x in argv.v):
+        raise NgrError('процес: команда — непорожній список рядків 【「git」 「status」】 (без оболонки)', pos)
+    args = [x.v for x in argv.v]
+    if any('\0' in a for a in args):
+        raise NgrError('процес: нульовий символ в аргументі', pos)
+    if not any(args[:len(g.split(' '))] == g.split(' ') for g in it.caps['процес']):
+        it.trace('заборонено', агент=it.agent, назва='процес', аргументи=[safe(a) for a in args],
+                 причина='команди немає в печатці')
+        raise NgrError(f'процес: «{safe(" ".join(args))}» поза дозволеним ({", ".join(it.caps["процес"])}; '
+                       f'дозвіл — початок команди за словами)', pos)
+    exe = resolve_cmd(args[0])
+    if exe is None:
+        raise NgrError(f'процес: команди «{safe(args[0])}» немає (шукаю лише в абсолютних теках PATH)', pos)
+    if any(inside(exe, os.path.realpath(os.path.join(it.cwd, w))) for t in WRITE_TOOLS for w in it.seal_caps.get(t, [])):
+        raise NgrError(f'процес: «{safe(exe)}» лежить у теці, куди програмі дозволено писати', pos)
+    import signal
+    try:
+        pr = subprocess.Popen([exe] + args[1:], cwd=it.cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, start_new_session=True)
+    except OSError as e:
+        raise NgrError(f'процес: {e}', pos)
+    bufs, over = (bytearray(), bytearray()), []
+
+    def kill():
+        try:
+            os.killpg(pr.pid, signal.SIGKILL)
+        except OSError:
+            pass
+
+    def pump(f, buf):
+        for chunk in iter(lambda: f.read1(65536), b''):
+            if len(buf) + len(chunk) > PROC_CAP:
+                over.append(1)
+                kill()
+                return
+            buf += chunk
+    ts = [threading.Thread(target=pump, args=(f, b), daemon=True) for f, b in zip((pr.stdout, pr.stderr), bufs)]
+    for t in ts:
+        t.start()
+    try:
+        code = pr.wait(timeout=PROC_TIME)
+    except subprocess.TimeoutExpired:
+        kill()
+        pr.wait()
+        raise NgrError(f'процес: «{safe(args[0])}» довший за {PROC_TIME} с — зупинено', pos)
+    finally:
+        for t in ts:
+            t.join(5)
+        kill()                       # нащадки, що лишилися після виходу, — теж
+    if over:
+        raise NgrError(f'процес: вивід понад {PROC_CAP // 1_000_000} МБ — зупинено', pos)
+    out, err = (b.decode('utf-8', 'replace') for b in bufs)
+    if code:
+        raise NgrError(f'процес: «{safe(args[0])}» завершився з кодом {code}' + (f': {safe(err.strip()[-500:])}'
+                                                                                   if err.strip() else ''), pos)
+    return V(out)
+
+
 def t_agent(it, pos, name, prompt):
     if name.v not in it.caps['агент']:
         raise NgrError(f'агент: «{name.v}» поза дозволеними ({", ".join(it.caps["агент"])})', pos)
@@ -2000,9 +2173,17 @@ TOOLS = {
     'файл.читати': (1, '🜔читати шлях → рядок', 'прочитати текстовий файл', True, 'тека', t_read),
     'файл.писати': (2, '🜔писати шлях текст → ∅', 'записати (перезаписати) текстовий файл', True, 'тека', t_write),
     'файл.список': (1, '🜔список тека → список', 'імена в теці', True, 'тека', t_list),
+    'бд.читати': (3, '🜔бд.читати шлях 「SELECT … ?」 【параметри】 → список словників', 'запит SQLite лише на читання '
+                  '(лише SELECT; файл відкрито лише на читання)', True, 'тека', t_db_read),
+    'бд.писати': (3, '🜔бд.писати шлях 「INSERT … ?」 【параметри】 → змінено рядків', 'зміна SQLite (INSERT UPDATE DELETE, '
+                  'CREATE/DROP/ALTER; без ATTACH, VACUUM, PRAGMA); файл створюється, якщо нема', True, 'тека', t_db_write),
     'мережа.взяти': (1, '🜔взяти url → рядок', 'HTTP GET (до 1 МБ, 30 с)', True, 'хост', t_fetch),
     'мережа.послати': (2, '🜔послати url тіло → рядок', 'HTTP POST: тіло-рядок — як текст, список чи словник — як JSON; '
                        'відповідь до 1 МБ, 30 с (окремий дозвіл: надсилання даних назовні)', True, 'хост', t_send),
+    'процес': (1, '🜔процес 【「git」 「status」】 → вивід', 'запустити команду з печатки без оболонки (60 с, вивід до '
+               '1 МБ; не 0 — помилка). Дозвіл — початок команди: 「процес:git status」 не дає git push. Команда діє з правами '
+               'процесу: межі тек Nigredo на неї не діють', True,
+               'команда', t_proc),
     'агент': (2, '🜔агент 「імʼя」 「запит」 → рядок', 'спитати справжнього агента з реєстру лаунчера '
               '(claude -p у його теці; він діє з власними правами)', True, 'імʼя', t_agent),
 }
@@ -2012,6 +2193,7 @@ TOOLS = {
 TOOL_ALIASES = {'читати': 'файл.читати', 'писати': 'файл.писати', 'список': 'файл.список', 'взяти': 'мережа.взяти',
                 'послати': 'мережа.послати'}
 TOOL_SHORT = {v: k for k, v in TOOL_ALIASES.items()}
+WRITE_TOOLS = ('файл.писати', 'бд.писати')          # теки, куди програма може писати (і звідки не беруть код)
 
 
 def read_allowlist(path, cwd=None, prog=None):
@@ -2031,7 +2213,7 @@ def read_allowlist(path, cwd=None, prog=None):
                 # програма, що лежить там, куди програмам дозволено писати, могла бути написана програмою —
                 # права теки їй не належать
                 writable = [e.partition(':')[2].strip() for e in common + extra
-                            if e.partition(':')[0].strip() == 'файл.писати']
+                            if e.partition(':')[0].strip() in WRITE_TOOLS]
                 if prog and any(w and os.path.isabs(os.path.expanduser(w)) and inside(prog, os.path.expanduser(w))
                                 for w in writable):
                     continue
@@ -2095,6 +2277,8 @@ def intersect_caps(a, b, cwd):
             real = lambda x: os.path.realpath(os.path.join(cwd, x))      # noqa: E731
             keep = [x for x in sa if any(inside(real(x), real(y)) for y in sb)] + \
                    [y for y in sb if any(inside(real(y), real(x)) for x in sa)]
+        elif TOOLS[t][4] == 'команда':
+            keep = [x for x in sa if any(cmd_within(x, y) for y in sb)] + [y for y in sb if any(cmd_within(y, x) for x in sa)]
         else:
             keep = [x for x in sa if x in sb]
         if keep:
@@ -2131,8 +2315,8 @@ def check_program(prog, allowed, cwd):
     """Печатка й печатки ВСІХ субагентів ⊆ дозволи власника; кожен субагент ⊆ батька за справжніми шляхами."""
     missing = check_allowlist(prog[2][0][3], allowed, cwd)
     writable = [os.path.realpath(os.path.join(cwd, os.path.expanduser(a.partition(':')[2].strip())))
-                for a in allowed if a.partition(':')[0].strip() == 'файл.писати']
-    writable += [os.path.realpath(os.path.join(cwd, w)) for w in prog[2][0][3].get('файл.писати', [])]
+                for a in allowed if a.partition(':')[0].strip() in WRITE_TOOLS]
+    writable += [os.path.realpath(os.path.join(cwd, w)) for t in WRITE_TOOLS for w in prog[2][0][3].get(t, [])]
 
     def mods(n):
         if isinstance(n, tuple) and n:
@@ -2145,6 +2329,10 @@ def check_program(prog, allowed, cwd):
         elif isinstance(n, list):
             for x in n:
                 yield from mods(x)
+    for sc in prog[2][0][3].get('процес', []):       # виконуваний файл, який могла написати програма, — теж
+        exe = resolve_cmd(sc.split(' ')[0])
+        if exe and any(inside(exe, w) for w in writable):
+            missing.append(f'процес:{sc} ({safe(exe)} лежить у теці, куди програмам дозволено писати)')
     for m in mods(prog):            # код, який могла написати програма, — не модуль (як «права теки» для теки запису)
         if any(inside(m[6], w) for w in writable):
             missing.append(f'модуль {safe(m[2])} лежить у теці, куди програмам дозволено писати')
@@ -2187,6 +2375,8 @@ def check_allowlist(caps, allowed, cwd):
                         continue                      # у дозволах власника — лише абсолютні теки
                     rs, rg = os.path.realpath(os.path.join(cwd, s)), os.path.realpath(os.path.expanduser(g))
                     ok = ok or rs == rg or rs.startswith(rg + os.sep)
+                elif TOOLS[tool][4] == 'команда':
+                    ok = ok or cmd_within(s, g)
                 else:
                     ok = ok or s == g
             if not ok:
@@ -2205,7 +2395,7 @@ class Interp:
         self.alloc = 0
         self.steps_left, self.cwd = steps, os.path.abspath(cwd)
         self.out = out or sys.stdout
-        self.memory, self.agent, self.caps = {}, 'головний', {}
+        self.memory, self.agent, self.caps, self.seal_caps = {}, 'головний', {}, {}
         self.modules = {}      # справжній шлях модуля → його імена (модуль виконується один раз)
         self.pc = 1.0          # впевненість контексту керування: усе, що створено тут, не впевненіше
         self.halt_c = 1.0      # канал завершення: після пройденої сумнівної 🜍 решта запуску не впевненіша
@@ -2403,13 +2593,13 @@ class Interp:
                 env[nm] = menv[nm]
             return V(None)
         if k == 'seal':
-            self.caps = node[3]
+            self.caps = self.seal_caps = node[3]
             self.trace('печатка', агент=self.agent, намір=node[2], дозволи=node[3])
             return V(None)
         if k == 'tool':
             args = [self.eval(a, env) for a in node[3]]
             name = node[2]
-            full = name in ('агент', 'мережа.взяти', 'мережа.послати', 'файл.писати')     # те, що йде назовні, — у слід повністю
+            full = name in ('агент', 'мережа.взяти', 'мережа.послати', 'файл.писати', 'бд.писати', 'процес')     # те, що йде назовні, — у слід повністю
             targs = [trace_val(a, full) for a in args]
             if name not in self.caps:          # права — того, хто виконує зараз, а не того, хто написав функцію
                 self.trace('заборонено', агент=self.agent, назва=name, аргументи=targs,
@@ -2449,6 +2639,8 @@ class Interp:
                 if TOOLS[t][4] == 'тека':
                     rs = os.path.realpath(os.path.join(self.cwd, sc))
                     ok = any(inside(rs, os.path.realpath(os.path.join(self.cwd, p))) for p in self.caps[t])
+                elif TOOLS[t][4] == 'команда':
+                    ok = any(cmd_within(sc, p) for p in self.caps[t])
                 else:
                     ok = sc in self.caps[t]
                 if not ok:
