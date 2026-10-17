@@ -19,8 +19,9 @@ import decimal
 import math
 from decimal import ROUND_HALF_UP, Decimal
 
-VERSION = '0.6-dev'
+VERSION = '0.7-dev'
 MAX_DEPTH = 2000
+MAX_NEST = 1000                    # вкладеність виразу в тексті програми (глибше — помилка до запуску, суд 8)
 MAX_SIZE = 5_000_000      # найбільший логічний розмір значення (символів + елементів); --розмір N
 ALLOC_FACTOR = 20         # сумарно за запуск можна створити не більше ALLOC_FACTOR × --розмір
 MAX_INT_BITS = 100_000    # найбільше ціле (≈ 30 000 десяткових цифр)
@@ -676,7 +677,8 @@ def lex(src):
         else:
             hint = ASCII_HINTS.get(ch)
             if ord(ch) in GREEK:
-                raise StaticError(f'невідомий гліф «{ch}» (грецькі літери — це гліфи, не імена)', pos)
+                raise StaticError(f'невідомий гліф «{ch}» (грецькі літери — це гліфи, не імена)'
+                                  + (f' — може, {hint}?' if hint else ''), pos)
             raise StaticError(f'невідомий символ «{ch}»' + (f' — може, {hint}?' if hint else ''), pos)
     if modes:
         raise StaticError(f'незакритий шаблон «{TMPL_OPEN}» — бракує «{TMPL_CLOSE}» чи «}}»', (line, col))
@@ -884,6 +886,8 @@ class Parser:
 
     def expr(self):
         start, kids = self.i, []
+        if len(self.frames) >= MAX_NEST:
+            raise StaticError(f'вираз вкладено глибше за {MAX_NEST} рівнів — розбийте на ← проміжні імена', self.t[self.i][2])
         self.frames.append([start, kids])
         try:
             node = self.expr_()
@@ -1448,8 +1452,11 @@ def parse(src, base=None, path=None, all_errors=None):
     toks = lex(src)
     check_twins(toks)
     p = Parser(toks, base, stack=(os.path.realpath(path),) if path else ())
-    prog = p.program()
-    errs = type_errors(prog)
+    try:
+        prog = p.program()
+        errs = type_errors(prog)
+    except RecursionError:             # друга межа після MAX_NEST: не трасування, а помилка до запуску
+        raise StaticError(f'програма вкладена надто глибоко — розбийте на ← проміжні імена', (1, 1))
     if all_errors is not None:
         all_errors.extend(errs)
     elif errs:
@@ -2107,10 +2114,12 @@ def regex(pat, g, pos):
 SCHEMA_TYPES = {'число', 'ціле', 'рядок', 'дата', '●/○', 'істинність', '∅', 'ніщо', 'будь-що', 'список', 'словник'}
 
 
-def check_schema(x, sch, path, errs, pos, depth=0):
-    """✓: x проти схеми (дані мови). Розбіжності — у errs як «шлях: що не так»; кривa схема — помилка одразу."""
+def check_schema(x, sch, path, errs, pos, depth=0, charge=lambda k: None):
+    """✓: x проти схеми (дані мови). Розбіжності — у errs як «шлях: що не так»; кривa схема — помилка одразу.
+    charge(k) — k кроків роботи (суд 8: n полів × n записів — не безкоштовно)."""
     if depth > 200:
         raise NgrError('✓: схема вкладена надто глибоко', pos)
+    charge(1)
     where = path or 'значення'
     sv, v = sch.v, x.v
     if isinstance(sv, str):
@@ -2125,21 +2134,28 @@ def check_schema(x, sch, path, errs, pos, depth=0):
               'ціле': isinstance(v, int) and not isinstance(v, bool) or isinstance(v, Decimal) and v == v.to_integral_value(),
               'рядок': isinstance(v, str), 'дата': isinstance(v, str), '●/○': isinstance(v, bool), 'істинність': isinstance(v, bool),
               '∅': v is None, 'ніщо': v is None, 'будь-що': True, 'список': isinstance(v, list), 'словник': isinstance(v, dict)}[t]
+        if rest and '|' not in rest and '..' in rest and t not in ('число', 'ціле', 'рядок', 'список', 'словник'):
+            raise NgrError(f'✓: межі «{safe(rest)}» — лише для число, ціле, рядок, список, словник (не {t})', pos)
         if t == 'дата' and ok:
+            import re as _re
             try:
-                _iso(v, pos)
+                ok = bool(_re.fullmatch(r'\d{4}-\d{2}-\d{2}', v)) and _iso(v, pos) is not None   # дата — без часу
             except NgrError:
                 ok = False
         if not ok:
             errs.append(f'{where}: очікувалося {sv}, а не {kind(x)} {brief(x, 30)}')
             return
         if rest:
-            if '..' in rest:
-                lo, _, hi = rest.partition('..')
+            if '..' in rest and '|' not in rest:
+                lo, _, hi = rest.replace('¯', '-').partition('..')
                 try:
                     lo_, hi_ = (Decimal(lo) if lo.strip() else None), (Decimal(hi) if hi.strip() else None)
+                    if any(b is not None and not b.is_finite() for b in (lo_, hi_)):
+                        raise decimal.InvalidOperation
                 except decimal.InvalidOperation:
-                    raise NgrError(f'✓: межі «{safe(rest)}» — числа: 0..100, 1.., ..50', pos)
+                    raise NgrError(f'✓: межі «{safe(rest)}» — скінченні числа: 0..100, 1.., ..50, ¯5..5', pos)
+                if lo_ is not None and hi_ is not None and lo_ > hi_:
+                    raise NgrError(f'✓: межі «{safe(rest)}» навпаки — нижня більша за верхню', pos)
                 n = len(v) if isinstance(v, (str, list, dict)) else v
                 if not isinstance(n, NUM) or isinstance(n, bool):
                     raise NgrError(f'✓: межі «{safe(rest)}» — для числа, рядка чи списку', pos)
@@ -2157,7 +2173,7 @@ def check_schema(x, sch, path, errs, pos, depth=0):
             raise NgrError('✓: схема списку — 【S】 (один елемент-схема) або 【】 (будь-який список)', pos)
         if sv:
             for i, e in enumerate(v):
-                check_schema(e, sv[0], f'{path}[{i}]', errs, pos, depth + 1)
+                check_schema(e, sv[0], f'{path}[{i}]', errs, pos, depth + 1, charge)
                 if len(errs) > 50:
                     return
         return
@@ -2166,15 +2182,21 @@ def check_schema(x, sch, path, errs, pos, depth=0):
             errs.append(f'{where}: очікувався словник, а не {kind(x)}')
             return
         fields = {k.rstrip('?'): (k.endswith('?'), s_) for k, s_ in sv.items() if k != '…'}
+        charge(len(fields) + len(v))
         for k, (opt, s_) in fields.items():
             if k in v:
-                check_schema(v[k], s_, f'{path}.{k}' if path else k, errs, pos, depth + 1)
+                check_schema(v[k], s_, f'{path}.{k}' if path else k, errs, pos, depth + 1, charge)
             elif not opt:
                 errs.append(f'{(path + ".") if path else ""}{k}: бракує поля')
+        extra = [k for k in v if k not in fields]
         if '…' not in sv:
-            extra = [k for k in v if k not in fields]
             if extra:
                 errs.append(f'{where}: зайві поля {", ".join(safe(k) for k in extra[:5])} (дозволити — 「…」 「будь-що」)')
+        else:                          # 「…」 S — інші поля перевіряються як S (суд 8)
+            for k in extra:
+                check_schema(v[k], sv['…'], f'{path}.{k}' if path else k, errs, pos, depth + 1, charge)
+                if len(errs) > 50:
+                    return
         return
     raise NgrError(f'✓: схема — рядок-тип, 【S】 або 『поле S …』, а не {kind(sch)}', pos)
 
@@ -2599,9 +2621,14 @@ def _db(it, pos, tool, p, sql, params, write):
         else:
             raise NgrError(f'{tool}: параметр — рядок, число, істинність чи ∅, а не {kind(x)}', pos)
     acts = _db_acts()[1 if write else 0]
+    import re as _re
+    if _re.search(r'\bload_extension\b', sql.v, _re.I):     # і в тілі тригера чи VIEW — відмова одразу, а не «міна»,
+        raise NgrError(f'{tool}: load_extension заборонено (і в тригерах та VIEW)', pos)   # що вибухне на чужому INSERT (суд 8)
+    why = []
 
     def auth(action, a1, a2, db, view):
         if action == 31 and (a2 or '').lower() == 'load_extension':
+            why.append(f'load_extension{f" у тригері чи VIEW «{view}»" if view else ""}')
             return sqlite3.SQLITE_DENY
         if action in acts or (action == 19 and a1 in DB_INFO_PRAGMAS):
             return sqlite3.SQLITE_OK
@@ -2666,8 +2693,8 @@ def _db(it, pos, tool, p, sql, params, write):
             if denied:
                 it.deny(агент=it.agent, назва=tool, шлях=safe(p.v), запит=safe(sql.v)[:500],
                          причина='дія SQLite поза дозволеним')
-            msg = 'дія поза дозволеним (лише ' + ('SELECT' if not write else 'SELECT, INSERT, UPDATE, DELETE, '
-                                                  'CREATE/DROP/ALTER') + '; без ATTACH, VACUUM, PRAGMA)' \
+            msg = (f'заборонено: {why[0]}' if why else 'дія поза дозволеним (лише ' + ('SELECT' if not write else
+                   'SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER') + '; без ATTACH, VACUUM, PRAGMA)') \
                 if denied else 'лише одна інструкція SQL за раз' if 'one statement at a time' in str(e) \
                 else sql_err(str(e))
             raise NgrError(f'{tool}: {msg}', pos)
@@ -3211,15 +3238,18 @@ class Interp:
         if job.get('сухо'):                 # дію придушено: стан світу тепер не той, що був би (читання після — сумнівні)
             self.world_c = 0.0
         name, targs, ac = job['назва'], job['слід'], job['ac']
+        # у сухому прогоні придушені дії не забирали часу й не змінювали світу: час і оракул після них — теж
+        # невідомі (суд 8: рішення «за годинником» інакше виглядало б певним)
+        reads = name in WORLD_READERS or (self.dry is not None and name in ('час', 'оракул'))
         if err is not None:
             if isinstance(err, Fatal):
                 raise err
-            err.c = min(err.c, ac, self.world_c if name in WORLD_READERS else 1.0)
+            err.c = min(err.c, ac, self.world_c if reads else 1.0)
             self.trace('інструмент', агент=job['агент'], назва=name, аргументи=targs, помилка=err.msg, впевненість=err.c)
             raise err
         if name not in ('оракул', 'час'):                    # інструмент міг упасти на сумнівному аргументі — і не впав
             self.halt_risk(ac, ('op', job['pos'], '☠', []))
-        c = min([res.c, ac] + ([self.world_c] if name in WORLD_READERS else [])
+        c = min([res.c, ac] + ([self.world_c] if reads else [])
                 + ([self.decided_c] if name == 'час' else []))
         keep = getattr(self.trace, 'keep', None)
         stored = {'значення': keep(res)} if keep else {}     # сирий результат — для --повторити
@@ -3894,7 +3924,10 @@ class Interp:
             return V(show(a[0]))
         if g == 'ν':
             s = self.need(a[0], 'рядок', g, pos).strip().lstrip('\ufeff')
-            s = ''.join(str(digit(ch)) if digit(ch) is not None else ch for ch in s).replace('·', '.').replace('¯', '-')
+            s = s.replace('·', '.').replace('¯', '-')
+            odd = next((ch for ch in s if digit(ch) is not None and not ('0' <= ch <= '9')), None)
+            if odd is not None or '_' in s:   # ৪ схожа на 8, ٠ — на крапку; 1_000 — не запис числа в даних (суд 8)
+                raise NgrError(f'ν: «{safe(s)}» — лише цифри 0–9' + (f' (тут {safe(odd)} U+{ord(odd):04X})' if odd else ''), pos)
             try:
                 return V(int(s))
             except ValueError:
@@ -3987,7 +4020,7 @@ class Interp:
             return V(date_op(a[0].v, a[1].v, pos))
         if g == '✓':
             errs = []
-            check_schema(a[0], a[1], '', errs, pos)
+            check_schema(a[0], a[1], '', errs, pos, charge=lambda k: self.work(64 * k, pos))
             if errs:
                 more = f' … ще {len(errs) - 10}' if len(errs) > 10 else ''
                 raise NgrError('✓: не відповідає схемі: ' + '; '.join(errs[:10]) + more, pos)
@@ -4083,7 +4116,7 @@ class Interp:
             with decimal.localcontext(WIDE_CTX):          # точність — під будь-яке допустиме число (не 28 цифр)
                 q = Decimal(x).quantize(Decimal(1).scaleb(-k), rounding=ROUND_HALF_UP)
             if g == '⌗':
-                return V(format(q, 'f'))
+                return V(format(q if q else abs(q), 'f'))     # без «-0.00» (суд 8)
             return V(int(q) if k == 0 else q)
         if g == '⌂':
             return V([V(x) for x in self.argv])
@@ -4529,11 +4562,40 @@ USAGE = f"""Nigredo {VERSION}
 """
 
 
+def write_dirs():
+    """Теки, куди програмам дозволено писати (з дозволів власника: «дозволено» і всі «для_тек»)."""
+    path = os.path.join(OWNER_HOME, 'дозволи.json')
+    try:
+        data = json.load(open(path, encoding='utf-8'))
+    except (OSError, ValueError):
+        return []
+    entries = list(data.get('дозволено', [])) if isinstance(data, dict) else []
+    for extra in (data.get('для_тек', {}) or {}).values() if isinstance(data, dict) else []:
+        entries += extra if isinstance(extra, list) else []
+    out = []
+    for e in entries:
+        if not isinstance(e, str):
+            continue
+        try:
+            base = split_quota(canon_perm(e))[0]
+        except StaticError:
+            continue
+        t, _, sc = base.partition(':')
+        if t.strip() in WRITE_TOOLS and os.path.isabs(os.path.expanduser(sc.strip())):
+            out.append(os.path.realpath(os.path.expanduser(sc.strip())))
+    return out
+
+
+TEST_TIMEOUT = 300
+
+
 def run_tests(targets, as_json=False):
-    """ngr --тести [ТЕКА|ФАЙЛ …]: кожен *.тест.ngr — окрема програма (зі своєю печаткою, слідом і 🜍-перевірками);
-    пройшов — код 0. Підсумок і код виходу: 0 — усі пройшли, 1 — ні, 2 — тестів не знайдено."""
-    import contextlib
-    import io
+    """ngr --тести [ТЕКА|ФАЙЛ …]: кожен *.тест.ngr — окрема програма в окремому процесі (своя печатка, свій слід,
+    свій ліміт часу). Пройшов — код 0 І хоча б одна виконана 🜍 І жодної непройденої (навіть перехопленої ☂) чи
+    сумнівної. Тести з тек, куди програмам дозволено писати, не беруться: їх могла написати програма (суд 8).
+    Підсумок і код виходу: 0 — усі пройшли, 1 — ні, 2 — тестів не знайдено."""
+    import subprocess
+    import tempfile
     files = []
     for t in targets or ['.']:
         if os.path.isdir(t):
@@ -4541,27 +4603,64 @@ def run_tests(targets, as_json=False):
                 files += [os.path.join(root_, n) for n in names if n.endswith('.тест.ngr')]
         elif t.endswith('.ngr'):
             files.append(t)
-    files = sorted(set(files))
+    wd = write_dirs()
+    skipped = sorted({f for f in files if any(inside(f, w) for w in wd)})
+    files = sorted(set(files) - set(skipped))
     if not files:
-        print('✗ тестів не знайдено (файли *.тест.ngr)', file=sys.stderr)
+        print('✗ тестів не знайдено (файли *.тест.ngr)' + (f'; пропущено {len(skipped)} у теках, куди програмам '
+              'дозволено писати' if skipped else ''), file=sys.stderr)
         return 2
+    launcher = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ngr.py')
     results = []
     for f in files:
-        out, err = io.StringIO(), io.StringIO()
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        tmpd = tempfile.mkdtemp(prefix='ngr-тест-')
+        tr = os.path.join(tmpd, 'слід.jsonl')
+        try:
             try:
-                code = main([f])
-            except SystemExit as e:
-                code = e.code
-        first = (err.getvalue().strip().splitlines() or [''])[0]
-        results.append({'файл': safe(f), 'код': code, 'пройшов': code == 0, 'помилка': safe(first) if code else ''})
+                p = subprocess.run([sys.executable, launcher, '--слід', tr, f], capture_output=True, text=True,
+                                   timeout=TEST_TIMEOUT, errors='replace')
+                code, err = p.returncode, p.stderr
+            except subprocess.TimeoutExpired:
+                code, err = 'час', f'тест не завершився за {TEST_TIMEOUT} с'
+            checks, failed, doubtful, caps = 0, 0, [], {}
+            try:
+                for line in open(tr, encoding='utf-8'):
+                    rec = json.loads(line)
+                    if rec.get('подія') == 'перевірка':
+                        checks += 1
+                        failed += rec.get('результат') != 'пройдена'
+                        c = rec.get('впевненість', 1)
+                        if isinstance(c, (int, float)) and c < 1:
+                            doubtful.append(c)
+                    elif rec.get('подія') == 'печатка' and rec.get('агент') == 'головний':
+                        caps = rec.get('дозволи') or {}
+            except (OSError, ValueError):
+                pass
+        finally:
+            for n in os.listdir(tmpd):
+                os.remove(os.path.join(tmpd, n))
+            os.rmdir(tmpd)
+        first = (err.strip().splitlines() or [''])[0]
+        why = (f'код {code}: {first}' if code != 0 else
+               f'перевірку НЕ пройдено {failed} раз(и), хоча помилку перехоплено (☂)' if failed else
+               'жодної перевірки 🜍 не виконано' if not checks else
+               f'перевірка на сумнівній умові (впевненість {min(doubtful)})' if doubtful else '')
+        results.append({'файл': safe(f), 'код': code, 'пройшов': not why, 'перевірок': checks, 'не_пройдено': failed,
+                        'сумнівних': len(doubtful), 'дозволи': {safe(k): [safe(x) for x in v] for k, v in caps.items()},
+                        'помилка': safe(why)})
     ok = sum(r['пройшов'] for r in results)
     if as_json:
-        print(json.dumps({'пройшли': ok, 'усього': len(results), 'тести': results}, ensure_ascii=False, indent=1))
+        print(json.dumps({'пройшли': ok, 'усього': len(results), 'перевірок': sum(r['перевірок'] for r in results),
+                          'пропущено_з_тек_запису': [safe(x) for x in skipped], 'тести': results},
+                         ensure_ascii=False, indent=1))
     else:
         for r in results:
-            print(f'{"✓" if r["пройшов"] else "✗"} {r["файл"]}' + (f' — код {r["код"]}: {r["помилка"]}' if not r['пройшов'] else ''))
-        print(f'{ok} з {len(results)} тестів пройшли')
+            caps = '; '.join(t + (':' + ','.join(v) if v else '') for t, v in r['дозволи'].items())
+            print(f'{"✓" if r["пройшов"] else "✗"} {r["файл"]} — перевірок {r["перевірок"]}'
+                  + (f'; печатка: {caps}' if caps else '') + (f' — {r["помилка"]}' if not r['пройшов'] else ''))
+        if skipped:
+            print(f'пропущено {len(skipped)} файл(и) в теках, куди програмам дозволено писати (їх могла написати програма)')
+        print(f'{ok} з {len(results)} тестів пройшли ({sum(r["перевірок"] for r in results)} перевірок; тести діють по-справжньому — у межах своїх печаток)')
     return 0 if ok == len(results) else 1
 
 
