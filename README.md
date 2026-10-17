@@ -47,6 +47,7 @@ interpreter, attacked it, then debated the others' reports.
 | 0.4.3 frozen → 0.4.4 | **6:1 adopted** for the niche "delegation with seal and trace" (Gemini: experimental) | 300+ attempts on two frozen versions in a row: nobody acted outside the seal or got a false "✓". Findings were about the *signal*: U+2028 broke trace verification, invisible Unicode tags reached the receiving model, author text inside the seal report, homoglyphs beyond the table, the "survived, so the condition is known" channel. All fixed in 0.4.4 with negative tests (one visibility rule, UTS #39 skeletons, full output in the trace) |
 | 0.5 frozen (phase 1 of "better than Python for agents") → 0.6 | 7:0 "fix first" | Boundaries held again; new features leaked: module swap passed trace verification, a regex blacklist was bypassed 7 ways (now a linear-time regex engine with steps charged), decimals from data hung or crashed, and the benchmark was presented in Nigredo's favour. Honest numbers now: 1.64× Python's tokens **with** the seal, 9 vs 3 (Python + pyflakes) bugs caught before running, 0 false alarms |
 | 0.6 frozen (phases 1b–3: SQLite, processes, parallel `‖`, replay, dry run) → 0.7 | 7:0 "fix first" (Gemini switched A → B after the others' runs) | Nobody acted outside the seal. Findings were about what the owner *sees*: replay and dry-run traces passed verification as real runs, network refusals weren't marked "forbidden", the human translation could be spoofed with quotes, `процес` passed the symlink target as argv[0] (busybox could turn `echo` into a shell). All fixed with tests and mutation checks |
+| 0.7 frozen (XML, data contracts `✓`, quotas `≤N`, tests in the language) → 0.7 | 7:0 "fix first" (Gemini again A → B) | Nobody acted outside the seal; the new features leaked: XML writing let data inject elements, the XPath subset ignored step limits and double-counted nodes, a module's quota didn't apply, `--тести` passed a failed check caught by `☂`, and the README showed M2 "after" without "before". All fixed with negative tests from the judges' attacks; every new guard mutation-checked |
 
 Full protocols, every participant's report and solutions: [`konsylium/`](konsylium/).
 
@@ -58,11 +59,11 @@ task, without help. Numbers as of 2026-10-16:
 | | Nigredo | Python | Note |
 |---|---|---|---|
 | Tasks solved (12 agent tasks) | 12/12 | 12/12 | |
-| Program length, **with** the seal | 1.01× (author's 12 tasks); **0.94×** on models' own first-try programs for 20 new tasks (53 pairs) | 1× | the seal costs ~13 tokens |
+| Program length, **with** the seal | 1.01× (author's 12 tasks); **0.88×** on models' own first-try programs for 20 new tasks (36 pairs, one per task × model; only where both languages passed) | 1× | the seal costs ~13 tokens |
 | Bugs caught before running (14 real ones) | 9 | 3 (with pyflakes), 1 (py_compile) | 0 false alarms on 10 correct programs; 5 classes Nigredo misses are listed |
-| Models writing it right first try (hard set, 3 runs each) | Sonnet 29/30, Haiku 24/30 | Sonnet 30/30, Haiku 26/30 | 10 tasks not in the cheat sheet; misses left are mostly prefix-notation arity. After a second try: 30 and 29 vs 30 and 30 |
+| Models writing it right first try (hard set, 3 runs each) | Sonnet 29/30, Haiku 24/30 (first run: 24/30 and 24/30) | Sonnet 30/30, Haiku 26/30 (first run: 30, 27) | 10 tasks not in the cheat sheet. The rerun is on the **same** tasks after fixing a `⌕` defect and the cheat sheet that those misses exposed, so it is not a held-out measurement; ±1–2 of 30 is noise. Misses left are mostly prefix-notation arity. After a second try (the model sees the expected output): 30 and 29 vs 30 and 30 |
 | Speed, small tasks (median) | 2.2× slower | 1× | interpreter start-up dominates |
-| Speed, large data (200k words / 200k-step loop) | ~5× / ~25× slower | 1× | the honest weak spot: a tree-walking interpreter on top of Python |
+| Speed, large data (200k words / 200k-step loop) | ~5× / ~30× slower | 1× | the honest weak spot: a tree-walking interpreter on top of Python; `python3 bench/великі/міряти.py` (CPU time, phone, varies with load) |
 | Owner knows what a program may do / did | seal + signed trace, replay, dry run | — | Python has no such mechanism inside the language |
 
 ### Try it
@@ -149,8 +150,8 @@ python3 interpreter/test.py                            # приклади, 73 п
 ## Історія: суди
 
 Мову створив ШІ-агент на прохання власника. Щоб оцінка не була лише думкою автора, її віддали на
-**консиліум**: пʼять окремих сесій Claude з різними ролями (Скептик, Практик, Мовознавець, Аудитор
-безпеки, Новачок, який вчиться лише з памʼятки) і Gemini як незалежна модель. Кожен розвʼязував ті самі
+**консиліум**: шість окремих сесій Claude з різними ролями (Скептик, Практик, Мовознавець, Аудитор
+безпеки, Новачок, який вчиться лише з памʼятки, Оркестратор, що приймає чужі програми) і Gemini як незалежна модель. Кожен розвʼязував ті самі
 завдання справжнім інтерпретатором, потім усі обговорювали звіти одне одного.
 
 | Версія | Вердикт | Що сталося |
@@ -163,6 +164,7 @@ python3 interpreter/test.py                            # приклади, 73 п
 | 0.4.3 заморожена → 0.4.4 | **6:1 «А» — прийняти для ніші «доручення з печаткою і слідом»** (Gemini — «Б») | Понад 300 спроб на двох заморожених версіях поспіль: ні дії поза печаткою, ні хибного «✓». Знайдено вади сигналу: U+2028 ламав перевірку сліду, невидимі теги доходили до моделі-отримувача, текст автора у звіті печатки, двійники поза таблицею, канал «дожила — отже умова відома». Усе виправлено в 0.4.4 з негативними тестами. |
 | 0.5 заморожена (фаза 1 «краща за Python для агентів») → 0.6 | 7:0 «спершу виправити» | Межі знову тримали; нове протекло: підміна модуля проходила перевірку сліду, чорний список ReDoS обійшли 7 способами (тепер рушій регулярок без відкатів, кроки — з ліміту), десяткові з даних вішали чи валили запуск, мірило подано вигідно для Nigredo. Чесні числа: 1,64× токенів Python **з** печаткою, 9 проти 3 (Python + pyflakes) помилок до запуску, 0 хибних тривог. |
 | 0.6 заморожена (фази 1б–3: SQLite, процеси, паралельні `‖`, повтор, сухий прогін) → 0.7 | 7:0 «спершу виправити» (Gemini перейшов з А на Б після запусків інших) | Дії поза печаткою — жодної. Знайдене — про те, що *бачить* власник: сліди повтору й сухого прогону проходили перевірку як справжні, відмови мережі не позначалися «заборонено», переклад для людини обдурювали лапками, `процес` передавав ціль симлінка як argv[0] (на busybox `echo` міг стати оболонкою). Усе виправлено з тестами й мутаційною перевіркою. |
+| 0.7 заморожена (XML, контракти `✓`, квоти `≤N`, тести мовою) → 0.7 | 7:0 «спершу виправити» (Gemini знову А → Б) | Дії поза печаткою — жодної; протекло нове: запис XML дозволяв даним вставити елементи, підмножина XPath не рахувала кроків і двоїла вузли, квота модуля не діяла, `--тести` зараховував провалену перевірку під `☂`, README подавав М2 «після» без «до». Усе виправлено з негативними тестами з атак суддів; кожен новий захист — мутаційна перевірка. |
 
 Висновок третього суду: Nigredo краща за Python там, де агент **отримує чужу програму** й мусить вирішити,
 чи її запускати, — для цього досить рядка печатки; у Python — лише читати весь код, і навіть тоді обхід можливий.
@@ -177,11 +179,11 @@ python3 interpreter/test.py                            # приклади, 73 п
 | | Nigredo | Python | Примітка |
 |---|---|---|---|
 | Розвʼязано (12 задач агента) | 12/12 | 12/12 | |
-| Довжина програм **з** печаткою | 1,01× (12 задач автора); **0,94×** на програмах моделей з першої спроби для 20 нових задач (53 пари) | 1× | печатка — ~13 токенів |
+| Довжина програм **з** печаткою | 1,01× (12 задач автора); **0,88×** на програмах моделей з першої спроби для 20 нових задач (36 пар — одна на задачу × модель; лише де обидві мови пройшли) | 1× | печатка — ~13 токенів |
 | Помилок спіймано до запуску (14 справжніх) | 9 | 3 (з pyflakes), 1 (py_compile) | 0 хибних тривог на 10 правильних програмах; 5 класів, яких Nigredo не ловить, перелічено |
-| Моделі пишуть правильно з першої спроби (складний набір, по 3 прогони) | Sonnet 29/30, Haiku 24/30 | Sonnet 30/30, Haiku 26/30 | 10 задач поза памʼяткою; решта промахів — переважно арність префіксного запису. З другої спроби: 30 і 29 проти 30 і 30 |
+| Моделі пишуть правильно з першої спроби (складний набір, по 3 прогони) | Sonnet 29/30, Haiku 24/30 (перший прогін: 24/30 і 24/30) | Sonnet 30/30, Haiku 26/30 (перший: 30, 27) | 10 задач поза памʼяткою. Повтор — на **тих самих** задачах після виправлення вади `⌕` і памʼятки, які ці промахи виявили, тож це не відкладений вимір; ±1–2 з 30 — шум. Решта промахів — переважно арність префіксного запису. З другої спроби (модель бачить очікуваний вивід): 30 і 29 проти 30 і 30 |
 | Швидкість, малі задачі (медіана) | у 2,2× повільніше | 1× | переважає запуск інтерпретатора |
-| Швидкість, великі дані (200 тис. слів / цикл на 200 тис. кроків) | у ~5× / ~25× повільніше | 1× | чесне слабке місце: інтерпретатор дерева поверх Python |
+| Швидкість, великі дані (200 тис. слів / цикл на 200 тис. кроків) | у ~5× / ~30× повільніше | 1× | чесне слабке місце: інтерпретатор дерева поверх Python; `python3 bench/великі/міряти.py` (процесорний час на телефоні, залежить від навантаження) |
 | Власник знає, що програмі дозволено й що вона зробила | печатка + підписаний слід, повтор, сухий прогін | — | у самій мові Python такого механізму немає |
 
 ## Браузер для агентів — на самій Nigredo
