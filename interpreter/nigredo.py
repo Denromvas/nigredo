@@ -2388,14 +2388,8 @@ def xml_path(root, path, pos, charge):
         t = e.v.get('текст')
         return t.v if t is not None else ''
 
-    order = {}                     # id → порядок документа (глибина спершу, як у XPath)
-    stack = [check(root)]
-    while stack:
-        e = stack.pop()
-        if id(e) not in order:
-            order[id(e)] = len(order)
-            stack.extend(reversed(kids(e)))
-
+    # вузол — (позиція, елемент): позиція — індекси дітей від документа. Однаковий (спільний) елемент на двох місцях —
+    # два вузли, як у XPath; порядок позицій — порядок документа
     def ok(e, cond, idx):
         cond = cond.strip()
         if cond.isdigit():
@@ -2408,43 +2402,43 @@ def xml_path(root, path, pos, charge):
             return v is not None and v.v == want
         return any(k.v['тег'].v == name and text_of(k) == want for k in kids(e))
 
+    def below(node):
+        path, e = node
+        return [(path + (i,), k) for i, k in enumerate(kids(e))]
+
     def uniq(nodes):
-        seen, out = set(), []
-        for e in nodes:
-            if id(e) not in seen:
-                seen.add(id(e))
-                out.append(e)
-        return sorted(out, key=lambda e: order.get(id(e), 0))
+        return sorted({path: (path, e) for path, e in nodes}.values(), key=lambda n: n[0])
 
     # контекст: «документ» над коренем, щоб //b і /a бачили сам корінь
-    doc = V({'тег': V(''), 'діти': V([root])})
-    cur = [doc] if (absolute or lead == '//' or (not steps and attr_sep == '//')) else [root]
+    doc = ((), V({'тег': V(''), 'діти': V([check(root)])}))
+    cur = [doc] if (absolute or lead == '//' or (not steps and attr_sep == '//')) else [((0,), root)]
 
     def self_or_below(nodes):      # нащадки-або-сам кожного; спільні піддерева — один раз
         seen, out = set(), []
         stack = list(reversed(nodes))
         while stack:
-            e = stack.pop()
-            if id(e) in seen:
+            n = stack.pop()
+            if n[0] in seen:
                 continue
-            seen.add(id(e))
-            out.append(e)
-            stack.extend(reversed(kids(e)))
+            seen.add(n[0])
+            out.append(n)
+            stack.extend(reversed(below(n)))
         return out
     for anywhere, name, conds in steps:
         parents = self_or_below(cur) if anywhere else cur
         nxt = []
         for p in parents:          # [n] — серед дітей одного батька, як у XPath
-            sel = [k for k in kids(p) if name == '*' or k.v['тег'].v == name]
+            sel = [k for k in below(p) if name == '*' or k[1].v['тег'].v == name]
             for c in conds:
-                sel = [k for i, k in enumerate(sel, 1) if ok(k, c, i)]
+                sel = [k for i, k in enumerate(sel, 1) if ok(k[1], c, i)]
             nxt.extend(sel)
         cur = uniq(nxt)
     if attr is not None:
         if attr_sep == '//':
             cur = self_or_below(cur)
         name = attr.split(':')[-1]
-        return V([attrs(e)[name] for e in cur if name in attrs(e)])
+        return V([attrs(e)[name] for _, e in cur if name in attrs(e)])
+    cur = [e for _, e in cur]
     return V(cur)
 
 
