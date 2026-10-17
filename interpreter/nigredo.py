@@ -19,8 +19,9 @@ import decimal
 import math
 from decimal import ROUND_HALF_UP, Decimal
 
-VERSION = '0.6-dev'
+VERSION = '0.7-dev'
 MAX_DEPTH = 2000
+MAX_NEST = 1000                    # вкладеність виразу в тексті програми (глибше — помилка до запуску, суд 8)
 MAX_SIZE = 5_000_000      # найбільший логічний розмір значення (символів + елементів); --розмір N
 ALLOC_FACTOR = 20         # сумарно за запуск можна створити не більше ALLOC_FACTOR × --розмір
 MAX_INT_BITS = 100_000    # найбільше ціле (≈ 30 000 десяткових цифр)
@@ -136,9 +137,10 @@ GLYPHS = {
           '「число:0..100」 межі (рядок, список — довжина); 「рядок:a|b」 перелік; 【S】 — кожен елемент; '
           '『「поле」 S 「поле?」 S』 — поля (зайві — помилка; 「…」 「будь-що」 — дозволити інші)', 'перевірене({0} за схемою {1})', 'дані'),
     'χ': (1, 'χ текст | χ елемент', 'XML: рядок → елемент 『「тег」 … 「атрибути」 『…』 「текст」 … 「діти」 【…】』 (простори імен '
-          'знято з тегів; DTD і сутності — заборонено); елемент → рядок XML', 'xml({0})', 'дані'),
+          'знято з тегів; DTD і сутності — заборонено); елемент → рядок XML (назви — лише XML Name)', 'xml({0})', 'дані'),
     '↘': (2, '↘ елемент 「шлях」', 'XPath-підмножина: a/b — діти, //b — будь-де нижче, * — будь-який, [@атр=\'x\'] '
-          '[дитина=\'x\'] [n] — відбір, …/@атр — значення атрибутів; /a… — від самого елемента. → список',
+          '[дитина=\'x\'] [n] — відбір, …/@атр — значення атрибутів; /a… — від самого елемента. → список вузлів '
+          'без повторів, у порядку документа; інше (.., text(), !=) — помилка',
           'знайти в {0} шлях {1}', 'дані'),
     '⇡': (1, '⇡ рядок', 'великими літерами', 'великими({0})', 'дані'),
     '⊏': (3, '⊏ x від до', 'зріз рядка чи списку [від, до); відʼємні — з кінця; до ∅ — до кінця', '{0}[{1}…{2}]', 'дані'),
@@ -675,7 +677,8 @@ def lex(src):
         else:
             hint = ASCII_HINTS.get(ch)
             if ord(ch) in GREEK:
-                raise StaticError(f'невідомий гліф «{ch}» (грецькі літери — це гліфи, не імена)', pos)
+                raise StaticError(f'невідомий гліф «{ch}» (грецькі літери — це гліфи, не імена)'
+                                  + (f' — може, {hint}?' if hint else ''), pos)
             raise StaticError(f'невідомий символ «{ch}»' + (f' — може, {hint}?' if hint else ''), pos)
     if modes:
         raise StaticError(f'незакритий шаблон «{TMPL_OPEN}» — бракує «{TMPL_CLOSE}» чи «}}»', (line, col))
@@ -711,11 +714,15 @@ class Caps(dict):
 def split_quota(perm, pos=None):
     """「взяти:api.x≤100」 → («взяти:api.x», 100); без ≤ — (perm, None)."""
     import re as _re
-    m = _re.fullmatch(r'(.*?)\s*≤\s*(\d+)', perm)
+    m = _re.fullmatch(r'(.*?)\s*≤\s*([0-9]+)', perm)
     if not m:
+        if '≤' in perm:                # ≤৪, ≤¯1, ≤ у середині — не квота й не шлях (суд 8)
+            raise StaticError(f'дозвіл «{safe(perm)}»: квота — «≤N» у кінці, N — цифри 0–9', pos)
         return perm, None
     if '≤' in m.group(1):
-        raise StaticError(f'дозвіл «{perm}»: одна квота ≤N — у кінці', pos)
+        raise StaticError(f'дозвіл «{safe(perm)}»: одна квота ≤N — у кінці', pos)
+    if int(m.group(2)) < 1:
+        raise StaticError(f'дозвіл «{safe(perm)}»: квота ≤0 нічого не дозволяє — приберіть дозвіл', pos)
     return m.group(1), int(m.group(2))
 
 
@@ -758,6 +765,8 @@ class Parser:
         self.agent_names = {skeleton("головний"): "головний"}   # скелет імені субагента → імʼя
         self.ctx = [('stmt', 0)]    # ('stmt', відступ інструкції) або ('items',) усередині 【】『』
         self.head = -1              # індекс токена, з якого почалася поточна інструкція
+        self.frames = []            # незавершені вирази [початок, [(початок, кінець, вкладені)…]] — для підказки арності
+        self.last_span = None       # (початок, кінець, вкладені) щойно розібраного виразу
 
     def peek(self):
         return self.t[self.i]
@@ -780,7 +789,51 @@ class Parser:
                 self.i += 1
                 continue
             raise StaticError('рядок закінчився, а виразові бракує аргументу (щоб продовжити вираз на '
-                              'наступному рядку, зробіть там більший відступ)', tok[2])
+                              'наступному рядку, зробіть там більший відступ)' + self.hungry(), tok[2])
+
+    def tok_text(self, t):
+        k, v = t[0], t[1]
+        if k == 'str':
+            v = v if len(v) <= 12 else v[:10] + '…'
+            return '「' + v.replace('\n', '\\n') + '」'
+        if k == 'tpart':
+            return v if len(v) <= 12 else v[:10] + '…'
+        return str(v)
+
+    def shape(self, span, limit=300):
+        """Як розібрано вираз: кожен вираз з аргументами — у дужках (підказка, коли не зійшлася арність)."""
+        def go(s, e, kids, top=False):
+            out, i, k = [], s, 0
+            while i < e:
+                if k < len(kids) and kids[k][0] == i:
+                    out.append(go(*kids[k]))
+                    i = kids[k][1]
+                    k += 1
+                    continue
+                if self.t[i][0] != 'nl':
+                    out.append(self.tok_text(self.t[i]))
+                i += 1
+            text = ' '.join(out)
+            return f'({text})' if kids and not top and self.t[s][0] not in ('open', 'topen') else text
+        text = go(*span, top=True)
+        return text if len(text) <= limit else text[:limit] + ' …'
+
+    def hungry(self):
+        """Які вирази ще чекають аргументів — найглибші спершу."""
+        out = []
+        for start, kids in reversed(self.frames):
+            if start >= self.i or self.t[start][0] in ('open', 'topen'):
+                continue
+            k, v, pos = self.t[start]
+            if k == 'glyph' and v in GLYPHS and isinstance(GLYPHS[v][0], int):
+                out.append(f'{v} ({pos[0]}:{pos[1]}) бере {GLYPHS[v][0]}, є {len(kids)}')
+            elif k == 'name' and self.lookup(v):
+                out.append(f'{v} ({pos[0]}:{pos[1]}) бере {self.lookup(v)}, є {len(kids)}')
+            else:
+                out.append(f'{self.tok_text(self.t[start])} ({pos[0]}:{pos[1]})')
+            if len(out) == 3:
+                break
+        return (' — чекають аргументів: ' + '; '.join(out)) if out else ''
 
     def lookup(self, name):
         for s in reversed(self.scopes):
@@ -822,11 +875,33 @@ class Parser:
             self.ctx.pop()
             after = self.peek()
             if after[0] not in ('nl', 'eof', 'close'):
+                rest = []
+                for t in self.t[self.i:]:
+                    if t[0] in ('nl', 'eof'):
+                        break
+                    rest.append(self.tok_text(t))
                 raise StaticError('вираз уже завершено, а в рядку ще щось є — зайве чи бракує аргументу раніше? '
-                                  '(кілька виразів в одному рядку розділяйте ¦)', after[2])
+                                  '(кілька виразів в одному рядку розділяйте ¦)'
+                                  f' — розібрано: {self.shape(self.last_span)} — зайве: {" ".join(rest)[:120]}', after[2])
 
     def expr(self):
+        start, kids = self.i, []
+        if len(self.frames) >= MAX_NEST:
+            raise StaticError(f'вираз вкладено глибше за {MAX_NEST} рівнів — розбийте на ← проміжні імена', self.t[self.i][2])
+        self.frames.append([start, kids])
+        try:
+            node = self.expr_()
+        finally:
+            self.frames.pop()
+        self.last_span = (start, self.i, kids)
+        if self.frames:
+            self.frames[-1][1].append(self.last_span)
+        return node
+
+    def expr_(self):
         self.cont_nl()
+        if self.frames[-1][0] < self.i:                 # перенос рядка — вираз починається далі
+            self.frames[-1][0] = self.i
         kind_, val, pos = self.next()
         if kind_ == 'num' or kind_ == 'str':
             return ('lit', pos, val)
@@ -886,9 +961,11 @@ class Parser:
         if kind_ in ('hclose', 'tclose', 'hopen', 'tpart'):
             raise StaticError(f'«{val}» тут не очікувалося — бракує виразу в шаблоні', pos)
         if kind_ == 'close':
-            raise StaticError(f'«{val}» тут не очікувалося — бракує аргументу', pos)
+            self.i -= 1
+            raise StaticError(f'«{val}» тут не очікувалося — бракує аргументу' + self.hungry(), pos)
         if kind_ == 'eof' or kind_ == 'nl':
-            raise StaticError('бракує аргументу: вираз обірвався', pos)
+            self.i -= 1
+            raise StaticError('бракує аргументу: вираз обірвався' + self.hungry(), pos)
         return self.glyph(val, pos)
 
     def items(self, close):
@@ -1002,6 +1079,9 @@ class Parser:
                 self.cap_one(caps, perm, e[1], inherit)
                 if quota is not None:          # 「взяти:api.x≤100」 — не більше 100 викликів за запуск
                     t, _, sc = perm.partition(':')
+                    if (t.strip(), sc.strip()) in caps.quotas:     # дві квоти — яка діє? помилка (суд 8)
+                        raise StaticError(f'дві квоти на «{t.strip()}{":" + sc.strip() if sc.strip() else ""}» '
+                                          f'(≤{caps.quotas[(t.strip(), sc.strip())]} і ≤{quota}) — залиште одну', e[1])
                     caps.quotas[(t.strip(), sc.strip())] = quota
         return node, caps
 
@@ -1372,8 +1452,11 @@ def parse(src, base=None, path=None, all_errors=None):
     toks = lex(src)
     check_twins(toks)
     p = Parser(toks, base, stack=(os.path.realpath(path),) if path else ())
-    prog = p.program()
-    errs = type_errors(prog)
+    try:
+        prog = p.program()
+        errs = type_errors(prog)
+    except RecursionError:             # друга межа після MAX_NEST: не трасування, а помилка до запуску
+        raise StaticError('програма вкладена надто глибоко — розбийте на ← проміжні імена', (1, 1))
     if all_errors is not None:
         all_errors.extend(errs)
     elif errs:
@@ -1525,7 +1608,7 @@ def _verify(path, program=None):
     Підсумок цілого сліду каже й те, що отримувачу важливо без читання сліду: спроби поза правами («заборонено»),
     перехоплені помилки, підсумовані (не повністю записані) значення, теку й аргументи запуску."""
     key, prev, n, last, head = owner_key(), '0' * 16, 0, None, None
-    denied, caught, summed, modules, dry, raised = [], 0, 0, [], False, 0
+    denied, caught, summed, modules, dry, raised, quota_hits = [], 0, 0, [], False, 0, []
     info = {}
     try:
         st = os.stat(path)
@@ -1556,6 +1639,8 @@ def _verify(path, program=None):
             what = rec.get('шлях') or rec.get('адреса') or rec.get('субагент') or rec.get('аргументи') or ''
             denied.append(f'{rec.get("агент", "?")}: {rec.get("назва") or "делегування"} '
                           f'{safe(str(what))[:80]} — {rec.get("причина") or "бракує прав"}')
+        if rec.get('подія') == 'квоту вичерпано':
+            quota_hits.append(f'{rec.get("агент", "?")}: {rec.get("квота", "?")} ({rec.get("чия", "?")})')
         caught += rec.get('подія') == 'помилку перехоплено'
         dry = dry or rec.get('подія') == 'сухо'
         if rec.get('подія') == 'впевненість' and isinstance(rec.get('стало'), (int, float)) and \
@@ -1590,13 +1675,17 @@ def _verify(path, program=None):
                         f'зараз {"немає файлу" if now is None else now[:16] + "…"}) — виконано не той код, що зараз', info)
     info.update({'модулі': [{'шлях': r, 'sha256': h} for r, _, h in modules],
                  'інтерпретатор': head.get('інтерпретатор'),
-                 'записів': n, 'останній': last, 'заборонено': denied, 'перехоплено_помилок': caught,
+                 'записів': n, 'останній': last, 'заборонено': denied, 'квоту_вичерпано': quota_hits,
+                 'перехоплено_помилок': caught,
                  'підсумовано_значень': summed, 'тека': head.get('тека'), 'аргументи': head.get('аргументи'),
                  'режим': 'повтор' if head.get('повтор') else 'сухо' if dry else 'звичайний'})
     notes = [f'тека {safe(str(head.get("тека", "—")))}',
              f'аргументи {safe(json.dumps(head.get("аргументи"), ensure_ascii=False))}']
     notes.append(f'⚠ спроб поза правами («заборонено»): {len(denied)} — ' + '; '.join(denied[:5])
                  + (' …' if len(denied) > 5 else '') if denied else 'спроб поза правами немає')
+    if quota_hits:                     # не порушення прав: оголошена межа (печатка, модуль, субагент, власник)
+        notes.append(f'квоту вичерпано (межа спрацювала, дію не виконано): {len(quota_hits)} — '
+                     + '; '.join(quota_hits[:5]) + (' …' if len(quota_hits) > 5 else ''))
     if modules:
         notes.append('модулі: ' + ', '.join(f'{safe(str(r))} (sha256 {str(h)[:16]}…)' for r, _, h in modules)
                      + ('' if program is not None else ' — щоб звірити з файлами, перевірте слід разом із програмою'))
@@ -1651,11 +1740,11 @@ def _path_ok(it, tool, p, pos, write=False):
     if not isinstance(p, str):
         raise NgrError(f'{tool}: шлях має бути рядком', pos)
     if '\0' in p or any(invisible(ch) for ch in p):
-        it.trace('заборонено', агент=it.agent, назва=tool, шлях=safe(p), причина='керівні чи невидимі символи в шляху')
+        it.deny(агент=it.agent, назва=tool, шлях=safe(p), причина='керівні чи невидимі символи в шляху')
         raise NgrError(f'{tool}: у шляху керівні чи невидимі символи', pos)
     def allowed(real):
         if inside(real, OWNER_HOME) or real in it.protected:
-            it.trace('заборонено', агент=it.agent, назва=tool, шлях=safe(p), причина='тека власника або слід')
+            it.deny(агент=it.agent, назва=tool, шлях=safe(p), причина='тека власника або слід')
             raise NgrError(f'{tool}: «{safe(p)}» — це тека власника або слід; програмі туди не можна', pos)
         check = os.path.dirname(real) if write else real
         for base in it.caps[tool]:
@@ -1681,7 +1770,7 @@ def _path_ok(it, tool, p, pos, write=False):
             if seen is not None:
                 seen.append(safe(real))
             return real
-    it.trace('заборонено', агент=it.agent, назва=tool, шлях=safe(p), причина='поза дозволеною текою')
+    it.deny(агент=it.agent, назва=tool, шлях=safe(p), причина='поза дозволеною текою')
     raise NgrError(f'{tool}: «{safe(p)}» поза дозволеним ({", ".join(safe(x) for x in it.caps[tool])})', pos)
 
 
@@ -2025,10 +2114,12 @@ def regex(pat, g, pos):
 SCHEMA_TYPES = {'число', 'ціле', 'рядок', 'дата', '●/○', 'істинність', '∅', 'ніщо', 'будь-що', 'список', 'словник'}
 
 
-def check_schema(x, sch, path, errs, pos, depth=0):
-    """✓: x проти схеми (дані мови). Розбіжності — у errs як «шлях: що не так»; кривa схема — помилка одразу."""
+def check_schema(x, sch, path, errs, pos, depth=0, charge=lambda k: None):
+    """✓: x проти схеми (дані мови). Розбіжності — у errs як «шлях: що не так»; кривa схема — помилка одразу.
+    charge(k) — k кроків роботи (суд 8: n полів × n записів — не безкоштовно)."""
     if depth > 200:
         raise NgrError('✓: схема вкладена надто глибоко', pos)
+    charge(1)
     where = path or 'значення'
     sv, v = sch.v, x.v
     if isinstance(sv, str):
@@ -2043,21 +2134,28 @@ def check_schema(x, sch, path, errs, pos, depth=0):
               'ціле': isinstance(v, int) and not isinstance(v, bool) or isinstance(v, Decimal) and v == v.to_integral_value(),
               'рядок': isinstance(v, str), 'дата': isinstance(v, str), '●/○': isinstance(v, bool), 'істинність': isinstance(v, bool),
               '∅': v is None, 'ніщо': v is None, 'будь-що': True, 'список': isinstance(v, list), 'словник': isinstance(v, dict)}[t]
+        if rest and '|' not in rest and '..' in rest and t not in ('число', 'ціле', 'рядок', 'список', 'словник'):
+            raise NgrError(f'✓: межі «{safe(rest)}» — лише для число, ціле, рядок, список, словник (не {t})', pos)
         if t == 'дата' and ok:
+            import re as _re
             try:
-                _iso(v, pos)
+                ok = bool(_re.fullmatch(r'\d{4}-\d{2}-\d{2}', v)) and _iso(v, pos) is not None   # дата — без часу
             except NgrError:
                 ok = False
         if not ok:
             errs.append(f'{where}: очікувалося {sv}, а не {kind(x)} {brief(x, 30)}')
             return
         if rest:
-            if '..' in rest:
-                lo, _, hi = rest.partition('..')
+            if '..' in rest and '|' not in rest:
+                lo, _, hi = rest.replace('¯', '-').partition('..')
                 try:
                     lo_, hi_ = (Decimal(lo) if lo.strip() else None), (Decimal(hi) if hi.strip() else None)
+                    if any(b is not None and not b.is_finite() for b in (lo_, hi_)):
+                        raise decimal.InvalidOperation
                 except decimal.InvalidOperation:
-                    raise NgrError(f'✓: межі «{safe(rest)}» — числа: 0..100, 1.., ..50', pos)
+                    raise NgrError(f'✓: межі «{safe(rest)}» — скінченні числа: 0..100, 1.., ..50, ¯5..5', pos)
+                if lo_ is not None and hi_ is not None and lo_ > hi_:
+                    raise NgrError(f'✓: межі «{safe(rest)}» навпаки — нижня більша за верхню', pos)
                 n = len(v) if isinstance(v, (str, list, dict)) else v
                 if not isinstance(n, NUM) or isinstance(n, bool):
                     raise NgrError(f'✓: межі «{safe(rest)}» — для числа, рядка чи списку', pos)
@@ -2075,7 +2173,7 @@ def check_schema(x, sch, path, errs, pos, depth=0):
             raise NgrError('✓: схема списку — 【S】 (один елемент-схема) або 【】 (будь-який список)', pos)
         if sv:
             for i, e in enumerate(v):
-                check_schema(e, sv[0], f'{path}[{i}]', errs, pos, depth + 1)
+                check_schema(e, sv[0], f'{path}[{i}]', errs, pos, depth + 1, charge)
                 if len(errs) > 50:
                     return
         return
@@ -2084,15 +2182,21 @@ def check_schema(x, sch, path, errs, pos, depth=0):
             errs.append(f'{where}: очікувався словник, а не {kind(x)}')
             return
         fields = {k.rstrip('?'): (k.endswith('?'), s_) for k, s_ in sv.items() if k != '…'}
+        charge(len(fields) + len(v))
         for k, (opt, s_) in fields.items():
             if k in v:
-                check_schema(v[k], s_, f'{path}.{k}' if path else k, errs, pos, depth + 1)
+                check_schema(v[k], s_, f'{path}.{k}' if path else k, errs, pos, depth + 1, charge)
             elif not opt:
                 errs.append(f'{(path + ".") if path else ""}{k}: бракує поля')
+        extra = [k for k in v if k not in fields]
         if '…' not in sv:
-            extra = [k for k in v if k not in fields]
             if extra:
                 errs.append(f'{where}: зайві поля {", ".join(safe(k) for k in extra[:5])} (дозволити — 「…」 「будь-що」)')
+        else:                          # 「…」 S — інші поля перевіряються як S (суд 8)
+            for k in extra:
+                check_schema(v[k], sv['…'], f'{path}.{k}' if path else k, errs, pos, depth + 1, charge)
+                if len(errs) > 50:
+                    return
         return
     raise NgrError(f'✓: схема — рядок-тип, 【S】 або 『поле S …』, а не {kind(sch)}', pos)
 
@@ -2100,64 +2204,121 @@ def check_schema(x, sch, path, errs, pos, depth=0):
 XML_MAX_DEPTH = 500
 
 
-def xml_parse(text, pos, max_size):
+def xml_name_ok(name):
+    """Назва тегу чи атрибута для запису: підмножина XML Name — літера або «_», далі літери, цифри, «-», «.», «_»
+    і знаки, що поєднуються; один префікс «x:» дозволено. Нічого, що змінило б будову документа (суд 8)."""
+    parts = name.split(':')
+    if len(parts) > 2:
+        return False
+    for p in parts:
+        if not p or not (p[0].isalpha() or p[0] == '_'):
+            return False
+        for ch in p[1:]:
+            if not (ch.isalnum() or ch in '-._' or unicodedata.category(ch) in ('Mn', 'Mc')):
+                return False
+    return True
+
+
+def xml_char_bad(s):
+    """Перший символ, якого не може бути в XML 1.0 (керівні, крім \\t \\n \\r; сурогати; U+FFFE/FFFF), або None."""
+    for ch in s:
+        o = ord(ch)
+        if (o < 0x20 and ch not in '\t\n\r') or 0xD800 <= o <= 0xDFFF or o in (0xFFFE, 0xFFFF):
+            return ch
+    return None
+
+
+def xml_parse(text, pos, max_size, charge):
     """XML → елемент (словник): тег (без простору імен), простір (якщо є), атрибути, текст (власний, без країв), діти.
-    DTD і сутності заборонено (XXE, «мільярд сміхів»): у документах даних вони не потрібні."""
-    import xml.etree.ElementTree as ET
-    import re as _re
-    if _re.search(r'<!\s*(DOCTYPE|ENTITY)', text, _re.I):
+    DTD і сутності заборонено (XXE, «мільярд сміхів»): у документах даних вони не потрібні. Заборону ставить сам
+    розбирач — <!DOCTYPE у коментарі чи CDATA не заважає (суд 8)."""
+    import xml.parsers.expat as expat
+    charge(len(text))
+
+    def forbid(*a):
         raise NgrError('χ: DTD і сутності (<!DOCTYPE, <!ENTITY) заборонено — небезпечні (XXE, «мільярд сміхів»)', pos)
-    try:
-        root = ET.fromstring(text.removeprefix('\ufeff'))
-    except ET.ParseError as e:
-        raise NgrError(f'χ: не XML ({e})', pos)
 
-    def local(name):
-        return name.rsplit('}', 1)[1] if name.startswith('{') else name, \
-            name[1:].split('}', 1)[0] if name.startswith('{') else None
+    def local(name):               # expat з простором: «uri}назва»
+        return (name.rsplit('}', 1)[1], name.split('}', 1)[0]) if '}' in name else (name, None)
+    stack, top = [], []            # [словник, частини тексту, діти]
 
-    def conv(el, depth):
-        if depth > XML_MAX_DEPTH:
+    def start(name, attrib):
+        if len(stack) >= XML_MAX_DEPTH:
             raise NgrError(f'χ: вкладеність глибша за {XML_MAX_DEPTH}', pos)
-        tag, ns = local(el.tag)
-        attrs = {local(k)[0]: V(v) for k, v in el.attrib.items()}
-        text_ = ((el.text or '') + ''.join(ch.tail or '' for ch in el)).strip()
+        charge(1)
+        tag, ns = local(name)
+        attrs = {}
+        for k, v in attrib.items():
+            nm = local(k)[0]
+            if nm in attrs:          # p:x і q:x — не зливати мовчки (суд 8)
+                raise NgrError(f'χ: у «{safe(tag)}» два атрибути «{safe(nm)}» з різних просторів імен — '
+                               f'назви атрибутів тут без простору, тож їх не розрізнити', pos)
+            attrs[nm] = V(v)
         d = {'тег': V(tag)}
         if ns:
             d['простір'] = V(ns)
         d['атрибути'] = V(attrs)
-        d['текст'] = V(text_)
-        d['діти'] = V([conv(ch, depth + 1) for ch in el])
-        return V(d)
-    res = conv(root, 1)
+        stack.append((d, [], []))
+
+    def end(name):
+        d, parts, kids = stack.pop()
+        d['текст'] = V(''.join(parts).strip())
+        d['діти'] = V(kids)
+        (stack[-1][2] if stack else top).append(V(d))
+
+    def chars(data):
+        if stack:
+            stack[-1][1].append(data)
+    p = expat.ParserCreate(namespace_separator='}')
+    p.StartDoctypeDeclHandler = forbid
+    p.EntityDeclHandler = forbid
+    p.StartElementHandler, p.EndElementHandler, p.CharacterDataHandler = start, end, chars
+    try:
+        p.Parse(text.removeprefix('\ufeff'), True)
+    except expat.ExpatError as e:
+        raise NgrError(f'χ: не XML ({expat.errors.messages[e.code]}: рядок {e.lineno}, стовпець {e.offset})', pos)
+    if len(top) != 1:
+        raise NgrError('χ: не XML (немає кореневого елемента)', pos)
+    res = top[0]
     if res.n > max_size:
         raise NgrError(f'χ: документ завеликий (понад --розмір {max_size})', pos)
     return res
 
 
-def xml_write(el, pos):
-    """Елемент (словник з тег / атрибути / текст / діти) → рядок XML (екрановано; простір — як xmlns)."""
+def xml_write(el, pos, charge):
+    """Елемент (словник з тег / атрибути / текст / діти) → рядок XML. Назви — лише XML Name, керівних символів
+    немає: дані не змінять будови документа, а χ прочитає записане назад (суд 8)."""
     import xml.etree.ElementTree as ET
+
+    def value(v, what, tag):
+        s = show(v)
+        bad = xml_char_bad(s)
+        if bad is not None:
+            raise NgrError(f'χ: {what} елемента «{safe(tag)}» має символ U+{ord(bad):04X}, якого не буває в XML', pos)
+        return s
 
     def build(x, depth, parent_ns=None):
         if depth > XML_MAX_DEPTH:
             raise NgrError(f'χ: вкладеність глибша за {XML_MAX_DEPTH}', pos)
+        charge(1)
         if not isinstance(x.v, dict) or not isinstance(x.v.get('тег', V(None)).v, str):
             raise NgrError('χ: елемент — словник із 「тег」 (рядок) і, за бажанням, 「атрибути」 「текст」 「діти」', pos)
         d = x.v
         tag = d['тег'].v
+        if not xml_name_ok(tag):
+            raise NgrError(f'χ: «{safe(tag)}» — не назва тегу XML (літера чи _, далі літери, цифри, - . _)', pos)
         attrs = d.get('атрибути', V({})).v
         if not isinstance(attrs, dict):
             raise NgrError(f'χ: 「атрибути」 елемента «{safe(tag)}» — словник', pos)
-        try:
-            node = ET.Element(tag, {k: show(v) for k, v in attrs.items()})
-        except ValueError as e:
-            raise NgrError(f'χ: {e}', pos)
+        for k in attrs:
+            if not xml_name_ok(k) or k == 'xmlns' or k.startswith('xmlns:'):
+                raise NgrError(f'χ: «{safe(k)}» — не назва атрибута XML (у «{safe(tag)}»; простір — ключем 「простір」)', pos)
+        node = ET.Element(tag, {k: value(v, f'атрибут «{safe(k)}»', tag) for k, v in attrs.items()})
         ns = d.get('простір', V(None)).v
         if isinstance(ns, str) and ns != parent_ns:
-            node.set('xmlns', ns)
+            node.set('xmlns', value(V(ns), 'простір', tag))
         t = d.get('текст', V('')).v
-        node.text = show(V(t)) if t not in (None, '') else None
+        node.text = value(V(t), 'текст', tag) if t not in (None, '') else None
         kids = d.get('діти', V([])).v
         if not isinstance(kids, list):
             raise NgrError(f'χ: 「діти」 елемента «{safe(tag)}» — список', pos)
@@ -2170,70 +2331,114 @@ def xml_write(el, pos):
         raise NgrError(f'χ: {e}', pos)
 
 
-def xml_path(root, path, pos):
-    """↘: підмножина XPath над елементами з χ. Без «/» на початку — від дітей елемента; «/a» — сам елемент має бути a."""
+XPATH_HELP = ('є: a/b, //b, *, [n], [@атр=\'x\'], [дитина=\'x\'], …/@атр, //@атр, /a… від самого елемента; '
+              'текст — §e 「текст」, батька й text() немає')
+
+
+def xml_path(root, path, pos, charge):
+    """↘: підмножина XPath над елементами з χ — як у XPath: вузли без повторів, у порядку документа; [n] — n-й серед
+    своїх сусідів; //b від кореня бачить і сам корінь. Усе поза підмножиною — помилка, не тихий 【】; кожен
+    відвіданий вузол — крок (суд 8)."""
     import re as _re
     if not path:
         raise NgrError('↘: порожній шлях', pos)
-    attr = None
-    m = _re.search(r'/@([^/\[\]]+)$', path) or _re.fullmatch(r'@([^/\[\]]+)', path)
-    if m:
-        attr = m.group(1)
-        path = path[:m.start()] if m.start() else ''
-    steps = []                     # (вниз_будь-де, імʼя, [умови])
-    absolute = path.startswith('/') and not path.startswith('//')
-    rest = path[1:] if absolute else path
-    for raw in _re.findall(r'(/?/?)([^/\[]+(?:\[[^\]]*\])*)', '/' + rest if rest and not rest.startswith('/') else rest):
-        sep, step = raw
-        mm = _re.fullmatch(r'([^\[]+)((?:\[[^\]]*\])*)', step)
-        if not mm:
-            raise NgrError(f'↘: не розібрати крок «{safe(step)}»', pos)
-        conds = _re.findall(r'\[([^\]]*)\]', mm.group(2))
-        steps.append((sep == '//', mm.group(1).strip().split(':')[-1], conds))     # x:Рядок — локальна назва
-    if not steps and attr is None:
-        raise NgrError(f'↘: не розібрати шлях «{safe(path)}»', pos)
+
+    def bad(what):
+        raise NgrError(f'↘: {what} — поза підмножиною XPath ({XPATH_HELP})', pos)
+    name_re = r'(?:\*|[^\W\d][\w.\-]*(?::[^\W\d][\w.\-]*)?)'
+    cond_re = r"\[\s*(?:\d+|@?[^\W\d][\w.\-]*(?::[^\W\d][\w.\-]*)?\s*=\s*(?:'[^']*'|\"[^\"]*\"))\s*\]"
+    tok = _re.fullmatch(rf'((?:/|//)?)((?:{name_re}(?:{cond_re})*)(?:(?:/|//){name_re}(?:{cond_re})*)*)?'
+                        rf'(?:(^|/|//)@({name_re}))?', path)
+    only = _re.fullmatch(rf'(//|/)?@({name_re})', path)     # лише атрибут: @a, //@a (жадібний розбір нижче
+    if only:                                                  # прочитав би «//@a» як «/» + «/@a»)
+        lead, body, attr_sep, attr = '', '', only.group(1) or '', only.group(2)
+    elif not tok or (not tok.group(2) and tok.group(4) is None):
+        bad(f'шлях «{safe(path)}»')
+    else:
+        lead, body, attr_sep, attr = tok.group(1), tok.group(2) or '', tok.group(3), tok.group(4)
+    if attr == '*':
+        bad('@*')
+    steps = []                     # (вниз_будь-де, локальна назва, [умови])
+    for sep, step in _re.findall(rf'(^|/|//)({name_re}(?:{cond_re})*)', body):
+        nm = _re.match(name_re, step).group(0)
+        conds = _re.findall(r'\[([^\]]*)\]', step[len(nm):])
+        steps.append((sep == '//', nm.split(':')[-1], conds))
+    absolute = lead == '/'
+    if lead == '//' and steps:
+        steps[0] = (True,) + steps[0][1:]
+
+    def check(e):
+        charge(1)
+        if not isinstance(e.v, dict) or not isinstance(e.v.get('тег', V(None)).v, str):
+            raise NgrError('↘: вузол — не елемент (словник із 「тег」 — рядок)', pos)
+        for key, typ, tn in (('атрибути', dict, 'словник'), ('діти', list, 'список'), ('текст', str, 'рядок')):
+            if key in e.v and not isinstance(e.v[key].v, typ):
+                raise NgrError(f'↘: 「{key}」 елемента «{safe(e.v["тег"].v)}» — {tn}', pos)
+        return e
 
     def kids(e):
-        return e.v['діти'].v if isinstance(e.v, dict) and isinstance(e.v.get('діти', V(None)).v, list) else []
+        k = e.v.get('діти')
+        return [check(x) for x in k.v] if k is not None else []
 
-    def desc(e):
-        out = []
-        for k in kids(e):
-            out.append(k)
-            out.extend(desc(k))
-        return out
+    def attrs(e):
+        a = e.v.get('атрибути')
+        return a.v if a is not None else {}
 
+    def text_of(e):
+        t = e.v.get('текст')
+        return t.v if t is not None else ''
+
+    # вузол — (позиція, елемент): позиція — індекси дітей від документа. Однаковий (спільний) елемент на двох місцях —
+    # два вузли, як у XPath; порядок позицій — порядок документа
     def ok(e, cond, idx):
         cond = cond.strip()
-        if _re.fullmatch(r'\d+', cond):
+        if cond.isdigit():
             return idx == int(cond)
-        mm = _re.fullmatch(r"(@?)([^=\s]+)\s*=\s*'([^']*)'", cond) or _re.fullmatch(r'(@?)([^=\s]+)\s*=\s*"([^"]*)"', cond)
-        if not mm:
-            raise NgrError(f'↘: умова «{safe(cond)}» — лише [@атр=\'x\'], [дитина=\'x\'] або [n]', pos)
+        mm = _re.fullmatch(r"(@?)([^=\s]+)\s*=\s*(?:'([^']*)'|\"([^\"]*)\")", cond)
+        want = mm.group(3) if mm.group(3) is not None else mm.group(4)
+        name = mm.group(2).split(':')[-1]
         if mm.group(1):
-            v = e.v['атрибути'].v.get(mm.group(2))
-            return v is not None and v.v == mm.group(3)
-        return any(k.v['тег'].v == mm.group(2) and k.v['текст'].v == mm.group(3) for k in kids(e))
+            v = attrs(e).get(name)
+            return v is not None and v.v == want
+        return any(k.v['тег'].v == name and text_of(k) == want for k in kids(e))
 
-    def name_ok(e, name):
-        return name == '*' or e.v['тег'].v == name
-    if not isinstance(root.v, dict) or not isinstance(root.v.get('тег', V(None)).v, str):
-        raise NgrError('↘: перший аргумент — елемент із χ (словник із 「тег」)', pos)
-    cur = [root]
-    for n, (anywhere, name, conds) in enumerate(steps):
-        if absolute and n == 0:
-            pool = [[root]]
-        else:
-            pool = [desc(e) if anywhere else kids(e) for e in cur]
+    def below(node):
+        path, e = node
+        return [(path + (i,), k) for i, k in enumerate(kids(e))]
+
+    def uniq(nodes):
+        return sorted({path: (path, e) for path, e in nodes}.values(), key=lambda n: n[0])
+
+    # контекст: «документ» над коренем, щоб //b і /a бачили сам корінь
+    doc = ((), V({'тег': V(''), 'діти': V([check(root)])}))
+    cur = [doc] if (absolute or lead == '//' or (not steps and attr_sep == '//')) else [((0,), root)]
+
+    def self_or_below(nodes):      # нащадки-або-сам кожного; спільні піддерева — один раз
+        seen, out = set(), []
+        stack = list(reversed(nodes))
+        while stack:
+            n = stack.pop()
+            if n[0] in seen:
+                continue
+            seen.add(n[0])
+            out.append(n)
+            stack.extend(reversed(below(n)))
+        return out
+    for anywhere, name, conds in steps:
+        parents = self_or_below(cur) if anywhere else cur
         nxt = []
-        for group in pool:
-            sel = [e for e in group if name_ok(e, name)]
+        for p in parents:          # [n] — серед дітей одного батька, як у XPath
+            sel = [k for k in below(p) if name == '*' or k[1].v['тег'].v == name]
             for c in conds:
-                sel = [e for i, e in enumerate(sel, 1) if ok(e, c, i)]
+                sel = [k for i, k in enumerate(sel, 1) if ok(k[1], c, i)]
             nxt.extend(sel)
-        cur = nxt
+        cur = uniq(nxt)
     if attr is not None:
-        return V([e.v['атрибути'].v[attr] for e in cur if attr in e.v['атрибути'].v])
+        if attr_sep == '//':
+            cur = self_or_below(cur)
+        name = attr.split(':')[-1]
+        return V([attrs(e)[name] for _, e in cur if name in attrs(e)])
+    cur = [e for _, e in cur]
     return V(cur)
 
 
@@ -2339,7 +2544,7 @@ def _http(it, pos, tool, url, body=None):
     ok = parts and parts.scheme in ('http', 'https') and not parts.username and not parts.password and (
         (parts.hostname in allowed and port in (None, 80, 443)) or f'{parts.hostname}:{port}' in allowed)
     if not ok:
-        it.trace('заборонено', агент=it.agent, назва=tool, адреса=safe(str(u)), причина='хост, порт чи адреса поза печаткою')
+        it.deny(агент=it.agent, назва=tool, адреса=safe(str(u)), причина='хост, порт чи адреса поза печаткою')
         raise NgrError(f'{tool}: «{u}» поза дозволеним ({", ".join(allowed)}; інший порт, ніж 80/443, '
                        f'треба дозволити явно як хост:порт; без логіна в адресі)', pos)
 
@@ -2410,9 +2615,14 @@ def _db(it, pos, tool, p, sql, params, write):
         else:
             raise NgrError(f'{tool}: параметр — рядок, число, істинність чи ∅, а не {kind(x)}', pos)
     acts = _db_acts()[1 if write else 0]
+    import re as _re
+    if _re.search(r'\bload_extension\b', sql.v, _re.I):     # і в тілі тригера чи VIEW — відмова одразу, а не «міна»,
+        raise NgrError(f'{tool}: load_extension заборонено (і в тригерах та VIEW)', pos)   # що вибухне на чужому INSERT (суд 8)
+    why = []
 
     def auth(action, a1, a2, db, view):
         if action == 31 and (a2 or '').lower() == 'load_extension':
+            why.append(f'load_extension{f" у тригері чи VIEW «{view}»" if view else ""}')
             return sqlite3.SQLITE_DENY
         if action in acts or (action == 19 and a1 in DB_INFO_PRAGMAS):
             return sqlite3.SQLITE_OK
@@ -2475,10 +2685,10 @@ def _db(it, pos, tool, p, sql, params, write):
             denied = any(w in str(e) for w in ('not authorized', 'authorization denied', 'too many attached',
                                                'readonly database'))
             if denied:
-                it.trace('заборонено', агент=it.agent, назва=tool, шлях=safe(p.v), запит=safe(sql.v)[:500],
+                it.deny(агент=it.agent, назва=tool, шлях=safe(p.v), запит=safe(sql.v)[:500],
                          причина='дія SQLite поза дозволеним')
-            msg = 'дія поза дозволеним (лише ' + ('SELECT' if not write else 'SELECT, INSERT, UPDATE, DELETE, '
-                                                  'CREATE/DROP/ALTER') + '; без ATTACH, VACUUM, PRAGMA)' \
+            msg = (f'заборонено: {why[0]}' if why else 'дія поза дозволеним (лише ' + ('SELECT' if not write else
+                   'SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER') + '; без ATTACH, VACUUM, PRAGMA)') \
                 if denied else 'лише одна інструкція SQL за раз' if 'one statement at a time' in str(e) \
                 else sql_err(str(e))
             raise NgrError(f'{tool}: {msg}', pos)
@@ -2545,7 +2755,7 @@ def t_proc(it, pos, argv):
     if any('\0' in a for a in args):
         raise NgrError('процес: нульовий символ в аргументі', pos)
     if not any(args[:len(g.split(' '))] == g.split(' ') for g in it.caps['процес']):
-        it.trace('заборонено', агент=it.agent, назва='процес', аргументи=[safe(a) for a in args],
+        it.deny(агент=it.agent, назва='процес', аргументи=[safe(a) for a in args],
                  причина='команди немає в печатці')
         raise NgrError(f'процес: «{safe(" ".join(args))}» поза дозволеним ({", ".join(it.caps["процес"])}; '
                        f'дозвіл — початок команди за словами)', pos)
@@ -2673,7 +2883,7 @@ def read_allowlist(path, cwd=None, prog=None):
             if cwd and os.path.isabs(os.path.expanduser(d)) and inside(cwd, os.path.expanduser(d)):
                 # програма, що лежить там, куди програмам дозволено писати, могла бути написана програмою —
                 # права теки їй не належать
-                writable = [e.partition(':')[2].strip() for e in common + extra
+                writable = [split_quota(e)[0].partition(':')[2].strip() for e in common + extra
                             if e.partition(':')[0].strip() in WRITE_TOOLS]
                 if prog and any(w and os.path.isabs(os.path.expanduser(w)) and inside(prog, os.path.expanduser(w))
                                 for w in writable):
@@ -2689,17 +2899,47 @@ def read_allowlist(path, cwd=None, prog=None):
 def load_allowlist(narrow=None, cwd=None, prog=None):
     """Дозволи власника — OWNER_HOME/дозволи.json (без нього — лише іграшкові інструменти).
     --дозволи ФАЙЛ лише звужує їх: лишається те, що є в обох."""
+    try:
+        return _load_allowlist(narrow, cwd, prog)
+    except StaticError as e:           # квота «≤N» з помилкою у файлі дозволів
+        raise Refused(f'дозволи: {e.msg}')
+
+
+def _load_allowlist(narrow, cwd, prog):
     path = os.path.join(OWNER_HOME, 'дозволи.json')
     if os.path.exists(path):
         owner = read_allowlist(path, cwd, prog)
         source = f'{path} (sha256 {hashlib.sha256(open(path, "rb").read()).hexdigest()[:16]})'
     else:
         owner, source = list(DEFAULT_ALLOWED), '(файлу власника немає: лише іграшкові інструменти)'
-    if narrow:
+    quotas = owner_quotas(owner)
+    if narrow:                         # звуження: права — спільні; квоти власника лишаються, свої — додаються (суд 8)
         extra = read_allowlist(narrow)
-        owner = [a for a in extra if not check_allowlist(parse_caps(a), owner, '/')]
+        kept = [a for a in extra if not check_allowlist(parse_caps(split_quota(a)[0]), owner, '/')]
+        quotas += owner_quotas(kept)
+        owner = [split_quota(a)[0] for a in kept]
         source += f'; звужено {narrow}'
-    return owner, source
+    return Allowed(owner, quotas), source
+
+
+class Allowed(list):
+    """Дозволи власника (рядки) і квоти — окремо: звуження не скидає квот власника."""
+    def __init__(self, items, quotas):
+        super().__init__(items)
+        self.quotas = list(quotas)
+
+
+def owner_quotas(allowed):
+    """[(інструмент, обмеження, N)] з дозволів власника «…≤N» (або вже зібрані — у Allowed)."""
+    if isinstance(allowed, Allowed):
+        return list(allowed.quotas)
+    out = []
+    for a in allowed:
+        base, q = split_quota(canon_perm(a))
+        if q is not None:
+            t, _, sc = base.partition(':')
+            out.append((t.strip(), sc.strip(), q))
+    return out
 
 
 def canon_perm(entry):
@@ -2775,7 +3015,7 @@ def delegations(prog):
 def check_program(prog, allowed, cwd):
     """Печатка й печатки ВСІХ субагентів ⊆ дозволи власника; кожен субагент ⊆ батька за справжніми шляхами."""
     missing = check_allowlist(prog[2][0][3], allowed, cwd)
-    writable = [os.path.realpath(os.path.join(cwd, os.path.expanduser(a.partition(':')[2].strip())))
+    writable = [os.path.realpath(os.path.join(cwd, os.path.expanduser(split_quota(a)[0].partition(':')[2].strip())))
                 for a in allowed if a.partition(':')[0].strip() in WRITE_TOOLS]
     writable += [os.path.realpath(os.path.join(cwd, w)) for t in WRITE_TOOLS for w in prog[2][0][3].get(t, [])]
 
@@ -2871,8 +3111,10 @@ class Interp:
         self.ends = 0           # скільки записів «інструмент» уже зроблено (номер виклику для повтору)
         self.par_deadline = None   # ‖: спільний ліміт часу запитів SQLite
         self.last_call = None      # останній розпочатий виклик інструмента (для сліду внутрішньої помилки)
-        self.quota_stack = []      # таблиці квот: власник, печатка, субагенти (діють, поки агент активний)
-        self.quota_used = {}       # (id таблиці, інструмент, обмеження) → скільки вже викликів
+        self.quota_stack = []      # (хто, таблиця, лічильник): власник, печатка, модулі, субагенти (поки активні)
+        self.quota_used = {}       # (лічильник, інструмент, обмеження) → скільки вже викликів
+        self.quota_seq = 0         # кожен запуск субагента — свій лічильник (його квота — «поки він працює»)
+        self.quota_lock = threading.Lock()
         self.replay = None      # --повторити: (записи «інструмент», сховище значень)
         self.dry = None         # --сухо: список придушених дій (записи, надсилання, процеси, агенти)
 
@@ -2888,11 +3130,11 @@ class Interp:
         ac = min([self.cpc] + [a.c for a in args])
         self.taint(ac)
         self.last_call = {'назва': name, 'аргументи': targs}   # якщо інтерпретатор упаде (код 4) — у слід
-        self.check_quota(name, args, targs, pos)
+        hits = self.check_quota(name, args, targs, pos)
         if name in WORLD_WRITERS:
             self.trace('виклик', агент=self.agent, назва=name, аргументи=targs)   # до дії: видно, навіть якщо процес уб'ють
             self.world_c = min(self.world_c, ac)
-        return {'назва': name, 'аргументи': args, 'слід': targs, 'ac': ac, 'pos': pos, 'агент': self.agent}
+        return {'назва': name, 'аргументи': args, 'слід': targs, 'ac': ac, 'pos': pos, 'агент': self.agent, 'квота': hits}
 
     def quota_covers(self, tool, scope, args):
         """Чи підпадає виклик під обмеження scope (для квоти): тека — шлях у ній, хост — та адреса, імʼя, команда."""
@@ -2919,18 +3161,35 @@ class Interp:
 
     def check_quota(self, name, args, targs, pos):
         """Квоти «≤N»: кожна таблиця (власник, печатка, активні субагенти) рахує свої виклики; понад — відмова."""
-        hits = []
-        for who, table in self.quota_stack:
-            for (t, sc), limit in table.quotas.items():
-                if t == name and self.quota_covers(name, sc, args):
-                    key = (id(table), t, sc)
-                    if self.quota_used.get(key, 0) >= limit:
-                        self.trace('заборонено', агент=self.agent, назва=name, аргументи=targs,
-                                   причина=f'квота: {who} дозволяє «{name}{":" + sc if sc else ""}» не більше {limit} раз')
-                        raise NgrError(f'{name}: вичерпано квоту ({who}: «{name}{":" + sc if sc else ""}≤{limit}»)', pos)
-                    hits.append(key)
-        for key in hits:
-            self.quota_used[key] = self.quota_used.get(key, 0) + 1
+        hits, seen = [], set()
+        with self.quota_lock:
+            for who, table, tok in self.quota_stack:
+                if tok in seen:            # та сама таблиця двічі (рекурсія в модуль) — рахуємо раз
+                    continue
+                seen.add(tok)
+                for (t, sc), limit in table.quotas.items():
+                    if t == name and self.quota_covers(name, sc, args):
+                        key = (tok, t, sc)
+                        if self.quota_used.get(key, 0) >= limit:
+                            # не порушення прав: межа, яку оголосили печатка, модуль, субагент чи власник (суд 8)
+                            self.trace('квоту вичерпано', агент=self.agent, назва=name, аргументи=targs, чия=who,
+                                       квота=f'{name}{":" + sc if sc else ""}≤{limit}')
+                            raise NgrError(f'{name}: вичерпано квоту ({who}: «{name}{":" + sc if sc else ""}≤{limit}»)', pos)
+                        hits.append(key)
+            for key in hits:
+                self.quota_used[key] = self.quota_used.get(key, 0) + 1
+        return hits
+
+    def quota_refund(self, hits):
+        """Виклик не відбувся (відмова за правами, скасування в ‖) — квоту не списано."""
+        with self.quota_lock:
+            for key in hits or ():
+                self.quota_used[key] -= 1
+
+    def deny(self, **kw):
+        """«Заборонено» з дії інструмента: дію не виконано — і квоту поверне tool_do."""
+        self.tl.denied = True
+        self.trace('заборонено', **kw)
 
     def tool_do(self, job):
         """Сама дія (у ‖ — у своєму потоці; записи сліду з потоку — у його буфер). У повторі — записане."""
@@ -2941,9 +3200,12 @@ class Interp:
             job['сухо'] = True
             return V(DRY_SUPPRESS[job['назва']], 0.0), None
         self.tl.paths = job['шляхи'] = []
+        self.tl.denied = False
         try:
             return TOOLS[job['назва']][5](self, job['pos'], *job['аргументи']), None
         except (NgrError, Fatal) as e:
+            if self.tl.denied:             # відмова за правами — виклику не було, квоту не списано (суд 8)
+                self.quota_refund(job.get('квота'))
             return None, e
         finally:
             self.tl.paths = None
@@ -2970,15 +3232,18 @@ class Interp:
         if job.get('сухо'):                 # дію придушено: стан світу тепер не той, що був би (читання після — сумнівні)
             self.world_c = 0.0
         name, targs, ac = job['назва'], job['слід'], job['ac']
+        # у сухому прогоні придушені дії не забирали часу й не змінювали світу: час і оракул після них — теж
+        # невідомі (суд 8: рішення «за годинником» інакше виглядало б певним)
+        reads = name in WORLD_READERS or (self.dry is not None and name in ('час', 'оракул'))
         if err is not None:
             if isinstance(err, Fatal):
                 raise err
-            err.c = min(err.c, ac, self.world_c if name in WORLD_READERS else 1.0)
+            err.c = min(err.c, ac, self.world_c if reads else 1.0)
             self.trace('інструмент', агент=job['агент'], назва=name, аргументи=targs, помилка=err.msg, впевненість=err.c)
             raise err
         if name not in ('оракул', 'час'):                    # інструмент міг упасти на сумнівному аргументі — і не впав
             self.halt_risk(ac, ('op', job['pos'], '☠', []))
-        c = min([res.c, ac] + ([self.world_c] if name in WORLD_READERS else [])
+        c = min([res.c, ac] + ([self.world_c] if reads else [])
                 + ([self.decided_c] if name == 'час' else []))
         keep = getattr(self.trace, 'keep', None)
         stored = {'значення': keep(res)} if keep else {}     # сирий результат — для --повторити
@@ -3006,8 +3271,9 @@ class Interp:
                 jobs.append(self.each('‖', i, fn, [x], pos))
         except NgrError:                 # аргументи наступного елемента впали — уже розпочаті дії НЕ виконуються
             for j in jobs:
+                self.quota_refund(j.v[1].get('квота'))      # не виконано — квоту не списано (суд 8)
                 self.trace('скасовано', агент=j.v[1]['агент'], назва=j.v[1]['назва'], аргументи=j.v[1]['слід'],
-                           причина='‖: помилка в аргументах іншого елемента — дію не виконано')
+                           причина='‖: помилка в аргументах іншого елемента — дію не виконано, квоту не списано')
             raise
         finally:
             self.pc, self.defer_node = saved, saved_node
@@ -3146,8 +3412,11 @@ class Interp:
             self.taint_effects((f.body,), fn.c)
             self.halt_risk(fn.c, f.body)
         saved_caps = self.caps
+        mod_q = f.mod is not None and bool(getattr(f.mod[1], 'quotas', None))
         if f.mod is not None:          # печатка модуля діє: права — перетин прав агента й печатки модуля
             self.caps = intersect_caps(self.caps, f.mod[1], self.cwd)
+            if mod_q:                  # і квоти модуля — на весь запуск, усі виклики його функцій (суд 8)
+                self.quota_stack.append((f'модуль {f.mod[0]}', f.mod[1], id(f.mod[1])))
         try:
             env = {}
             for p, a in zip(f.params, args):
@@ -3168,6 +3437,8 @@ class Interp:
                 e.file = f.mod[0]
             raise
         finally:
+            if mod_q:
+                self.quota_stack.pop()
             self.caps = saved_caps
             self.pc = saved
             self.depth -= 1
@@ -3211,6 +3482,9 @@ class Interp:
             return V(node[2], self.cpc)
         if k == 'var':
             val = self.lookup(env, node[2], pos)
+            cc = self.pc if self.pc < self.halt_c else self.halt_c
+            if cc < val.c:                 # давнє значення, прочитане після «могло впасти — не впало» (суд 8, р2_5)
+                val = capc(val, cc)
             if self.try_stack:
                 self.taint(val.c)          # усе, з чим працює тіло ☂, може визначити успіх чи помилку
             return val
@@ -3267,7 +3541,7 @@ class Interp:
         if k == 'seal':
             self.caps = self.seal_caps = node[3]
             if getattr(node[3], 'quotas', None):
-                self.quota_stack.append(('печатка', node[3]))
+                self.quota_stack.append(('печатка', node[3], id(node[3])))
             self.trace('печатка', агент=self.agent, намір=node[2], дозволи=node[3])
             return V(None)
         if k == 'tool':
@@ -3311,7 +3585,8 @@ class Interp:
         self.trace.depth += 1
         pushed = bool(getattr(caps, 'quotas', None))
         if pushed:
-            self.quota_stack.append((f'субагент {name}', caps))
+            self.quota_seq += 1
+            self.quota_stack.append((f'субагент {name}', caps, ('суб', self.quota_seq)))
         try:
             res = self.eval(body, {'\0parent': env})
         except Fatal:
@@ -3329,7 +3604,15 @@ class Interp:
 
     def op(self, g, argn, env, pos):
         if g not in LAZY_GLYPHS:                  # звичайний гліф: аргументи — завжди всі, одразу (швидкий шлях)
-            return self.strict(g, [self.eval(a, env) for a in argn], pos)
+            args = [self.eval(a, env) for a in argn]
+            if g in INT_FAST and len(args) == 2:      # певні цілі в певному контексті: те саме, що strict + prim
+                x, y = args
+                if (type(x.v) is int and type(y.v) is int and x.c >= 1 and y.c >= 1 and self.pc >= 1
+                        and self.halt_c >= 1 and (g != '‰' or y.v) and (g != '×' or x.v.bit_length() + y.v.bit_length() <= MAX_INT_BITS)):
+                    if g in HEAVY:
+                        self.work(x.n + y.n, pos)
+                    return V(INT_FAST[g](x.v, y.v))
+            return self.strict(g, args, pos)
         E = lambda i: self.eval(argn[i], env)   # noqa: E731
         if g == '¿':
             c = E(0)
@@ -3638,7 +3921,10 @@ class Interp:
             return V(show(a[0]))
         if g == 'ν':
             s = self.need(a[0], 'рядок', g, pos).strip().lstrip('\ufeff')
-            s = ''.join(str(digit(ch)) if digit(ch) is not None else ch for ch in s).replace('·', '.').replace('¯', '-')
+            s = s.replace('·', '.').replace('¯', '-')
+            odd = next((ch for ch in s if digit(ch) is not None and not ('0' <= ch <= '9')), None)
+            if odd is not None or '_' in s:   # ৪ схожа на 8, ٠ — на крапку; 1_000 — не запис числа в даних (суд 8)
+                raise NgrError(f'ν: «{safe(s)}» — лише цифри 0–9' + (f' (тут {safe(odd)} U+{ord(odd):04X})' if odd else ''), pos)
             try:
                 return V(int(s))
             except ValueError:
@@ -3731,7 +4017,7 @@ class Interp:
             return V(date_op(a[0].v, a[1].v, pos))
         if g == '✓':
             errs = []
-            check_schema(a[0], a[1], '', errs, pos)
+            check_schema(a[0], a[1], '', errs, pos, charge=lambda k: self.work(64 * k, pos))
             if errs:
                 more = f' … ще {len(errs) - 10}' if len(errs) > 10 else ''
                 raise NgrError('✓: не відповідає схемі: ' + '; '.join(errs[:10]) + more, pos)
@@ -3739,13 +4025,13 @@ class Interp:
         if g == 'χ':
             x = a[0].v
             if isinstance(x, str):
-                return xml_parse(x, pos, self.max_size)
+                return xml_parse(x, pos, self.max_size, lambda k: self.work(k, pos))
             if isinstance(x, dict):
-                return V(xml_write(a[0], pos))
+                return V(xml_write(a[0], pos, lambda k: self.step(pos)))
             raise NgrError(f'χ: очікувався рядок XML або елемент (словник), а не {kind(a[0])}', pos)
         if g == '↘':
             self.need(a[0], 'словник', g, pos)
-            return xml_path(a[0], self.need(a[1], 'рядок', g, pos), pos)
+            return xml_path(a[0], self.need(a[1], 'рядок', g, pos), pos, lambda k: self.step(pos))
         if g == '▦':
             import csv
             import io as _io
@@ -3827,7 +4113,7 @@ class Interp:
             with decimal.localcontext(WIDE_CTX):          # точність — під будь-яке допустиме число (не 28 цифр)
                 q = Decimal(x).quantize(Decimal(1).scaleb(-k), rounding=ROUND_HALF_UP)
             if g == '⌗':
-                return V(format(q, 'f'))
+                return V(format(q if q else abs(q), 'f'))     # без «-0.00» (суд 8)
             return V(int(q) if k == 0 else q)
         if g == '⌂':
             return V([V(x) for x in self.argv])
@@ -3879,16 +4165,22 @@ def explain(node, ind=0):
     if k == 'import':
         caps = '; '.join(t + (f' [{", ".join(s)}]' if s else '') for t, s in node[4][2][0][3].items()) or 'жодних'
         body = '\n'.join('  ' * (ind + 1) + explain(st, ind + 1) for st in node[4][2][1:])
+        qs = quota_list(node[4][2][0][3])
+        caps += f'; КВОТА на весь запуск: {quota_text(qs)}' if qs else ''
         return (f'з модуля {quote(node[2])} (sha256 {node[5][:16]}…, дозволи: {caps}) взяти: '
                 f'{", ".join(node[3])}; модуль:\n{body}')
     if k == 'seal':
         caps = '; '.join(t + (f' [{", ".join(s)}]' if s else '') for t, s in node[3].items()) or 'жодних'
-        return f'ПЕЧАТКА — намір: {quote(node[2]) if node[2] else "не вказано"}; дозволи: {caps}'
+        qs = quota_list(node[3])
+        return (f'ПЕЧАТКА — намір: {quote(node[2]) if node[2] else "не вказано"}; дозволи: {caps}'
+                + (f'; КВОТА: {quota_text(qs)}' if qs else ''))
     if k == 'tool':
         return f'інструмент {node[2]}({", ".join(explain(a, ind) for a in node[3])})'
     if k == 'deleg':
         caps = ', '.join(t + (f' [{", ".join(s)}]' if s else '') for t, s in node[4].items()) or 'жодних'
         intent = f'намір {quote(node[3])}; ' if node[3] else ''
+        qs = quota_list(node[4])
+        caps += f'; КВОТА на кожен запуск: {quota_text(qs)}' if qs else ''
         return (f'субагент «{safe(node[2])}» ({intent}дозволи: {caps}) виконує:\n'
                 f'{pad}  {explain(node[5], ind + 1)}')
     g, args = node[2], node[3]
@@ -3936,6 +4228,15 @@ def explain_program(prog):
     return '\n'.join(lines)
 
 
+def quota_list(caps):
+    return [{'інструмент': t, 'обмеження': safe(sc), 'не_більше': n} for (t, sc), n in getattr(caps, 'quotas', {}).items()]
+
+
+def quota_text(qs):
+    """Квоти для людини: «взяти:хост ≤ 5»."""
+    return ', '.join(f'«{x["інструмент"]}{":" + x["обмеження"] if x["обмеження"] else ""}» ≤ {x["не_більше"]}' for x in qs)
+
+
 def seal_info(prog, allowed, source, cwd, dir_extra=None):
     """Усе, що отримувач має знати до запуску, — словником (для --печатка і --печатка --json)."""
     def scopes(t, sc):
@@ -3953,10 +4254,11 @@ def seal_info(prog, allowed, source, cwd, dir_extra=None):
                 explicit += 1
             if n[0] == 'import':
                 mods.append({'шлях': safe(n[2]), 'sha256': n[5], 'намір': safe(n[4][2][0][2]), 'імена': n[3],
-                             'дозволи': {t: scopes(t, sc) for t, sc in n[4][2][0][3].items()}})
+                             'дозволи': {t: scopes(t, sc) for t, sc in n[4][2][0][3].items()},
+                             'квоти': quota_list(n[4][2][0][3])})
             if n[0] == 'deleg':
                 subs.append({'імʼя': safe(n[2]), 'намір': safe(n[3]), 'усередині': owner,
-                             'дозволи': {t: scopes(t, sc) for t, sc in n[4].items()}})
+                             'дозволи': {t: scopes(t, sc) for t, sc in n[4].items()}, 'квоти': quota_list(n[4])})
                 walk(n[5], owner + [safe(n[2])])
                 return
             for x in n:
@@ -3968,8 +4270,7 @@ def seal_info(prog, allowed, source, cwd, dir_extra=None):
     missing = [safe(m) for m in check_program(prog, allowed, cwd)]
     return {'намір': safe(seal[2]), 'дозволи': {t: scopes(t, sc) for t, sc in seal[3].items()},
             'субагенти': subs, 'модулі': mods, 'явні_зміни_впевненості': explicit, 'дозволи_власника': safe(source),
-            'квоти': [{'інструмент': t, 'обмеження': safe(sc), 'не_більше': n}
-                      for (t, sc), n in getattr(seal[3], 'quotas', {}).items()],
+            'квоти': quota_list(seal[3]),
             'права_теки': [safe(x) for x in dir_extra] if dir_extra is not None else None, 'тека': safe(cwd), 'в_межах': not missing, 'бракує': missing}
 
 
@@ -3989,11 +4290,13 @@ def seal_report(prog, allowed, source, cwd, dir_extra=None):
     for d in i['субагенти']:
         caps = '; '.join(t + (f' → {q(sc)}' if sc else '') for t, sc in d['дозволи'].items()) or 'жодних'
         where = ' → '.join(f'「{x}」' for x in d['усередині'])
-        lines.append(f'  субагент 「{d["імʼя"]}」 (у коді: {where}): дозволи: {caps}' + (f'; намір 「{d["намір"]}」' if d['намір'] else ''))
+        lines.append(f'  субагент 「{d["імʼя"]}」 (у коді: {where}): дозволи: {caps}'
+                     + (f'; КВОТА на кожен запуск: {quota_text(d["квоти"])}' if d['квоти'] else '')
+                     + (f'; намір 「{d["намір"]}」' if d['намір'] else ''))
     for m in i['модулі']:
         caps = '; '.join(t + (f' → {q(sc)}' if sc else '') for t, sc in m['дозволи'].items()) or 'жодних'
         lines.append(f'  модуль 「{m["шлях"]}」 (sha256 {m["sha256"][:16]}…): бере {", ".join(m["імена"])}; дозволи: {caps}; '
-                     f'намір 「{m["намір"]}」')
+                     + (f'КВОТА на весь запуск: {quota_text(m["квоти"])}; ' if m['квоти'] else '') + f'намір 「{m["намір"]}」')
     if i['явні_зміни_впевненості']:
         lines.append(f'  явні зміни впевненості ≈: {i["явні_зміни_впевненості"]} (кожна — у сліді)')
     lines.append(f'  дозволи власника: {i["дозволи_власника"]}')
@@ -4076,9 +4379,12 @@ def cheatsheet():
            'і в `--печатка`, `--розбір` та сліді показано саме повні.', '',
            'Дозвіл для файлів — тека (і все в ній); для мережі — хост (порти 80/443) або `хост:порт`;',
            'для агента — імʼя з реєстру. Теку власника (`~/.nigredo`) дозволити не можна.',
-           'Тести мовою: файли `*.тест.ngr` з перевірками `🜍 x λv умова`; `ngr --тести тека` — підсумок і код виходу.',
+           'Тести мовою: файл `*.тест.ngr` — програма з печаткою й перевірками `🜍 x λv умова` (один файл — один тест);',
+           '`ngr --тести тека` — кожен окремим процесом; пройшов — код 0 і хоча б одна `🜍`, жодної провальної (навіть під',
+           '☂) чи сумнівної. Тести діють по-справжньому (у межах печатки); з тек, куди програмам можна писати, не беруться.',
            'Кілька інструментів на одне обмеження: `「читати писати:тимч」`. Квота: `「взяти:api.x≤100」` — не більше 100',
-           'викликів за запуск (понад — помилка й «заборонено»; так само в дозволах власника).',
+           'викликів за запуск (понад — помилка і в сліді «квоту вичерпано», не «заборонено»; так само в дозволах власника).',
+           'Квота модуля — на весь запуск, субагента — на кожен його запуск; дві квоти на одне — помилка.',
            'Шлях один раз: якщо для інструмента в печатці одна тека, пишіть шлях відносно неї —',
            '`🜂 【「читати:дані」】` і `🜔читати 「x.json」` (лише якщо від теки програми такого шляху немає; назвали наявне',
            'поза дозволом — відмова, «заборонено»). Справжній шлях — у сліді.',
@@ -4123,6 +4429,9 @@ def cheatsheet():
             '» ≋ т 「(\\d{4})-(\\d{2})-(\\d{2})」 「\\3.\\2.\\1」', '```', '',
             '## Пастки', '',
             '- `＝0 ‰n 3` — спершу гліф, потім аргументи: «остача n на 3 дорівнює 0».',
+            '- Не зійшлася арність — помилка каже, як розібрано рядок: `розібрано: ¿ (＝ a 0) (÷ s 2) 2` (кожен вираз',
+            '  з аргументами — у дужках) і `чекають аргументів: ÷ (4:9) бере 2, є 1`. Вираз довший за рядок — розбийте',
+            '  на `←` проміжні імена.',
             '- Імена склеюються з цифрами: `n15` — одне імʼя; пишіть `n 15`.',
             '- Однолітерні імена з різних абеток — двійники (r і г, x і х, p і р, a і а, o і о, c і с, e і е, y і у):',
             '  програму не приймуть. Беріть імена одного письма або довші (рядок, група).',
@@ -4130,6 +4439,10 @@ def cheatsheet():
             '- `∧ ∨` обчислюють ОБИДВА боки (не як and/or у Python): `∧ › ρxs 0 ＝ §xs 0 1` впаде на порожньому',
             '  списку; захист — `¿ › ρxs 0 ＝ §xs 0 1 ○` (¿ обчислює лише потрібну гілку).',
             '- `χ` пише числа як число (12.50 → 12.5); суми в XML — рядком `⌗ x 2`.',
+            '- `↘` — підмножина XPath: `..`, `text()`, `!=` — помилка; текст вузла — `§e 「текст」`.',
+            '- Квота `≤N` і `‖`: «усе або нічого» — список довший за квоту не дасть нічого; `‖ ⊏ xs 0 N`.',
+            '- `✓ x 『「a」 「число」 「…」 「рядок」』` — інші поля перевіряються як рядок; межі: `「число:¯5..5」`, `「рядок:1..」`.',
+            '- `ν` бере лише цифри 0–9 (`ν 「12.5」`, `ν 「¯3」`); `1_000` чи арабські цифри — не число.',
             '- SQLite рахує дроби у float: `SUM(сума)` дає `0.30000000000000004`; гроші — сумуйте в Nigredo (`∫`) або',
             '  зберігайте копійками (INTEGER).',
             '- `＋` зʼєднує рядки лише з рядками: `＋「№」 σn`; коротше — шаблон `〔№{n}〕`.',
@@ -4251,11 +4564,40 @@ USAGE = f"""Nigredo {VERSION}
 """
 
 
+def write_dirs():
+    """Теки, куди програмам дозволено писати (з дозволів власника: «дозволено» і всі «для_тек»)."""
+    path = os.path.join(OWNER_HOME, 'дозволи.json')
+    try:
+        data = json.load(open(path, encoding='utf-8'))
+    except (OSError, ValueError):
+        return []
+    entries = list(data.get('дозволено', [])) if isinstance(data, dict) else []
+    for extra in (data.get('для_тек', {}) or {}).values() if isinstance(data, dict) else []:
+        entries += extra if isinstance(extra, list) else []
+    out = []
+    for e in entries:
+        if not isinstance(e, str):
+            continue
+        try:
+            base = split_quota(canon_perm(e))[0]
+        except StaticError:
+            continue
+        t, _, sc = base.partition(':')
+        if t.strip() in WRITE_TOOLS and os.path.isabs(os.path.expanduser(sc.strip())):
+            out.append(os.path.realpath(os.path.expanduser(sc.strip())))
+    return out
+
+
+TEST_TIMEOUT = 300
+
+
 def run_tests(targets, as_json=False):
-    """ngr --тести [ТЕКА|ФАЙЛ …]: кожен *.тест.ngr — окрема програма (зі своєю печаткою, слідом і 🜍-перевірками);
-    пройшов — код 0. Підсумок і код виходу: 0 — усі пройшли, 1 — ні, 2 — тестів не знайдено."""
-    import contextlib
-    import io
+    """ngr --тести [ТЕКА|ФАЙЛ …]: кожен *.тест.ngr — окрема програма в окремому процесі (своя печатка, свій слід,
+    свій ліміт часу). Пройшов — код 0 І хоча б одна виконана 🜍 І жодної непройденої (навіть перехопленої ☂) чи
+    сумнівної. Тести з тек, куди програмам дозволено писати, не беруться: їх могла написати програма (суд 8).
+    Підсумок і код виходу: 0 — усі пройшли, 1 — ні, 2 — тестів не знайдено."""
+    import subprocess
+    import tempfile
     files = []
     for t in targets or ['.']:
         if os.path.isdir(t):
@@ -4263,27 +4605,64 @@ def run_tests(targets, as_json=False):
                 files += [os.path.join(root_, n) for n in names if n.endswith('.тест.ngr')]
         elif t.endswith('.ngr'):
             files.append(t)
-    files = sorted(set(files))
+    wd = write_dirs()
+    skipped = sorted({f for f in files if any(inside(f, w) for w in wd)})
+    files = sorted(set(files) - set(skipped))
     if not files:
-        print('✗ тестів не знайдено (файли *.тест.ngr)', file=sys.stderr)
+        print('✗ тестів не знайдено (файли *.тест.ngr)' + (f'; пропущено {len(skipped)} у теках, куди програмам '
+              'дозволено писати' if skipped else ''), file=sys.stderr)
         return 2
+    launcher = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ngr.py')
     results = []
     for f in files:
-        out, err = io.StringIO(), io.StringIO()
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        tmpd = tempfile.mkdtemp(prefix='ngr-тест-')
+        tr = os.path.join(tmpd, 'слід.jsonl')
+        try:
             try:
-                code = main([f])
-            except SystemExit as e:
-                code = e.code
-        first = (err.getvalue().strip().splitlines() or [''])[0]
-        results.append({'файл': safe(f), 'код': code, 'пройшов': code == 0, 'помилка': safe(first) if code else ''})
+                p = subprocess.run([sys.executable, launcher, '--слід', tr, f], capture_output=True, text=True,
+                                   timeout=TEST_TIMEOUT, errors='replace')
+                code, err = p.returncode, p.stderr
+            except subprocess.TimeoutExpired:
+                code, err = 'час', f'тест не завершився за {TEST_TIMEOUT} с'
+            checks, failed, doubtful, caps = 0, 0, [], {}
+            try:
+                for line in open(tr, encoding='utf-8'):
+                    rec = json.loads(line)
+                    if rec.get('подія') == 'перевірка':
+                        checks += 1
+                        failed += rec.get('результат') != 'пройдена'
+                        c = rec.get('впевненість', 1)
+                        if isinstance(c, (int, float)) and c < 1:
+                            doubtful.append(c)
+                    elif rec.get('подія') == 'печатка' and rec.get('агент') == 'головний':
+                        caps = rec.get('дозволи') or {}
+            except (OSError, ValueError):
+                pass
+        finally:
+            for n in os.listdir(tmpd):
+                os.remove(os.path.join(tmpd, n))
+            os.rmdir(tmpd)
+        first = (err.strip().splitlines() or [''])[0]
+        why = (f'код {code}: {first}' if code != 0 else
+               f'перевірку НЕ пройдено {failed} раз(и), хоча помилку перехоплено (☂)' if failed else
+               'жодної перевірки 🜍 не виконано' if not checks else
+               f'перевірка на сумнівній умові (впевненість {min(doubtful)})' if doubtful else '')
+        results.append({'файл': safe(f), 'код': code, 'пройшов': not why, 'перевірок': checks, 'не_пройдено': failed,
+                        'сумнівних': len(doubtful), 'дозволи': {safe(k): [safe(x) for x in v] for k, v in caps.items()},
+                        'помилка': safe(why)})
     ok = sum(r['пройшов'] for r in results)
     if as_json:
-        print(json.dumps({'пройшли': ok, 'усього': len(results), 'тести': results}, ensure_ascii=False, indent=1))
+        print(json.dumps({'пройшли': ok, 'усього': len(results), 'перевірок': sum(r['перевірок'] for r in results),
+                          'пропущено_з_тек_запису': [safe(x) for x in skipped], 'тести': results},
+                         ensure_ascii=False, indent=1))
     else:
         for r in results:
-            print(f'{"✓" if r["пройшов"] else "✗"} {r["файл"]}' + (f' — код {r["код"]}: {r["помилка"]}' if not r['пройшов'] else ''))
-        print(f'{ok} з {len(results)} тестів пройшли')
+            caps = '; '.join(t + (':' + ','.join(v) if v else '') for t, v in r['дозволи'].items())
+            print(f'{"✓" if r["пройшов"] else "✗"} {r["файл"]} — перевірок {r["перевірок"]}'
+                  + (f'; печатка: {caps}' if caps else '') + (f' — {r["помилка"]}' if not r['пройшов'] else ''))
+        if skipped:
+            print(f'пропущено {len(skipped)} файл(и) в теках, куди програмам дозволено писати (їх могла написати програма)')
+        print(f'{ok} з {len(results)} тестів пройшли ({sum(r["перевірок"] for r in results)} перевірок; тести діють по-справжньому — у межах своїх печаток)')
     return 0 if ok == len(results) else 1
 
 
@@ -4584,10 +4963,11 @@ def main(argv):
             return 3
         interp = Interp(trace, seed=opts['seed'], steps=opts['steps'], cwd=cwd, argv=prog_args, protected=paths,
                         max_size=opts['size'])
-        owner_q = Caps(quotas={(t.strip(), sc.strip()): q for a in allowed for (t, _, sc), q in
-                               [(lambda pq: (pq[0].partition(':'), pq[1]))(split_quota(canon_perm(a)))] if q is not None})
+        owner_q = Caps()
+        for t, sc, q in owner_quotas(allowed):      # кілька квот на те саме — діє менша (суд 8)
+            owner_q.quotas[(t, sc)] = min(q, owner_q.quotas.get((t, sc), q))
         if owner_q.quotas:                # квоти власника — для всього запуску (тека — як у дозволі: абсолютна)
-            interp.quota_stack.append(('власник', owner_q))
+            interp.quota_stack.append(('власник', owner_q, 'власник'))
         if replay:
             interp.replay = (replay['інструменти'], replay['сховище'])
         if opts.get('dry'):
