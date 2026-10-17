@@ -712,11 +712,15 @@ class Caps(dict):
 def split_quota(perm, pos=None):
     """「взяти:api.x≤100」 → («взяти:api.x», 100); без ≤ — (perm, None)."""
     import re as _re
-    m = _re.fullmatch(r'(.*?)\s*≤\s*(\d+)', perm)
+    m = _re.fullmatch(r'(.*?)\s*≤\s*([0-9]+)', perm)
     if not m:
+        if '≤' in perm:                # ≤৪, ≤¯1, ≤ у середині — не квота й не шлях (суд 8)
+            raise StaticError(f'дозвіл «{safe(perm)}»: квота — «≤N» у кінці, N — цифри 0–9', pos)
         return perm, None
     if '≤' in m.group(1):
-        raise StaticError(f'дозвіл «{perm}»: одна квота ≤N — у кінці', pos)
+        raise StaticError(f'дозвіл «{safe(perm)}»: одна квота ≤N — у кінці', pos)
+    if int(m.group(2)) < 1:
+        raise StaticError(f'дозвіл «{safe(perm)}»: квота ≤0 нічого не дозволяє — приберіть дозвіл', pos)
     return m.group(1), int(m.group(2))
 
 
@@ -1071,6 +1075,9 @@ class Parser:
                 self.cap_one(caps, perm, e[1], inherit)
                 if quota is not None:          # 「взяти:api.x≤100」 — не більше 100 викликів за запуск
                     t, _, sc = perm.partition(':')
+                    if (t.strip(), sc.strip()) in caps.quotas:     # дві квоти — яка діє? помилка (суд 8)
+                        raise StaticError(f'дві квоти на «{t.strip()}{":" + sc.strip() if sc.strip() else ""}» '
+                                          f'(≤{caps.quotas[(t.strip(), sc.strip())]} і ≤{quota}) — залиште одну', e[1])
                     caps.quotas[(t.strip(), sc.strip())] = quota
         return node, caps
 
@@ -1594,7 +1601,7 @@ def _verify(path, program=None):
     Підсумок цілого сліду каже й те, що отримувачу важливо без читання сліду: спроби поза правами («заборонено»),
     перехоплені помилки, підсумовані (не повністю записані) значення, теку й аргументи запуску."""
     key, prev, n, last, head = owner_key(), '0' * 16, 0, None, None
-    denied, caught, summed, modules, dry, raised = [], 0, 0, [], False, 0
+    denied, caught, summed, modules, dry, raised, quota_hits = [], 0, 0, [], False, 0, []
     info = {}
     try:
         st = os.stat(path)
@@ -1625,6 +1632,8 @@ def _verify(path, program=None):
             what = rec.get('шлях') or rec.get('адреса') or rec.get('субагент') or rec.get('аргументи') or ''
             denied.append(f'{rec.get("агент", "?")}: {rec.get("назва") or "делегування"} '
                           f'{safe(str(what))[:80]} — {rec.get("причина") or "бракує прав"}')
+        if rec.get('подія') == 'квоту вичерпано':
+            quota_hits.append(f'{rec.get("агент", "?")}: {rec.get("квота", "?")} ({rec.get("чия", "?")})')
         caught += rec.get('подія') == 'помилку перехоплено'
         dry = dry or rec.get('подія') == 'сухо'
         if rec.get('подія') == 'впевненість' and isinstance(rec.get('стало'), (int, float)) and \
@@ -1659,13 +1668,17 @@ def _verify(path, program=None):
                         f'зараз {"немає файлу" if now is None else now[:16] + "…"}) — виконано не той код, що зараз', info)
     info.update({'модулі': [{'шлях': r, 'sha256': h} for r, _, h in modules],
                  'інтерпретатор': head.get('інтерпретатор'),
-                 'записів': n, 'останній': last, 'заборонено': denied, 'перехоплено_помилок': caught,
+                 'записів': n, 'останній': last, 'заборонено': denied, 'квоту_вичерпано': quota_hits,
+                 'перехоплено_помилок': caught,
                  'підсумовано_значень': summed, 'тека': head.get('тека'), 'аргументи': head.get('аргументи'),
                  'режим': 'повтор' if head.get('повтор') else 'сухо' if dry else 'звичайний'})
     notes = [f'тека {safe(str(head.get("тека", "—")))}',
              f'аргументи {safe(json.dumps(head.get("аргументи"), ensure_ascii=False))}']
     notes.append(f'⚠ спроб поза правами («заборонено»): {len(denied)} — ' + '; '.join(denied[:5])
                  + (' …' if len(denied) > 5 else '') if denied else 'спроб поза правами немає')
+    if quota_hits:                     # не порушення прав: оголошена межа (печатка, модуль, субагент, власник)
+        notes.append(f'квоту вичерпано (межа спрацювала, дію не виконано): {len(quota_hits)} — '
+                     + '; '.join(quota_hits[:5]) + (' …' if len(quota_hits) > 5 else ''))
     if modules:
         notes.append('модулі: ' + ', '.join(f'{safe(str(r))} (sha256 {str(h)[:16]}…)' for r, _, h in modules)
                      + ('' if program is not None else ' — щоб звірити з файлами, перевірте слід разом із програмою'))
@@ -1720,11 +1733,11 @@ def _path_ok(it, tool, p, pos, write=False):
     if not isinstance(p, str):
         raise NgrError(f'{tool}: шлях має бути рядком', pos)
     if '\0' in p or any(invisible(ch) for ch in p):
-        it.trace('заборонено', агент=it.agent, назва=tool, шлях=safe(p), причина='керівні чи невидимі символи в шляху')
+        it.deny(агент=it.agent, назва=tool, шлях=safe(p), причина='керівні чи невидимі символи в шляху')
         raise NgrError(f'{tool}: у шляху керівні чи невидимі символи', pos)
     def allowed(real):
         if inside(real, OWNER_HOME) or real in it.protected:
-            it.trace('заборонено', агент=it.agent, назва=tool, шлях=safe(p), причина='тека власника або слід')
+            it.deny(агент=it.agent, назва=tool, шлях=safe(p), причина='тека власника або слід')
             raise NgrError(f'{tool}: «{safe(p)}» — це тека власника або слід; програмі туди не можна', pos)
         check = os.path.dirname(real) if write else real
         for base in it.caps[tool]:
@@ -1750,7 +1763,7 @@ def _path_ok(it, tool, p, pos, write=False):
             if seen is not None:
                 seen.append(safe(real))
             return real
-    it.trace('заборонено', агент=it.agent, назва=tool, шлях=safe(p), причина='поза дозволеною текою')
+    it.deny(агент=it.agent, назва=tool, шлях=safe(p), причина='поза дозволеною текою')
     raise NgrError(f'{tool}: «{safe(p)}» поза дозволеним ({", ".join(safe(x) for x in it.caps[tool])})', pos)
 
 
@@ -2515,7 +2528,7 @@ def _http(it, pos, tool, url, body=None):
     ok = parts and parts.scheme in ('http', 'https') and not parts.username and not parts.password and (
         (parts.hostname in allowed and port in (None, 80, 443)) or f'{parts.hostname}:{port}' in allowed)
     if not ok:
-        it.trace('заборонено', агент=it.agent, назва=tool, адреса=safe(str(u)), причина='хост, порт чи адреса поза печаткою')
+        it.deny(агент=it.agent, назва=tool, адреса=safe(str(u)), причина='хост, порт чи адреса поза печаткою')
         raise NgrError(f'{tool}: «{u}» поза дозволеним ({", ".join(allowed)}; інший порт, ніж 80/443, '
                        f'треба дозволити явно як хост:порт; без логіна в адресі)', pos)
 
@@ -2651,7 +2664,7 @@ def _db(it, pos, tool, p, sql, params, write):
             denied = any(w in str(e) for w in ('not authorized', 'authorization denied', 'too many attached',
                                                'readonly database'))
             if denied:
-                it.trace('заборонено', агент=it.agent, назва=tool, шлях=safe(p.v), запит=safe(sql.v)[:500],
+                it.deny(агент=it.agent, назва=tool, шлях=safe(p.v), запит=safe(sql.v)[:500],
                          причина='дія SQLite поза дозволеним')
             msg = 'дія поза дозволеним (лише ' + ('SELECT' if not write else 'SELECT, INSERT, UPDATE, DELETE, '
                                                   'CREATE/DROP/ALTER') + '; без ATTACH, VACUUM, PRAGMA)' \
@@ -2721,7 +2734,7 @@ def t_proc(it, pos, argv):
     if any('\0' in a for a in args):
         raise NgrError('процес: нульовий символ в аргументі', pos)
     if not any(args[:len(g.split(' '))] == g.split(' ') for g in it.caps['процес']):
-        it.trace('заборонено', агент=it.agent, назва='процес', аргументи=[safe(a) for a in args],
+        it.deny(агент=it.agent, назва='процес', аргументи=[safe(a) for a in args],
                  причина='команди немає в печатці')
         raise NgrError(f'процес: «{safe(" ".join(args))}» поза дозволеним ({", ".join(it.caps["процес"])}; '
                        f'дозвіл — початок команди за словами)', pos)
@@ -2849,7 +2862,7 @@ def read_allowlist(path, cwd=None, prog=None):
             if cwd and os.path.isabs(os.path.expanduser(d)) and inside(cwd, os.path.expanduser(d)):
                 # програма, що лежить там, куди програмам дозволено писати, могла бути написана програмою —
                 # права теки їй не належать
-                writable = [e.partition(':')[2].strip() for e in common + extra
+                writable = [split_quota(e)[0].partition(':')[2].strip() for e in common + extra
                             if e.partition(':')[0].strip() in WRITE_TOOLS]
                 if prog and any(w and os.path.isabs(os.path.expanduser(w)) and inside(prog, os.path.expanduser(w))
                                 for w in writable):
@@ -2865,17 +2878,47 @@ def read_allowlist(path, cwd=None, prog=None):
 def load_allowlist(narrow=None, cwd=None, prog=None):
     """Дозволи власника — OWNER_HOME/дозволи.json (без нього — лише іграшкові інструменти).
     --дозволи ФАЙЛ лише звужує їх: лишається те, що є в обох."""
+    try:
+        return _load_allowlist(narrow, cwd, prog)
+    except StaticError as e:           # квота «≤N» з помилкою у файлі дозволів
+        raise Refused(f'дозволи: {e.msg}')
+
+
+def _load_allowlist(narrow, cwd, prog):
     path = os.path.join(OWNER_HOME, 'дозволи.json')
     if os.path.exists(path):
         owner = read_allowlist(path, cwd, prog)
         source = f'{path} (sha256 {hashlib.sha256(open(path, "rb").read()).hexdigest()[:16]})'
     else:
         owner, source = list(DEFAULT_ALLOWED), '(файлу власника немає: лише іграшкові інструменти)'
-    if narrow:
+    quotas = owner_quotas(owner)
+    if narrow:                         # звуження: права — спільні; квоти власника лишаються, свої — додаються (суд 8)
         extra = read_allowlist(narrow)
-        owner = [a for a in extra if not check_allowlist(parse_caps(a), owner, '/')]
+        kept = [a for a in extra if not check_allowlist(parse_caps(split_quota(a)[0]), owner, '/')]
+        quotas += owner_quotas(kept)
+        owner = [split_quota(a)[0] for a in kept]
         source += f'; звужено {narrow}'
-    return owner, source
+    return Allowed(owner, quotas), source
+
+
+class Allowed(list):
+    """Дозволи власника (рядки) і квоти — окремо: звуження не скидає квот власника."""
+    def __init__(self, items, quotas):
+        super().__init__(items)
+        self.quotas = list(quotas)
+
+
+def owner_quotas(allowed):
+    """[(інструмент, обмеження, N)] з дозволів власника «…≤N» (або вже зібрані — у Allowed)."""
+    if isinstance(allowed, Allowed):
+        return list(allowed.quotas)
+    out = []
+    for a in allowed:
+        base, q = split_quota(canon_perm(a))
+        if q is not None:
+            t, _, sc = base.partition(':')
+            out.append((t.strip(), sc.strip(), q))
+    return out
 
 
 def canon_perm(entry):
@@ -2951,7 +2994,7 @@ def delegations(prog):
 def check_program(prog, allowed, cwd):
     """Печатка й печатки ВСІХ субагентів ⊆ дозволи власника; кожен субагент ⊆ батька за справжніми шляхами."""
     missing = check_allowlist(prog[2][0][3], allowed, cwd)
-    writable = [os.path.realpath(os.path.join(cwd, os.path.expanduser(a.partition(':')[2].strip())))
+    writable = [os.path.realpath(os.path.join(cwd, os.path.expanduser(split_quota(a)[0].partition(':')[2].strip())))
                 for a in allowed if a.partition(':')[0].strip() in WRITE_TOOLS]
     writable += [os.path.realpath(os.path.join(cwd, w)) for t in WRITE_TOOLS for w in prog[2][0][3].get(t, [])]
 
@@ -3047,8 +3090,10 @@ class Interp:
         self.ends = 0           # скільки записів «інструмент» уже зроблено (номер виклику для повтору)
         self.par_deadline = None   # ‖: спільний ліміт часу запитів SQLite
         self.last_call = None      # останній розпочатий виклик інструмента (для сліду внутрішньої помилки)
-        self.quota_stack = []      # таблиці квот: власник, печатка, субагенти (діють, поки агент активний)
-        self.quota_used = {}       # (id таблиці, інструмент, обмеження) → скільки вже викликів
+        self.quota_stack = []      # (хто, таблиця, лічильник): власник, печатка, модулі, субагенти (поки активні)
+        self.quota_used = {}       # (лічильник, інструмент, обмеження) → скільки вже викликів
+        self.quota_seq = 0         # кожен запуск субагента — свій лічильник (його квота — «поки він працює»)
+        self.quota_lock = threading.Lock()
         self.replay = None      # --повторити: (записи «інструмент», сховище значень)
         self.dry = None         # --сухо: список придушених дій (записи, надсилання, процеси, агенти)
 
@@ -3064,11 +3109,11 @@ class Interp:
         ac = min([self.cpc] + [a.c for a in args])
         self.taint(ac)
         self.last_call = {'назва': name, 'аргументи': targs}   # якщо інтерпретатор упаде (код 4) — у слід
-        self.check_quota(name, args, targs, pos)
+        hits = self.check_quota(name, args, targs, pos)
         if name in WORLD_WRITERS:
             self.trace('виклик', агент=self.agent, назва=name, аргументи=targs)   # до дії: видно, навіть якщо процес уб'ють
             self.world_c = min(self.world_c, ac)
-        return {'назва': name, 'аргументи': args, 'слід': targs, 'ac': ac, 'pos': pos, 'агент': self.agent}
+        return {'назва': name, 'аргументи': args, 'слід': targs, 'ac': ac, 'pos': pos, 'агент': self.agent, 'квота': hits}
 
     def quota_covers(self, tool, scope, args):
         """Чи підпадає виклик під обмеження scope (для квоти): тека — шлях у ній, хост — та адреса, імʼя, команда."""
@@ -3095,18 +3140,35 @@ class Interp:
 
     def check_quota(self, name, args, targs, pos):
         """Квоти «≤N»: кожна таблиця (власник, печатка, активні субагенти) рахує свої виклики; понад — відмова."""
-        hits = []
-        for who, table in self.quota_stack:
-            for (t, sc), limit in table.quotas.items():
-                if t == name and self.quota_covers(name, sc, args):
-                    key = (id(table), t, sc)
-                    if self.quota_used.get(key, 0) >= limit:
-                        self.trace('заборонено', агент=self.agent, назва=name, аргументи=targs,
-                                   причина=f'квота: {who} дозволяє «{name}{":" + sc if sc else ""}» не більше {limit} раз')
-                        raise NgrError(f'{name}: вичерпано квоту ({who}: «{name}{":" + sc if sc else ""}≤{limit}»)', pos)
-                    hits.append(key)
-        for key in hits:
-            self.quota_used[key] = self.quota_used.get(key, 0) + 1
+        hits, seen = [], set()
+        with self.quota_lock:
+            for who, table, tok in self.quota_stack:
+                if tok in seen:            # та сама таблиця двічі (рекурсія в модуль) — рахуємо раз
+                    continue
+                seen.add(tok)
+                for (t, sc), limit in table.quotas.items():
+                    if t == name and self.quota_covers(name, sc, args):
+                        key = (tok, t, sc)
+                        if self.quota_used.get(key, 0) >= limit:
+                            # не порушення прав: межа, яку оголосили печатка, модуль, субагент чи власник (суд 8)
+                            self.trace('квоту вичерпано', агент=self.agent, назва=name, аргументи=targs, чия=who,
+                                       квота=f'{name}{":" + sc if sc else ""}≤{limit}')
+                            raise NgrError(f'{name}: вичерпано квоту ({who}: «{name}{":" + sc if sc else ""}≤{limit}»)', pos)
+                        hits.append(key)
+            for key in hits:
+                self.quota_used[key] = self.quota_used.get(key, 0) + 1
+        return hits
+
+    def quota_refund(self, hits):
+        """Виклик не відбувся (відмова за правами, скасування в ‖) — квоту не списано."""
+        with self.quota_lock:
+            for key in hits or ():
+                self.quota_used[key] -= 1
+
+    def deny(self, **kw):
+        """«Заборонено» з дії інструмента: дію не виконано — і квоту поверне tool_do."""
+        self.tl.denied = True
+        self.trace('заборонено', **kw)
 
     def tool_do(self, job):
         """Сама дія (у ‖ — у своєму потоці; записи сліду з потоку — у його буфер). У повторі — записане."""
@@ -3117,9 +3179,12 @@ class Interp:
             job['сухо'] = True
             return V(DRY_SUPPRESS[job['назва']], 0.0), None
         self.tl.paths = job['шляхи'] = []
+        self.tl.denied = False
         try:
             return TOOLS[job['назва']][5](self, job['pos'], *job['аргументи']), None
         except (NgrError, Fatal) as e:
+            if self.tl.denied:             # відмова за правами — виклику не було, квоту не списано (суд 8)
+                self.quota_refund(job.get('квота'))
             return None, e
         finally:
             self.tl.paths = None
@@ -3182,8 +3247,9 @@ class Interp:
                 jobs.append(self.each('‖', i, fn, [x], pos))
         except NgrError:                 # аргументи наступного елемента впали — уже розпочаті дії НЕ виконуються
             for j in jobs:
+                self.quota_refund(j.v[1].get('квота'))      # не виконано — квоту не списано (суд 8)
                 self.trace('скасовано', агент=j.v[1]['агент'], назва=j.v[1]['назва'], аргументи=j.v[1]['слід'],
-                           причина='‖: помилка в аргументах іншого елемента — дію не виконано')
+                           причина='‖: помилка в аргументах іншого елемента — дію не виконано, квоту не списано')
             raise
         finally:
             self.pc, self.defer_node = saved, saved_node
@@ -3322,8 +3388,11 @@ class Interp:
             self.taint_effects((f.body,), fn.c)
             self.halt_risk(fn.c, f.body)
         saved_caps = self.caps
+        mod_q = f.mod is not None and bool(getattr(f.mod[1], 'quotas', None))
         if f.mod is not None:          # печатка модуля діє: права — перетин прав агента й печатки модуля
             self.caps = intersect_caps(self.caps, f.mod[1], self.cwd)
+            if mod_q:                  # і квоти модуля — на весь запуск, усі виклики його функцій (суд 8)
+                self.quota_stack.append((f'модуль {f.mod[0]}', f.mod[1], id(f.mod[1])))
         try:
             env = {}
             for p, a in zip(f.params, args):
@@ -3344,6 +3413,8 @@ class Interp:
                 e.file = f.mod[0]
             raise
         finally:
+            if mod_q:
+                self.quota_stack.pop()
             self.caps = saved_caps
             self.pc = saved
             self.depth -= 1
@@ -3443,7 +3514,7 @@ class Interp:
         if k == 'seal':
             self.caps = self.seal_caps = node[3]
             if getattr(node[3], 'quotas', None):
-                self.quota_stack.append(('печатка', node[3]))
+                self.quota_stack.append(('печатка', node[3], id(node[3])))
             self.trace('печатка', агент=self.agent, намір=node[2], дозволи=node[3])
             return V(None)
         if k == 'tool':
@@ -3487,7 +3558,8 @@ class Interp:
         self.trace.depth += 1
         pushed = bool(getattr(caps, 'quotas', None))
         if pushed:
-            self.quota_stack.append((f'субагент {name}', caps))
+            self.quota_seq += 1
+            self.quota_stack.append((f'субагент {name}', caps, ('суб', self.quota_seq)))
         try:
             res = self.eval(body, {'\0parent': env})
         except Fatal:
@@ -4063,16 +4135,22 @@ def explain(node, ind=0):
     if k == 'import':
         caps = '; '.join(t + (f' [{", ".join(s)}]' if s else '') for t, s in node[4][2][0][3].items()) or 'жодних'
         body = '\n'.join('  ' * (ind + 1) + explain(st, ind + 1) for st in node[4][2][1:])
+        qs = quota_list(node[4][2][0][3])
+        caps += f'; КВОТА на весь запуск: {quota_text(qs)}' if qs else ''
         return (f'з модуля {quote(node[2])} (sha256 {node[5][:16]}…, дозволи: {caps}) взяти: '
                 f'{", ".join(node[3])}; модуль:\n{body}')
     if k == 'seal':
         caps = '; '.join(t + (f' [{", ".join(s)}]' if s else '') for t, s in node[3].items()) or 'жодних'
-        return f'ПЕЧАТКА — намір: {quote(node[2]) if node[2] else "не вказано"}; дозволи: {caps}'
+        qs = quota_list(node[3])
+        return (f'ПЕЧАТКА — намір: {quote(node[2]) if node[2] else "не вказано"}; дозволи: {caps}'
+                + (f'; КВОТА: {quota_text(qs)}' if qs else ''))
     if k == 'tool':
         return f'інструмент {node[2]}({", ".join(explain(a, ind) for a in node[3])})'
     if k == 'deleg':
         caps = ', '.join(t + (f' [{", ".join(s)}]' if s else '') for t, s in node[4].items()) or 'жодних'
         intent = f'намір {quote(node[3])}; ' if node[3] else ''
+        qs = quota_list(node[4])
+        caps += f'; КВОТА на кожен запуск: {quota_text(qs)}' if qs else ''
         return (f'субагент «{safe(node[2])}» ({intent}дозволи: {caps}) виконує:\n'
                 f'{pad}  {explain(node[5], ind + 1)}')
     g, args = node[2], node[3]
@@ -4120,6 +4198,15 @@ def explain_program(prog):
     return '\n'.join(lines)
 
 
+def quota_list(caps):
+    return [{'інструмент': t, 'обмеження': safe(sc), 'не_більше': n} for (t, sc), n in getattr(caps, 'quotas', {}).items()]
+
+
+def quota_text(qs):
+    """Квоти для людини: «взяти:хост ≤ 5»."""
+    return ', '.join(f'«{x["інструмент"]}{":" + x["обмеження"] if x["обмеження"] else ""}» ≤ {x["не_більше"]}' for x in qs)
+
+
 def seal_info(prog, allowed, source, cwd, dir_extra=None):
     """Усе, що отримувач має знати до запуску, — словником (для --печатка і --печатка --json)."""
     def scopes(t, sc):
@@ -4137,10 +4224,11 @@ def seal_info(prog, allowed, source, cwd, dir_extra=None):
                 explicit += 1
             if n[0] == 'import':
                 mods.append({'шлях': safe(n[2]), 'sha256': n[5], 'намір': safe(n[4][2][0][2]), 'імена': n[3],
-                             'дозволи': {t: scopes(t, sc) for t, sc in n[4][2][0][3].items()}})
+                             'дозволи': {t: scopes(t, sc) for t, sc in n[4][2][0][3].items()},
+                             'квоти': quota_list(n[4][2][0][3])})
             if n[0] == 'deleg':
                 subs.append({'імʼя': safe(n[2]), 'намір': safe(n[3]), 'усередині': owner,
-                             'дозволи': {t: scopes(t, sc) for t, sc in n[4].items()}})
+                             'дозволи': {t: scopes(t, sc) for t, sc in n[4].items()}, 'квоти': quota_list(n[4])})
                 walk(n[5], owner + [safe(n[2])])
                 return
             for x in n:
@@ -4152,8 +4240,7 @@ def seal_info(prog, allowed, source, cwd, dir_extra=None):
     missing = [safe(m) for m in check_program(prog, allowed, cwd)]
     return {'намір': safe(seal[2]), 'дозволи': {t: scopes(t, sc) for t, sc in seal[3].items()},
             'субагенти': subs, 'модулі': mods, 'явні_зміни_впевненості': explicit, 'дозволи_власника': safe(source),
-            'квоти': [{'інструмент': t, 'обмеження': safe(sc), 'не_більше': n}
-                      for (t, sc), n in getattr(seal[3], 'quotas', {}).items()],
+            'квоти': quota_list(seal[3]),
             'права_теки': [safe(x) for x in dir_extra] if dir_extra is not None else None, 'тека': safe(cwd), 'в_межах': not missing, 'бракує': missing}
 
 
@@ -4173,11 +4260,13 @@ def seal_report(prog, allowed, source, cwd, dir_extra=None):
     for d in i['субагенти']:
         caps = '; '.join(t + (f' → {q(sc)}' if sc else '') for t, sc in d['дозволи'].items()) or 'жодних'
         where = ' → '.join(f'「{x}」' for x in d['усередині'])
-        lines.append(f'  субагент 「{d["імʼя"]}」 (у коді: {where}): дозволи: {caps}' + (f'; намір 「{d["намір"]}」' if d['намір'] else ''))
+        lines.append(f'  субагент 「{d["імʼя"]}」 (у коді: {where}): дозволи: {caps}'
+                     + (f'; КВОТА на кожен запуск: {quota_text(d["квоти"])}' if d['квоти'] else '')
+                     + (f'; намір 「{d["намір"]}」' if d['намір'] else ''))
     for m in i['модулі']:
         caps = '; '.join(t + (f' → {q(sc)}' if sc else '') for t, sc in m['дозволи'].items()) or 'жодних'
         lines.append(f'  модуль 「{m["шлях"]}」 (sha256 {m["sha256"][:16]}…): бере {", ".join(m["імена"])}; дозволи: {caps}; '
-                     f'намір 「{m["намір"]}」')
+                     + (f'КВОТА на весь запуск: {quota_text(m["квоти"])}; ' if m['квоти'] else '') + f'намір 「{m["намір"]}」')
     if i['явні_зміни_впевненості']:
         lines.append(f'  явні зміни впевненості ≈: {i["явні_зміни_впевненості"]} (кожна — у сліді)')
     lines.append(f'  дозволи власника: {i["дозволи_власника"]}')
@@ -4317,6 +4406,8 @@ def cheatsheet():
             '- `∧ ∨` обчислюють ОБИДВА боки (не як and/or у Python): `∧ › ρxs 0 ＝ §xs 0 1` впаде на порожньому',
             '  списку; захист — `¿ › ρxs 0 ＝ §xs 0 1 ○` (¿ обчислює лише потрібну гілку).',
             '- `χ` пише числа як число (12.50 → 12.5); суми в XML — рядком `⌗ x 2`.',
+            '- `↘` — підмножина XPath: `..`, `text()`, `!=` — помилка; текст вузла — `§e 「текст」`.',
+            '- Квота `≤N` і `‖`: «усе або нічого» — список довший за квоту не дасть нічого; `‖ ⊏ xs 0 N`.',
             '- SQLite рахує дроби у float: `SUM(сума)` дає `0.30000000000000004`; гроші — сумуйте в Nigredo (`∫`) або',
             '  зберігайте копійками (INTEGER).',
             '- `＋` зʼєднує рядки лише з рядками: `＋「№」 σn`; коротше — шаблон `〔№{n}〕`.',
@@ -4771,10 +4862,11 @@ def main(argv):
             return 3
         interp = Interp(trace, seed=opts['seed'], steps=opts['steps'], cwd=cwd, argv=prog_args, protected=paths,
                         max_size=opts['size'])
-        owner_q = Caps(quotas={(t.strip(), sc.strip()): q for a in allowed for (t, _, sc), q in
-                               [(lambda pq: (pq[0].partition(':'), pq[1]))(split_quota(canon_perm(a)))] if q is not None})
+        owner_q = Caps()
+        for t, sc, q in owner_quotas(allowed):      # кілька квот на те саме — діє менша (суд 8)
+            owner_q.quotas[(t, sc)] = min(q, owner_q.quotas.get((t, sc), q))
         if owner_q.quotas:                # квоти власника — для всього запуску (тека — як у дозволі: абсолютна)
-            interp.quota_stack.append(('власник', owner_q))
+            interp.quota_stack.append(('власник', owner_q, 'власник'))
         if replay:
             interp.replay = (replay['інструменти'], replay['сховище'])
         if opts.get('dry'):
