@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# ./run_waves.sh 1|2 — раунд хвилями по 3 учасники (памʼять телефона); учасник зі звітом пропускається,
+# ./run_waves.sh 1|2 — раунд хвилями по 2 сесії Claude (памʼять телефона); учасник зі звітом пропускається,
 # тож після обриву той самий виклик продовжує, а не починає наново. Gemini — у першій хвилі.
 R=$1; K=$(cd "$(dirname "$0")" && pwd)
 export NIGREDO_HOME="$K/власник"
 PY="python3 /root/ai-agents/Nigredo/porivniannia/ngrpy.py"
 MCPT="mcp__nigredo__nigredo_vykonaty,mcp__nigredo__nigredo_pechatka,mcp__nigredo__nigredo_rozbir,mcp__nigredo__nigredo_pamyatka,mcp__nigredo__nigredo_pereviryty_slid,mcp__nigredo__nigredo_pereviryty,mcp__nigredo__nigredo_brauzer,mcp__nigredo__nigredo_testy"
 /data/data/com.termux/files/usr/bin/termux-wake-lock 2>/dev/null
-python3 "$K/сервер.py" & SRV=$!; disown $SRV   # сервер суду 127.0.0.1:28708; disown — щоб wait хвиль не чекав на нього
-trap 'kill $SRV 2>/dev/null' EXIT
+# сервер суду 127.0.0.1:28708; після обриву порт буває «зайнятим» мертвим сокетом — пробуємо, доки не стане;
+# disown — щоб wait хвиль не чекав на нього
+( for i in $(seq 60); do python3 "$K/сервер.py" && break; sleep 10; done ) > "$K/protokol/сервер.out" 2>&1 & SRV=$!; disown $SRV
+trap 'pkill -P $SRV 2>/dev/null; kill $SRV 2>/dev/null' EXIT
 sleep 1
 member() {
   m=$1
@@ -22,12 +24,17 @@ member() {
   else
     TOOLS="Read,Edit(./**),Glob,Grep,Bash(ngr:*),Bash($PY:*)"; EXTRA=()   # запис — лише у своїй теці
   fi
-  ( cd "$K/$m" && claude -p "$P" --allowedTools "$TOOLS" "${EXTRA[@]}" > "$K/protokol/лог_${m}_р$R.txt" 2>&1; echo "$m exit $?" )
+  for a in 1 2 3; do   # обрив (proot/Bun падає під навантаженням) — ще спроба; кожна спроба — свій лог
+    ( cd "$K/$m" && claude -p "$P" --allowedTools "$TOOLS" "${EXTRA[@]}" > "$K/protokol/лог_${m}_р${R}_$a.txt" 2>&1; echo "$m спроба $a exit $?" )
+    [ -s "$K/$m/звіт_раунд$R.md" ] && return
+    sleep 60
+  done
 }
 gemini() {
   [ -s "$K/gemini/звіт_раунд$R.md" ] && { echo "gemini: звіт уже є"; return; }
   ( cd "$K/gemini" && NIGREDO_HOME="$K/власник" python3 -I gemini_member.py "$R" > "$K/protokol/лог_gemini_р$R.txt" 2>&1; echo "gemini exit $?" )
 }
-gemini & member skeptyk & member praktyk & member movoznavets & wait
-member audytor & member novachok & member orkestrator & wait
+gemini & member skeptyk & member praktyk & wait     # хвилі по 2 сесії Claude: суд 8 при 3 впав (futex у proot)
+member movoznavets & member audytor & wait
+member novachok & member orkestrator & wait
 echo "раунд $R завершено"

@@ -1,0 +1,9 @@
+🜂 「Практик/Скептик/Новачок/Оркестратор: простори атрибутів, непідтримані кроки ↘, змішаний вміст」
+← a χ 「<a xmlns:p="u1" Ccy="UAH" p:Ccy="USD"/>」
+» 〔атрибути: {§ a 「атрибути」}〕
+← d χ 「<r><Ntry><CdtDbtInd>CRDT</CdtDbtInd><Amt Ccy="UAH">10</Amt></Ntry><Ntry><CdtDbtInd>DBIT</CdtDbtInd><Amt Ccy="UAH">5</Amt></Ntry></r>」
+← ш 【「//Ntry[CdtDbtInd='DBIT']」 「//Ntry[CdtDbtInd!='CRDT']」 「//Amt/text()」 「//Amt/..」 「//@Ccy」 「.」 「//Amt|//Ntry」 「//Ntry[CdtDbtInd='DBIT'」 「//Ntry[Amt>='6']」 「//r」 「/r」】
+∀ ш λp » ☂ 〔{p} → {ρ ↘ d p}〕 λe 〔{p} → помилка: {e}〕
+← m χ 「<a>до<b>в</b>після</a>」
+» χ m
+» ＝ χ χ m m
