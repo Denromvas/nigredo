@@ -1,0 +1,23 @@
+🜂 「SQLite: зміни й важкі запити через бд.читати」 【「бд.читати:дані」】
+← б 「база.db」
+» ☂ 🜔бд.читати б 「DELETE FROM замовлення」 【】 λe ＋ 「1 DELETE: 」 e
+» ☂ 🜔бд.читати б 「WITH x AS (SELECT 1) DELETE FROM замовлення」 【】 λe ＋ 「2 WITH DELETE: 」 e
+» ☂ 🜔бд.читати б 「SELECT * FROM pragma_journal_mode('wal')」 【】 λe ＋ 「3 pragma-функція: 」 e
+» ☂ 🜔бд.читати б 「SELECT * FROM pragma_table_info('замовлення')」 【】 λe ＋ 「4 pragma_table_info: 」 e
+» ☂ 🜔бд.читати б 「SELECT sql FROM sqlite_master」 【】 λe ＋ 「5 sqlite_master: 」 e
+» ☂ 🜔бд.читати б 「SELECT 1; DELETE FROM замовлення」 【】 λe ＋ 「6 два: 」 e
+» ☂ 🜔бд.читати б 「SELECT randomblob(8)」 【】 λe ＋ 「7 blob: 」 e
+» ☂ 🜔бд.читати б 「SELECT 1 a, 2 a」 【】 λe ＋ 「8 однакові стовпці: 」 e
+※ 9 (SELECT 1e308*10) — код 4, винесено в атака8_бд_нескінченність.ngr
+» ☂ 🜔бд.читати 「../звіти/т.db」 「SELECT * FROM t」 【】 λe ＋ 「10 сусідня тека: 」 e
+» ☂ 🜔бд.читати 「file:база.db?mode=rw」 「SELECT 1」 【】 λe ＋ 「11 file-URI: 」 e
+» ☂ 🜔бд.читати 「немає.db」 「SELECT 1」 【】 λe ＋ 「12 нема файлу: 」 e
+» ☂ ρ 🜔бд.читати б 「SELECT printf('%.*c', 3000000, 'x') s」 【】 λe ＋ 「13 3 МБ рядок: 」 e
+» ☂ ρ 🜔бд.читати б 「WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM c LIMIT 200000) SELECT n FROM c」 【】 λe ＋ 「14 200 тис. рядків: 」 e
+» ☂ 🜔бд.читати б 「SELECT ?」 【1.5】 λe ＋ 「15 параметр-дріб: 」 e
+» ☂ 🜔бд.читати б 「SELECT ? + 0.1 s」 【0.2】 λe ＋ 「16 0.2+0.1 у SQL: 」 e
+» ☂ 🜔бд.читати б 「SELECT ?」 【【1 2】】 λe ＋ 「17 параметр-список: 」 e
+» ☂ 🜔бд.читати б 「SELECT ?」 【●】 λe ＋ 「18 параметр ●: 」 e
+» ☂ 🜔бд.читати б 「SELECT ?」 【】 λe ＋ 「19 бракує параметра: 」 e
+» ☂ 🜔бд.читати б 「SELECT CAST('x' AS BLOB) b」 【】 λe ＋ 「20 cast blob: 」 e
+» 「кінець」

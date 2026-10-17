@@ -1,0 +1,4 @@
+🜂 「‖: ліміт кроків в одному елементі — чи потраплять у слід інші, вже виконані дії?」 【「бд.читати:дані」】
+← в 「WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM r) SELECT count(*) AS c FROM r」
+← л 「SELECT клієнт AS к FROM замовлення LIMIT 1」
+» ‖ 【в л л л】 λq 🜔бд.читати 「база.db」 q 【】

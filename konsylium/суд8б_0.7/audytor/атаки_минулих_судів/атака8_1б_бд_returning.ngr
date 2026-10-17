@@ -1,0 +1,6 @@
+🜂 「SQLite: чи правдива кількість змінених рядків із RETURNING і тригером」 【「бд.писати:звіти」】
+← w λq 🜔бд.писати 「звіти/б.db」 q 【】
+» w 「CREATE TABLE t(x)」
+» 〔RETURNING повернув: {w 「INSERT INTO t VALUES(1),(2),(3) RETURNING x」}〕
+» 〔справді вставлено (DELETE рахує): {w 「DELETE FROM t」}〕
+» 〔UPDATE … RETURNING: {w 「UPDATE t SET x=0 RETURNING x」}〕

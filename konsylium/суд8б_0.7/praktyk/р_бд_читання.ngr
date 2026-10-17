@@ -1,0 +1,7 @@
+🜂 「SQLite: зміни через бд.читати」 【「бд.читати:дані」】
+← б 「база.db」
+» ☂ 🜔бд.читати б 「CREATE TABLE x(a)」 【】 λe ＋ 「1 CREATE: 」 e
+» ☂ 🜔бд.читати б 「SELECT * FROM pragma_journal_mode('wal')」 【】 λe ＋ 「3 pragma-функція: 」 e
+» ☂ 🜔бд.читати 「../звіти/т.db」 「SELECT * FROM t」 【】 λe ＋ 「10 сусідня тека: 」 e
+» ☂ 🜔бд.читати 「file:база.db?mode=rw」 「SELECT 1」 【】 λe ＋ 「11 file-URI: 」 e
+» 「кінець」

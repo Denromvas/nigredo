@@ -1,0 +1,23 @@
+🜂 「SQLite: запис поза текою」 【「бд.писати:звіти」】
+← б 「звіти/т.db」
+» 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS t(x)」 【】
+» ☂ 🜔бд.писати б 「ATTACH 'дані/база.db' AS a」 【】 λe ＋ 「1 ATTACH: 」 e
+» ☂ 🜔бд.писати б 「VACUUM INTO 'дані/копія.db'」 【】 λe ＋ 「2 VACUUM INTO: 」 e
+» ☂ 🜔бд.писати б 「PRAGMA journal_mode=WAL」 【】 λe ＋ 「3 PRAGMA: 」 e
+» ☂ 🜔бд.писати 「file:звіти/../дані/база.db」 「DELETE FROM замовлення」 【】 λe ＋ 「4 file: : 」 e
+» ☂ 🜔бд.писати 「звіти/x.db?mode=rwc」 「CREATE TABLE y(x)」 【】 λe ＋ 「5 ?mode: 」 e
+» ☂ 🜔бд.писати 「звіти/../дані/база.db」 「DELETE FROM замовлення」 【】 λe ＋ 「6 ..: 」 e
+» ☂ 🜔бд.писати б 「INSERT INTO t VALUES(1); DELETE FROM t」 【】 λe ＋ 「7 два запити: 」 e
+» ☂ 🜔бд.писати б 「BEGIN」 【】 λe ＋ 「8 BEGIN: 」 e
+» ☂ 🜔бд.писати б 「SELECT load_extension('x')」 【】 λe ＋ 「9 load_extension: 」 e
+» ☂ 🜔бд.писати б 「CREATE TRIGGER тр AFTER INSERT ON t BEGIN INSERT INTO t VALUES(NEW.x+1); END」 【】 λe ＋ 「10 тригер: 」 e
+» ☂ 🜔бд.писати б 「INSERT INTO t VALUES(5) RETURNING x」 【】 λe ＋ 「11 RETURNING: 」 e
+» ☂ 🜔бд.писати б 「CREATE VIEW в AS SELECT * FROM t」 【】 λe ＋ 「12 VIEW: 」 e
+» ☂ 🜔бд.писати б 「CREATE TEMP TABLE тт(x)」 【】 λe ＋ 「13 TEMP: 」 e
+» ☂ 🜔бд.писати б 「SAVEPOINT s」 【】 λe ＋ 「14 SAVEPOINT: 」 e
+» ☂ 🜔бд.писати б 「REINDEX」 【】 λe ＋ 「15 REINDEX: 」 e
+» ☂ 🜔бд.писати б 「ANALYZE」 【】 λe ＋ 「16 ANALYZE: 」 e
+» ☂ 🜔бд.писати б 「CREATE VIRTUAL TABLE в2 USING fts5(x)」 【】 λe ＋ 「17 VIRTUAL: 」 e
+» ☂ 🜔бд.писати б 「DETACH main」 【】 λe ＋ 「18 DETACH: 」 e
+» ☂ 🜔бд.писати б 「WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM c) INSERT INTO t SELECT n FROM c」 【】 λe ＋ 「19 нескінченний INSERT: 」 e
+» 「кінець」

@@ -1,0 +1,11 @@
+🜂 「SQLite: RETURNING, два запити, тригер, диск, велетенська відповідь, нескінченна рекурсія」 【「бд.писати:звіти」 「бд.читати:дані」】
+← в λq ☂ σ 🜔бд.писати 「б.db」 q 【】 λe ＋ 「відмова: 」 e
+← ч λq ☂ σ ρ 🜔бд.читати 「база.db」 q 【】 λe ＋ 「відмова: 」 e
+» ＋ 「1: 」 в 「CREATE TABLE IF NOT EXISTS t(a)」
+» ＋ 「2: 」 в 「CREATE TABLE IF NOT EXISTS log(a)」
+» ＋ 「3 тригер пише в іншу таблицю: 」 в 「CREATE TRIGGER IF NOT EXISTS tr AFTER INSERT ON t BEGIN INSERT INTO log VALUES (new.a * 2); END」
+» ＋ 「4 RETURNING: 」 в 「INSERT INTO t VALUES (2) RETURNING a」
+» ＋ 「5 два запити: 」 в 「INSERT INTO t VALUES (3); DROP TABLE t」
+» ＋ 「6 диск 20 МБ: 」 в 「INSERT INTO t VALUES (zeroblob(20000000))」
+» ＋ 「7 велика відповідь: 」 ч 「SELECT printf('%.*c', 6000000, 'x') AS s」
+» ＋ 「8 рекурсія: 」 ч 「WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c) SELECT count(*) AS n FROM c」
