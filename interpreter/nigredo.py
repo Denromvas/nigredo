@@ -3377,6 +3377,19 @@ class Interp:
     def run(self, prog):
         return self.eval(prog, {})
 
+    def halt_cap(self, env, name, val, pos):
+        """Канал завершення для давнього значення: впевненість не вища за halt_c. halt_c лише спадає, тож обмежене
+        значення записується назад у ту привʼязку — наступні читання не копіюють заново (і копія — кроки)."""
+        self.work(val.n, pos)
+        capped = capc(val, self.halt_c)
+        e = env
+        while e is not None:
+            if name in e:
+                e[name] = capped
+                break
+            e = e.get('\0parent')
+        return capped
+
     def lookup(self, env, name, pos):
         e = env
         while e is not None:
@@ -3482,9 +3495,8 @@ class Interp:
             return V(node[2], self.cpc)
         if k == 'var':
             val = self.lookup(env, node[2], pos)
-            cc = self.pc if self.pc < self.halt_c else self.halt_c
-            if cc < val.c:                 # давнє значення, прочитане після «могло впасти — не впало» (суд 8, р2_5)
-                val = capc(val, cc)
+            if self.halt_c < val.c:        # давнє значення, прочитане після «могло впасти — не впало» (суд 8, р2_5):
+                val = self.halt_cap(env, node[2], val, pos)    # обмежене — назад у привʼязку, копія одна
             if self.try_stack:
                 self.taint(val.c)          # усе, з чим працює тіло ☂, може визначити успіх чи помилку
             return val
