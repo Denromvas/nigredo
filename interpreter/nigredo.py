@@ -3111,6 +3111,7 @@ class Interp:
         self.ends = 0           # скільки записів «інструмент» уже зроблено (номер виклику для повтору)
         self.par_deadline = None   # ‖: спільний ліміт часу запитів SQLite
         self.last_call = None      # останній розпочатий виклик інструмента (для сліду внутрішньої помилки)
+        self.code = {}             # id(вузла) → замикання (фаза 4: компіляція гарячих вузлів)
         self.quota_stack = []      # (хто, таблиця, лічильник): власник, печатка, модулі, субагенти (поки активні)
         self.quota_used = {}       # (лічильник, інструмент, обмеження) → скільки вже викликів
         self.quota_seq = 0         # кожен запуск субагента — свій лічильник (його квота — «поки він працює»)
@@ -3487,6 +3488,116 @@ class Interp:
         return x.v
 
     def eval(self, node, env):
+        """Вузол → значення. Найчастіші вузли (літерал, імʼя, гліф без лінощів, виклик) один раз компілюються в
+        замикання, що кличуть замикання дітей напряму (фаза 4); решта — eval_node. Семантика та сама: крок на вузол,
+        ті самі межі й впевненість."""
+        f = self.code.get(id(node))
+        if f is None:
+            f = self.compile(node)
+        return f(env)
+
+    def compile(self, node):
+        k, pos = node[0], node[1]
+        code = self.code
+        if k == 'lit':
+            v = node[2]
+
+            def f(env):
+                self.steps_left -= 1
+                if self.steps_left < 0:
+                    raise Fatal('перевищено ліміт кроків (--кроки)', pos)
+                return V(v, self.pc if self.pc < self.halt_c else self.halt_c)
+        elif k == 'var':
+            name = node[2]
+
+            def f(env):
+                self.steps_left -= 1
+                if self.steps_left < 0:
+                    raise Fatal('перевищено ліміт кроків (--кроки)', pos)
+                e = env
+                while e is not None:
+                    if name in e:
+                        val = e[name]
+                        break
+                    e = e.get('\0parent')
+                else:
+                    raise NgrError(f'невідоме імʼя «{name}»', pos)
+                if self.halt_c < val.c:
+                    val = self.halt_cap(env, name, val, pos)
+                if self.try_stack:
+                    self.taint(val.c)
+                return val
+        elif k == 'op' and node[2] not in LAZY_GLYPHS:
+            g, kids = node[2], [self.compiled(a) for a in node[3]]
+            int2 = g in INT_FAST and len(kids) == 2
+            heavy = g in HEAVY
+            fn2 = INT_FAST.get(g)
+            sized, strict = self.sized, self.strict
+            if int2:
+                k0, k1 = kids
+
+                def f(env):
+                    self.steps_left -= 1
+                    if self.steps_left < 0:
+                        raise Fatal('перевищено ліміт кроків (--кроки)', pos)
+                    x, y = k0(env), k1(env)
+                    if (type(x.v) is int and type(y.v) is int and x.c >= 1 and y.c >= 1 and self.pc >= 1
+                            and self.halt_c >= 1 and (g != '‰' or y.v)
+                            and (g != '×' or x.v.bit_length() + y.v.bit_length() <= MAX_INT_BITS)):
+                        if heavy:
+                            self.work(x.n + y.n, pos)
+                        r = fn2(x.v, y.v)
+                        if type(r) is not int:            # ＝ ‹ … — ●/○
+                            return V(r)
+                        bl = r.bit_length()               # = sized(V(r)) для цілого, без загального шляху
+                        if bl > MAX_INT_BITS:
+                            raise Fatal(f'{g}: число завелике (понад {MAX_INT_BITS} біт)', pos)
+                        res = V.__new__(V)
+                        res.v, res.c, res.s, res.n = r, 1.0, 1.0, 1 + bl // 3
+                        if res.n > self.max_size:
+                            raise Fatal(f'{g}: значення завелике (логічний розмір {res.n} > --розмір {self.max_size})', pos)
+                        if res.n > 1:
+                            self.alloc += res.n
+                            if res.n >= 64:
+                                self.work(res.n, pos)
+                            if self.alloc > ALLOC_FACTOR * self.max_size:
+                                raise Fatal(f'сумарно створено забагато ({self.alloc} > {ALLOC_FACTOR} × --розмір)', pos)
+                        return res
+                    return sized(strict(g, [x, y], pos), g, pos)
+            else:
+                def f(env):
+                    self.steps_left -= 1
+                    if self.steps_left < 0:
+                        raise Fatal('перевищено ліміт кроків (--кроки)', pos)
+                    return sized(strict(g, [c(env) for c in kids], pos), g, pos)
+        elif k == 'call':
+            name, kids = node[2], [self.compiled(a) for a in node[3]]
+            call = self.call
+
+            def f(env):
+                self.steps_left -= 1
+                if self.steps_left < 0:
+                    raise Fatal('перевищено ліміт кроків (--кроки)', pos)
+                e = env
+                while e is not None:
+                    if name in e:
+                        fn = e[name]
+                        break
+                    e = e.get('\0parent')
+                else:
+                    raise NgrError(f'невідоме імʼя «{name}»', pos)
+                return call(fn, [c(env) for c in kids], pos)
+        else:
+            def f(env):
+                return self.eval_node(node, env)
+        code[id(node)] = f
+        return f
+
+    def compiled(self, node):
+        f = self.code.get(id(node))
+        return f if f is not None else self.compile(node)
+
+    def eval_node(self, node, env):
         k, pos = node[0], node[1]
         self.steps_left -= 1                      # = self.step(pos), без виклику: eval — найгарячіше місце
         if self.steps_left < 0:
