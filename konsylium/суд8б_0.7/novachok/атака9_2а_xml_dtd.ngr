@@ -1,0 +1,24 @@
+🜂 「XML: DTD, сутності, кодування, XInclude, коментарі, CDATA」
+← спроба Λ назва xml » 〔{назва} → {☂ ⊏ Δ χ xml 0 160 λпомилка ＋ 「ВІДМОВА: 」 помилка}〕
+▶ ∘спроба 「внутрішня сутність」 「<!DOCTYPE a [<!ENTITY x "привіт">]><a>&x;</a>」
+▶ ∘спроба 「зовнішня сутність」 「<!DOCTYPE a [<!ENTITY x SYSTEM "file:///etc/passwd">]><a>&x;</a>」
+▶ ∘спроба 「параметрична」 「<!DOCTYPE a [<!ENTITY % p "<!ENTITY x 'y'>"> %p;]><a>&x;</a>」
+▶ ∘спроба 「зовнішній DTD」 「<!DOCTYPE a SYSTEM "file:///etc/passwd"><a/>」
+▶ ∘спроба 「мільярд сміхів」 「<!DOCTYPE l [<!ENTITY l0 "ха"><!ENTITY l1 "&l0;&l0;&l0;&l0;&l0;&l0;&l0;&l0;&l0;&l0;"><!ENTITY l2 "&l1;&l1;&l1;&l1;&l1;&l1;&l1;&l1;&l1;&l1;"><!ENTITY l3 "&l2;&l2;&l2;&l2;&l2;&l2;&l2;&l2;&l2;&l2;"><!ENTITY l4 "&l3;&l3;&l3;&l3;&l3;&l3;&l3;&l3;&l3;&l3;"><!ENTITY l5 "&l4;&l4;&l4;&l4;&l4;&l4;&l4;&l4;&l4;&l4;"><!ENTITY l6 "&l5;&l5;&l5;&l5;&l5;&l5;&l5;&l5;&l5;&l5;"><!ENTITY l7 "&l6;&l6;&l6;&l6;&l6;&l6;&l6;&l6;&l6;&l6;"><!ENTITY l8 "&l7;&l7;&l7;&l7;&l7;&l7;&l7;&l7;&l7;&l7;">]><l>&l8;</l>」
+▶ ∘спроба 「DOCTYPE малими」 「<!doctype a [<!ENTITY x "y">]><a>&x;</a>」
+▶ ∘спроба 「DOCTYPE після PI」 「<?xml version="1.0"?><?php x?><!DOCTYPE a [<!ENTITY x "y">]><a>&x;</a>」
+▶ ∘спроба 「UTF-16 у заголовку」 「<?xml version="1.0" encoding="UTF-16"?><a>x</a>」
+▶ ∘спроба 「UTF-7 DOCTYPE」 「<?xml version="1.0" encoding="UTF-7"?>+ADw-!DOCTYPE a +AFs-+ADw-!ENTITY x +ACI-y+ACI-+AD4-+AF0-+AD4-+ADw-a+AD4-+ACY-x+ADs-+ADw-/a+AD4-」
+▶ ∘спроба 「невідоме кодування」 「<?xml version="1.0" encoding="KOI8-U"?><a>x</a>」
+▶ ∘спроба 「DOCTYPE у коментарі」 「<!-- <!DOCTYPE a [<!ENTITY x "y">]> --><a>&lt;x&gt;</a>」
+▶ ∘спроба 「CDATA зі сутністю」 「<a><![CDATA[<!DOCTYPE a [<!ENTITY x "y">]>&x;]]></a>」
+▶ ∘спроба 「XInclude」 「<a xmlns:xi="http://www.w3.org/2001/XInclude"><xi:include href="/etc/passwd" parse="text"/></a>」
+▶ ∘спроба 「невідома сутність」 「<a>&nbsp;</a>」
+▶ ∘спроба 「символ &#0;」 「<a>&#0;</a>」
+▶ ∘спроба 「символ &#x202E; (bidi)」 「<a>ab&#x202E;cd&#x200B;</a>」
+▶ ∘спроба 「сурогат &#xD800;」 「<a>&#xD800;</a>」
+▶ ∘спроба 「два корені」 「<a/><b/>」
+▶ ∘спроба 「порожній」 「」
+▶ ∘спроба 「текст після кореня」 「<a/>хвіст」
+▶ ∘спроба 「простори імен: дві різні x」 「<r xmlns:a="urn:1" xmlns:b="urn:2"><a:x>1</a:x><b:x>2</b:x><x xmlns="urn:3">3</x></r>」
+▶ ∘спроба 「атрибути з просторами」 「<r xmlns:a="urn:1" xmlns:b="urn:2" a:k="1" b:k="2" xml:lang="uk"/>」

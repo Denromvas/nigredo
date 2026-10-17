@@ -1,0 +1,6 @@
+🜂 「р2: DROP TABLE без тригера; CREATE/DROP INDEX」 【「бд.писати:звіти」】
+← б 「р2_drop2.db」
+» 🜔бд.писати б 「CREATE TABLE п(a)」 【】
+» ☂ 🜔бд.писати б 「CREATE INDEX і ON п(a)」 【】 λe ＋ 「CREATE INDEX: 」 e
+» ☂ 🜔бд.писати б 「ALTER TABLE п ADD COLUMN b」 【】 λe ＋ 「ALTER: 」 e
+» ☂ 🜔бд.писати б 「DROP TABLE п」 【】 λe ＋ 「DROP TABLE: 」 e

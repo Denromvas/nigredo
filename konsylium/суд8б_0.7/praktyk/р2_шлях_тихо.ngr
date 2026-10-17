@@ -1,0 +1,7 @@
+🜂 「раунд 2: незакрита дужка і != у ↘」 【「читати:дані」】
+← д χ 🜔читати 「виписка.xml」
+» 〔усі Ntry: {ρ ↘ д 「//Ntry」}〕
+» 〔CRDT: {ρ ↘ д 「//Ntry[CdtDbtInd='CRDT']」}〕
+» 〔DBIT без ]: {☂ ρ ↘ д 「//Ntry[CdtDbtInd='DBIT'」 λe e}〕
+» 〔!= CRDT: {☂ ρ ↘ д 「//Ntry[CdtDbtInd!='CRDT']」 λe e}〕
+» 〔Amt/text(): {☂ ↘ д 「//Ntry/Amt/text()」 λe e}〕
