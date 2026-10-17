@@ -607,6 +607,49 @@ def main():
     check(got.stdout == 'власник: не більше 2\n' and 'квота' in qtr.read_text(encoding='utf-8')
           and qtr.read_text(encoding='utf-8').count('"подія": "скасовано"') == 2,
           'квота власника на хост: і в ‖ третій запит — відмова й «заборонено» (до дії)', got.stdout + got.stderr)
+    # суд 8: квоти модуля й субагента (на кожен запуск), повернення за невиконані, «квоту вичерпано» ≠ «заборонено»,
+    # звуження не скидає квот власника, дві квоти й не-ASCII цифри — помилка до запуску
+    qd = tmp / 'квоти8'
+    (qd / 'дані').mkdir(parents=True)
+    (qd / 'дані' / 'x.txt').write_text('так', encoding='utf-8')
+    (qd / 'мод.ngr').write_text('🜂 【「жереб≤1」】\n← кинь λn 🜔жереб n\n', encoding='utf-8')
+    (qd / 'а.ngr').write_text('🜂 【「жереб」 「читати:дані≤1」 「читати:.」】\n⊃ 「мод.ngr」 【「кинь」】\n'
+                              '∀ 【1 2】 λx » ☂ σ кинь 6 λe 「модуль: квота」\n'
+                              '← питати λq 🜁 「провидець」 【「жереб≤1」】 🜔жереб 6\n» σ питати 1\n» σ питати 2\n'
+                              '» ☂ 🜔читати 「/etc/hostname」 λe 「поза текою」\n» 🜔читати 「дані/x.txt」\n', encoding='utf-8')
+    q8 = tmp / 'квоти8.jsonl'
+    (tmp / 'вл8').mkdir()
+    (tmp / 'вл8' / 'дозволи.json').write_text(json.dumps({'дозволено': ['жереб', f'файл.читати:{qd}'],
+                                                       'для_тек': {}}, ensure_ascii=False), encoding='utf-8')
+    env8 = dict(env, NIGREDO_HOME=str(tmp / 'вл8'))
+    got = run(['--слід', str(q8), str(qd / 'а.ngr')], env8)
+    o8 = got.stdout.split('\n')
+    check(len(o8) == 7 and o8[1] == 'модуль: квота' and o8[2].isdigit() and o8[3].isdigit() and o8[4:] == ['поза текою', 'так', ''],
+          'квоти (суд 8): модуля — діє; субагента — на кожен запуск; відмова за правами квоти не списує',
+          got.stdout + got.stderr)
+    v8 = run(['--перевірити-слід', str(q8)], env8).stdout
+    check('квоту вичерпано' in v8 and 'жереб≤1 (модуль мод.ngr)' in v8 and v8.count('заборонено') == 1,
+          '--перевірити-слід: «квоту вичерпано» — окремо від «заборонено»', v8)
+    got = run(['-e', f'🜂 【「взяти:127.0.0.1:{port}≤2」】\n← у 「http://127.0.0.1:{port}/повільно/」\n'
+               f'» ☂ ‖ 【1 2 3】 λx 🜔взяти ＋ у σ x λe 「‖: квота»」\n» ρ μ 【1 2】 λx 🜔взяти ＋ у σ x'], env)
+    check(got.stdout == '‖: квота»\n2\n', 'квота: скасовані в ‖ виклики квоти не списують', got.stdout + got.stderr)
+    for bad_q, why in (('【「жереб≤1」 「жереб≤3」】', 'дві квоти'), ('【「жереб≤٢」】', 'цифри 0–9'), ('【「жереб≤0」】', '≤0')):
+        got = run(['-e', f'🜂 {bad_q}\n» 1'], env)
+        check(got.returncode == 2 and why in got.stderr, f'квота: {why} — помилка до запуску', got.stderr)
+    (qh / 'вужче.json').write_text(json.dumps({'дозволено': [f'взяти:127.0.0.1:{port}']}), encoding='utf-8')
+    got = run(['--дозволи', str(qh / 'вужче.json'), '-e', f'🜂 【「взяти:127.0.0.1:{port}」】\n'
+               f'∀ …1 3 λn » ☂ ρ 🜔взяти 〔http://127.0.0.1:{port}/повільно/{{n}}〕 λe 「власник ≤2」'],
+              dict(env, NIGREDO_HOME=str(qh)))
+    check(got.stdout.endswith('власник ≤2\n') and got.stdout.count('власник') == 1,
+          '--дозволи: звуження лишає квоту власника', got.stdout + got.stderr)
+    (qh / 'квота1.json').write_text(json.dumps({'дозволено': [f'взяти:127.0.0.1:{port}≤1']}), encoding='utf-8')
+    got = run(['--дозволи', str(qh / 'квота1.json'), '-e', f'🜂 【「взяти:127.0.0.1:{port}」】\n'
+               f'∀ …1 3 λn » ☂ ρ 🜔взяти 〔http://127.0.0.1:{port}/повільно/{{n}}〕 λe 「≤1」'], dict(env, NIGREDO_HOME=str(qh)))
+    check(got.returncode == 0 and got.stdout.count('≤1') == 2, '--дозволи з ≤N: звуження квотою', got.stdout + got.stderr)
+    rz = run(['--розбір', str(qd / 'а.ngr')], env8).stdout
+    sl = run(['--печатка', '--json', str(qd / 'а.ngr')], env8).stdout
+    check(rz.count('КВОТА') == 3 and sl.count('"не_більше": 1') == 3,
+          '--розбір і --печатка --json: квоти печатки, модуля й субагента', rz + sl)
     js = json.loads(run(['--печатка', '--json', '-e', '🜂 【「оракул≤5」】\n» 1'], env).stdout)
     check(js.get('квоти') == [{'інструмент': 'оракул', 'обмеження': '', 'не_більше': 5}], '--печатка --json: квоти', str(js))
     got = run(['-e', '🜂\n» ⌕ 「a=1 b=2」 「(\\w)=」\n» ⌕ 「a=1」 「\\w=」'], env)
