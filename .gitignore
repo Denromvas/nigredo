@@ -23,3 +23,4 @@ bench/м2/прогін.log
 *.jsonl.дані
 bench/м2/прогін2.log
 konsylium/*/protokol/run_r*.out
+konsylium/*/protokol/сервер.out

@@ -1,0 +1,12 @@
+🜂 「SQLite: запис поза текою, заборонене」 【「бд.писати:звіти」】
+← б 「звіти/т.db」
+» 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS t(x)」 【】
+» ☂ 🜔бд.писати б 「ATTACH 'дані/база.db' AS a」 【】 λe ＋ 「1 ATTACH: 」 e
+» ☂ 🜔бд.писати б 「VACUUM INTO 'дані/копія.db'」 【】 λe ＋ 「2 VACUUM INTO: 」 e
+» ☂ 🜔бд.писати б 「PRAGMA journal_mode=WAL」 【】 λe ＋ 「3 PRAGMA: 」 e
+» ☂ 🜔бд.писати 「звіти/../дані/база.db」 「CREATE TABLE z(x)」 【】 λe ＋ 「6 ..: 」 e
+» ☂ 🜔бд.писати б 「BEGIN」 【】 λe ＋ 「8 BEGIN: 」 e
+» ☂ 🜔бд.писати б 「SELECT load_extension('x')」 【】 λe ＋ 「9 load_extension: 」 e
+» ☂ 🜔бд.писати б 「INSERT INTO t VALUES(5),(6) RETURNING x」 【】 λe ＋ 「11 RETURNING: 」 e
+» ☂ 🜔бд.писати б 「INSERT INTO t SELECT length(randomblob(50000000))」 【】 λe ＋ 「12 randomblob 50 МБ: 」 e
+» 「кінець」
