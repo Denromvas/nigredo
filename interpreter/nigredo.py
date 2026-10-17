@@ -3488,6 +3488,9 @@ class Interp:
             return V(node[2], self.cpc)
         if k == 'var':
             val = self.lookup(env, node[2], pos)
+            cc = self.pc if self.pc < self.halt_c else self.halt_c
+            if cc < val.c:                 # давнє значення, прочитане після «могло впасти — не впало» (суд 8, р2_5)
+                val = capc(val, cc)
             if self.try_stack:
                 self.taint(val.c)          # усе, з чим працює тіло ☂, може визначити успіх чи помилку
             return val
