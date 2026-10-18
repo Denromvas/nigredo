@@ -2660,7 +2660,7 @@ def _url_ok(it, pos, tool, url):
     except ValueError:
         port = -1
     allowed = it.caps[tool]
-    ok = parts and parts.scheme in ('http', 'https') and not parts.username and not parts.password and (
+    ok = parts and parts.scheme in ('http', 'https') and '@' not in parts.netloc and (   # і порожній логін «http://@…» (суд 8в)
         (parts.hostname in allowed and port in (None, 80, 443)) or f'{parts.hostname}:{port}' in allowed)
     if not ok:
         it.deny(агент=it.agent, назва=tool, адреса=safe(str(u)), причина='хост, порт чи адреса поза печаткою')
@@ -2851,6 +2851,11 @@ def _db_static_ok(it, pos, tool, p, sql):
     if _re.match(r'(?:\s+|/\*.*?\*/|--[^\n]*(?:\n|$))*vacuum\b', sql.v, _re.I | _re.S):
         it.deny(агент=it.agent, назва=tool, шлях=safe(show(p)), запит=safe(sql.v)[:500], причина='VACUUM')
         raise NgrError(f'{tool}: VACUUM заборонено (VACUUM INTO пише файл поза текою з печатки)', pos)
+    # бд.читати — лише запити: REINDEX чи DROP TABLE IF EXISTS на відсутній authorizer не питають (суд 8в)
+    first = _re.match(r'(?:\s+|/\*.*?\*/|--[^\n]*(?:\n|$))*(\w*)', sql.v, _re.S).group(1).lower()
+    if tool == 'бд.читати' and first not in ('select', 'with', 'values'):
+        it.deny(агент=it.agent, назва=tool, шлях=safe(show(p)), запит=safe(sql.v)[:500], причина='не запит на читання')
+        raise NgrError(f'{tool}: «{safe(first)[:20]}» поза дозволеним — лише SELECT (WITH, VALUES); для змін — бд.писати', pos)
 
 
 def _db_ok(it, pos, tool, p, sql, write):
@@ -2957,7 +2962,8 @@ def t_proc(it, pos, argv):
         raise NgrError(f'процес: команди «{safe(args[0])}» немає (шукаю лише в абсолютних теках PATH)', pos)
     via, exe = found
     if any(inside(x, os.path.realpath(os.path.join(it.cwd, w))) for x in found
-           for t in WRITE_TOOLS for w in it.seal_caps.get(t, [])):    # ні симлінк, ні ціль — не з теки запису
+           for t in WRITE_TOOLS for w in it.seal_caps.get(t, [])) or \
+            any(inside(x, w) for x in found for w in write_dirs()):  # ні симлінк, ні ціль — не з теки запису (й чужої)
         raise NgrError(f'процес: «{safe(via)}» чи його ціль лежить у теці, куди програмі дозволено писати', pos)
     import signal
     import subprocess                     # ліниво: процеси потрібні рідко, а імпорт коштує ~10 мс запуску
@@ -3086,16 +3092,19 @@ def read_allowlist(path, cwd=None, prog=None):
         per_dir = data.get('для_тек', {})
         if not isinstance(per_dir, dict):
             raise ValueError('«для_тек» має бути словником тека → список')
-        common = list(lst)
         for d, extra in per_dir.items():
             if not isinstance(extra, list):
                 raise ValueError(f'«для_тек» → «{d}»: потрібен список')
+        # теки запису — з УСІХ записів власника, а не лише цієї теки (суд 8в: програма з теки C, якій дано писати в
+        # A/вхідні, клала туди програму — і та діставала права теки A)
+        writable = [split_quota(e)[0].partition(':')[2].strip()
+                    for e in lst + [canon_perm(a) for x in per_dir.values() for a in x]
+                    if e.partition(':')[0].strip() in WRITE_TOOLS]
+        for d, extra in per_dir.items():
             extra = [canon_perm(a) for a in extra]
             if cwd and os.path.isabs(os.path.expanduser(d)) and inside(cwd, os.path.expanduser(d)):
                 # програма, що лежить там, куди програмам дозволено писати, могла бути написана програмою —
                 # права теки їй не належать
-                writable = [split_quota(e)[0].partition(':')[2].strip() for e in common + extra
-                            if e.partition(':')[0].strip() in WRITE_TOOLS]
                 if prog and any(w and os.path.isabs(os.path.expanduser(w)) and inside(prog, os.path.expanduser(w))
                                 for w in writable):
                     continue
@@ -3232,6 +3241,7 @@ def check_program(prog, allowed, cwd):
     writable = [os.path.realpath(os.path.join(cwd, os.path.expanduser(split_quota(a)[0].partition(':')[2].strip())))
                 for a in owner if split_quota(canon_perm(a))[0].partition(':')[0].strip() in WRITE_TOOLS]
     writable += [os.path.realpath(os.path.join(cwd, w)) for t in WRITE_TOOLS for w in prog[2][0][3].get(t, [])]
+    writable += write_dirs()                        # і теки запису інших тек власника (суд 8в)
 
     def mods(n):
         if isinstance(n, tuple) and n:
@@ -4989,6 +4999,8 @@ def test_seals(targets, as_json=False):
             info = json.loads(p.stdout)
         except ValueError:
             info = {'в_межах': False, 'бракує': [(p.stderr.strip().splitlines() or ['?'])[0]]}
+        if info.get('помилка_розбору'):              # не розбирається — причина, а не порожнє «бракує:» (суд 8в)
+            info['бракує'] = [f'не розбирається: {info["помилка_розбору"]}']
         out.append({'файл': safe(f), 'в_межах': bool(info.get('в_межах')) and p.returncode == 0,
                     'дозволи': info.get('дозволи', {}), 'квоти': info.get('квоти', []), 'бракує': info.get('бракує', [])})
     if as_json:
