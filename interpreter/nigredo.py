@@ -130,7 +130,7 @@ GLYPHS = {
     '⊢': (1, '⊢ рядок', 'обрізати пробіли й невидимі символи (BOM) з країв', 'обрізати({0})', 'дані'),
     '⇣': (1, '⇣ рядок', 'малими літерами', 'малими({0})', 'дані'),
     '◷': (2, '◷ дата дата або ◷ дата дні', 'дати ISO (2026-10-15, 2026-10-15T09:30:00+03:00): дві дати — скільки днів від першої '
-          'до другої (дріб, якщо є час); дата й число — дата через стільки днів', 'дати({0}, {1})', 'дані'),
+          'до другої (дріб, якщо є час; секунди — ⌗ × 86400 ◷ a b 0); дата й число — дата через стільки днів', 'дати({0}, {1})', 'дані'),
     '▦': (1, '▦ текст', 'CSV → список словників (перший рядок — заголовки; значення — рядки)', 'csv({0})', 'дані'),
     '✓': (2, '✓ значення схема', 'перевірити за схемою й повернути значення (інакше — помилка з усіма розбіжностями). '
           'Схема: 「число」 「ціле」 「рядок」 「дата」 「●/○」 「∅」 「будь-що」 「список」 「словник」; …? — ще й ∅; '
@@ -145,7 +145,7 @@ GLYPHS = {
     '⇡': (1, '⇡ рядок', 'великими літерами', 'великими({0})', 'дані'),
     '⊏': (3, '⊏ x від до', 'зріз рядка чи списку [від, до); відʼємні — з кінця; до ∅ — до кінця', '{0}[{1}…{2}]', 'дані'),
     '⊳': (2, '⊳ x що', 'позиція підрядка в рядку чи елемента в списку; ¯1 — немає', 'позиція {1} у {0}', 'дані'),
-    '⌕': (2, '⌕ рядок шаблон', 'усі збіги регулярного виразу (з групами — списки груп)', 'усі збіги {1} у {0}', 'дані'),
+    '⌕': (2, '⌕ рядок шаблон', 'усі збіги регулярного виразу (з групами — списки груп; \\d — лише 0–9)', 'усі збіги {1} у {0}', 'дані'),
     '≋': (3, '≋ рядок шаблон заміна', 'замінити збіги регулярного виразу (\\1 — група)', 'у {0} замінити збіги {1} на {2}', 'дані'),
     '⇅': (2, '⇅ список λx ключ', 'відсортувати за ключем (рядки — за українською абеткою)', 'відсортувати {0} за {1}', 'дані'),
     '⊞': (2, '⊞ список λx ключ', 'згрупувати: словник ключ-рядок → список елементів', 'згрупувати {0} за {1}', 'дані'),
@@ -827,10 +827,12 @@ class Parser:
         text = go(*span, top=True)
         return text if len(text) <= limit else text[:limit] + ' …'
 
-    def hungry(self):
-        """Які вирази ще чекають аргументів — найглибші спершу."""
+    def hungry(self, in_tmpl=False):
+        """Які вирази ще чекають аргументів — найглибші спершу (in_tmpl — лише всередині цього шаблону)."""
         out = []
         for start, kids in reversed(self.frames):
+            if in_tmpl and start < self.i and self.t[start][0] == 'topen':
+                break
             if start >= self.i or self.t[start][0] in ('open', 'topen'):
                 continue
             k, v, pos = self.t[start]
@@ -944,6 +946,12 @@ class Parser:
                 self.ctx.pop()
                 if len(items) % 2:
                     raise StaticError('у словнику 『』 має бути парна кількість: ключ значення …', pos)
+                seen = set()
+                for kn in items[::2]:            # той самий ключ двічі мовчки брав останнє — і в схемі ✓ (суд 8б)
+                    if kn[0] == 'lit' and isinstance(kn[2], str):
+                        if kn[2] in seen:
+                            raise StaticError(f'у словнику 『』 ключ «{safe(kn[2])}» двічі', kn[1])
+                        seen.add(kn[2])
                 return ('dict', pos, items)
             self.scopes.append({})
             self.ctx.append(('stmt', 10 ** 9))      # між інструкціями блоку — лише skip_nl
@@ -968,7 +976,10 @@ class Parser:
                     raise StaticError('у {…} шаблону — рівно один вираз; після нього має бути «}»', end[2])
                 parts.append(('hole', p2, part))
         if kind_ in ('hclose', 'tclose', 'hopen', 'tpart'):
-            raise StaticError(f'«{val}» тут не очікувалося — бракує виразу в шаблоні', pos)
+            self.i -= 1                                 # 〔{＋ 1}〕 — підказка арності й тут (суд 8б)
+            hint = self.hungry(in_tmpl=True)
+            self.i += 1
+            raise StaticError(f'«{val}» тут не очікувалося — бракує виразу в шаблоні' + hint, pos)
         if kind_ == 'close':
             self.i -= 1
             raise StaticError(f'«{val}» тут не очікувалося — бракує аргументу' + self.hungry(), pos)
@@ -1473,6 +1484,52 @@ def parse(src, base=None, path=None, all_errors=None):
     return prog
 
 
+
+def all_static_errors(src, base=None, path=None, limit=10):
+    """--перевірити: не лише перша помилка розбору (суд 8б: «знайти ВСІ» давало одну). Після кожної — пропустити її
+    дозвіл 「…」 (печатка) чи рядок інструкції з глибшими продовженнями й розбирати далі, до limit помилок. Пізніші
+    позначено after_skip — можуть бути наслідком пропуску; про імена з пропущених рядків «←» — не повідомляти."""
+    import re as _re
+    lines, errors, gone = src.split('\n'), [], set()
+
+    def keep(e):
+        return not any(f'«{n}»' in e.msg for n in gone)
+    for _ in range(limit):
+        errs = []
+        try:
+            parse('\n'.join(lines), base, path, errs)
+        except StaticError as e:
+            if any(e.msg == x.msg and e.pos == x.pos for x in errors) or not e.pos or e.file:   # e.file — у модулі
+                break
+            e.after_skip = bool(errors)
+            if keep(e):
+                errors.append(e)
+            r, c = e.pos
+            line = lines[r - 1] if 0 < r <= len(lines) else ''
+            if line[c - 1:c] == '「' and line.find('」', c) > 0:
+                lines[r - 1] = line[:c - 1] + line[line.find('」', c) + 1:]
+                continue
+            if r <= 1:
+                break
+            ind = len(line) - len(line.lstrip(' '))
+            k = r
+            while k < len(lines) and lines[k].strip() and len(lines[k]) - len(lines[k].lstrip(' ')) > ind:
+                k += 1
+            for j in range(r - 1, k):
+                m = _re.match(r'\s*←\s*(\S+)', lines[j])
+                if m:
+                    gone.add(m.group(1))
+                if lines[j].lstrip().startswith('⊃') and '【' in lines[j]:      # імена, взяті з модуля
+                    gone.update(_re.findall('「([^」]*)」', lines[j].partition('【')[2]))
+                lines[j] = ''
+            continue
+        for x in errs:
+            x.after_skip = bool(errors)
+        errors += [x for x in errs if keep(x)]
+        break
+    return errors[:limit]
+
+
 # ------------------------------------------------------------------ слід
 
 
@@ -1803,7 +1860,7 @@ def _cat(code, ch, ascii_):
     if ascii_ and not ch.isascii():
         hit = False
     elif 'DIGIT' in name:
-        hit = ch.isdecimal() if not ascii_ else '0' <= ch <= '9'
+        hit = '0' <= ch <= '9'          # \d — лише 0–9, як ν (суд 8б: «1٣५» проходило ⌕, а ν відмовляло)
     elif 'SPACE' in name:
         hit = ch.isspace() if not ascii_ else ch in ' \t\n\r\f\v'
     elif 'WORD' in name:
@@ -2603,7 +2660,7 @@ def _url_ok(it, pos, tool, url):
     except ValueError:
         port = -1
     allowed = it.caps[tool]
-    ok = parts and parts.scheme in ('http', 'https') and not parts.username and not parts.password and (
+    ok = parts and parts.scheme in ('http', 'https') and '@' not in parts.netloc and (   # і порожній логін «http://@…» (суд 8в)
         (parts.hostname in allowed and port in (None, 80, 443)) or f'{parts.hostname}:{port}' in allowed)
     if not ok:
         it.deny(агент=it.agent, назва=tool, адреса=safe(str(u)), причина='хост, порт чи адреса поза печаткою')
@@ -2794,6 +2851,11 @@ def _db_static_ok(it, pos, tool, p, sql):
     if _re.match(r'(?:\s+|/\*.*?\*/|--[^\n]*(?:\n|$))*vacuum\b', sql.v, _re.I | _re.S):
         it.deny(агент=it.agent, назва=tool, шлях=safe(show(p)), запит=safe(sql.v)[:500], причина='VACUUM')
         raise NgrError(f'{tool}: VACUUM заборонено (VACUUM INTO пише файл поза текою з печатки)', pos)
+    # бд.читати — лише запити: REINDEX чи DROP TABLE IF EXISTS на відсутній authorizer не питають (суд 8в)
+    first = _re.match(r'(?:\s+|/\*.*?\*/|--[^\n]*(?:\n|$))*(\w*)', sql.v, _re.S).group(1).lower()
+    if tool == 'бд.читати' and first not in ('select', 'with', 'values'):
+        it.deny(агент=it.agent, назва=tool, шлях=safe(show(p)), запит=safe(sql.v)[:500], причина='не запит на читання')
+        raise NgrError(f'{tool}: «{safe(first)[:20]}» поза дозволеним — лише SELECT (WITH, VALUES); для змін — бд.писати', pos)
 
 
 def _db_ok(it, pos, tool, p, sql, write):
@@ -2900,7 +2962,8 @@ def t_proc(it, pos, argv):
         raise NgrError(f'процес: команди «{safe(args[0])}» немає (шукаю лише в абсолютних теках PATH)', pos)
     via, exe = found
     if any(inside(x, os.path.realpath(os.path.join(it.cwd, w))) for x in found
-           for t in WRITE_TOOLS for w in it.seal_caps.get(t, [])):    # ні симлінк, ні ціль — не з теки запису
+           for t in WRITE_TOOLS for w in it.seal_caps.get(t, [])) or \
+            any(inside(x, w) for x in found for w in write_dirs()):  # ні симлінк, ні ціль — не з теки запису (й чужої)
         raise NgrError(f'процес: «{safe(via)}» чи його ціль лежить у теці, куди програмі дозволено писати', pos)
     import signal
     import subprocess                     # ліниво: процеси потрібні рідко, а імпорт коштує ~10 мс запуску
@@ -3029,16 +3092,19 @@ def read_allowlist(path, cwd=None, prog=None):
         per_dir = data.get('для_тек', {})
         if not isinstance(per_dir, dict):
             raise ValueError('«для_тек» має бути словником тека → список')
-        common = list(lst)
         for d, extra in per_dir.items():
             if not isinstance(extra, list):
                 raise ValueError(f'«для_тек» → «{d}»: потрібен список')
+        # теки запису — з УСІХ записів власника, а не лише цієї теки (суд 8в: програма з теки C, якій дано писати в
+        # A/вхідні, клала туди програму — і та діставала права теки A)
+        writable = [split_quota(e)[0].partition(':')[2].strip()
+                    for e in lst + [canon_perm(a) for x in per_dir.values() for a in x]
+                    if e.partition(':')[0].strip() in WRITE_TOOLS]
+        for d, extra in per_dir.items():
             extra = [canon_perm(a) for a in extra]
             if cwd and os.path.isabs(os.path.expanduser(d)) and inside(cwd, os.path.expanduser(d)):
                 # програма, що лежить там, куди програмам дозволено писати, могла бути написана програмою —
                 # права теки їй не належать
-                writable = [split_quota(e)[0].partition(':')[2].strip() for e in common + extra
-                            if e.partition(':')[0].strip() in WRITE_TOOLS]
                 if prog and any(w and os.path.isabs(os.path.expanduser(w)) and inside(prog, os.path.expanduser(w))
                                 for w in writable):
                     continue
@@ -3175,6 +3241,7 @@ def check_program(prog, allowed, cwd):
     writable = [os.path.realpath(os.path.join(cwd, os.path.expanduser(split_quota(a)[0].partition(':')[2].strip())))
                 for a in owner if split_quota(canon_perm(a))[0].partition(':')[0].strip() in WRITE_TOOLS]
     writable += [os.path.realpath(os.path.join(cwd, w)) for t in WRITE_TOOLS for w in prog[2][0][3].get(t, [])]
+    writable += write_dirs()                        # і теки запису інших тек власника (суд 8в)
 
     def mods(n):
         if isinstance(n, tuple) and n:
@@ -3805,6 +3872,8 @@ class Interp:
                 key = self.eval(items[i], env)
                 if not isinstance(key.v, str):
                     raise NgrError('ключ словника має бути рядком', items[i][1], min(key.c, self.cpc))
+                if key.v in d:
+                    raise NgrError(f'у словнику 『』 ключ «{safe(key.v)}» двічі', items[i][1], min(key.c, self.cpc))
                 d[key.v] = self.eval(items[i + 1], env)
                 c, sc = min(c, key.c, d[key.v].c), min(sc, key.c)
             return self.sized(V(d, c, sc), '『』', pos)
@@ -4930,6 +4999,8 @@ def test_seals(targets, as_json=False):
             info = json.loads(p.stdout)
         except ValueError:
             info = {'в_межах': False, 'бракує': [(p.stderr.strip().splitlines() or ['?'])[0]]}
+        if info.get('помилка_розбору'):              # не розбирається — причина, а не порожнє «бракує:» (суд 8в)
+            info['бракує'] = [f'не розбирається: {info["помилка_розбору"]}']
         out.append({'файл': safe(f), 'в_межах': bool(info.get('в_межах')) and p.returncode == 0,
                     'дозволи': info.get('дозволи', {}), 'квоти': info.get('квоти', []), 'бракує': info.get('бракує', [])})
     if as_json:
@@ -5216,6 +5287,8 @@ def main(argv):
         perr = errors[0] if errors else None
     except StaticError as e:
         prog, perr, errors = None, e, [e]
+        if opts['mode'] == 'перевірити':
+            errors = all_static_errors(src, cwd, None if path == '<-e>' else path) or [e]
     try:
         allowed, source = load_allowlist(opts['allow'], cwd if dir_rights else None,
                                          os.path.realpath(path) if path != '<-e>' else None)
@@ -5229,12 +5302,15 @@ def main(argv):
         if opts['json']:
             print(json.dumps({'гаразд': not errors and not missing,
                               'помилки': [{'рядок': e.pos[0] if e.pos else None, 'стовпець': e.pos[1] if e.pos else None,
-                                           'повідомлення': safe(e.msg)} for e in errors],
+                                           'повідомлення': safe(e.msg),
+                                           **({'після_пропуску': True} if getattr(e, 'after_skip', False) else {})}
+                                          for e in errors],
                               'печатка': {'в_межах': not missing, 'бракує': missing} if prog else None},
                              ensure_ascii=False, indent=1))
         else:
             for e in errors:
-                print(safe(str(e)))
+                print(safe(str(e)) + (' (після пропуску попереднього — може бути наслідком)'
+                                      if getattr(e, 'after_skip', False) else ''))
             if missing:
                 print(f'✗ печатка просить більше, ніж дозволив власник: {", ".join(missing)}')
             if not errors and not missing:
