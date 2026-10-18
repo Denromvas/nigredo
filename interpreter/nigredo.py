@@ -946,6 +946,12 @@ class Parser:
                 self.ctx.pop()
                 if len(items) % 2:
                     raise StaticError('у словнику 『』 має бути парна кількість: ключ значення …', pos)
+                seen = set()
+                for kn in items[::2]:            # той самий ключ двічі мовчки брав останнє — і в схемі ✓ (суд 8б)
+                    if kn[0] == 'lit' and isinstance(kn[2], str):
+                        if kn[2] in seen:
+                            raise StaticError(f'у словнику 『』 ключ «{safe(kn[2])}» двічі', kn[1])
+                        seen.add(kn[2])
                 return ('dict', pos, items)
             self.scopes.append({})
             self.ctx.append(('stmt', 10 ** 9))      # між інструкціями блоку — лише skip_nl
@@ -3856,6 +3862,8 @@ class Interp:
                 key = self.eval(items[i], env)
                 if not isinstance(key.v, str):
                     raise NgrError('ключ словника має бути рядком', items[i][1], min(key.c, self.cpc))
+                if key.v in d:
+                    raise NgrError(f'у словнику 『』 ключ «{safe(key.v)}» двічі', items[i][1], min(key.c, self.cpc))
                 d[key.v] = self.eval(items[i + 1], env)
                 c, sc = min(c, key.c, d[key.v].c), min(sc, key.c)
             return self.sized(V(d, c, sc), '『』', pos)
