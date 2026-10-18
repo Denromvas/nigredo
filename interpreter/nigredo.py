@@ -130,7 +130,7 @@ GLYPHS = {
     '⊢': (1, '⊢ рядок', 'обрізати пробіли й невидимі символи (BOM) з країв', 'обрізати({0})', 'дані'),
     '⇣': (1, '⇣ рядок', 'малими літерами', 'малими({0})', 'дані'),
     '◷': (2, '◷ дата дата або ◷ дата дні', 'дати ISO (2026-10-15, 2026-10-15T09:30:00+03:00): дві дати — скільки днів від першої '
-          'до другої (дріб, якщо є час); дата й число — дата через стільки днів', 'дати({0}, {1})', 'дані'),
+          'до другої (дріб, якщо є час; секунди — ⌗ × 86400 ◷ a b 0); дата й число — дата через стільки днів', 'дати({0}, {1})', 'дані'),
     '▦': (1, '▦ текст', 'CSV → список словників (перший рядок — заголовки; значення — рядки)', 'csv({0})', 'дані'),
     '✓': (2, '✓ значення схема', 'перевірити за схемою й повернути значення (інакше — помилка з усіма розбіжностями). '
           'Схема: 「число」 「ціле」 「рядок」 「дата」 「●/○」 「∅」 「будь-що」 「список」 「словник」; …? — ще й ∅; '
@@ -145,7 +145,7 @@ GLYPHS = {
     '⇡': (1, '⇡ рядок', 'великими літерами', 'великими({0})', 'дані'),
     '⊏': (3, '⊏ x від до', 'зріз рядка чи списку [від, до); відʼємні — з кінця; до ∅ — до кінця', '{0}[{1}…{2}]', 'дані'),
     '⊳': (2, '⊳ x що', 'позиція підрядка в рядку чи елемента в списку; ¯1 — немає', 'позиція {1} у {0}', 'дані'),
-    '⌕': (2, '⌕ рядок шаблон', 'усі збіги регулярного виразу (з групами — списки груп)', 'усі збіги {1} у {0}', 'дані'),
+    '⌕': (2, '⌕ рядок шаблон', 'усі збіги регулярного виразу (з групами — списки груп; \\d — лише 0–9)', 'усі збіги {1} у {0}', 'дані'),
     '≋': (3, '≋ рядок шаблон заміна', 'замінити збіги регулярного виразу (\\1 — група)', 'у {0} замінити збіги {1} на {2}', 'дані'),
     '⇅': (2, '⇅ список λx ключ', 'відсортувати за ключем (рядки — за українською абеткою)', 'відсортувати {0} за {1}', 'дані'),
     '⊞': (2, '⊞ список λx ключ', 'згрупувати: словник ключ-рядок → список елементів', 'згрупувати {0} за {1}', 'дані'),
@@ -827,10 +827,12 @@ class Parser:
         text = go(*span, top=True)
         return text if len(text) <= limit else text[:limit] + ' …'
 
-    def hungry(self):
-        """Які вирази ще чекають аргументів — найглибші спершу."""
+    def hungry(self, in_tmpl=False):
+        """Які вирази ще чекають аргументів — найглибші спершу (in_tmpl — лише всередині цього шаблону)."""
         out = []
         for start, kids in reversed(self.frames):
+            if in_tmpl and start < self.i and self.t[start][0] == 'topen':
+                break
             if start >= self.i or self.t[start][0] in ('open', 'topen'):
                 continue
             k, v, pos = self.t[start]
@@ -968,7 +970,10 @@ class Parser:
                     raise StaticError('у {…} шаблону — рівно один вираз; після нього має бути «}»', end[2])
                 parts.append(('hole', p2, part))
         if kind_ in ('hclose', 'tclose', 'hopen', 'tpart'):
-            raise StaticError(f'«{val}» тут не очікувалося — бракує виразу в шаблоні', pos)
+            self.i -= 1                                 # 〔{＋ 1}〕 — підказка арності й тут (суд 8б)
+            hint = self.hungry(in_tmpl=True)
+            self.i += 1
+            raise StaticError(f'«{val}» тут не очікувалося — бракує виразу в шаблоні' + hint, pos)
         if kind_ == 'close':
             self.i -= 1
             raise StaticError(f'«{val}» тут не очікувалося — бракує аргументу' + self.hungry(), pos)
@@ -1473,6 +1478,52 @@ def parse(src, base=None, path=None, all_errors=None):
     return prog
 
 
+
+def all_static_errors(src, base=None, path=None, limit=10):
+    """--перевірити: не лише перша помилка розбору (суд 8б: «знайти ВСІ» давало одну). Після кожної — пропустити її
+    дозвіл 「…」 (печатка) чи рядок інструкції з глибшими продовженнями й розбирати далі, до limit помилок. Пізніші
+    позначено after_skip — можуть бути наслідком пропуску; про імена з пропущених рядків «←» — не повідомляти."""
+    import re as _re
+    lines, errors, gone = src.split('\n'), [], set()
+
+    def keep(e):
+        return not any(f'«{n}»' in e.msg for n in gone)
+    for _ in range(limit):
+        errs = []
+        try:
+            parse('\n'.join(lines), base, path, errs)
+        except StaticError as e:
+            if any(e.msg == x.msg and e.pos == x.pos for x in errors) or not e.pos or e.file:   # e.file — у модулі
+                break
+            e.after_skip = bool(errors)
+            if keep(e):
+                errors.append(e)
+            r, c = e.pos
+            line = lines[r - 1] if 0 < r <= len(lines) else ''
+            if line[c - 1:c] == '「' and line.find('」', c) > 0:
+                lines[r - 1] = line[:c - 1] + line[line.find('」', c) + 1:]
+                continue
+            if r <= 1:
+                break
+            ind = len(line) - len(line.lstrip(' '))
+            k = r
+            while k < len(lines) and lines[k].strip() and len(lines[k]) - len(lines[k].lstrip(' ')) > ind:
+                k += 1
+            for j in range(r - 1, k):
+                m = _re.match(r'\s*←\s*(\S+)', lines[j])
+                if m:
+                    gone.add(m.group(1))
+                if lines[j].lstrip().startswith('⊃') and '【' in lines[j]:      # імена, взяті з модуля
+                    gone.update(_re.findall('「([^」]*)」', lines[j].partition('【')[2]))
+                lines[j] = ''
+            continue
+        for x in errs:
+            x.after_skip = bool(errors)
+        errors += [x for x in errs if keep(x)]
+        break
+    return errors[:limit]
+
+
 # ------------------------------------------------------------------ слід
 
 
@@ -1803,7 +1854,7 @@ def _cat(code, ch, ascii_):
     if ascii_ and not ch.isascii():
         hit = False
     elif 'DIGIT' in name:
-        hit = ch.isdecimal() if not ascii_ else '0' <= ch <= '9'
+        hit = '0' <= ch <= '9'          # \d — лише 0–9, як ν (суд 8б: «1٣५» проходило ⌕, а ν відмовляло)
     elif 'SPACE' in name:
         hit = ch.isspace() if not ascii_ else ch in ' \t\n\r\f\v'
     elif 'WORD' in name:
@@ -5216,6 +5267,8 @@ def main(argv):
         perr = errors[0] if errors else None
     except StaticError as e:
         prog, perr, errors = None, e, [e]
+        if opts['mode'] == 'перевірити':
+            errors = all_static_errors(src, cwd, None if path == '<-e>' else path) or [e]
     try:
         allowed, source = load_allowlist(opts['allow'], cwd if dir_rights else None,
                                          os.path.realpath(path) if path != '<-e>' else None)
@@ -5229,12 +5282,15 @@ def main(argv):
         if opts['json']:
             print(json.dumps({'гаразд': not errors and not missing,
                               'помилки': [{'рядок': e.pos[0] if e.pos else None, 'стовпець': e.pos[1] if e.pos else None,
-                                           'повідомлення': safe(e.msg)} for e in errors],
+                                           'повідомлення': safe(e.msg),
+                                           **({'після_пропуску': True} if getattr(e, 'after_skip', False) else {})}
+                                          for e in errors],
                               'печатка': {'в_межах': not missing, 'бракує': missing} if prog else None},
                              ensure_ascii=False, indent=1))
         else:
             for e in errors:
-                print(safe(str(e)))
+                print(safe(str(e)) + (' (після пропуску попереднього — може бути наслідком)'
+                                      if getattr(e, 'after_skip', False) else ''))
             if missing:
                 print(f'✗ печатка просить більше, ніж дозволив власник: {", ".join(missing)}')
             if not errors and not missing:
