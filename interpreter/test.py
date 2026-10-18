@@ -766,6 +766,26 @@ def main():
               env8v)
     check(got.stdout.count('лише SELECT') == 2 and got.stdout.endswith('【『「x」 1』】\n'),
           'бд.читати (суд 8в): лише SELECT/WITH/VALUES — REINDEX, DROP IF EXISTS — відмова', got.stdout + got.stderr)
+    # суд 8в р2: довідкові PRAGMA, як обіцяє памʼятка, — дозволено; інші — відмова
+    sl8 = tmp / 'pragma.jsonl'
+    got = run(['--слід', str(sl8), '--тека', str(va), '-e', f'🜂 【「бд.читати:{va}/дані」】\n'
+               f'» ρ 🜔бд.читати 「{va}/дані/б.db」 「PRAGMA table_info(x)」 【】\n'
+               f'» ☂ 🜔бд.читати 「{va}/дані/б.db」 「PRAGMA journal_mode=delete」 【】 λe e'], env8v)
+    check(got.stdout.startswith('0\n') and 'поза дозволеним' in got.stdout
+          and sum('"заборонено"' in l for l in sl8.read_text(encoding='utf-8').split('\n')) == 1,
+          'бд.читати (суд 8в): PRAGMA table_info — можна (як у памʼятці), journal_mode — «заборонено»', got.stdout + got.stderr)
+    # суд 8в р2: «＠», «／» (NFKC), «[::1» в адресі — «заборонено» й помилка програми, а не код 4
+    sl8 = tmp / 'nfkc.jsonl'
+    got = run(['--слід', str(sl8), '-e', f'🜂 【「взяти:127.0.0.1:{port}」 「послати:127.0.0.1:{port}」】\n'
+               '» ☂ 🜔взяти 「http://＠example.com/x」 λe 「в1」\n'
+               f'» ☂ 🜔взяти 「http://127.0.0.1:{port}／x」 λe 「в2」\n» ☂ 🜔послати 「http://[::1/」 「a」 λe 「в3」'], env)
+    vs = json.loads(run(['--перевірити-слід', str(sl8), '--json'], env).stdout)
+    check(got.returncode == 0 and got.stdout == 'в1\nв2\nв3\n' and len(vs['заборонено']) == 3,
+          'взяти/послати (суд 8в): ＠ ／ [::1 — «заборонено», ☂ ловить (не код 4)', got.stdout + got.stderr + str(vs))
+    # суд 8в р2: -e --тека <тека запису> — без прав теки, як файл у тій теці
+    got = run(['--тека', str(va / 'вхідні'), '-e', f'🜂 【「читати:{va}/дані」】\n» 🜔читати 「{va}/дані/секрет.txt」'], env8v)
+    check(got.returncode == 3 and 'банк' not in got.stdout,
+          '-e --тека (суд 8в): тека запису іншої теки власника — без прав теки', got.stdout + got.stderr)
     # суд 8б: глибокі значення — помилка програми (☂ ловить), не код 4
     deep = 'Σ …1 5000 【】 Λa x 【a】'
     for code, what in ((f'» ☂ 〔{{{deep}}}〕 λe 「глибоко」', 'інтерполяція'),
