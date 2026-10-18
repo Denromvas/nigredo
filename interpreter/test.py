@@ -283,7 +283,7 @@ def main():
                f'» ‖ 【「продажі.json」 「../../поза.txt」 「продажі.json」】 λf 🜔читати f'], env)
     evs = [e['подія'] for e in map(json.loads, ptr3.read_text(encoding='utf-8').splitlines())
            if e['подія'] in ('заборонено', 'інструмент')]
-    check(got.returncode == 1 and 'елемент №1' in got.stderr and evs == ['інструмент', 'заборонено', 'інструмент', 'інструмент'],
+    check(got.returncode == 1 and 'елемент №2 (§ 1)' in got.stderr and evs == ['інструмент', 'заборонено', 'інструмент', 'інструмент'],
           '‖: відмова з потоку — у сліді на своєму місці, решта дій записана, потім помилка', got.stderr + str(evs))
     # --повторити (М7): інструменти повертають записане (СЛІД.дані), у світі нічого не відбувається
     rp = tmp / 'повтор'
@@ -558,9 +558,9 @@ def main():
     # XML (χ ↘)
     xml_ = ('<s:Виписка xmlns:s="urn:bank"><s:Рух тип="прихід"><s:Сума>100.25</s:Сума></s:Рух>'
             '<s:Рух тип="видаток"><s:Сума>40</s:Сума></s:Рух><s:Рух тип="прихід"><s:Сума>0.75</s:Сума></s:Рух></s:Виписка>')
-    got = run(['-e', f'🜂\n← в χ 「{xml_}」\n» ∫ ↘ в 「s:Рух[@тип=\'прихід\']/s:Сума」 λe ν§e 「текст」\n» §в 「простір」\n'
+    got = run(['-e', f'🜂\n← в χ 「{xml_}」\n» ∫ ↘ в 「Рух[@тип=\'прихід\']/Сума」 λe ν§e 「текст」\n» §в 「простір」\n'
                f'» ＝ χ χ в в\n» ρ ↘ в 「//Сума」'], env)
-    check(got.stdout == '101\nurn:bank\n●\n3\n', 'XML: простори імен (s:Рух — локальна назва), відбір, сума, χ χ — без втрат',
+    check(got.stdout == '101\nurn:bank\n●\n3\n', 'XML: простори імен (s:Рух — у шляху локальна назва Рух), відбір, сума, χ χ — без втрат',
           got.stdout + got.stderr)
     deep = '<a>' * 700 + '</a>' * 700
     got = run(['-e', f'🜂\n» ☂ χ 「{deep}」 λe 「глибоко」'], env)
@@ -656,11 +656,123 @@ def main():
           '--розбір і --печатка --json: квоти печатки, модуля й субагента', rz + sl)
     js = json.loads(run(['--печатка', '--json', '-e', '🜂 【「оракул≤5」】\n» 1'], env).stdout)
     check(js.get('квоти') == [{'інструмент': 'оракул', 'обмеження': '', 'не_більше': 5}], '--печатка --json: квоти', str(js))
+    # суд 8б: вичерпана квота не ховає спроб поза правами (спершу права — «заборонено», «квоту вичерпано» — лише
+    # дозволеному); --повторити повертає квоту за відмову, як справжній запуск
+    (qd / 'дані' / 'під').mkdir()
+    (qd / 'маска.ngr').write_text('🜂 【「читати:дані≤2」】\n» ☂ 🜔читати 「дані/../а.ngr」 λe 「поза»」\n'
+                                  '» 🜔читати 「дані/x.txt」\n» 🜔читати 「дані/x.txt」\n'
+                                  '» ☂ 🜔читати 「дані/../а.ngr」 λe 「поза після»」\n» ☂ 🜔читати 「дані/x.txt」 λe 「квота»」\n'
+                                  '» ☂ 🜁 「вузький」 【「читати:дані/під」】 🜔читати 「дані/x.txt」 λe 「субагент поза»」\n',
+                                  encoding='utf-8')
+    qm = tmp / 'маска.jsonl'
+    got = run(['--слід', str(qm), str(qd / 'маска.ngr')], env8)
+    vm = json.loads(run(['--перевірити-слід', str(qm), str(qd / 'маска.ngr'), '--json'], env8).stdout)
+    check(got.stdout == 'поза»\nтак\nтак\nпоза після»\nквота»\nсубагент поза»\n' and len(vm['заборонено']) == 3
+          and len(vm['квоту_вичерпано']) == 1,
+          'квота (суд 8б): після вичерпання спроба поза правами — «заборонено», а не «квоту вичерпано»', got.stdout + str(vm))
+    got = run(['--повторити', str(qm), str(qd / 'маска.ngr')], env8)
+    check(got.returncode == 0 and '✓ повтор збігся' in got.stderr, '--повторити: відмова за правами квоту не списує — '
+          'повтор збігається', got.stderr)
+    # SQLite: «заборонено» — лише від authorizer; RAISE(FAIL, 'not authorized') у тригері — звичайна помилка, квоту списує
+    (qd / 'звіти').mkdir()
+    (tmp / 'вл8б').mkdir()
+    (tmp / 'вл8б' / 'дозволи.json').write_text(json.dumps({'дозволено': ['жереб', f'файл.читати:{qd}',
+                                                        f'бд.писати:{qd}/звіти', f'бд.читати:{qd}/звіти',
+                                                        f'файл.писати:{qd}/звіти']}, ensure_ascii=False), encoding='utf-8')
+    env8b = dict(env, NIGREDO_HOME=str(tmp / 'вл8б'))
+    sq = '🜔бд.писати 「звіти/т.db」'
+    (qd / 'тригер.ngr').write_text(
+        f'🜂 【「бд.писати:звіти≤4」 「бд.читати:звіти」】\n» {sq} 「CREATE TABLE x (a)」 【】\n'
+        f'» {sq} 「CREATE TRIGGER t AFTER INSERT ON x BEGIN SELECT RAISE(FAIL, \'not authorized\'); END」 【】\n'
+        f'∀ …1 3 λi » ☂ {sq} 「INSERT INTO x VALUES (1)」 【】 λe e\n'
+        f'» § § 🜔бд.читати 「звіти/т.db」 「SELECT count(*) AS n FROM x」 【】 0 「n」\n'
+        f'» ☂ {sq} 「VACUUM INTO \'/tmp/x.db\'」 【】 λe e\n» ☂ {sq} 「SELECT load_extension(\'x\')」 【】 λe e\n',
+        encoding='utf-8')
+    qs = tmp / 'тригер.jsonl'
+    got = run(['--слід', str(qs), str(qd / 'тригер.ngr')], env8b)
+    vs = json.loads(run(['--перевірити-слід', str(qs), str(qd / 'тригер.ngr'), '--json'], env8b).stdout)
+    o = got.stdout.split('\n')
+    check(len(o) == 9 and o[:2] == ['0', '0'] and 'not authorized' in o[2] and 'not authorized' in o[3]
+          and 'вичерпано квоту' in o[4] and o[5] == '2' and 'VACUUM' in o[6] and 'load_extension' in o[7]
+          and len(vs['заборонено']) == 2 and len(vs['квоту_вичерпано']) == 1,
+          'бд.писати (суд 8б): RAISE(…\'not authorized\') у тригері — не «заборонено» (рядки записано, квоту списано); '
+          'VACUUM і load_extension — «заборонено» й після квоти', got.stdout + got.stderr + str(vs))
+    (qd / 'значення.ngr').write_text(f'🜂 【「бд.писати:звіти」】\n» {sq} 「CREATE TABLE IF NOT EXISTS y (a)」 【】\n'
+                                    f'» {sq} 「INSERT INTO y VALUES (\'load_extension\')」 【】\n', encoding='utf-8')
+    got = run([str(qd / 'значення.ngr')], env8b)
+    check(got.returncode == 0 and got.stdout.endswith('1\n'), 'бд.писати: рядок «load_extension» у значенні — не тривога',
+          got.stdout + got.stderr)
+    # звуження --дозволи не вимикає «код із теки запису — не модуль»: теки запису — з дозволів власника
+    (qd / 'звіти' / 'м.ngr').write_text('🜂 【「жереб」】\n← кинь λn 🜔жереб n\n', encoding='utf-8')
+    (qd / 'бере.ngr').write_text('🜂 【「жереб」】\n⊃ 「звіти/м.ngr」 【「кинь」】\n» кинь 6\n', encoding='utf-8')
+    (tmp / 'вл8б' / 'вужче.json').write_text(json.dumps({'дозволено': ['жереб']}), encoding='utf-8')
+    got = run(['--дозволи', str(tmp / 'вл8б' / 'вужче.json'), str(qd / 'бере.ngr')], env8b)
+    check(got.returncode == 3 and 'лежить у теці' in got.stderr,
+          '--дозволи (суд 8б): модуль із теки запису власника — відмова й при звуженні', got.stdout + got.stderr)
+    # суд 8б: глибокі значення — помилка програми (☂ ловить), не код 4
+    deep = 'Σ …1 5000 【】 Λa x 【a】'
+    for code, what in ((f'» ☂ 〔{{{deep}}}〕 λe 「глибоко」', 'інтерполяція'),
+                       (f'» ☂ 🜔жереб {deep} λe 「глибоко」', 'аргумент інструмента'),
+                       (f'» ☂ 🜁 「г」 【】 {deep} λe 「глибоко」', 'результат субагента'),
+                       ('» ☂ δ ＋ ⁀ μ …1 1001 λi 「[」 「」 ⁀ μ …1 1001 λi 「]」 「」 λe 「глибоко」', 'δ: JSON глибше за 1000')):
+        got = run(['-e', f'🜂 【「жереб」】\n{code}\n» 「далі」'], env)
+        check(got.returncode == 0 and got.stdout == 'глибоко\nдалі\n', f'глибоке значення (суд 8б): {what} — помилка, ☂ ловить',
+              got.stdout + got.stderr[-300:])
+    got = run(['-e', '🜂\n» ρ δ ＋ ⁀ μ …1 999 λi 「[」 「」 ⁀ μ …1 999 λi 「]」 「」'], env)
+    check(got.returncode == 0, 'δ: JSON на 999 рівнів — можна', got.stderr[-300:])
+    # ↘: ] у лапках умови — частина значення; [n] — лише 0–9; префікс — помилка, а не всі простори
+    xe = '← док χ 「<Д><N><Nm>ТОВ [Р]</Nm><A>5</A></N><N><Nm>Б</Nm><A>7</A></N></Д>」\n'
+    got = run(['-e', f'🜂\n{xe}» μ ↘ док 〔//N[Nm=\'ТОВ [Р]\']/A〕 λx §x 「текст」'], env)
+    check(got.returncode == 0 and got.stdout == '【「5」】\n', '↘ (суд 8б): «]» у лапках умови — частина значення, не код 4',
+          got.stdout + got.stderr[-300:])
+    for p_, why in (('//N[٢]', 'поза підмножиною'), ('//a:N', 'префікс')):
+        got = run(['-e', f'🜂\n{xe}» ☂ ↘ док 〔{p_}〕 λe e'], env)
+        check(got.returncode == 0 and why in got.stdout, f'↘ (суд 8б): {p_} — помилка', got.stdout + got.stderr[-300:])
+    # ✓: перелік — раз (не n²), межі й переліки — цифри 0–9, порожні межі й альтернативи, межі для ∅ — помилка схеми
+    t0 = time.monotonic()
+    got = run(['-e', '🜂\n← в ⁀ μ …1 30000 λi ＋ 「a」 σ i 「|」\n» ρ ✓ μ …1 30000 λi ＋ 「a」 σ i 【＋ 「рядок:」 в】'], env)
+    check(got.returncode == 0 and time.monotonic() - t0 < 30, '✓ (суд 8б): перелік із 30 000 на 30 000 — без квадрату',
+          f'{time.monotonic() - t0:.1f} с ' + got.stderr[-300:])
+    for sch in ('「рядок:..৪」', '「число:٣..٩」', '「ціле:」', '「ціле:..」', '「рядок:a||b」', '「рядок:a|」', '「∅:0..1」',
+                '「число:٥|6」'):
+        got = run(['-e', f'🜂\n» ☂ ✓ 5 {sch} λe 「схема」'], env)
+        check(got.stdout == 'схема\n', f'✓ (суд 8б): {sch} — помилка схеми', got.stdout + got.stderr[-300:])
+    for sch in ('「рядок:a||b」', '「рядок:a|」', '「рядок:|a」'):
+        got = run(['-e', f'🜂\n» ☂ ✓ 「」 {sch} λe 「схема」'], env)
+        check(got.stdout == 'схема\n', f'✓ (суд 8б): {sch} — порожній рядок не проходить мовчки', got.stdout + got.stderr[-300:])
+    got = run(['-e', '🜂\n» ✓ ¯1 「число:¯1|1」\n» ✓ 2 「число:¯1|1」'], env)
+    check(got.stdout.split('\n')[0] == '-1' and 'не з переліку' in got.stdout + got.stderr,
+          '✓: перелік чисел — за значенням (¯1)', got.stdout + got.stderr[-300:])
+    # --сухо: годинник ДО першої придушеної дії — теж невідомий
+    got = run(['--сухо', '-e', f'🜂 【「послати:127.0.0.1:{port}」 「час」】\n← т 🜔час\n'
+               f'» ¿ ＝ т 「x」 🜔послати 「http://127.0.0.1:{port}/」 「a」 「ні」'], env)
+    check('⚠' in got.stderr, '--сухо (суд 8б): рішення за годинником до придушеної дії — ⚠', got.stderr)
+    # χ-запис: записане читається назад — без префікса, лише назви, які бере розбирач; CR; невідомі ключі
+    for el, why in (('『「тег」 「p:x」』', 'не назва тегу'), ('『「тег」 「xml:x」』', 'не назва тегу'), ('『「тег」 「ª」』', 'не назва тегу'),
+                    ('『「тег」 「a」 「атрибути」 『「x:y」 「1」』』', 'не назва атрибута'),
+                    ('『「тег」 「a」 「дiти」 【】』', 'невідомі ключі')):
+        got = run(['-e', f'🜂\n» ☂ χ {el} λe e'], env)
+        check(why in got.stdout, f'χ-запис (суд 8б): {el} — помилка', got.stdout + got.stderr[-300:])
+    got = run(['-e', '🜂\n» Δ § χ χ 『「тег」 「a」 「текст」 δ 「"x\\ry"」』 「текст」'], env)
+    check(got.stdout == '"x\\ry"\n', 'χ (суд 8б): \\r у тексті — туди й назад без втрат', got.stdout + got.stderr[-300:])
+    # --печатка: квоти власника (і звуження) показано
+    sl = json.loads(run(['--печатка', '--json', '-e', f'🜂 【「взяти:127.0.0.1:{port}」】\n» 1'],
+                        dict(env, NIGREDO_HOME=str(qh))).stdout)
+    check(sl.get('квоти_власника') == [{'інструмент': 'мережа.взяти', 'обмеження': f'127.0.0.1:{port}', 'не_більше': 2}],
+          '--печатка --json (суд 8б): квоти власника', str(sl))
     got = run(['-e', '🜂\n» ⌕ 「a=1 b=2」 「(\\w)=」\n» ⌕ 「a=1」 「\\w=」'], env)
     check(got.stdout == '【【「a」】 【「b」】】\n【「a=」】\n', '⌕: з однією групою — теж список груп (як обіцяє памʼятка)', got.stdout)
     got = run(['--тести', str(ROOT / 'examples' / 'тести')], env)
     check(got.returncode == 0 and 'тестів пройшли' in got.stdout, 'ngr --тести: тести мовою (examples/тести) — усі пройшли',
           got.stdout + got.stderr)
+    td = tmp / 'печатки_тестів'
+    td.mkdir(exist_ok=True)
+    (td / 'мережа.тест.ngr').write_text('🜂 【「взяти:example.com」】\n🜍 1 λx ＝ x 1\n', encoding='utf-8')
+    got = run(['--тести', '--печатка', str(ROOT / 'examples' / 'тести')], env)
+    got2 = run(['--тести', '--печатка', str(td)], env)
+    check(got.returncode == 0 and '✓' in got.stdout and 'печатка' in got.stdout
+          and got2.returncode == 1 and '✗' in got2.stdout and 'бракує' in got2.stdout,
+          'ngr --тести --печатка: печатки тестів без запуску, поза дозволами — код 1', got.stdout + got2.stdout + got2.stderr)
     (tmp / 'поганий.тест.ngr').write_text('🜂\n🜍 1 λx ＝ x 2\n', encoding='utf-8')
     got = run(['--тести', str(tmp / 'поганий.тест.ngr')], env)
     check(got.returncode == 1 and '✗' in got.stdout and '0 з 1' in got.stdout, 'ngr --тести: невдалий тест — код 1 і причина', got.stdout)

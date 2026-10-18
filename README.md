@@ -54,16 +54,16 @@ Full protocols, every participant's report and solutions: [`konsylium/`](konsyli
 ### Measured against Python (honestly)
 
 `bench/` runs the same tasks in both languages; `bench/м2/` asks models (Sonnet, Haiku) to write both from the same
-task, without help. Numbers as of 2026-10-16:
+task — Nigredo with its cheat sheet, Python with nothing extra. Numbers as of 2026-10-16:
 
 | | Nigredo | Python | Note |
 |---|---|---|---|
 | Tasks solved (12 agent tasks) | 12/12 | 12/12 | |
-| Program length, **with** the seal | 1.01× (author's 12 tasks); **0.88×** on models' own first-try programs for 20 new tasks (36 pairs, one per task × model; only where both languages passed) | 1× | the seal costs ~13 tokens |
+| Program length, **with** the seal | 1.01× (author's 12 tasks); **0.88×** on models' own first-try programs for 20 tasks of `bench/м2` (36 pairs, one per task × model; only where both languages passed — the 4 pairs that drop out are all Haiku tasks where Nigredo failed, so the harder cases are missing; the cheat sheet advises short names, the Python prompt does not; 10 of the 20 tasks are the rerun after fixing the cheat sheet on them, so this is not a held-out set) | 1× | the seal costs ~13 tokens |
 | Bugs caught before running (14 real ones) | 9 | 3 (with pyflakes), 1 (py_compile) | 0 false alarms on 10 correct programs; 5 classes Nigredo misses are listed |
 | Models writing it right first try (hard set, 3 runs each) | Sonnet 29/30, Haiku 24/30 (first run: 24/30 and 24/30) | Sonnet 30/30, Haiku 26/30 (first run: 30, 27) | 10 tasks not in the cheat sheet. The rerun is on the **same** tasks after fixing a `⌕` defect and the cheat sheet that those misses exposed, so it is not a held-out measurement; ±1–2 of 30 is noise. Misses left are mostly prefix-notation arity. After a second try (the model sees the expected output): 30 and 29 vs 30 and 30 |
 | Speed, small tasks (median) | 2.2× slower | 1× | interpreter start-up dominates |
-| Speed, large data (200k words / 200k-step loop) | ~5× / ~30× slower | 1× | the honest weak spot: a tree-walking interpreter on top of Python; `python3 bench/великі/міряти.py` (CPU time, phone, varies with load) |
+| Speed, large data (200k words / 200k-step loop) | ~8× / ~28× slower | 1× | the honest weak spot: a tree-walking interpreter on top of Python; `python3 bench/великі/міряти.py`, last run — `bench/великі/РЕЗУЛЬТАТИ.txt` (CPU time, phone, varies with load) |
 | Owner knows what a program may do / did | seal + signed trace, replay, dry run | — | Python has no such mechanism inside the language |
 
 ### Try it
@@ -174,16 +174,16 @@ python3 interpreter/test.py                            # приклади, 73 п
 ### Порівняння з Python — чесно
 
 `bench/` виконує ті самі задачі обома мовами; `bench/м2/` просить моделі (Sonnet, Haiku) написати обидва рішення з того
-самого завдання без підказок. Станом на 2026-10-16:
+самого завдання — Nigredo з памʼяткою, Python без нічого. Станом на 2026-10-16:
 
 | | Nigredo | Python | Примітка |
 |---|---|---|---|
 | Розвʼязано (12 задач агента) | 12/12 | 12/12 | |
-| Довжина програм **з** печаткою | 1,01× (12 задач автора); **0,88×** на програмах моделей з першої спроби для 20 нових задач (36 пар — одна на задачу × модель; лише де обидві мови пройшли) | 1× | печатка — ~13 токенів |
+| Довжина програм **з** печаткою | 1,01× (12 задач автора); **0,88×** на програмах моделей з першої спроби для 20 задач `bench/м2` (36 пар — одна на задачу × модель; лише де обидві мови пройшли — 4 пари, що випали, усі з Haiku, де Nigredo впала, тож важчих випадків тут немає; памʼятка радить короткі імена, підказка Python — ні; 10 із 20 задач — повтор після правок памʼятки на них, тож це не відкладений набір) | 1× | печатка — ~13 токенів |
 | Помилок спіймано до запуску (14 справжніх) | 9 | 3 (з pyflakes), 1 (py_compile) | 0 хибних тривог на 10 правильних програмах; 5 класів, яких Nigredo не ловить, перелічено |
 | Моделі пишуть правильно з першої спроби (складний набір, по 3 прогони) | Sonnet 29/30, Haiku 24/30 (перший прогін: 24/30 і 24/30) | Sonnet 30/30, Haiku 26/30 (перший: 30, 27) | 10 задач поза памʼяткою. Повтор — на **тих самих** задачах після виправлення вади `⌕` і памʼятки, які ці промахи виявили, тож це не відкладений вимір; ±1–2 з 30 — шум. Решта промахів — переважно арність префіксного запису. З другої спроби (модель бачить очікуваний вивід): 30 і 29 проти 30 і 30 |
 | Швидкість, малі задачі (медіана) | у 2,2× повільніше | 1× | переважає запуск інтерпретатора |
-| Швидкість, великі дані (200 тис. слів / цикл на 200 тис. кроків) | у ~5× / ~30× повільніше | 1× | чесне слабке місце: інтерпретатор дерева поверх Python; `python3 bench/великі/міряти.py` (процесорний час на телефоні, залежить від навантаження) |
+| Швидкість, великі дані (200 тис. слів / цикл на 200 тис. кроків) | у ~8× / ~28× повільніше | 1× | чесне слабке місце: інтерпретатор дерева поверх Python; `python3 bench/великі/міряти.py`, останній прогін — `bench/великі/РЕЗУЛЬТАТИ.txt` (процесорний час на телефоні, залежить від навантаження) |
 | Власник знає, що програмі дозволено й що вона зробила | печатка + підписаний слід, повтор, сухий прогін | — | у самій мові Python такого механізму немає |
 
 ## Браузер для агентів — на самій Nigredo
