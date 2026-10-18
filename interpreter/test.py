@@ -774,6 +774,21 @@ def main():
     check(got.stdout.startswith('0\n') and 'поза дозволеним' in got.stdout
           and sum('"заборонено"' in l for l in sl8.read_text(encoding='utf-8').split('\n')) == 1,
           'бд.читати (суд 8в): PRAGMA table_info — можна (як у памʼятці), journal_mode — «заборонено»', got.stdout + got.stderr)
+    got = run(['--тека', str(va), '-e', f'🜂 【「бд.читати:{va}/дані」】\n'
+               f'» ρ 🜔бд.читати 「{va}/дані/б.db」 「pragma TABLE_INFO(x)」 【】\n'
+               f'» ρ 🜔бд.читати 「{va}/дані/б.db」 「PRAGMA main.table_info(x)」 【】\n'
+               f'» ρ 🜔бд.читати 「{va}/дані/б.db」 「PRAGMA/**/Table_Info(x)」 【】'], env8v)
+    check(got.returncode == 0 and got.stdout == '0\n0\n0\n',
+          'бд.читати (суд 8в р3): довідкові PRAGMA — без огляду на регістр, з main., з коментарем', got.stdout + got.stderr)
+    # суд 8в р3: --сухо перевіряє права придушених дій — поза ними «заборонено», а не «дій не виконано»
+    sl8 = tmp / 'сухо8в.jsonl'
+    got = run(['--сухо', '--слід', str(sl8), '-e', f'🜂 【「взяти:127.0.0.1:{port}」】\n'
+               '» ☂ 🜔взяти 「http://example.com/」 λe 「відмова」\n'
+               f'» 🜔взяти 「http://127.0.0.1:{port}/ціна/x」'], env)
+    vs = json.loads(run(['--перевірити-слід', str(sl8), '--json'], env).stdout)
+    check(got.stdout.startswith('відмова\n') and 'example.com' not in got.stderr.split('дій не виконано')[-1]
+          and len(vs['заборонено']) == 1,
+          '--сухо (суд 8в р3): дія поза правами — «заборонено», не в переліку придушених', got.stdout + got.stderr + str(vs))
     # суд 8в р2: «＠», «／» (NFKC), «[::1» в адресі — «заборонено» й помилка програми, а не код 4
     sl8 = tmp / 'nfkc.jsonl'
     got = run(['--слід', str(sl8), '-e', f'🜂 【「взяти:127.0.0.1:{port}」 「послати:127.0.0.1:{port}」】\n'

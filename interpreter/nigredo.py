@@ -19,7 +19,7 @@ import decimal
 import math
 from decimal import ROUND_HALF_UP, Decimal
 
-VERSION = '0.7-dev'
+VERSION = '0.7'
 MAX_DEPTH = 2000
 MAX_NEST = 1000                    # вкладеність виразу в тексті програми (глибше — помилка до запуску, суд 8)
 MAX_SIZE = 5_000_000      # найбільший логічний розмір значення (символів + елементів); --розмір N
@@ -2806,7 +2806,7 @@ def _db(it, pos, tool, p, sql, params, write):
                 it.deny(агент=it.agent, назва=tool, шлях=safe(p.v), запит=safe(sql.v)[:500],
                          причина='дія SQLite поза дозволеним')
             msg = (f'заборонено: {why[0]}' if why and why[0].startswith('load_') else 'дія поза дозволеним (лише ' + ('SELECT' if not write else
-                   'SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER') + '; без ATTACH, VACUUM, PRAGMA)') \
+                   'SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER') + '; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)') \
                 if denied else 'лише одна інструкція SQL за раз' if 'one statement at a time' in str(e) \
                 else sql_err(str(e))
             raise NgrError(f'{tool}: {msg}', pos)
@@ -2832,7 +2832,7 @@ def _db_auth(write):
         if action == sqlite3.SQLITE_FUNCTION and (a2 or '').lower() == 'load_extension':
             why.append(f'load_extension{f" у тригері чи VIEW «{view}»" if view else ""}')
             return sqlite3.SQLITE_DENY
-        if action in acts or (action == sqlite3.SQLITE_PRAGMA and a1 in DB_INFO_PRAGMAS):
+        if action in acts or (action == sqlite3.SQLITE_PRAGMA and (a1 or '').lower() in DB_INFO_PRAGMAS):   # SQL — без регістру
             return sqlite3.SQLITE_OK
         why.append(next((n[7:] for n in DB_ACTION_NAMES if getattr(sqlite3, n, None) == action), f'дія SQLite {action}'))
         return sqlite3.SQLITE_DENY
@@ -2853,12 +2853,13 @@ def _db_static_ok(it, pos, tool, p, sql):
         it.deny(агент=it.agent, назва=tool, шлях=safe(show(p)), запит=safe(sql.v)[:500], причина='VACUUM')
         raise NgrError(f'{tool}: VACUUM заборонено (VACUUM INTO пише файл поза текою з печатки)', pos)
     # бд.читати — лише запити: REINDEX чи DROP TABLE IF EXISTS на відсутній authorizer не питають (суд 8в)
-    m = _re.match(r'(?:\s+|/\*.*?\*/|--[^\n]*(?:\n|$)|\()*(\w*)\s*(\w*)', sql.v, _re.S)
+    gap = r'(?:\s+|/\*.*?\*/|--[^\n]*(?:\n|$))*'
+    m = _re.match(rf'(?:{gap}\()*{gap}(\w*){gap}(?:main{gap}\.{gap})?(\w*)', sql.v, _re.S | _re.I)
     first = m.group(1).lower()
     if tool == 'бд.читати' and first not in ('select', 'with', 'values') and not (   # довідкові PRAGMA — як обіцяє
             first == 'pragma' and m.group(2).lower() in DB_INFO_PRAGMAS):         # памʼятка (решту — authorizer)
         it.deny(агент=it.agent, назва=tool, шлях=safe(show(p)), запит=safe(sql.v)[:500], причина='не запит на читання')
-        raise NgrError(f'{tool}: «{safe(first)[:20]}» поза дозволеним — лише SELECT (WITH, VALUES); для змін — бд.писати', pos)
+        raise NgrError(f'{tool}: «{safe(first)[:20]}» поза дозволеним — лише SELECT (WITH, VALUES) і довідкові PRAGMA (table_info …); для змін — бд.писати', pos)
 
 
 def _db_ok(it, pos, tool, p, sql, write):
@@ -3433,6 +3434,13 @@ class Interp:
         if self.replay is not None:
             return self.replayed(job)
         if self.dry is not None and job['назва'] in DRY_SUPPRESS:   # --сухо: дія не відбувається, результат невідомий
+            self.tl.denied = False          # але права — як завжди: поза ними «заборонено», а не «дій не виконано» (суд 8в)
+            try:
+                RIGHTS[job['назва']](self, job['pos'], *job['аргументи'])
+            except (NgrError, Fatal) as e:
+                if self.tl.denied:
+                    self.quota_refund(job.get('квота'))
+                    return None, e          # інша помилка (таблиці ще немає — її створила б придушена дія) — не судимо
             self.dry.append((job.get('№', self.ends), job['назва'], job['слід'], job['ac']))   # № — порядок і в ‖
             job['сухо'] = True
             return V(DRY_SUPPRESS[job['назва']], 0.0), None

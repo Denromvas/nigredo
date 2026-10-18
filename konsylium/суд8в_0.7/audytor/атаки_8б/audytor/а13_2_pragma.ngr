@@ -1,0 +1,4 @@
+🜂 「Н-3: довідкові PRAGMA у бд.читати — так, решта — ні」 【「бд.читати:дані」】
+← б 「дані/база.db」
+» 🜔бд.читати б 「SELECT name FROM sqlite_master WHERE type = 'table'」 【】
+∀ 【「PRAGMA table_info(товари)」 「pragma TABLE_INFO(товари)」 「  /* к */ PRAGMA table_xinfo(товари)」 「PRAGMA table_list」 「PRAGMA index_list(товари)」 「PRAGMA foreign_key_list(товари)」 「PRAGMA main.table_info(товари)」 「PRAGMA table_info('товари')」 「SELECT * FROM pragma_table_info('товари')」 「PRAGMA journal_mode」 「PRAGMA journal_mode = WAL」 「PRAGMA user_version = 7」 「PRAGMA table_info.journal_mode = WAL」 「PRAGMA table_info(товари); PRAGMA user_version = 7」 「PRAGMA writable_schema = 1」 「PRAGMA integrity_check」 「PRAGMA database_list」 「PRAGMA compile_options」 「PRAGMA table_info」 「PRAGMA table_infox(товари)」 「PRAGMA/**/table_info(товари)」 「PRAGMA index_info(х)」】 λзапит » 【запит ☂ 🜔бд.читати б запит 【】 λпом ＋ 「ВІДМОВА: 」 пом】
