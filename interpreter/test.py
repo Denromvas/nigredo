@@ -510,6 +510,10 @@ def main():
     got = run(['--перевірити', '-e', '🜂\n» ＋ 1 〔{＋ 1}〕'], env)
     check('чекають аргументів: ＋ (2:9) бере 2, є 1' in got.stdout and '» (' not in got.stdout and '(2:3)' not in got.stdout,
           'підказка арності в шаблоні — лише вирази всередині {…}', got.stdout)
+    got = run(['--перевірити', '-e', '🜂\n» ✓ 1 『「a」 「число」 「a」 「рядок」』'], env)
+    got2 = run(['-e', '🜂\n← k 「a」\n» ☂ 『k 1 「a」 2』 λe e'], env)
+    check('ключ «a» двічі' in got.stdout and got2.stdout == 'у словнику 『』 ключ «a» двічі\n',
+          '『』: той самий ключ двічі — помилка (до запуску й під час), а не тихо останній', got.stdout + got2.stdout)
     short = run(['--памʼятка-коротка'], env).stdout
     check('бд.читати:тека' in short and 'процес:git status' in short and '‖ список' in short and 'Шлях' in short,
           'коротка памʼятка (MCP): дозволи бд/процес, правило шляхів, обмеження ‖', short[:500])
