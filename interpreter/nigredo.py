@@ -2654,14 +2654,15 @@ def _url_ok(it, pos, tool, url):
     """Права на адресу: хост із печатки (порти 80/443 або явний хост:порт), http(s), без логіна в адресі."""
     u = url.v
     import urllib.parse
-    parts = urllib.parse.urlsplit(u) if isinstance(u, str) else None
-    try:
+    try:            # «＠», «／» (NFKC), «[::1» — ValueError: це спроба поза правами, а не код 4 (суд 8в)
+        parts = urllib.parse.urlsplit(u) if isinstance(u, str) else None
         port = parts.port if parts else None
+        host = parts.hostname if parts else None
     except ValueError:
-        port = -1
+        parts, port, host = None, -1, None
     allowed = it.caps[tool]
     ok = parts and parts.scheme in ('http', 'https') and '@' not in parts.netloc and (   # і порожній логін «http://@…» (суд 8в)
-        (parts.hostname in allowed and port in (None, 80, 443)) or f'{parts.hostname}:{port}' in allowed)
+        (host in allowed and port in (None, 80, 443)) or f'{host}:{port}' in allowed)
     if not ok:
         it.deny(агент=it.agent, назва=tool, адреса=safe(str(u)), причина='хост, порт чи адреса поза печаткою')
         raise NgrError(f'{tool}: «{u}» поза дозволеним ({", ".join(allowed)}; інший порт, ніж 80/443, '
@@ -2852,8 +2853,10 @@ def _db_static_ok(it, pos, tool, p, sql):
         it.deny(агент=it.agent, назва=tool, шлях=safe(show(p)), запит=safe(sql.v)[:500], причина='VACUUM')
         raise NgrError(f'{tool}: VACUUM заборонено (VACUUM INTO пише файл поза текою з печатки)', pos)
     # бд.читати — лише запити: REINDEX чи DROP TABLE IF EXISTS на відсутній authorizer не питають (суд 8в)
-    first = _re.match(r'(?:\s+|/\*.*?\*/|--[^\n]*(?:\n|$))*(\w*)', sql.v, _re.S).group(1).lower()
-    if tool == 'бд.читати' and first not in ('select', 'with', 'values'):
+    m = _re.match(r'(?:\s+|/\*.*?\*/|--[^\n]*(?:\n|$)|\()*(\w*)\s*(\w*)', sql.v, _re.S)
+    first = m.group(1).lower()
+    if tool == 'бд.читати' and first not in ('select', 'with', 'values') and not (   # довідкові PRAGMA — як обіцяє
+            first == 'pragma' and m.group(2).lower() in DB_INFO_PRAGMAS):         # памʼятка (решту — authorizer)
         it.deny(агент=it.agent, назва=tool, шлях=safe(show(p)), запит=safe(sql.v)[:500], причина='не запит на читання')
         raise NgrError(f'{tool}: «{safe(first)[:20]}» поза дозволеним — лише SELECT (WITH, VALUES); для змін — бд.писати', pos)
 
@@ -5290,8 +5293,9 @@ def main(argv):
         if opts['mode'] == 'перевірити':
             errors = all_static_errors(src, cwd, None if path == '<-e>' else path) or [e]
     try:
+        # -e --тека: «програма» лежить у тій теці — і в теці запису прав теки не дістає, як файл там (суд 8в)
         allowed, source = load_allowlist(opts['allow'], cwd if dir_rights else None,
-                                         os.path.realpath(path) if path != '<-e>' else None)
+                                         os.path.realpath(path if path != '<-e>' else cwd) if dir_rights else None)
         base, _ = load_allowlist(opts['allow'])
         dir_extra = [a for a in allowed if a not in base] if dir_rights else None
     except Refused as e:
