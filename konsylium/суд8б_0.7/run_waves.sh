@@ -34,7 +34,7 @@ gemini() {
   [ -s "$K/gemini/звіт_раунд$R.md" ] && { echo "gemini: звіт уже є"; return; }
   ( cd "$K/gemini" && NIGREDO_HOME="$K/власник" python3 -I gemini_member.py "$R" > "$K/protokol/лог_gemini_р$R.txt" 2>&1; echo "gemini exit $?" )
 }
-gemini & member skeptyk & member praktyk & wait     # хвилі по 2 сесії Claude: суд 8 при 3 впав (futex у proot)
-member movoznavets & member audytor & wait
-member novachok & member orkestrator & wait
+# по одній сесії Claude: суд 8 при 3 впав (futex у proot), суд 8б при 2 — Android убив Termux за 5 хв
+gemini & member skeptyk & wait
+for m in praktyk movoznavets audytor novachok orkestrator; do member $m; done
 echo "раунд $R завершено"
