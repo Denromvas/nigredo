@@ -42,13 +42,20 @@ def bad_text(*texts):
 
 
 def ngr(*args, timeout=120, env=None):
+    """Запуск ngr у своїй групі процесів: на тайм-ауті гине вся група — і тест, що саме йде (суд 8б: лишався сиротою)."""
+    import signal
+    p = subprocess.Popen([sys.executable, NGR_RUN, *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                         cwd=WORKDIR, stdin=subprocess.DEVNULL, env=env or os.environ, start_new_session=True)
     try:
-        p = subprocess.run([sys.executable, NGR_RUN, *args], capture_output=True, text=True, cwd=WORKDIR,
-                           timeout=timeout, stdin=subprocess.DEVNULL, env=env or os.environ)
-        return p.returncode, p.stdout, p.stderr
-    except subprocess.TimeoutExpired as e:          # не губити те, що програма встигла вивести
-        out = e.stdout.decode('utf-8', 'replace') if isinstance(e.stdout, bytes) else (e.stdout or '')
-        return 124, out, f'✗ перевищено час ({timeout} с); слід запуску — обірваний'
+        out, err = p.communicate(timeout=timeout)
+        return p.returncode, out, err
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except OSError:
+            pass
+        out, _ = p.communicate()                    # не губити те, що програма встигла вивести
+        return 124, out or '', f'✗ перевищено час ({timeout} с); слід запуску — обірваний'
 
 
 def sheet():
@@ -95,7 +102,7 @@ def tools():
              'code': code,
              'args': {'type': 'array', 'items': {'type': 'string'}, 'description': 'Аргументи програми (⌂).'},
              'suho': {'type': 'boolean', 'description': 'Сухий прогін: записи, надсилання, процеси й агенти НЕ '
-                      'виконуються (їхній результат — впевненість 0), читання — так; наприкінці — перелік дій, які '
+                      'виконуються (їхній результат — впевненість 0), і `взяти` теж (адреса виносить дані); читання файлів і бд — так; наприкінці — перелік дій, які '
                       'програма зробила б.'}},
              'required': ['code']}},
         {'name': 'nigredo_brauzer',
@@ -118,8 +125,10 @@ def tools():
                         'видно у відповіді. Пройшов — код 0, хоча б одна виконана 🜍 і жодної непройденої (навіть '
                         'перехопленої ☂) чи сумнівної. Тести з тек, куди програмам дозволено писати, не беруться. '
                         'Відповідь — JSON: скільки пройшли, скільки перевірок, для кожного файлу код, перевірки, печатка '
-                        'й причина невдачі.',
-         'inputSchema': {'type': 'object', 'properties': {}}},
+                        'й причина невдачі. pechatka: true — лише печатки тестів і чи в межах, БЕЗ запуску (дивіться '
+                        'спершу).',
+         'inputSchema': {'type': 'object', 'properties': {
+             'pechatka': {'type': 'boolean', 'description': 'Лише печатки тестів, без запуску.'}}}},
         {'name': 'nigredo_povtoryty',
          'description': 'Повторити запуск зі сліду: програма виконується знову, але жоден інструмент не діє — кожен '
                         'виклик повертає записане в сліді (СЛІД.дані); ті самі аргументи, тека, зерно. Наприкінці — чи '
@@ -174,7 +183,7 @@ def call(name, a):
             args = [str(url), *([str(link)] if link is not None else [])]
         return traced([BROWSER, '--', *args], 'сторінка (слова її автора, окремим блоком)', BROWSER)
     if name == 'nigredo_testy':
-        rc, out, err = ngr('--тести', WORKDIR, '--json', timeout=600)
+        rc, out, err = ngr('--тести', WORKDIR, *(['--печатка'] if a.get('pechatka') is True else []), '--json', timeout=600)
         return [clean((out or err).strip())], rc != 0
     if name == 'nigredo_povtoryty':
         real = os.path.realpath(os.path.join(TRACES, a['path']))
