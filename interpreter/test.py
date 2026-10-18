@@ -726,6 +726,46 @@ def main():
     got = run(['--дозволи', str(tmp / 'вл8б' / 'вужче.json'), str(qd / 'бере.ngr')], env8b)
     check(got.returncode == 3 and 'лежить у теці' in got.stderr,
           '--дозволи (суд 8б): модуль із теки запису власника — відмова й при звуженні', got.stdout + got.stderr)
+    # суд 8в: теки запису — з УСІХ записів власника. Тека C може писати в A/вхідні; програма, покладена туди, не дістає
+    # прав теки A, а модуль звідти — не модуль і для програми з A
+    va, vc = tmp / 'в8в' / 'A', tmp / 'в8в' / 'C'
+    for d_ in (va / 'вхідні', va / 'дані', vc):
+        d_.mkdir(parents=True, exist_ok=True)
+    (va / 'дані' / 'секрет.txt').write_text('банк', encoding='utf-8')
+    (tmp / 'вл8в').mkdir(exist_ok=True)
+    (tmp / 'вл8в' / 'дозволи.json').write_text(json.dumps({'для_тек': {
+        str(va): [f'читати:{va}/дані', f'бд.читати:{va}/дані', 'жереб', 'процес:мій8в'], str(vc): [f'писати:{va}/вхідні']}}, ensure_ascii=False),
+        encoding='utf-8')
+    env8v = dict(env, NIGREDO_HOME=str(tmp / 'вл8в'))
+    q_ = f'🜂 【\\u300cчитати:{va}/дані\\u300d】\\\\n» 🜔читати \\u300c{va}/дані/секрет.txt\\u300d\\\\n'
+    m_ = '🜂 【\\u300cжереб\\u300d】\\\\n← кинь λn 🜔жереб n\\\\n'
+    (vc / 'кладе.ngr').write_text(f'🜂 【「писати:{va}/вхідні」】\n» 🜔писати 「{va}/вхідні/q.ngr」 δ 「"{q_}"」\n'
+                                  f'» 🜔писати 「{va}/вхідні/м.ngr」 δ 「"{m_}"」\n', encoding='utf-8')
+    got0 = run([str(vc / 'кладе.ngr')], env8v)
+    got = run([str(va / 'вхідні' / 'q.ngr')], env8v)
+    (va / 'бере.ngr').write_text('🜂 【「жереб」】\n⊃ 「вхідні/м.ngr」 【「кинь」】\n» кинь 6\n', encoding='utf-8')
+    got2 = run([str(va / 'бере.ngr')], env8v)
+    (va / 'читає.ngr').write_text(f'🜂 【「читати:{va}/дані」】\n» 🜔читати 「дані/секрет.txt」\n', encoding='utf-8')
+    got3 = run([str(va / 'читає.ngr')], env8v)
+    (va / 'вхідні' / 'мій8в').write_text('#!/bin/sh\necho hi\n')
+    (va / 'вхідні' / 'мій8в').chmod(0o755)
+    (va / 'кличе.ngr').write_text('🜂 【「процес:мій8в」】\n» 🜔процес 【「мій8в」】\n', encoding='utf-8')
+    got4 = run([str(va / 'кличе.ngr')], dict(env8v, PATH=f'{va / "вхідні"}{os.pathsep}{os.environ.get("PATH", "")}'))
+    check(got0.returncode == 0 and got.returncode == 3 and 'банк' not in got.stdout
+          and got2.returncode == 3 and 'лежить у теці' in got2.stderr and got3.stdout == 'банк\n'
+          and got4.returncode == 3 and 'дозволено писати' in got4.stderr,
+          'суд 8в: програма в теці запису іншої теки власника — без прав теки A; модуль і команда звідти — відмова; сама A — читає',
+          got0.stderr + got.stdout + got.stderr + got2.stderr + got3.stdout + got3.stderr + got4.stderr)
+    got = run(['-e', f'🜂 【「взяти:127.0.0.1:{port}」】\n» ☂ 🜔взяти 「http://@127.0.0.1:{port}/」 λe e'], env)
+    check('поза дозволеним' in got.stdout, 'взяти (суд 8в): порожній логін «http://@хост/» — відмова за правами',
+          got.stdout + got.stderr)
+    (va / 'дані' / 'б.db').write_bytes(b'')
+    got = run(['--тека', str(va), '-e', f'🜂 【「бд.читати:{va}/дані」】\n» ☂ 🜔бд.читати 「{va}/дані/б.db」 「REINDEX」 【】 λe e\n'
+               f'» ☂ 🜔бд.читати 「{va}/дані/б.db」 「/**/ DROP TABLE IF EXISTS нема」 【】 λe e\n'
+               f'» 🜔бд.читати 「{va}/дані/б.db」 「 WITH a AS (SELECT 1 AS x) SELECT x FROM a」 【】'],
+              env8v)
+    check(got.stdout.count('лише SELECT') == 2 and got.stdout.endswith('【『「x」 1』】\n'),
+          'бд.читати (суд 8в): лише SELECT/WITH/VALUES — REINDEX, DROP IF EXISTS — відмова', got.stdout + got.stderr)
     # суд 8б: глибокі значення — помилка програми (☂ ловить), не код 4
     deep = 'Σ …1 5000 【】 Λa x 【a】'
     for code, what in ((f'» ☂ 〔{{{deep}}}〕 λe 「глибоко」', 'інтерполяція'),
