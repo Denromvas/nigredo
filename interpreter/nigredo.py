@@ -1366,22 +1366,56 @@ def lit_type(v):
         else 'none' if v is None else _A
 
 
+# Список з відомим типом елементів — 'list:' + тип елемента ('list:str', 'list:list:str'); _L — елементи невідомі.
+TYPE_PLURAL = {'num': 'чисел', 'str': 'рядків', 'bool': '●/○', 'none': '∅', 'list': 'списків', 'dict': 'словників',
+               'fn': 'функцій'}
+ITER_FN = {'∀', 'μ', 'φ', '⇅', '⊞', '∫', '‖', '№', 'Σ'}       # останній аргумент — λ над елементами першого
+
+
+def base_t(t):
+    return _L if t.startswith('list') else t
+
+
+def elem_t(t):
+    """Тип елемента списку (рядка — рядок); невідомо — _A."""
+    return t[5:] if t.startswith('list:') else _S if t == _S else _A
+
+
+def list_of(t):
+    return _L if t == _A else 'list:' + t
+
+
+def join_t(a, b):
+    return a if a == b else _L if base_t(a) == base_t(b) == _L else _A
+
+
+def type_name(t):
+    if t.startswith('list:'):
+        e = elem_t(t)
+        return 'список ' + (TYPE_PLURAL[base_t(e)] if not e.startswith('list:') else 'списків')
+    return TYPE_NAMES[t]
+
+
 def _fits(actual, alts):
-    return any(len(a) == len(actual) and all(r == _A or t == _A or r == t for r, t in zip(a, actual)) for a in alts)
+    return any(len(a) == len(actual) and all(r == _A or t == _A or r == base_t(t) for r, t in zip(a, actual))
+               for a in alts)
 
 
 def type_errors(prog):
     """Певні помилки типів у програмі — список StaticError (порожній — помилок не знайдено)."""
     errs = []
 
-    def say(g, actual, alts, pos):
-        got = ', '.join(TYPE_NAMES[t] for t in actual)
+    def say(g, actual, alts, pos, args=()):
+        got = ', '.join(type_name(t) for t in actual)
         want = ' або '.join('(' + ', '.join(TYPE_NAMES[t] for t in a) + ')' for a in alts)
         hint = ''
         if g == '＋' and set(actual) == {_S, _N}:
             hint = ' — число в рядок: σ або шаблон 〔…{n}〕'
         elif g in '¿∧∨¬':
             hint = ' — умова має бути ● або ○ (порівняння: ＝ ≠ ‹ › ≤ ≥)'
+        elif any(a[0] == 'op' and a[2] == '§' and a[3][0][0] == 'op' and a[3][0][2] == '⌕' and t == 'list:str'
+                 for a, t in zip(args, actual)):
+            hint = ' — ⌕ із групами дає на кожен збіг список груп: перша група першого збігу — § § … 0 0'
         errs.append(StaticError(f'{g}: аргументи ({got}) не підходять, очікувалося {want}{hint}', pos))
 
     def t(n, env):
@@ -1398,9 +1432,8 @@ def type_errors(prog):
                     return sc[n[2]]
             return _A
         if k == 'list':
-            for e in n[2]:
-                t(e, env)
-            return _L
+            es = [t(e, env) for e in n[2]]
+            return list_of(es[0]) if es and all(e == es[0] for e in es) else _L
         if k == 'dict':
             for e in n[2]:
                 t(e, env)
@@ -1416,7 +1449,7 @@ def type_errors(prog):
             env[-1][n[2]] = t(n[3], env)
             return env[-1][n[2]]
         if k == 'lam':
-            t(n[3], env + [{p: _A for p in param_names(n[2])}])
+            lam_t(n, env)
             return _F
         if k == 'call':
             for e in n[3]:
@@ -1425,8 +1458,9 @@ def type_errors(prog):
         if k == 'tool':
             actual = [t(e, env) for e in n[3]]
             req, res = TOOL_TYPES.get(n[2], (None, _A))
+            res = 'list:str' if n[2] == 'файл.список' else res
             if req is not None and not _fits(actual, [req]):
-                errs.append(StaticError(f'🜔{n[2]}: аргументи ({", ".join(TYPE_NAMES[x] for x in actual)}) не підходять, '
+                errs.append(StaticError(f'🜔{n[2]}: аргументи ({", ".join(type_name(x) for x in actual)}) не підходять, '
                                         f'очікувалося ({", ".join(TYPE_NAMES[x] for x in req)})', n[1]))
             return res
         if k == 'deleg':
@@ -1438,9 +1472,15 @@ def type_errors(prog):
             return 'none'
         if k == 'op':
             g, args = n[2], n[3]
-            actual = [t(e, env) for e in args]
+            if g in ITER_FN and args[-1][0] == 'lam':          # параметр λ — тип елемента списку
+                actual = [t(e, env) for e in args[:-1]]
+                el = elem_t(actual[0])
+                body = lam_t(args[-1], env, [_A, el] if g == 'Σ' else [el])
+                actual.append(_F)
+            else:
+                actual, body = [t(e, env) for e in args], _A
             if g in TYPE_REQ and not _fits(actual, TYPE_REQ[g]):
-                say(g, actual, TYPE_REQ[g], n[1])
+                say(g, actual, TYPE_REQ[g], n[1], args)
             if g == '‖' and not (args[1][0] == 'lam' and len(args[1][2]) == 1 and args[1][3][0] == 'tool'
                                  and args[1][3][2] in PARALLEL_TOOLS):        # зібрати всі, а не лише першу (суд 7)
                 errs.append(StaticError('‖ список λx 🜔інструмент …: тіло — рівно один виклик інструмента без спільного '
@@ -1455,13 +1495,40 @@ def type_errors(prog):
                     errs.append(StaticError(e.msg, n[1]))
             if g == '＋':
                 known = [x for x in actual if x != _A]
+                if known and all(base_t(x) == _L for x in known):
+                    return known[0] if len(known) == len(actual) and all(x == known[0] for x in known) else _L
                 return known[0] if known and all(x == known[0] for x in known) else _A
             if g == '¿':
-                return actual[1] if actual[1] == actual[2] else _A
+                return join_t(actual[1], actual[2])
             if g in ('⊏', '↺', '≈', '🜍'):
                 return actual[0]
+            if g in ('↑', '⇅', 'φ') and base_t(actual[0]) == _L:       # ті самі елементи
+                return actual[0]
+            if g == '§' and base_t(actual[0]) in (_L, _S):
+                return elem_t(actual[0])
+            if g in ('φ', '⇅') and actual[0] == _S:
+                return 'list:str'
+            if g == 'μ':
+                return list_of(body)
+            if g in ('✂', 'κ'):
+                return 'list:str'
+            if g == '…':
+                return 'list:num'
+            if g == '⌕' and args[1][0] == 'lit' and isinstance(args[1][2], str):
+                try:
+                    return 'list:str' if regex(args[1][2], g, n[1]).ngroups == 1 else 'list:list:str'
+                except NgrError:
+                    return _L
             return TYPE_RES.get(g, _A)
         return _A
+
+    def lam_t(n, env, ptypes=()):
+        """Тип тіла λ; ptypes — відомі типи параметрів (лише прості імена, не розбір 【a b】)."""
+        sc = {p: _A for p in param_names(n[2])}
+        for p, pt in zip(n[2], ptypes):
+            if not isinstance(p, tuple):
+                sc[p] = pt
+        return t(n[3], env + [sc])
 
     t(prog, [{}])
     return errs
