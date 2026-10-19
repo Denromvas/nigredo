@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nimport datetime\n\nСЬОГОДНІ = datetime.date(2026, 10, 20)\nАБЕТКА = \"абвгґдеєжзиіїйклмнопрстуфхцчшщьюя\"\n\n\ndef ключ_абетки(текст):\n    return tuple(\n        АБЕТКА.index(c) if c in АБЕТКА else len(АБЕТКА) + ord(c)\n        for c in текст.lower()\n    )\n\n\nwith open(\"дані/задачі.json\", encoding=\"utf-8\") as f:\n    задачі = json.load(f)\n\nпрострочені = []\nfor з in задачі:\n    if з.get(\"виконано\"):\n        continue\n    термін = datetime.date.fromisoformat(з[\"термін\"])\n    if термін < СЬОГОДНІ:\n        прострочені.append(((СЬОГОДНІ - термін).days, з))\n\nпрострочені.sort(key=lambda p: (-p[0], ключ_абетки(p[1][\"задача\"])))\n\nfor дні, з in прострочені:\n    print(f'{з[\"задача\"]} ({з[\"відповідальний\"]}): {дні} дн.')\nprint(f\"Прострочено: {len(прострочені)}\")\n",
+  "відповідь": "```python\nimport json\nimport datetime\n\nСЬОГОДНІ = datetime.date(2026, 10, 20)\nАБЕТКА = \"абвгґдеєжзиіїйклмнопрстуфхцчшщьюя\"\n\n\ndef ключ_абетки(текст):\n    return tuple(\n        АБЕТКА.index(c) if c in АБЕТКА else len(АБЕТКА) + ord(c)\n        for c in текст.lower()\n    )\n\n\nwith open(\"дані/задачі.json\", encoding=\"utf-8\") as f:\n    задачі = json.load(f)\n\nпрострочені = []\nfor з in задачі:\n    if з.get(\"виконано\"):\n        continue\n    термін = datetime.date.fromisoformat(з[\"термін\"])\n    if термін < СЬОГОДНІ:\n        прострочені.append(((СЬОГОДНІ - термін).days, з))\n\nпрострочені.sort(key=lambda p: (-p[0], ключ_абетки(p[1][\"задача\"])))\n\nfor дні, з in прострочені:\n    print(f'{з[\"задача\"]} ({з[\"відповідальний\"]}): {дні} дн.')\nprint(f\"Прострочено: {len(прострочені)}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "Резервна копія (Денис): 19 дн.\nЗвіт ПДВ (Оля): 10 дн.\nАкт звірки (Оля): 1 дн.\nПрострочено: 3\n",
+  "помилки": ""
+ }
+]

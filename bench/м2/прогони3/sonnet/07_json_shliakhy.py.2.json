@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nimport sys\n\n\ndef main():\n    with open(\"дані/структура.json\", encoding=\"utf-8\") as f:\n        дані = json.load(f)\n\n    знайдено = []\n\n    def обхід(вузол, шлях):\n        if isinstance(вузол, dict):\n            for к, з in вузол.items():\n                обхід(з, шлях + [str(к)])\n        elif isinstance(вузол, list):\n            for і, з in enumerate(вузол):\n                обхід(з, шлях + [str(і)])\n        elif isinstance(вузол, (int, float)) and not isinstance(вузол, bool):\n            if вузол > 100:\n                знайдено.append((\".\".join(шлях), вузол))\n\n    обхід(дані, [])\n\n    out = sys.stdout\n    try:\n        out.reconfigure(encoding=\"utf-8\")\n    except Exception:\n        pass\n    for шлях, значення in знайдено:\n        print(f\"{шлях} = {значення}\")\n    print(f\"Знайдено: {len(знайдено)}\")\n\n\nmain()\n",
+  "відповідь": "```python\nimport json\nimport sys\n\n\ndef main():\n    with open(\"дані/структура.json\", encoding=\"utf-8\") as f:\n        дані = json.load(f)\n\n    знайдено = []\n\n    def обхід(вузол, шлях):\n        if isinstance(вузол, dict):\n            for к, з in вузол.items():\n                обхід(з, шлях + [str(к)])\n        elif isinstance(вузол, list):\n            for і, з in enumerate(вузол):\n                обхід(з, шлях + [str(і)])\n        elif isinstance(вузол, (int, float)) and not isinstance(вузол, bool):\n            if вузол > 100:\n                знайдено.append((\".\".join(шлях), вузол))\n\n    обхід(дані, [])\n\n    out = sys.stdout\n    try:\n        out.reconfigure(encoding=\"utf-8\")\n    except Exception:\n        pass\n    for шлях, значення in знайдено:\n        print(f\"{шлях} = {значення}\")\n    print(f\"Знайдено: {len(знайдено)}\")\n\n\nmain()\n```\n",
+  "код_виходу": 0,
+  "вивід": "відділи.0.бюджет = 1500\nвідділи.0.люди.1.ставка = 120\nвідділи.1.люди.0.ставка = 101\nліміти.місяць = 1000\nліміти.рік.план = 12000\nЗнайдено: 5\n",
+  "помилки": ""
+ }
+]

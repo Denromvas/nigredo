@@ -1,0 +1,20 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": false,
+  "код": "import re\nfrom pathlib import Path\n\nшлях = Path(\"дані\") / \"текст.txt\"\nтекст = шлях.read_text(encoding=\"utf-8-sig\")\n\nслово = re.compile(r\"[^\\W\\d_]+\")\nречення = []\nfor фрагмент in re.split(r\"[.!?]\", текст):\n    слова = слово.findall(фрагмент)\n    if слова:\n        речення.append(слова)\n\nпорядок = sorted(range(len(речення)), key=lambda i: (-len(речення[i]), i))\nfor i in порядок[:3]:\n    слова = речення[i]\n    print(f\"№{i + 1} ({len(слова)} слів): {' '.join(слова[:3])}\")\n",
+  "відповідь": "```python\nimport re\nfrom pathlib import Path\n\nшлях = Path(\"дані\") / \"текст.txt\"\nтекст = шлях.read_text(encoding=\"utf-8-sig\")\n\nслово = re.compile(r\"[^\\W\\d_]+\")\nречення = []\nfor фрагмент in re.split(r\"[.!?]\", текст):\n    слова = слово.findall(фрагмент)\n    if слова:\n        речення.append(слова)\n\nпорядок = sorted(range(len(речення)), key=lambda i: (-len(речення[i]), i))\nfor i in порядок[:3]:\n    слова = речення[i]\n    print(f\"№{i + 1} ({len(слова)} слів): {' '.join(слова[:3])}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "№7 (16 слів): Вона означає розпад\n№5 (11 слів): Але шлях складався\n№2 (9 слів): Майстри шукали камінь\n",
+  "помилки": ""
+ },
+ {
+  "спроба": 2,
+  "гаразд": true,
+  "код": "import re\nfrom pathlib import Path\n\nшлях = Path(\"дані\") / \"текст.txt\"\nтекст = шлях.read_text(encoding=\"utf-8-sig\")\n\nслово = re.compile(r\"[^\\W\\d_]+\")\nречення = []\nfor фрагмент in re.split(r\"[.!?]\", текст):\n    слова = слово.findall(фрагмент)\n    if слова:\n        речення.append(слова)\n\nпорядок = sorted(range(len(речення)), key=lambda i: (-len(речення[i]), i))\nfor i in порядок[:3]:\n    слова = речення[i]\n    print(f\"№{i + 1} ({len(слова)} слів): {' '.join(слова[:3])}…\")\n",
+  "відповідь": "```python\nimport re\nfrom pathlib import Path\n\nшлях = Path(\"дані\") / \"текст.txt\"\nтекст = шлях.read_text(encoding=\"utf-8-sig\")\n\nслово = re.compile(r\"[^\\W\\d_]+\")\nречення = []\nfor фрагмент in re.split(r\"[.!?]\", текст):\n    слова = слово.findall(фрагмент)\n    if слова:\n        речення.append(слова)\n\nпорядок = sorted(range(len(речення)), key=lambda i: (-len(речення[i]), i))\nfor i in порядок[:3]:\n    слова = речення[i]\n    print(f\"№{i + 1} ({len(слова)} слів): {' '.join(слова[:3])}…\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "№7 (16 слів): Вона означає розпад…\n№5 (11 слів): Але шлях складався…\n№2 (9 слів): Майстри шукали камінь…\n",
+  "помилки": ""
+ }
+]

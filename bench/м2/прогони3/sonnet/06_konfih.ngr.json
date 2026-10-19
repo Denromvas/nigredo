@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "🜂 「злиття двох INI-файлів і друк підсумку」 【「читати:дані」】\n← parse λtxt\n  Σ ✂ txt 「\\n」 【∅ 『』】 Λ st ln 《\n    ← cur §st 0\n    ← dic §st 1\n    ← l ⊢ ln\n    ¿ ∨ ＝ ρl 0 ∨ ＝ ⊏ l 0 1 「#」 ＝ ⊏ l 0 1 「;」\n      st\n      《\n        ¿ ＝ ⊏ l 0 1 「[」\n          《\n            ← nm ⊢ ⊏ l 1 ¯1\n            【nm ¿ ∋ dic nm dic ✎ dic nm 『』】\n          》\n          《\n            ← p ⊳ l 「=」\n            ¿ ∨ ＝ p ¯1 ＝ cur ∅\n              st\n              《\n                ← k ⊢ ⊏ l 0 p\n                ← v ⊢ ⊏ l ＋ p 1 ∅\n                【cur ✎ dic cur ✎ §dic cur k v】\n              》\n          》\n      》\n  》\n← base §parse 🜔читати 「base.ini」 1\n← loc §parse 🜔читати 「local.ini」 1\n← m Σ ε loc base Λ acc pr 《\n  ← sec §pr 0\n  ← old ¿ ∋ acc sec §acc sec 『』\n  ← mer Σ ε §pr 1 old Λ a2 q ✎ a2 §q 0 §q 1\n  ✎ acc sec mer\n》\n∀ ↑ κ m λsec 《\n  » 〔[{sec}]〕\n  ← kv §m sec\n  ∀ ↑ κ kv λk » 〔{k}={§kv k}〕\n》\n",
+  "відповідь": "```\n🜂 「злиття двох INI-файлів і друк підсумку」 【「читати:дані」】\n← parse λtxt\n  Σ ✂ txt 「\\n」 【∅ 『』】 Λ st ln 《\n    ← cur §st 0\n    ← dic §st 1\n    ← l ⊢ ln\n    ¿ ∨ ＝ ρl 0 ∨ ＝ ⊏ l 0 1 「#」 ＝ ⊏ l 0 1 「;」\n      st\n      《\n        ¿ ＝ ⊏ l 0 1 「[」\n          《\n            ← nm ⊢ ⊏ l 1 ¯1\n            【nm ¿ ∋ dic nm dic ✎ dic nm 『』】\n          》\n          《\n            ← p ⊳ l 「=」\n            ¿ ∨ ＝ p ¯1 ＝ cur ∅\n              st\n              《\n                ← k ⊢ ⊏ l 0 p\n                ← v ⊢ ⊏ l ＋ p 1 ∅\n                【cur ✎ dic cur ✎ §dic cur k v】\n              》\n          》\n      》\n  》\n← base §parse 🜔читати 「base.ini」 1\n← loc §parse 🜔читати 「local.ini」 1\n← m Σ ε loc base Λ acc pr 《\n  ← sec §pr 0\n  ← old ¿ ∋ acc sec §acc sec 『』\n  ← mer Σ ε §pr 1 old Λ a2 q ✎ a2 §q 0 §q 1\n  ✎ acc sec mer\n》\n∀ ↑ κ m λsec 《\n  » 〔[{sec}]〕\n  ← kv §m sec\n  ∀ ↑ κ kv λk » 〔{k}={§kv k}〕\n》\n```\n",
+  "код_виходу": 0,
+  "вивід": "[api]\ntimeout=30\n[cache]\nenabled=true\nttl=300\n[db]\nhost=10.0.0.5\nname=erp\nport=5432\nuser=denys\n[log]\nfile=/var/log/erp.log\nlevel=debug\n",
+  "помилки": ""
+ }
+]

@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import csv\nimport sys\n\ndef main():\n    groups = {}\n    order = []\n    with open(\"дані/контакти.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n        reader = csv.reader(f)\n        next(reader, None)\n        for row in reader:\n            if not row or all(not c.strip() for c in row):\n                continue\n            name = row[0] if len(row) > 0 else \"\"\n            email = (row[1] if len(row) > 1 else \"\").strip().lower()\n            if email not in groups:\n                groups[email] = []\n                order.append(email)\n            groups[email].append(name)\n\n    out = []\n    for email in order:\n        names = groups[email]\n        if len(names) >= 2:\n            out.append(f\"{email}: {len(names)}\")\n            for n in names:\n                out.append(f\"  {n}\")\n    out.append(f\"Унікальних: {len(order)}\")\n    sys.stdout.write(\"\\n\".join(out) + \"\\n\")\n\nmain()\n",
+  "відповідь": "```python\nimport csv\nimport sys\n\ndef main():\n    groups = {}\n    order = []\n    with open(\"дані/контакти.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n        reader = csv.reader(f)\n        next(reader, None)\n        for row in reader:\n            if not row or all(not c.strip() for c in row):\n                continue\n            name = row[0] if len(row) > 0 else \"\"\n            email = (row[1] if len(row) > 1 else \"\").strip().lower()\n            if email not in groups:\n                groups[email] = []\n                order.append(email)\n            groups[email].append(name)\n\n    out = []\n    for email in order:\n        names = groups[email]\n        if len(names) >= 2:\n            out.append(f\"{email}: {len(names)}\")\n            for n in names:\n                out.append(f\"  {n}\")\n    out.append(f\"Унікальних: {len(order)}\")\n    sys.stdout.write(\"\\n\".join(out) + \"\\n\")\n\nmain()\n```\n",
+  "код_виходу": 0,
+  "вивід": "olia@firma.ua: 3\n  Оля Петренко\n  О. Петренко\n  Оля П.\npetro@firma.ua: 2\n  Петро Іваненко\n  Петро\nУнікальних: 4\n",
+  "помилки": ""
+ }
+]

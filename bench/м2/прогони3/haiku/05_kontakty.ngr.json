@@ -1,0 +1,20 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": false,
+  "код": "🜂 「дублікати контактів」 【「читати:дані」】\n← text 🜔читати 「контакти.csv」\n← rows ▦ text\n← groups ⊞ rows λrow ⇣ ⊢ § row 「email」\n← keys κ groups\n← dups φ keys λkey ≥ ρ § groups key 2\n← show λkey ＋ 〔email: {key}〕 ＋ 「\\n」 ⁀ μ § groups key λcontact 〔  {§ contact 「імʼя」}〕 「\\n」\n← body ⁀ μ dups ∘show 「\\n」\n← footer 〔Унікальних: {ρ groups}〕\n» ¿ ＝ ρ dups 0 footer ＋ ＋ body 「\\n」 footer\n",
+  "відповідь": "```\n🜂 「дублікати контактів」 【「читати:дані」】\n← text 🜔читати 「контакти.csv」\n← rows ▦ text\n← groups ⊞ rows λrow ⇣ ⊢ § row 「email」\n← keys κ groups\n← dups φ keys λkey ≥ ρ § groups key 2\n← show λkey ＋ 〔email: {key}〕 ＋ 「\\n」 ⁀ μ § groups key λcontact 〔  {§ contact 「імʼя」}〕 「\\n」\n← body ⁀ μ dups ∘show 「\\n」\n← footer 〔Унікальних: {ρ groups}〕\n» ¿ ＝ ρ dups 0 footer ＋ ＋ body 「\\n」 footer\n```\n",
+  "код_виходу": 0,
+  "вивід": "email: olia@firma.ua\n  Оля Петренко\n  О. Петренко\n  Оля П.\nemail: petro@firma.ua\n  Петро Іваненко\n  Петро\nУнікальних: 4\n",
+  "помилки": ""
+ },
+ {
+  "спроба": 2,
+  "гаразд": true,
+  "код": "🜂 「дублікати контактів」 【「читати:дані」】\n← text 🜔читати 「дані/контакти.csv」\n← rows ▦ text\n← groups ⊞ rows λrow ⇣ ⊢ § row 「email」\n← keys κ groups\n← dups φ keys λkey ≥ ρ § groups key 2\n← show λkey ＋ 〔{key}: {ρ § groups key}〕 ＋ 「\\n」 ⁀ μ § groups key λcontact 〔  {§ contact 「імʼя」}〕 「\\n」\n← body ⁀ μ dups ∘show 「\\n」\n← footer 〔Унікальних: {ρ groups}〕\n» ¿ ＝ ρ dups 0 footer ＋ ＋ body 「\\n」 footer\n",
+  "відповідь": "```\n🜂 「дублікати контактів」 【「читати:дані」】\n← text 🜔читати 「дані/контакти.csv」\n← rows ▦ text\n← groups ⊞ rows λrow ⇣ ⊢ § row 「email」\n← keys κ groups\n← dups φ keys λkey ≥ ρ § groups key 2\n← show λkey ＋ 〔{key}: {ρ § groups key}〕 ＋ 「\\n」 ⁀ μ § groups key λcontact 〔  {§ contact 「імʼя」}〕 「\\n」\n← body ⁀ μ dups ∘show 「\\n」\n← footer 〔Унікальних: {ρ groups}〕\n» ¿ ＝ ρ dups 0 footer ＋ ＋ body 「\\n」 footer\n```\n",
+  "код_виходу": 0,
+  "вивід": "olia@firma.ua: 3\n  Оля Петренко\n  О. Петренко\n  Оля П.\npetro@firma.ua: 2\n  Петро Іваненко\n  Петро\nУнікальних: 4\n",
+  "помилки": ""
+ }
+]

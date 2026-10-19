@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import re\nimport sys\nfrom collections import Counter, defaultdict\n\nRX = re.compile(r'^\\s*(\\d{4}-\\d{2}-\\d{2})[ T](\\d{2}):\\d{2}:\\d{2}\\s+\\[([^\\]]+)\\]\\s+([^:\\s]+)\\s*:')\n\n\ndef main():\n    hours = Counter()\n    mods = defaultdict(set)\n    total = Counter()\n    with open(\"дані/app.log\", encoding=\"utf-8\", errors=\"replace\") as f:\n        for line in f:\n            m = RX.match(line)\n            if not m:\n                continue\n            _, hh, level, mod = m.groups()\n            if level.strip().upper() != \"ERROR\":\n                continue\n            hours[hh] += 1\n            mods[hh].add(mod)\n            total[mod] += 1\n\n    out = []\n    for hh in sorted(hours):\n        out.append(f\"{hh}:00 — {hours[hh]} ({', '.join(sorted(mods[hh]))})\")\n    if total:\n        best = min(total.items(), key=lambda kv: (-kv[1], kv[0]))\n        out.append(f\"Найгірший модуль: {best[0]} ({best[1]})\")\n    print(\"\\n\".join(out))\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "відповідь": "```python\nimport re\nimport sys\nfrom collections import Counter, defaultdict\n\nRX = re.compile(r'^\\s*(\\d{4}-\\d{2}-\\d{2})[ T](\\d{2}):\\d{2}:\\d{2}\\s+\\[([^\\]]+)\\]\\s+([^:\\s]+)\\s*:')\n\n\ndef main():\n    hours = Counter()\n    mods = defaultdict(set)\n    total = Counter()\n    with open(\"дані/app.log\", encoding=\"utf-8\", errors=\"replace\") as f:\n        for line in f:\n            m = RX.match(line)\n            if not m:\n                continue\n            _, hh, level, mod = m.groups()\n            if level.strip().upper() != \"ERROR\":\n                continue\n            hours[hh] += 1\n            mods[hh].add(mod)\n            total[mod] += 1\n\n    out = []\n    for hh in sorted(hours):\n        out.append(f\"{hh}:00 — {hours[hh]} ({', '.join(sorted(mods[hh]))})\")\n    if total:\n        best = min(total.items(), key=lambda kv: (-kv[1], kv[0]))\n        out.append(f\"Найгірший модуль: {best[0]} ({best[1]})\")\n    print(\"\\n\".join(out))\n\n\nif __name__ == \"__main__\":\n    main()\n```\n",
+  "код_виходу": 0,
+  "вивід": "09:00 — 4 (cache, db)\n11:00 — 1 (db)\n14:00 — 4 (api, auth, cache)\n15:00 — 1 (db)\nНайгірший модуль: cache (5)\n",
+  "помилки": ""
+ }
+]

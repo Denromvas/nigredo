@@ -1,0 +1,20 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": false,
+  "код": "import re\nfrom pathlib import Path\n\nWORD_RE = re.compile(r\"[^\\W\\d_]+\")\nSENTENCE_END_RE = re.compile(r\"[.!?]+\")\n\n\ndef main():\n    text = (Path(\"дані\") / \"текст.txt\").read_text(encoding=\"utf-8\")\n\n    sentences = []\n    for segment in SENTENCE_END_RE.split(text):\n        words = WORD_RE.findall(segment)\n        if words:\n            sentences.append(words)\n\n    ranked = sorted(\n        enumerate(sentences, start=1),\n        key=lambda item: (-len(item[1]), item[0]),\n    )\n\n    for k, words in ranked[:3]:\n        print(f\"№{k} ({len(words)} слів): {' '.join(words[:3])}\")\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "відповідь": "```python\nimport re\nfrom pathlib import Path\n\nWORD_RE = re.compile(r\"[^\\W\\d_]+\")\nSENTENCE_END_RE = re.compile(r\"[.!?]+\")\n\n\ndef main():\n    text = (Path(\"дані\") / \"текст.txt\").read_text(encoding=\"utf-8\")\n\n    sentences = []\n    for segment in SENTENCE_END_RE.split(text):\n        words = WORD_RE.findall(segment)\n        if words:\n            sentences.append(words)\n\n    ranked = sorted(\n        enumerate(sentences, start=1),\n        key=lambda item: (-len(item[1]), item[0]),\n    )\n\n    for k, words in ranked[:3]:\n        print(f\"№{k} ({len(words)} слів): {' '.join(words[:3])}\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n",
+  "код_виходу": 0,
+  "вивід": "№7 (16 слів): Вона означає розпад\n№5 (11 слів): Але шлях складався\n№2 (9 слів): Майстри шукали камінь\n",
+  "помилки": ""
+ },
+ {
+  "спроба": 2,
+  "гаразд": true,
+  "код": "import re\nfrom pathlib import Path\n\nWORD_RE = re.compile(r\"[^\\W\\d_]+\")\nSENTENCE_END_RE = re.compile(r\"[.!?]+\")\n\n\ndef main():\n    text = (Path(\"дані\") / \"текст.txt\").read_text(encoding=\"utf-8\")\n\n    sentences = []\n    for segment in SENTENCE_END_RE.split(text):\n        words = WORD_RE.findall(segment)\n        if words:\n            sentences.append(words)\n\n    ranked = sorted(\n        enumerate(sentences, start=1),\n        key=lambda item: (-len(item[1]), item[0]),\n    )\n\n    for k, words in ranked[:3]:\n        print(f\"№{k} ({len(words)} слів): {' '.join(words[:3])}…\")\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "відповідь": "```python\nimport re\nfrom pathlib import Path\n\nWORD_RE = re.compile(r\"[^\\W\\d_]+\")\nSENTENCE_END_RE = re.compile(r\"[.!?]+\")\n\n\ndef main():\n    text = (Path(\"дані\") / \"текст.txt\").read_text(encoding=\"utf-8\")\n\n    sentences = []\n    for segment in SENTENCE_END_RE.split(text):\n        words = WORD_RE.findall(segment)\n        if words:\n            sentences.append(words)\n\n    ranked = sorted(\n        enumerate(sentences, start=1),\n        key=lambda item: (-len(item[1]), item[0]),\n    )\n\n    for k, words in ranked[:3]:\n        print(f\"№{k} ({len(words)} слів): {' '.join(words[:3])}…\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n",
+  "код_виходу": 0,
+  "вивід": "№7 (16 слів): Вона означає розпад…\n№5 (11 слів): Але шлях складався…\n№2 (9 слів): Майстри шукали камінь…\n",
+  "помилки": ""
+ }
+]

@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "🜂 「відʼємні залишки на складі」 【「бд.читати:дані」】\n← q 「SELECT товари.id AS id, товари.назва AS n, COALESCE(SUM(CASE рухи.тип WHEN 'прихід' THEN рухи.кількість WHEN 'видаток' THEN -рухи.кількість ELSE 0 END), 0) AS z FROM товари LEFT JOIN рухи ON рухи.товар_id = товари.id GROUP BY товари.id, товари.назва」\n← rows 🜔бд.читати 「склад.db」 q 【】\n← neg φ rows λr ‹ §r 「z」 0\n← srt ⇅ neg λr 【§r 「z」 §r 「n」】\n∀ srt λr » 〔{§r 「n」}: {§r 「z」}〕\n← zero φ rows λr ＝ §r 「z」 0\n» 〔Нульових: {ρ zero}〕\n",
+  "відповідь": "```\n🜂 「відʼємні залишки на складі」 【「бд.читати:дані」】\n← q 「SELECT товари.id AS id, товари.назва AS n, COALESCE(SUM(CASE рухи.тип WHEN 'прихід' THEN рухи.кількість WHEN 'видаток' THEN -рухи.кількість ELSE 0 END), 0) AS z FROM товари LEFT JOIN рухи ON рухи.товар_id = товари.id GROUP BY товари.id, товари.назва」\n← rows 🜔бд.читати 「склад.db」 q 【】\n← neg φ rows λr ‹ §r 「z」 0\n← srt ⇅ neg λr 【§r 「z」 §r 「n」】\n∀ srt λr » 〔{§r 「n」}: {§r 「z」}〕\n← zero φ rows λr ＝ §r 「z」 0\n» 〔Нульових: {ρ zero}〕\n```\n",
+  "код_виходу": 0,
+  "вивід": "Шурупи: -12\nЦвяхи: -5\nФарба: -4\nНульових: 1\n",
+  "помилки": ""
+ }
+]

@@ -1,0 +1,20 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": false,
+  "код": "🜂 「групи дублікатів контактів за email」 【「читати:дані」】\n← raw 🜔читати 「дані/контакти.csv」\n← t ▦ raw\n← ems μ t λc ⊢ ⇣ §c 「email」\n← uniq φ …0 －ρ ems 1 λi ＝ ⊳ ems §ems i i\n∀ uniq λu 《\n  ← mem φ t λc ＝ ⊢ ⇣ §c 「email」 u\n  ¿ ≥ ρ mem 2 《\n    » 〔email: {u}〕\n    ∀ mem λc » 〔  {§c 「імʼя」}〕\n  》 ∅\n》\n» 〔Унікальних: {ρ uniq}〕\n",
+  "відповідь": "```\n🜂 「групи дублікатів контактів за email」 【「читати:дані」】\n← raw 🜔читати 「дані/контакти.csv」\n← t ▦ raw\n← ems μ t λc ⊢ ⇣ §c 「email」\n← uniq φ …0 －ρ ems 1 λi ＝ ⊳ ems §ems i i\n∀ uniq λu 《\n  ← mem φ t λc ＝ ⊢ ⇣ §c 「email」 u\n  ¿ ≥ ρ mem 2 《\n    » 〔email: {u}〕\n    ∀ mem λc » 〔  {§c 「імʼя」}〕\n  》 ∅\n》\n» 〔Унікальних: {ρ uniq}〕\n```\n",
+  "код_виходу": 0,
+  "вивід": "Унікальних: 4\n",
+  "помилки": ""
+ },
+ {
+  "спроба": 2,
+  "гаразд": false,
+  "код": "🜂 「групи дублікатів контактів за email」 【「читати:дані」】\n← raw 🜔читати 「дані/контакти.csv」\n← t ▦ raw\n← ems μ t λc ⊢ ⇣ §c 「email」\n← idx φ …0 －ρ ems 1 λi ＝ ⊳ ems §ems i i\n← uniq μ idx λi §ems i\n∀ uniq λu 《\n  ← mem φ t λc ＝ ⊢ ⇣ §c 「email」 u\n  ¿ ≥ ρ mem 2 《\n    » 〔email: {u}〕\n    ∀ mem λc » 〔  {§c 「імʼя」}〕\n  》 ∅\n》\n» 〔Унікальних: {ρ uniq}〕\n",
+  "відповідь": "```\n🜂 「групи дублікатів контактів за email」 【「читати:дані」】\n← raw 🜔читати 「дані/контакти.csv」\n← t ▦ raw\n← ems μ t λc ⊢ ⇣ §c 「email」\n← idx φ …0 －ρ ems 1 λi ＝ ⊳ ems §ems i i\n← uniq μ idx λi §ems i\n∀ uniq λu 《\n  ← mem φ t λc ＝ ⊢ ⇣ §c 「email」 u\n  ¿ ≥ ρ mem 2 《\n    » 〔email: {u}〕\n    ∀ mem λc » 〔  {§c 「імʼя」}〕\n  》 ∅\n》\n» 〔Унікальних: {ρ uniq}〕\n```\n",
+  "код_виходу": 0,
+  "вивід": "email: olia@firma.ua\n  Оля Петренко\n  О. Петренко\n  Оля П.\nemail: petro@firma.ua\n  Петро Іваненко\n  Петро\nУнікальних: 4\n",
+  "помилки": ""
+ }
+]

@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import xml.etree.ElementTree as ET\nfrom collections import defaultdict\nfrom decimal import Decimal, ROUND_HALF_UP\n\nАБЕТКА = \"абвгґдеєжзиіїйклмнопрстуфхцчшщьюя\"\n\n\ndef ключ_сортування(назва):\n    return [АБЕТКА.index(c) if c in АБЕТКА else len(АБЕТКА) + ord(c) for c in назва.lower()]\n\n\ndef гроші(значення):\n    return значення.quantize(Decimal(\"0.01\"), rounding=ROUND_HALF_UP)\n\n\nкорінь = ET.parse(\"дані/накладна.xml\").getroot()\n\nсуми = defaultdict(Decimal)\nвсього = Decimal(\"0\")\n\nfor рядок in корінь.iter(\"Рядок\"):\n    група = рядок.get(\"група\", \"\")\n    кількість = Decimal(рядок.findtext(\"Кількість\").strip())\n    ціна = Decimal(рядок.findtext(\"Ціна\").strip())\n    сума = кількість * ціна\n    суми[група] += сума\n    всього += сума\n\nprint(f\"Накладна {корінь.get('номер', '')}\")\nfor група in sorted(суми, key=ключ_сортування):\n    print(f\"{група}: {гроші(суми[група]):.2f}\")\nprint(f\"Всього: {гроші(всього):.2f}\")\n",
+  "відповідь": "```python\nimport xml.etree.ElementTree as ET\nfrom collections import defaultdict\nfrom decimal import Decimal, ROUND_HALF_UP\n\nАБЕТКА = \"абвгґдеєжзиіїйклмнопрстуфхцчшщьюя\"\n\n\ndef ключ_сортування(назва):\n    return [АБЕТКА.index(c) if c in АБЕТКА else len(АБЕТКА) + ord(c) for c in назва.lower()]\n\n\ndef гроші(значення):\n    return значення.quantize(Decimal(\"0.01\"), rounding=ROUND_HALF_UP)\n\n\nкорінь = ET.parse(\"дані/накладна.xml\").getroot()\n\nсуми = defaultdict(Decimal)\nвсього = Decimal(\"0\")\n\nfor рядок in корінь.iter(\"Рядок\"):\n    група = рядок.get(\"група\", \"\")\n    кількість = Decimal(рядок.findtext(\"Кількість\").strip())\n    ціна = Decimal(рядок.findtext(\"Ціна\").strip())\n    сума = кількість * ціна\n    суми[група] += сума\n    всього += сума\n\nprint(f\"Накладна {корінь.get('номер', '')}\")\nfor група in sorted(суми, key=ключ_сортування):\n    print(f\"{група}: {гроші(суми[група]):.2f}\")\nprint(f\"Всього: {гроші(всього):.2f}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "Накладна НК-2026-118\nБакалія: 529.00\nМолочне: 779.98\nНапої: 546.90\nВсього: 1855.88\n",
+  "помилки": ""
+ }
+]

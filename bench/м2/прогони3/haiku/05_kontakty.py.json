@@ -1,0 +1,20 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": false,
+  "код": "import csv\nfrom pathlib import Path\n\n# Шлях відносно поточної теки: <тека запуску>/дані/контакти.csv\nшлях = Path(\"дані\") / \"контакти.csv\"\n\n# email (нормалізований) -> імена контактів; порядок ключів = порядок першої появи email\nгрупи = {}\n\nwith шлях.open(encoding=\"utf-8-sig\", newline=\"\") as f:\n    for рядок in csv.DictReader(f):\n        email = (рядок.get(\"email\") or \"\").strip().lower()\n        if not email:\n            # порожній email не вважаємо адресою, тож такі контакти пропускаємо\n            continue\n        групи.setdefault(email, []).append(рядок.get(\"імʼя\") or \"\")\n\nfor email, імена in групи.items():\n    if len(імена) >= 2:\n        print(f\"email: {email}\")\n        for імʼя in імена:\n            print(f\"  {імʼя}\")\n\nprint(f\"Унікальних: {len(групи)}\")\n",
+  "відповідь": "```python\nimport csv\nfrom pathlib import Path\n\n# Шлях відносно поточної теки: <тека запуску>/дані/контакти.csv\nшлях = Path(\"дані\") / \"контакти.csv\"\n\n# email (нормалізований) -> імена контактів; порядок ключів = порядок першої появи email\nгрупи = {}\n\nwith шлях.open(encoding=\"utf-8-sig\", newline=\"\") as f:\n    for рядок in csv.DictReader(f):\n        email = (рядок.get(\"email\") or \"\").strip().lower()\n        if not email:\n            # порожній email не вважаємо адресою, тож такі контакти пропускаємо\n            continue\n        групи.setdefault(email, []).append(рядок.get(\"імʼя\") or \"\")\n\nfor email, імена in групи.items():\n    if len(імена) >= 2:\n        print(f\"email: {email}\")\n        for імʼя in імена:\n            print(f\"  {імʼя}\")\n\nprint(f\"Унікальних: {len(групи)}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "email: olia@firma.ua\n  Оля Петренко\n  О. Петренко\n  Оля П.\nemail: petro@firma.ua\n  Петро Іваненко\n  Петро\nУнікальних: 4\n",
+  "помилки": ""
+ },
+ {
+  "спроба": 2,
+  "гаразд": true,
+  "код": "import csv\nfrom pathlib import Path\n\n# Шлях відносно поточної теки: <тека запуску>/дані/контакти.csv\nшлях = Path(\"дані\") / \"контакти.csv\"\n\n# email (нормалізований) -> імена контактів; порядок ключів = порядок першої появи email\nгрупи = {}\n\nwith шлях.open(encoding=\"utf-8-sig\", newline=\"\") as f:\n    for рядок in csv.DictReader(f):\n        email = (рядок.get(\"email\") or \"\").strip().lower()\n        if not email:\n            # порожній email не вважаємо адресою, тож такі контакти пропускаємо\n            continue\n        групи.setdefault(email, []).append(рядок.get(\"імʼя\") or \"\")\n\nfor email, імена in групи.items():\n    if len(імена) >= 2:\n        print(f\"{email}: {len(імена)}\")\n        for імʼя in імена:\n            print(f\"  {імʼя}\")\n\nprint(f\"Унікальних: {len(групи)}\")\n",
+  "відповідь": "```python\nimport csv\nfrom pathlib import Path\n\n# Шлях відносно поточної теки: <тека запуску>/дані/контакти.csv\nшлях = Path(\"дані\") / \"контакти.csv\"\n\n# email (нормалізований) -> імена контактів; порядок ключів = порядок першої появи email\nгрупи = {}\n\nwith шлях.open(encoding=\"utf-8-sig\", newline=\"\") as f:\n    for рядок in csv.DictReader(f):\n        email = (рядок.get(\"email\") or \"\").strip().lower()\n        if not email:\n            # порожній email не вважаємо адресою, тож такі контакти пропускаємо\n            continue\n        групи.setdefault(email, []).append(рядок.get(\"імʼя\") or \"\")\n\nfor email, імена in групи.items():\n    if len(імена) >= 2:\n        print(f\"{email}: {len(імена)}\")\n        for імʼя in імена:\n            print(f\"  {імʼя}\")\n\nprint(f\"Унікальних: {len(групи)}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "olia@firma.ua: 3\n  Оля Петренко\n  О. Петренко\n  Оля П.\npetro@firma.ua: 2\n  Петро Іваненко\n  Петро\nУнікальних: 4\n",
+  "помилки": ""
+ }
+]

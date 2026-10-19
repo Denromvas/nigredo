@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nimport sys\n\nsys.setrecursionlimit(100000)\n\n\ndef обхід(вузол, шлях, результат):\n    if isinstance(вузол, dict):\n        for ключ, значення in вузол.items():\n            обхід(значення, шлях + [str(ключ)], результат)\n    elif isinstance(вузол, list):\n        for індекс, значення in enumerate(вузол):\n            обхід(значення, шлях + [str(індекс)], результат)\n    elif isinstance(вузол, (int, float)) and not isinstance(вузол, bool):\n        if вузол > 100:\n            результат.append((\".\".join(шлях), вузол))\n\n\ndef main():\n    with open(\"дані/структура.json\", encoding=\"utf-8\") as f:\n        дані = json.load(f)\n    результат = []\n    обхід(дані, [], результат)\n    for шлях, значення in результат:\n        print(f\"{шлях} = {значення}\")\n    print(f\"Знайдено: {len(результат)}\")\n\n\nmain()\n",
+  "відповідь": "```python\nimport json\nimport sys\n\nsys.setrecursionlimit(100000)\n\n\ndef обхід(вузол, шлях, результат):\n    if isinstance(вузол, dict):\n        for ключ, значення in вузол.items():\n            обхід(значення, шлях + [str(ключ)], результат)\n    elif isinstance(вузол, list):\n        for індекс, значення in enumerate(вузол):\n            обхід(значення, шлях + [str(індекс)], результат)\n    elif isinstance(вузол, (int, float)) and not isinstance(вузол, bool):\n        if вузол > 100:\n            результат.append((\".\".join(шлях), вузол))\n\n\ndef main():\n    with open(\"дані/структура.json\", encoding=\"utf-8\") as f:\n        дані = json.load(f)\n    результат = []\n    обхід(дані, [], результат)\n    for шлях, значення in результат:\n        print(f\"{шлях} = {значення}\")\n    print(f\"Знайдено: {len(результат)}\")\n\n\nmain()\n```\n",
+  "код_виходу": 0,
+  "вивід": "відділи.0.бюджет = 1500\nвідділи.0.люди.1.ставка = 120\nвідділи.1.люди.0.ставка = 101\nліміти.місяць = 1000\nліміти.рік.план = 12000\nЗнайдено: 5\n",
+  "помилки": ""
+ }
+]

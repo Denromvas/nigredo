@@ -1,0 +1,20 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": false,
+  "код": "import re\n\nwith open(\"дані/текст.txt\", encoding=\"utf-8\") as f:\n    text = f.read()\n\nsentences = re.split(r\"[.!?]+\", text)\nword_re = re.compile(r\"[^\\W\\d_]+\", re.UNICODE)\n\nitems = []\nk = 0\nfor s in sentences:\n    words = word_re.findall(s)\n    if not words:\n        continue\n    k += 1\n    items.append((k, words))\n\nitems.sort(key=lambda x: (-len(x[1]), x[0]))\n\nfor k, words in items[:3]:\n    print(f\"№{k} ({len(words)} слів): {' '.join(words[:3])}\")\n",
+  "відповідь": "```python\nimport re\n\nwith open(\"дані/текст.txt\", encoding=\"utf-8\") as f:\n    text = f.read()\n\nsentences = re.split(r\"[.!?]+\", text)\nword_re = re.compile(r\"[^\\W\\d_]+\", re.UNICODE)\n\nitems = []\nk = 0\nfor s in sentences:\n    words = word_re.findall(s)\n    if not words:\n        continue\n    k += 1\n    items.append((k, words))\n\nitems.sort(key=lambda x: (-len(x[1]), x[0]))\n\nfor k, words in items[:3]:\n    print(f\"№{k} ({len(words)} слів): {' '.join(words[:3])}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "№7 (16 слів): Вона означає розпад\n№5 (11 слів): Але шлях складався\n№2 (9 слів): Майстри шукали камінь\n",
+  "помилки": ""
+ },
+ {
+  "спроба": 2,
+  "гаразд": true,
+  "код": "import re\n\nwith open(\"дані/текст.txt\", encoding=\"utf-8\") as f:\n    text = f.read()\n\nsentences = re.split(r\"[.!?]+\", text)\nword_re = re.compile(r\"[^\\W\\d_]+\", re.UNICODE)\n\nitems = []\nk = 0\nfor s in sentences:\n    words = word_re.findall(s)\n    if not words:\n        continue\n    k += 1\n    items.append((k, words))\n\nitems.sort(key=lambda x: (-len(x[1]), x[0]))\n\nfor k, words in items[:3]:\n    print(f\"№{k} ({len(words)} слів): {' '.join(words[:3])}…\")\n",
+  "відповідь": "```python\nimport re\n\nwith open(\"дані/текст.txt\", encoding=\"utf-8\") as f:\n    text = f.read()\n\nsentences = re.split(r\"[.!?]+\", text)\nword_re = re.compile(r\"[^\\W\\d_]+\", re.UNICODE)\n\nitems = []\nk = 0\nfor s in sentences:\n    words = word_re.findall(s)\n    if not words:\n        continue\n    k += 1\n    items.append((k, words))\n\nitems.sort(key=lambda x: (-len(x[1]), x[0]))\n\nfor k, words in items[:3]:\n    print(f\"№{k} ({len(words)} слів): {' '.join(words[:3])}…\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "№7 (16 слів): Вона означає розпад…\n№5 (11 слів): Але шлях складався…\n№2 (9 слів): Майстри шукали камінь…\n",
+  "помилки": ""
+ }
+]
