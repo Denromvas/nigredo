@@ -22,10 +22,12 @@ import urllib.parse
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 NGR = ROOT / 'interpreter' / 'ngr.py'
 DATA = ROOT / 'examples' / 'дані'
+# NGR_TEST_BIN=шлях — ті самі тести іншим виконавцем (Атанор: athanor/target/<ціль>/release/athanor)
+NGR_CMD = [os.environ['NGR_TEST_BIN']] if os.environ.get('NGR_TEST_BIN') else [sys.executable, str(NGR)]
 
 
 def run(args, env):
-    return subprocess.run([sys.executable, str(NGR), *args], capture_output=True, text=True, env=env)
+    return subprocess.run([*NGR_CMD, *args], capture_output=True, text=True, env=env)
 
 
 def header(src, key):
@@ -1004,14 +1006,14 @@ def main():
     seal = run(['--печатка', str(ROOT / 'examples' / 'ahent.ngr')], env).stdout
     check('права теки: немає' in seal and 'намір (слова автора): 「' in seal and 'необхідно, але не досить' in seal,
           '--печатка: слова автора в 「」, «права теки: немає», «необхідно, але не досить»', seal)
-    p = subprocess.Popen([sys.executable, str(NGR), '-e', '🜂 「багато рядків」 【】\n∀ …1 100000 λi » i'],
+    p = subprocess.Popen([*NGR_CMD, '-e', '🜂 「багато рядків」 【】\n∀ …1 100000 λi » i'],
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     p.stdout.readline()
     p.stdout.close()
     err = p.stderr.read().decode()
     p.wait()
     check(p.returncode != 4 and 'внутрішня' not in err and 'Exception' not in err, 'обірвана труба — тихо, не «вада мови»', err)
-    got = subprocess.run([sys.executable, str(NGR), '-e', '🜂 「а」 【】\n» ⌂', '--', os.fsdecode(b'\xff')],
+    got = subprocess.run([*NGR_CMD, '-e', '🜂 「а」 【】\n» ⌂', '--', os.fsdecode(b'\xff')],
                          capture_output=True, text=True, env=penv)
     tr = pathf.read_text(encoding='utf-8')
     check(got.returncode == 2 and 'не UTF-8' in got.stderr and 'Traceback' not in got.stderr
