@@ -1,0 +1,7 @@
+🜂 「р2_xml_читання без першого рядка: непідтримані кроки ↘ і змішаний вміст」
+← d χ 「<r><Ntry><CdtDbtInd>CRDT</CdtDbtInd><Amt Ccy="UAH">10</Amt></Ntry><Ntry><CdtDbtInd>DBIT</CdtDbtInd><Amt Ccy="UAH">5</Amt></Ntry></r>」
+← ш 【「//Ntry[CdtDbtInd='DBIT']」 「//Ntry[CdtDbtInd!='CRDT']」 「//Amt/text()」 「//Amt/..」 「//@Ccy」 「.」 「//Amt|//Ntry」 「//Ntry[CdtDbtInd='DBIT'」 「//Ntry[Amt>='6']」 「//r」 「/r」】
+∀ ш λp » ☂ 〔{p} → {ρ ↘ d p}〕 λe 〔{p} → помилка: {⊏ e 0 40}〕
+← m χ 「<a>до<b>в</b>після</a>」
+» χ m
+» ＝ χ χ m m

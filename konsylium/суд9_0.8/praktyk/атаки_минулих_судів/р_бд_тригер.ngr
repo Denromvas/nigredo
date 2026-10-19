@@ -1,0 +1,11 @@
+🜂 「SQLite: тригер, DROP, RETURNING」 【「бд.писати:звіти」】
+← б 「звіти/р2.db」
+» 〔1 {🜔бд.писати б 「CREATE TABLE IF NOT EXISTS журнал(x)」 【】}〕
+» 〔2 {🜔бд.писати б 「CREATE TABLE IF NOT EXISTS важливе(x)」 【】}〕
+» 〔3 вставлено у важливе: {🜔бд.писати б 「INSERT INTO важливе VALUES(1),(2),(3)」 【】}〕
+» 〔4 тригер: {🜔бд.писати б 「CREATE TRIGGER міна AFTER INSERT ON журнал BEGIN DELETE FROM важливе; END」 【】}〕
+» 〔5 INSERT у журнал, змінено: {🜔бд.писати б 「INSERT INTO журнал VALUES(1)」 【】}〕
+» 〔7 DROP TRIGGER: {☂ 🜔бд.писати б 「DROP TRIGGER міна」 【】 λe e}〕
+» 〔8 CREATE VIEW: {☂ 🜔бд.писати б 「CREATE VIEW IF NOT EXISTS в AS SELECT * FROM журнал」 【】 λe e}〕
+» 〔9 DROP VIEW: {☂ 🜔бд.писати б 「DROP VIEW в」 【】 λe e}〕
+» 〔10 DROP TABLE: {☂ 🜔бд.писати б 「DROP TABLE журнал」 【】 λe e}〕
