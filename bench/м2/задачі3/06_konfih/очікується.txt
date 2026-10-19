@@ -1,0 +1,13 @@
+[api]
+timeout=30
+[cache]
+enabled=true
+ttl=300
+[db]
+host=10.0.0.5
+name=erp
+port=5432
+user=denys
+[log]
+file=/var/log/erp.log
+level=debug

@@ -527,6 +527,22 @@ def main():
     got2 = run(['-e', good], env)
     check(got.returncode == 0 and got2.returncode == 0, '--перевірити: правильні програми з типами елементів — без хибних тривог',
           got.stdout + got2.stdout + got2.stderr)
+    # 0.8 (М2: пастка, на якій помилявся й автор мови): ∧ ∨ — як and/or; τ — тип значення
+    got = run(['-e', '🜂\n← xs 【】\n» ∧ › ρ xs 0 ＝ § xs 0 1\n» ∨ ● ＝ 1 ÷ 1 ν 「0」\n» ☂ ∧ ● δ 「5」 λe e\n'
+                     '» ∨ ○ ∧ ● ●\n» μ 【1 「a」 ● ∅ 【】 『』 λx x】 λv τ v'], env)
+    check(got.stdout == '○\n●\n∧: умова має бути ● або ○, а не число 5\n●\n'
+          '【「число」 「рядок」 「●/○」 「∅」 「список」 「словник」 「функція」】\n',
+          '∧ ∨ обчислюють правий бік лише коли він вирішує (тип — перевірено); τ — назви типів як у ✓', got.stdout + got.stderr)
+    got = run(['-e', '🜂 【「оракул」】\n← п 🜔оракул 「x」\n← r ∧ п ●\n» ± r\n» ± ∧ ○ п\n'
+                     '← q ∨ п ＝ 1 ν 「x」\n» 〔{q} {± q}〕\n» ± τ п\n» ± 1'], env)
+    check(got.stdout == '0.6\n1\n● 0.6\n0.6\n0.6\n',
+          '∧ ∨: сумнівна ліва частина — результат не впевненіший; пропущений правий бік, що міг упасти, — канал завершення; '
+          'τ сумнівного — сумнівний', got.stdout + got.stderr)
+    got = run(['-e', '🜂 【「оракул」】\n← п 🜔оракул 「x」\n» ∧ ¬ п ＝ ∅ 🜄 「k」 1\n» ± 🜃 「k」'], env)
+    got2 = run(['-e', '🜂\n← l μ 【1】 λx ≈ x 0.5\n» 〔{± l} {± τ l} {± ρ l}〕'], env)
+    check(got2.stdout == '0.5 1 1\n', 'τ — впевненість будови (як ρ), а не вмісту', got2.stdout + got2.stderr)
+    check(got.stdout == '○\n0.6\n', '∧: памʼять, яку правий бік міг змінити залежно від сумнівного, — сумнівна',
+          got.stdout + got.stderr)
     short = run(['--памʼятка-коротка'], env).stdout
     check('бд.читати:тека' in short and 'процес:git status' in short and '‖ список' in short and 'Шлях' in short,
           'коротка памʼятка (MCP): дозволи бд/процес, правило шляхів, обмеження ‖', short[:500])
@@ -1076,6 +1092,8 @@ def main():
     for g in M.TYPE_REQ:
         for combo in itertools.product(S, repeat=M.GLYPHS[g][0]):
             line = '» ' + g + ' ' + ' '.join(S[t] for t in combo)
+            if g in '∧∨' and combo[0] == ('no' if g == '∧' else 'bool'):
+                continue        # правий бік не обчислюється (як and/or); не-умова там — однаково вада програми
             errs = []
             try:
                 prog = M.parse('🜂 「т」 【】\n' + line, None, None, errs)
