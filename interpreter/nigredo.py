@@ -4959,6 +4959,191 @@ def approval_report(prog, approval, allowed, source, cwd, dir_extra, prog_extra)
                       'Агенти цей файл не пишуть. Змінений байт програми чи її модуля — інший відбиток, і схвалення не діє.'])
 
 
+# ------------------------------------------------------------------ формат
+
+
+def format_source(src, base=None, path=None):
+    """Канонічний текст програми: ті самі токени й переноси рядків, що в авторському тексті; між токенами —
+    один пробіл (без пробілу після 【『《 і перед 】』》, після λ Λ ∘ 🜔, усередині шаблону), відступи —
+    за будовою (інструкція — на відступі свого блоку, продовження — на 2 глибше за її початок і ще на 2 за кожну
+    відкриту 【『), цифри — 0–9, імена — NFC; коментарі ※ лишаються на своїх місцях, порожні рядки — не більше
+    одного поспіль. Розбір того самого тексту дає те саме дерево (перевірено на всіх програмах репозиторію)."""
+    toks = lex(src)
+    prog = parse(src, base, path)
+    heads = set()
+
+    def walk(n):
+        if isinstance(n, tuple) and n:
+            if n[0] == 'block' and isinstance(n[2], list):
+                heads.update(st[1] for st in n[2])
+            for x in n:
+                walk(x)
+        elif isinstance(n, list):
+            for x in n:
+                walk(x)
+    walk(prog)
+    starts, k = [0], 0                     # зміщення початків рядків (колонки лексера — у символах, з 1)
+    for line in src.split('\n'):
+        k += len(line) + 1
+        starts.append(k)
+
+    def at(pos):
+        return starts[pos[0] - 1] + pos[1] - 1
+
+    sig = [t for t in toks if t[0] != 'eof' and not (t[0] == 'nl' and t[1] >= 0)]
+    spans = []
+    for j, t in enumerate(sig):
+        s = at(t[2])
+        kind = t[0]
+        if kind == 'str':
+            i = s + 1
+            while src[i] != STR_CLOSE:
+                i += 2 if src[i] == '\\' else 1
+            e = i + 1
+        elif kind == 'tpart':
+            e = at(sig[j + 1][2])
+        elif kind == 'num':
+            i = s + 1 if src[s] == NEG else s
+            while i < len(src) and (digit(src[i]) is not None
+                                    or (src[i] in '.·' and i + 1 < len(src) and digit(src[i + 1]) is not None)):
+                i += 1
+            e = i
+        elif kind == 'name':
+            i = s
+            while i < len(src) and (is_name_char(src[i])
+                                    or (src[i] == '.' and i + 1 < len(src) and is_name_start(src[i + 1]))):
+                i += 1
+            e = i
+        else:
+            e = s + 1
+        spans.append((s, e))
+
+    def text(j):
+        t, (s, e) = sig[j], spans[j]
+        if t[0] == 'num':
+            return ''.join(NEG if c == NEG else '.' if c in '.·' else str(digit(c)) for c in src[s:e])
+        if t[0] == 'name':
+            return unicodedata.normalize('NFC', src[s:e])
+        if t[0] in ('str', 'tpart'):
+            return src[s:e].replace('\r\n', '\n')
+        return src[s:e]
+
+    ATTACH = {'λ', 'Λ', '∘', '🜔'}
+    INNER = ('topen', 'hopen', 'tpart')
+    out = []                               # готові рядки
+    cur = ''                               # поточний рядок
+    pending = []                           # коментарі й порожні рядки перед наступним рядком коду
+    blocks = []                            # відкриті 《: (відступ рядка з 《, голови інструкцій усередині)
+    levels = [[None]]                      # на кожному рівні блоку — голова поточної інструкції (індекс у sig)
+    col_of = {}                            # колонка токена у виводі
+    opens = []                             # відкриті дужки: (символ, індекс голови інструкції, де відкрито)
+    line_indent = 0
+
+    def indent_for(j):
+        t = sig[j]
+        if t[2] in heads:
+            return blocks[-1][0] + 2 if blocks else 0
+        if t[0] == 'close' and t[1] == '》':
+            return blocks[-1][0]
+        h = levels[-1][-1]
+        base_col = col_of.get(h, 0)
+        d = sum(1 for o in opens if o[0] in '【『' and o[1] == h)
+        if t[0] == 'close' and t[1] in '】』':
+            d -= 1
+        return base_col + 2 + 2 * max(d, 0)
+
+    def flush_pending(ind):
+        nonlocal pending
+        blank = False
+        for p in pending:
+            if p is None:
+                blank = True
+                continue
+            if blank and out:
+                out.append('')
+            blank = False
+            out.append(' ' * ind + p)
+        if blank and out:
+            out.append('')
+        pending = []
+
+    def gap_comments(gap, first):
+        """Коментар у кінці рядка коду — повертає його; повні рядки коментарів і порожні — у pending."""
+        parts = gap.split('\n')
+        trail = None
+        seg = parts[0].strip(' \t\r')
+        if seg.startswith(COMMENT):
+            trail = seg.rstrip(' \t\r')
+        for mid in parts[1:-1]:
+            m = mid.strip(' \t\r')
+            pending.append(m if m else None)
+        if not first and len(parts) == 1:
+            return trail
+        return trail
+
+    # перед першим токеном
+    head_gap = src[:spans[0][0]] if sig else src
+    for ln in head_gap.split('\n')[:-1] if sig else head_gap.split('\n'):
+        m = ln.strip(' \t\r')
+        if m:
+            pending.append(m)
+        elif pending:
+            pending.append(None)
+    for j, t in enumerate(sig):
+        newline = False
+        if j > 0:
+            gap = src[spans[j - 1][1]:spans[j][0]]
+            if '\n' in gap and sig[j - 1][0] not in ('tpart',) and t[0] not in ('tpart', 'hclose', 'tclose', 'hopen'):
+                trail = gap_comments(gap, False)
+                if trail:
+                    cur += ' ' + trail
+                out.append(cur.rstrip())
+                cur = ''
+                newline = True
+        if j == 0 or newline:
+            line_indent = indent_for(j)
+            flush_pending(line_indent)
+            cur = ' ' * line_indent
+        else:
+            p = sig[j - 1]
+            tight = (p[0] == 'open' or t[0] == 'close' or p[0] in INNER or t[0] in ('tpart', 'tclose', 'hopen', 'hclose')
+                     or (p[0] == 'hclose') or (p[0] == 'glyph' and p[1] in ATTACH and t[0] in ('name', 'open'))
+                     or (p[0] == 'glyph' and p[1] == 'Λ'))
+            if t[0] == 'nl':          # ¦
+                tight = False
+            if p[0] == 'nl':
+                tight = False
+            cur += '' if tight else ' '
+        # голови інструкцій і блоки
+        if t[2] in heads:
+            levels[-1][-1] = j
+        col_of[j] = len(cur) - (cur.rfind('\n') + 1)
+        piece = '¦' if t[0] == 'nl' else text(j)
+        cur += piece
+        if t[0] == 'open':
+            opens.append((t[1], levels[-1][-1]))
+            if t[1] == '《':
+                blocks.append((line_indent, j))
+                levels.append([None])
+        elif t[0] == 'close':
+            o = opens.pop()
+            if o[0] == '《':
+                blocks.pop()
+                levels.pop()
+    tail = src[spans[-1][1]:] if sig else ''
+    trail = gap_comments(tail + '\n', False) if sig else None
+    if trail:
+        cur += ' ' + trail
+    if cur.strip():
+        out.append(cur.rstrip())
+    while pending and pending[-1] is None:
+        pending.pop()
+    flush_pending(0)
+    while out and out[-1] == '':
+        out.pop()
+    return '\n'.join(out) + '\n'
+
+
 # ------------------------------------------------------------------ памʼятка
 
 
@@ -4971,6 +5156,7 @@ def cheatsheet():
            '- **Помилки до запуску.** Значення незмінні, тож тип кожного названого значення відомий: `＋ 「рядок」 n`,',
            '  `‹ 「5」 3`, умова не ●/○, `§ список 「ключ」`, небезпечна регулярка, `÷ x 0` — помилка до запуску.',
            '  `ngr --перевірити --json файл` — усі помилки одразу (з місцем і підказкою) і печатка, без виконання.',
+           '  `ngr --формат файл` — той самий код у канонічному вигляді (пробіли, відступи, цифри 0–9; коментарі лишаються).',
            '- **Кінець рядка завершує вираз.** Бракує аргументу в кінці рядка — помилка до запуску. Довгий вираз',
            '  продовжуйте на наступних рядках **з більшим відступом**; усередині `【】` і `『』` перенос вільний.',
            '  Зайве після завершеного виразу — теж помилка. Кілька виразів в одному рядку — через `¦`.',
@@ -5214,6 +5400,8 @@ USAGE = f"""Nigredo {VERSION}
     --розмір N             найбільший рядок/список (типово {MAX_SIZE})
   ngr --перевірити [--json] ФАЙЛ   усі помилки до запуску (розбір, типи, регулярки) і печатка — без виконання
   ngr --перевірити-слід ФАЙЛ [ПРОГРАМА]   (з програмою — ще й чи слід саме від неї)
+  ngr --формат ФАЙЛ.ngr    канонічний текст програми (пробіли, відступи, цифри 0–9; коментарі лишаються) — у stdout;
+                           розбір дає те саме дерево
   ngr --схвалити ФАЙЛ.ngr  для власника: відбиток програми, печатка, переклад і запис «для_програм» — права саме цій
                            програмі (змінений байт її чи модуля — і схвалення не діє); файл дозволів пише власник
   ngr --сухо ФАЙЛ.ngr      виконати без записів, надсилань, процесів, агентів і взяти (читання — так): результат —
@@ -5485,7 +5673,7 @@ def main(argv):
         if a == '--сухо':
             opts['dry'] = True
             continue
-        if a in ('--печатка', '--розбір', '--перевірити', '--схвалити'):
+        if a in ('--печатка', '--розбір', '--перевірити', '--схвалити', '--формат'):
             opts['mode'] = a[2:]
         elif a == '--слід':
             opts['trace'] = next(it)
@@ -5601,6 +5789,12 @@ def main(argv):
             if not errors and not missing:
                 print('✓ помилок до запуску не знайдено; печатка в межах дозволів власника')
         return 2 if errors else 3 if missing else 0
+    if opts['mode'] == 'формат':
+        if perr:
+            print(perr, file=sys.stderr)
+            return 2
+        sys.stdout.write(format_source(src, cwd, None if path == '<-e>' else path))
+        return 0
     if opts['mode'] == 'схвалити':
         if perr:
             print(perr, file=sys.stderr)
