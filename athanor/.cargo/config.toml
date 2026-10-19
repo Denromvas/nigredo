@@ -1,0 +1,3 @@
+# Termux (Android): rustc з Termux лінкує clang-ом Termux (у proot /usr/bin/cc — glibc, не підходить)
+[target.aarch64-linux-android]
+linker = "/data/data/com.termux/files/usr/bin/clang"
