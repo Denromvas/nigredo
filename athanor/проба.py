@@ -15,7 +15,7 @@ HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, os.path.join(HERE, '..', 'interpreter'))
 import nigredo as N  # noqa: E402
 
-BIN = os.path.join(HERE, 'target', 'release', 'athanor')
+BIN = next((p for p in (os.path.join(HERE, 'target', t, 'release', 'athanor') for t in ('aarch64-unknown-linux-musl', 'x86_64-unknown-linux-musl', '')) if os.path.exists(p)))
 rng = random.Random(int(os.environ.get('SEED', '7')))
 
 

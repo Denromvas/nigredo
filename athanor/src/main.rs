@@ -15,6 +15,7 @@ mod prims;
 mod prims2;
 mod pyf;
 mod rng;
+mod sampler;
 mod seal;
 mod sha;
 mod sort;
@@ -351,6 +352,7 @@ fn execute(
         owner_home: home.to_string(),
         paths_seen: None,
         denied: false,
+        prof: if std::env::var_os("ATHANOR_PROFILE").is_some() { Some(Default::default()) } else { None },
     };
     let mut head = vec![
         ("версія".to_string(), J::s(lang::VERSION)),
@@ -391,7 +393,16 @@ fn execute(
         it.quota_stack.push(Rc::new(interp::QuotaTable { who: "власник".into(), quotas: oq, tok: "власник".into() }));
     }
     let root = value::Env::new(0, None);
+    let t_all = std::time::Instant::now();
     let result = it.eval(prog, &root);
+    if let Some(p) = &it.prof {
+        let mut v: Vec<_> = p.iter().collect();
+        v.sort_by(|a, b| b.1 .1.cmp(&a.1 .1));
+        eprintln!("профіль: усього {:?}", t_all.elapsed());
+        for (k, (n, d)) in v.iter().take(25) {
+            eprintln!("  {:10} {:8} разів {:?}", k, n, d);
+        }
+    }
     match result {
         Ok(_) => {
             let steps = o.steps - it.steps_left;
@@ -540,6 +551,10 @@ fn main() {
             eprintln!("✗ внутрішня помилка Атанора: {}", info);
         }
     }));
+    let sample = std::env::var("ATHANOR_SAMPLE").ok();
+    if sample.is_some() {
+        sampler::start();
+    }
     let h = std::thread::Builder::new().stack_size(1 << 29).spawn(run).expect("потік");
     let code = match h.join() {
         Ok(c) => c,
@@ -549,6 +564,9 @@ fn main() {
         },
     };
     let _ = BACK.with(|b| b.borrow().clone());
+    if let Some(p) = sample {
+        sampler::finish(&p);
+    }
     let _ = std::io::stdout().flush();
     std::process::exit(code);
 }

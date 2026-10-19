@@ -63,11 +63,39 @@ impl PStr {
     }
 }
 
+/// FxHash (rustc): швидкий хеш для коротких ключів-рядків (стійкість до колізій тут не потрібна: ключі — дані
+/// програми, а найгірший випадок лише сповільнює, не змінює результат).
+#[derive(Default, Clone, Copy)]
+pub struct Fx(u64);
+
+impl std::hash::Hasher for Fx {
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        let mut h = self.0;
+        let mut b = bytes;
+        while b.len() >= 8 {
+            h = (h.rotate_left(5) ^ u64::from_le_bytes(b[..8].try_into().unwrap())).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
+            b = &b[8..];
+        }
+        for &x in b {
+            h = (h.rotate_left(5) ^ x as u64).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
+        }
+        self.0 = h;
+    }
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+pub type FxBuild = std::hash::BuildHasherDefault<Fx>;
+pub type FxMap<K, V> = HashMap<K, V, FxBuild>;
+
 #[derive(Debug, Default)]
 pub struct Dict {
     pub keys: Vec<Rc<PStr>>,
     pub vals: Vec<V>,
-    index: RefCell<Option<HashMap<Rc<str>, usize>>>,
+    index: RefCell<Option<FxMap<Rc<str>, usize>>>,
 }
 
 impl Dict {
@@ -83,7 +111,7 @@ impl Dict {
         }
         let mut idx = self.index.borrow_mut();
         let m = idx.get_or_insert_with(|| {
-            let mut m = HashMap::with_capacity(self.keys.len());
+            let mut m = FxMap::with_capacity_and_hasher(self.keys.len(), Default::default());
             for (i, x) in self.keys.iter().enumerate() {
                 m.insert(Rc::from(&*x.s), i);
             }
@@ -303,14 +331,32 @@ fn show_into(out: &mut String, x: &V, top: bool) {
                 out.push_str(&s.s);
             } else {
                 out.push('「');
-                for c in s.s.chars() {
-                    match c {
-                        '\\' => out.push_str("\\\\"),
-                        '」' => out.push_str("\\」"),
-                        '\n' => out.push_str("\\n"),
-                        c => out.push(c),
+                let t: &str = &s.s;
+                let b = t.as_bytes();
+                out.reserve(b.len() + 4);
+                let mut start = 0;
+                let mut i = 0;
+                while i < b.len() {
+                    let c = b[i];
+                    let rep = if c == b'\\' {
+                        Some(("\\\\", 1))
+                    } else if c == b'\n' {
+                        Some(("\\n", 1))
+                    } else if c == 0xE3 && i + 2 < b.len() && b[i + 1] == 0x80 && b[i + 2] == 0x8D {
+                        Some(("\\」", 3))
+                    } else {
+                        None
+                    };
+                    if let Some((r, w)) = rep {
+                        out.push_str(&t[start..i]);
+                        out.push_str(r);
+                        i += w;
+                        start = i;
+                    } else {
+                        i += 1;
                     }
                 }
+                out.push_str(&t[start..]);
                 out.push('」');
             }
         }

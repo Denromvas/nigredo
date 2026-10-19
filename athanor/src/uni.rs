@@ -76,16 +76,27 @@ pub fn glyph_twin(skel: &str) -> Option<&'static str> {
     GLYPH_TWIN.binary_search_by(|&(a, _)| a.cmp(skel)).ok().map(|i| GLYPH_TWIN[i].1)
 }
 
+#[inline]
+fn bit(t: &[u64; 1024], cp: u32) -> bool {
+    t[(cp >> 6) as usize] >> (cp & 63) & 1 == 1
+}
+
+#[inline]
 pub fn invisible(c: char) -> bool {
-    in_ranges(&INVISIBLE, c as u32)
+    let cp = c as u32;
+    if cp < 0x10000 { bit(&INVISIBLE_BMP, cp) } else { in_ranges(&INVISIBLE, cp) }
 }
 
+#[inline]
 pub fn isspace(c: char) -> bool {
-    in_ranges(&ISSPACE, c as u32)
+    let cp = c as u32;
+    if cp < 0x10000 { bit(&ISSPACE_BMP, cp) } else { in_ranges(&ISSPACE, cp) }
 }
 
+#[inline]
 pub fn isalnum(c: char) -> bool {
-    in_ranges(&ISALNUM, c as u32)
+    let cp = c as u32;
+    if cp < 0x10000 { bit(&ISALNUM_BMP, cp) } else { in_ranges(&ISALNUM, cp) }
 }
 
 pub fn isdigit(c: char) -> bool {
@@ -189,8 +200,57 @@ pub fn split_ws(s: &str) -> Vec<&str> {
 }
 
 /// hidden(text, allow): невидимі символи тексту (крім allow), селектор вигляду після значка (So) — видимий.
+/// Чи є в тексті невидимий символ (крім allow) — швидко: ASCII і двобайтові без невидимих пропускаються за байтом.
+fn any_invisible(text: &str, allow: &str) -> bool {
+    let b = text.as_bytes();
+    let (nl, tab) = (allow.contains('\n'), allow.contains('\t'));
+    let mut i = 0;
+    while i < b.len() {
+        let x = b[i];
+        if x < 0x80 {
+            if (x < 0x20 || x == 0x7f) && !((x == b'\n' && nl) || (x == b'\t' && tab)) {
+                if !allow.contains(x as char) {
+                    return true;
+                }
+            }
+            i += 1;
+            continue;
+        }
+        let w = if x < 0xE0 { 2 } else if x < 0xF0 { 3 } else { 4 };
+        if w == 2 && !LEAD2[(x & 0x1f) as usize] {
+            i += 2;
+            continue;
+        }
+        let c = text[i..].chars().next().unwrap();
+        if invisible(c) && !allow.contains(c) {
+            return true;
+        }
+        i += w;
+    }
+    false
+}
+
+/// Двобайтові UTF-8 (U+0080…U+07FF) за провідним байтом: чи є в цій сотні невидимі (C1, U+00AD, U+034F, U+061C…).
+static LEAD2: [bool; 32] = {
+    let mut t = [false; 32];
+    let mut lead = 2;
+    while lead < 32 {
+        let mut cp = (lead as u32) << 6;
+        let end = cp + 64;
+        while cp < end {
+            if INVISIBLE_BMP[(cp >> 6) as usize] >> (cp & 63) & 1 == 1 {
+                t[lead] = true;
+            }
+            cp += 1;
+        }
+        lead += 1;
+    }
+    t
+};
+
+/// hidden(text, allow): невидимі символи тексту (крім allow), селектор вигляду після значка (So) — видимий.
 pub fn hidden(text: &str, allow: &str) -> Vec<char> {
-    if !text.chars().any(|c| !allow.contains(c) && invisible(c)) {
+    if !any_invisible(text, allow) {
         return Vec::new();
     }
     let mut out = Vec::new();

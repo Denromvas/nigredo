@@ -329,8 +329,11 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             let s = need_str(&a[0], "✂", pos)?;
             let sep = need_str(&a[1], "✂", pos)?;
             let c = a[0].c.min(a[1].c);
+            let mut sc = sep.s.chars();
             let parts: Vec<V> = if sep.s.is_empty() {
                 uni::split_ws(&s.s).into_iter().map(|p| V::strc(p.to_string(), c)).collect()
+            } else if let (Some(ch), None) = (sc.next(), sc.next()) {
+                s.s.split(ch).map(|p| V::strc(p.to_string(), c)).collect()
             } else {
                 s.s.split(&*sep.s).map(|p| V::strc(p.to_string(), c)).collect()
             };
@@ -568,7 +571,24 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             let src = need_str(&a[0], "⇄", pos)?;
             let old = need_str(&a[1], "⇄", pos)?;
             let new = need_str(&a[2], "⇄", pos)?;
-            let cnt = if old.s.is_empty() { src.nch as u64 + 1 } else { src.s.matches(&*old.s).count() as u64 };
+            let mut oc = old.s.chars();
+            let one = match (oc.next(), oc.next()) {
+                (Some(ch), None) => Some(ch),
+                _ => None,
+            };
+            let cnt = if old.s.is_empty() {
+                src.nch as u64 + 1
+            } else if let Some(ch) = one {
+                src.s.matches(ch).count() as u64
+            } else {
+                src.s.matches(&*old.s).count() as u64
+            };
+            if let Some(ch) = one {
+                if src.nch as u64 + cnt * new.nch as u64 > it.max_size {
+                    return fatal(format!("⇄: значення завелике (> --розмір {})", it.max_size), Some(pos));
+                }
+                return Ok(V::str(src.s.replace(ch, &new.s)));
+            }
             if src.nch as u64 + cnt * new.nch as u64 > it.max_size {
                 return fatal(format!("⇄: значення завелике (> --розмір {})", it.max_size), Some(pos));
             }
