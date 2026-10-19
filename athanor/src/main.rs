@@ -18,6 +18,7 @@ mod csvp;
 mod dates;
 mod rng;
 mod rx;
+mod schema;
 mod sampler;
 mod seal;
 mod sha;
@@ -42,7 +43,7 @@ const SOURCE_SHA: &str = env!("ATHANOR_SOURCE_SHA");
 
 /// Гліфи, які Атанор виконує сам (решта — еталон: XML, регулярки, дати, CSV, схеми, паралельні виклики).
 fn glyph_ok(g: char) -> bool {
-    !matches!(g, '‖' | 'χ' | '↘' | '✓')
+    !matches!(g, '‖' | 'χ' | '↘')
 }
 
 thread_local! {
