@@ -64,7 +64,7 @@ fn read_text(path: &str, limit: usize) -> Result<Result<String, ()>, std::io::Er
     let bytes = std::fs::read(path)?;
     let s = match String::from_utf8(bytes) {
         Ok(s) => s,
-        Err(_) => return Ok(Err(())),
+        Err(e) => return Ok(read_chunked(e.as_bytes(), limit)),
     };
     let s = if s.contains('\r') { s.replace("\r\n", "\n").replace('\r', "\n") } else { s };
     if s.len() <= limit || s.chars().count() <= limit {
@@ -74,6 +74,63 @@ fn read_text(path: &str, limit: usize) -> Result<Result<String, ()>, std::io::Er
         Some((b, _)) => Ok(Ok(s[..b].to_string())),
         None => Ok(Ok(s)),
     }
+}
+
+/// Невалідний UTF-8 — так, як читає його TextIOWrapper.read(n) (CPython 3.13): шматками (перший — n байтів, далі —
+/// за співвідношенням байтів до символів попереднього шматка, щонайменше 8192), кожен декодується строго (незавершений
+/// символ у кінці шматка чекає наступного), \r у кінці шматка — теж; помилка — лише якщо погані байти в прочитаних
+/// шматках, а прочитано рівно стільки, щоб набрати n символів.
+fn read_chunked(bytes: &[u8], limit: usize) -> Result<String, ()> {
+    let (mut pos, mut ratio, mut remaining) = (0usize, 0.0f64, limit);
+    let mut pending: Vec<u8> = Vec::new();
+    let mut pending_cr = false;
+    let mut out = String::new();
+    while remaining > 0 {
+        let hint = (ratio.max(1.0) * remaining as f64) as usize;
+        let size = hint.max(8192);
+        let chunk = &bytes[pos..(pos + size).min(bytes.len())];
+        pos += chunk.len();
+        let eof = chunk.is_empty();
+        let mut data = std::mem::take(&mut pending);
+        data.extend_from_slice(chunk);
+        let decoded: &str = match std::str::from_utf8(&data) {
+            Ok(t) => t,
+            Err(e) if e.error_len().is_none() && !eof => {
+                pending = data[e.valid_up_to()..].to_vec();
+                std::str::from_utf8(&data[..e.valid_up_to()]).unwrap()
+            }
+            Err(_) => return Err(()),
+        };
+        let mut text = String::new();
+        if pending_cr && (eof || !decoded.is_empty()) {
+            text.push('\r');
+            pending_cr = false;
+        }
+        text.push_str(decoded);
+        if !eof && text.ends_with('\r') {
+            text.pop();
+            pending_cr = true;
+        }
+        if text.contains('\r') {
+            text = text.replace("\r\n", "\n").replace('\r', "\n");
+        }
+        let nchars = text.chars().count();
+        ratio = if nchars > 0 { chunk.len() as f64 / nchars as f64 } else { 0.0 };
+        match text.char_indices().nth(remaining) {
+            Some((b, _)) => {
+                out.push_str(&text[..b]);
+                remaining = 0;
+            }
+            None => {
+                out.push_str(&text);
+                remaining -= nchars;
+            }
+        }
+        if eof && nchars == 0 {
+            break;
+        }
+    }
+    Ok(out)
 }
 
 pub fn run(it: &mut Interp, name: &str, args: &[V], pos: Pos) -> R<V> {

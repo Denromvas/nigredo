@@ -31,6 +31,36 @@ fn need_str(x: &V, g: &str, pos: Pos) -> R<Rc<PStr>> {
     }
 }
 
+/// ✂ за одним символом. Частини ASCII-рядка — ASCII (довжина = байти), інакше символи лічимо раз; короткі повтори —
+/// одне спільне значення (Interner); місце під список — рівно на кількість частин.
+fn split_char(s: &PStr, ch: char, c: f64) -> Vec<V> {
+    let ascii = s.ascii();
+    let parts = if ch.is_ascii() { count_byte(s.s.as_bytes(), ch as u8) + 1 } else { s.s.matches(ch).count() + 1 };
+    let mut out = Vec::with_capacity(parts);
+    let mut cache = Interner::new();
+    for p in s.s.split(ch) {
+        let r = cache.get(p, || if ascii { p.len() } else { p.chars().count() });
+        let n = r.nch as u64 + 1;
+        out.push(V { v: Val::Str(r), c, s: c, n });
+    }
+    out
+}
+
+/// Скільки разів байт трапляється (по 8 байтів за крок).
+fn count_byte(b: &[u8], x: u8) -> usize {
+    const LO: u64 = 0x0101_0101_0101_0101;
+    const HI: u64 = 0x8080_8080_8080_8080;
+    let mut n = 0usize;
+    let mut chunks = b.chunks_exact(8);
+    for w in &mut chunks {
+        let v = u64::from_le_bytes(w.try_into().unwrap()) ^ (LO * x as u64);
+        // точна кількість нульових байтів: старший біт кожного байта, що був нулем
+        let z = !(((v & !HI).wrapping_add(!HI)) | v) & HI;
+        n += z.count_ones() as usize;
+    }
+    n + chunks.remainder().iter().filter(|&&y| y == x).count()
+}
+
 fn need_list(x: &V, g: &str, pos: Pos) -> R<Rc<List>> {
     match &x.v {
         Val::List(l) => Ok(l.clone()),
@@ -333,7 +363,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             let parts: Vec<V> = if sep.s.is_empty() {
                 uni::split_ws(&s.s).into_iter().map(|p| V::strc(p.to_string(), c)).collect()
             } else if let (Some(ch), None) = (sc.next(), sc.next()) {
-                s.s.split(ch).map(|p| V::strc(p.to_string(), c)).collect()
+                split_char(&s, ch, c)
             } else {
                 s.s.split(&*sep.s).map(|p| V::strc(p.to_string(), c)).collect()
             };
@@ -921,12 +951,20 @@ pub enum WrapErr {
 }
 
 /// wrap(p, c): дані JSON у значення мови (вкладеність — не глибше VALUE_MAX_DEPTH).
-pub fn wrap(p: &P, c: f64, depth: u64) -> Result<V, WrapErr> {
+pub fn wrap(p: &P<'_>, c: f64, depth: u64) -> Result<V, WrapErr> {
+    let (mut keys, mut strs) = (Interner::always(), Interner::new());
+    wrap_c(p, c, depth, &mut keys, &mut strs)
+}
+
+fn wrap_c<'a>(p: &'a P<'_>, c: f64, depth: u64, keys: &mut Interner<'a>, strs: &mut Interner<'a>) -> Result<V, WrapErr> {
     match p {
         P::Null => Ok(V::none_c(c)),
         P::Bool(b) => Ok(V::new(Val::Bool(*b), c)),
         P::Int(s) => {
-            let (neg, d) = if let Some(r) = s.strip_prefix('-') { (true, r) } else { (false, s.as_str()) };
+            if s.len() <= 18 {
+                return Ok(V::new(Val::Int(Int::S(s.parse::<i64>().unwrap())), c));
+            }
+            let (neg, d) = if let Some(r) = s.strip_prefix('-') { (true, r) } else { (false, *s) };
             let d = d.trim_start_matches('0');
             Ok(V::new(Val::Int(Int::from_dec(neg, if d.is_empty() { "0" } else { d })), c))
         }
@@ -935,7 +973,9 @@ pub fn wrap(p: &P, c: f64, depth: u64) -> Result<V, WrapErr> {
             if *sur {
                 return Err(WrapErr::Surrogate);
             }
-            Ok(V::strc(s.clone(), c))
+            let r = strs.get(s, || s.chars().count());
+            let n = r.nch as u64 + 1;
+            Ok(V { v: Val::Str(r), c, s: c, n })
         }
         P::Arr(xs) => {
             if depth >= lang::VALUE_MAX_DEPTH {
@@ -943,7 +983,7 @@ pub fn wrap(p: &P, c: f64, depth: u64) -> Result<V, WrapErr> {
             }
             let mut v = Vec::with_capacity(xs.len());
             for x in xs {
-                v.push(wrap(x, c, depth + 1)?);
+                v.push(wrap_c(x, c, depth + 1, keys, strs)?);
             }
             Ok(V::listc(v, c))
         }
@@ -951,14 +991,16 @@ pub fn wrap(p: &P, c: f64, depth: u64) -> Result<V, WrapErr> {
             if depth >= lang::VALUE_MAX_DEPTH {
                 return Err(WrapErr::Deep);
             }
-            let mut d = Dict::new();
+            // ключі вже без повторів (розбір лишає перше місце й останнє значення) — без пошуку
+            let (mut ks, mut vs) = (Vec::with_capacity(kv.len()), Vec::with_capacity(kv.len()));
             for (k, ksur, x) in kv {
                 if *ksur {
                     return Err(WrapErr::Surrogate);
                 }
-                d.set(Rc::new(PStr::from(k)), wrap(x, c, depth + 1)?);
+                ks.push(keys.get(k, || k.chars().count()));
+                vs.push(wrap_c(x, c, depth + 1, keys, strs)?);
             }
-            Ok(V::new(Val::Dict(Rc::new(d)), c))
+            Ok(V::new(Val::Dict(Rc::new(Dict::from_unique(ks, vs))), c))
         }
     }
 }

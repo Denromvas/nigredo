@@ -369,6 +369,7 @@ fn execute(
         quota_seq: 0,
         owner_home: home.to_string(),
         paths_seen: None,
+        rp_cache: std::collections::HashMap::new(),
         denied: false,
         last_call: None,
         modules: Default::default(),
@@ -535,7 +536,19 @@ fn probe() {
     }
 }
 
+#[cfg(target_env = "gnu")]
+extern "C" {
+    fn mallopt(param: i32, value: i32) -> i32;
+}
+
 fn main() {
+    // великі блоки (рядки-файли, сховище сліду) — з купи, і звільнене лишається процесу: повторне виділення не
+    // торкається сторінок наново (mmap/munmap і збої сторінок на кожен мегабайт — помітно на телефоні)
+    #[cfg(target_env = "gnu")]
+    unsafe {
+        mallopt(-3 /* M_MMAP_THRESHOLD */, 512 << 20);
+        mallopt(-1 /* M_TRIM_THRESHOLD */, 1 << 30);
+    }
     if std::env::args().nth(1).as_deref() == Some("--проба") {
         probe();
         return;

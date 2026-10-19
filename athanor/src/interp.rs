@@ -115,8 +115,9 @@ pub struct Interp {
     pub quota_stack: Vec<Rc<QuotaTable>>,
     pub quota_used: HashMap<(String, String, String), u64>,
     pub quota_seq: u64,
-    pub owner_home: String,
+    pub owner_home: String, // уже справжній шлях (realpath під час запуску)
     pub paths_seen: Option<Vec<String>>,
+    pub rp_cache: HashMap<String, String>, // realpath тек із печатки: програма симлінків не створює (у proot stat дорогий)
     pub denied: bool,
     pub last_call: Option<(String, Vec<J>)>,
     pub modules: HashMap<String, Rc<Env>>,
@@ -271,37 +272,58 @@ impl Interp {
         Ok(capped)
     }
 
+    /// Аргумент: літерал і імʼя — на місці (без повного виклику eval з його великим кадром), решта — eval.
+    #[inline(always)]
+    fn arg(&mut self, n: &Node, env: &Rc<Env>) -> R<V> {
+        match &n.k {
+            K::Lit(_) => self.eval_lit(n),
+            K::Var(_, hops, slot) => self.eval_var(n.pos, env, *hops, *slot),
+            _ => self.eval(n, env),
+        }
+    }
+
+    #[inline(always)]
+    fn eval_lit(&mut self, n: &Node) -> R<V> {
+        self.step(n.pos)?;
+        let mut v = n.lv.clone().unwrap();
+        let c = self.cpc();
+        v.c = c;
+        v.s = c;
+        Ok(v)
+    }
+
+    #[inline(always)]
+    fn eval_var(&mut self, pos: Pos, env: &Rc<Env>, hops: u32, slot: u32) -> R<V> {
+        self.step(pos)?;
+        let val = env_get(env, hops, slot);
+        let val = if self.halt_c < val.c { self.halt_cap(env, hops, slot, val, pos)? } else { val };
+        if !self.try_stack.is_empty() {
+            self.taint(val.c);
+        }
+        Ok(val)
+    }
+
     pub fn eval(&mut self, n: &Node, env: &Rc<Env>) -> R<V> {
         let pos = n.pos;
         match &n.k {
-            K::Lit(_) => {
-                self.step(pos)?;
-                let mut v = n.lv.clone().unwrap();
-                let c = self.cpc();
-                v.c = c;
-                v.s = c;
-                Ok(v)
-            }
-            K::Var(_, hops, slot) => {
-                self.step(pos)?;
-                let val = env_get(env, *hops, *slot);
-                let val = if self.halt_c < val.c { self.halt_cap(env, *hops, *slot, val, pos)? } else { val };
-                if !self.try_stack.is_empty() {
-                    self.taint(val.c);
-                }
-                Ok(val)
-            }
+            K::Lit(_) => self.eval_lit(n),
+            K::Var(_, hops, slot) => self.eval_var(pos, env, *hops, *slot),
             K::Op(g, args) if !lang::is_lazy_glyphs(*g) => {
+                if n.ints > 1 && self.pc >= 1.0 && self.halt_c >= 1.0 && self.steps_left >= n.ints as i64 && self.max_size >= 22 {
+                    if let Some(r) = self.int_tree(n, env) {
+                        return Ok(r);
+                    }
+                }
                 self.step(pos)?;
                 let g = *g;
                 let r = match args.len() {
                     1 => {
-                        let a = [self.eval(&args[0], env)?];
+                        let a = [self.arg(&args[0], env)?];
                         self.strict(g, &a, pos)?
                     }
                     2 => {
-                        let a0 = self.eval(&args[0], env)?;
-                        let a1 = self.eval(&args[1], env)?;
+                        let a0 = self.arg(&args[0], env)?;
+                        let a1 = self.arg(&args[1], env)?;
                         let a = [a0, a1];
                         if let Some(r) = self.int_fast(g, &a, pos)? {
                             return Ok(r);
@@ -309,9 +331,9 @@ impl Interp {
                         self.strict(g, &a, pos)?
                     }
                     3 => {
-                        let a0 = self.eval(&args[0], env)?;
-                        let a1 = self.eval(&args[1], env)?;
-                        let a2 = self.eval(&args[2], env)?;
+                        let a0 = self.arg(&args[0], env)?;
+                        let a1 = self.arg(&args[1], env)?;
+                        let a2 = self.arg(&args[2], env)?;
                         self.strict(g, &[a0, a1, a2], pos)?
                     }
                     _ => {
@@ -335,6 +357,72 @@ impl Interp {
             }
             _ => self.eval_node(n, env),
         }
+    }
+
+    /// Цілочислове дерево (Node::ints) певних малих цілих — одним проходом без значень-посередників: ті самі кроки
+    /// (по одному на вузол), той самий облік створеного (alloc), що й eval + int_fast вузол за вузлом. Будь-що інше
+    /// (невпевнене, велике, переповнення, ‰ 0, межа alloc) — None, і вузол рахує звичайний eval (тут нічого не змінено).
+    fn int_tree(&mut self, n: &Node, env: &Rc<Env>) -> Option<V> {
+        fn go(n: &Node, env: &Rc<Env>, alloc: &mut u64) -> Option<i64> {
+            match &n.k {
+                K::Lit(_) => match &n.lv {
+                    Some(V { v: Val::Int(Int::S(x)), .. }) => Some(*x),
+                    _ => None,
+                },
+                K::Var(_, hops, slot) => {
+                    let mut e: &Env = env;
+                    for _ in 0..*hops {
+                        e = e.parent.as_deref()?;
+                    }
+                    match e.vars.borrow().get(*slot as usize)? {
+                        V { v: Val::Int(Int::S(x)), c, .. } if *c >= 1.0 => Some(*x),
+                        _ => None,
+                    }
+                }
+                K::Op(g, args) => {
+                    let x = go(&args[0], env, alloc)?;
+                    let y = go(&args[1], env, alloc)?;
+                    let r = match g {
+                        '＋' => x.checked_add(y)?,
+                        '－' => x.checked_sub(y)?,
+                        '×' => x.checked_mul(y)?,
+                        _ => {
+                            let r = x.checked_rem(y)?;
+                            if r != 0 && ((r < 0) != (y < 0)) { r + y } else { r }
+                        }
+                    };
+                    let nn = 1 + (64 - r.unsigned_abs().leading_zeros() as u64) / 3;
+                    if nn > 1 {
+                        *alloc += nn;
+                    }
+                    Some(r)
+                }
+                _ => None,
+            }
+        }
+        let mut alloc = 0u64;
+        let res = if n.icmp {
+            let K::Op(g, args) = &n.k else { return None };
+            let x = go(&args[0], env, &mut alloc)?;
+            let y = go(&args[1], env, &mut alloc)?;
+            V::b(match g {
+                '‹' => x < y,
+                '›' => x > y,
+                '≤' => x <= y,
+                '≥' => x >= y,
+                '＝' => x == y,
+                _ => x != y,
+            })
+        } else {
+            let r = go(n, env, &mut alloc)?;
+            V { v: Val::Int(Int::S(r)), c: 1.0, s: 1.0, n: 1 + (64 - r.unsigned_abs().leading_zeros() as u64) / 3 }
+        };
+        if self.alloc + alloc > lang::ALLOC_FACTOR * self.max_size {
+            return None;
+        }
+        self.alloc += alloc;
+        self.steps_left -= n.ints as i64;
+        Some(res)
     }
 
     /// Швидкий шлях певних цілих (компільований вузол еталона).
@@ -692,6 +780,16 @@ impl Interp {
     /// функція певна, з простими параметрами і без λ/🜁 у тілі (середовище не може пережити виклик): те саме, що
     /// call() для кожного, без створення середовища щоразу.
     fn each_all(&mut self, g: char, items: &Items, f: &V, acc: Option<V>, pos: Pos) -> R<Vec<V>> {
+        if acc.is_some() {
+            return Ok(vec![self.each_sink(g, items, f, acc, pos, &mut |_, _| ())?.unwrap()]);
+        }
+        let mut out = Vec::with_capacity(items.len());
+        self.each_sink(g, items, f, None, pos, &mut |_, r| out.push(r))?;
+        Ok(out)
+    }
+
+    /// Те саме, але кожен результат — одразу в sink (∀ не тримає результатів, ∫ сумує на ходу); з acc — підсумок.
+    fn each_sink(&mut self, g: char, items: &Items, f: &V, acc: Option<V>, pos: Pos, sink: &mut dyn FnMut(&mut Interp, V)) -> R<Option<V>> {
         let n = items.len();
         let want = if acc.is_some() { 2 } else { 1 };
         let fast = match &f.v {
@@ -707,8 +805,18 @@ impl Interp {
         };
         match (fast, acc) {
             (Some(func), None) => {
+                if matches!(func.lam.body.k, K::Var(_, 0, 0)) && self.halt_c >= 1.0 && self.try_stack.is_empty() {
+                    // λx x: результат — сам елемент (той самий крок на імʼя, та сама межа глибини)
+                    for i in 0..n {
+                        if self.depth + 1 > lang::MAX_DEPTH {
+                            return fatal("надто глибока рекурсія", Some(pos));
+                        }
+                        self.step(func.lam.body.pos)?;
+                        sink(self, items.get(i));
+                    }
+                    return Ok(None);
+                }
                 let env1 = Env::child(vec![V::none()], &func.env);
-                let mut out = Vec::with_capacity(n);
                 for i in 0..n {
                     let x = items.get(i);
                     self.depth += 1;
@@ -719,9 +827,10 @@ impl Interp {
                     env1.vars.borrow_mut()[0] = x;
                     let r = self.eval(&func.lam.body, &env1);
                     self.depth -= 1;
-                    out.push(r.map_err(|e| wrap(e, i))?);
+                    let r = r.map_err(|e| wrap(e, i))?;
+                    sink(self, r);
                 }
-                Ok(out)
+                Ok(None)
             }
             (Some(func), Some(mut acc)) => {
                 let env1 = Env::child(vec![V::none(), V::none()], &func.env);
@@ -741,20 +850,20 @@ impl Interp {
                     self.depth -= 1;
                     acc = r.map_err(|e| wrap(e, i))?;
                 }
-                Ok(vec![acc])
+                Ok(Some(acc))
             }
             (None, None) => {
-                let mut out = Vec::with_capacity(n);
                 for i in 0..n {
-                    out.push(self.each(g, i, f, vec![items.get(i)], pos)?);
+                    let r = self.each(g, i, f, vec![items.get(i)], pos)?;
+                    sink(self, r);
                 }
-                Ok(out)
+                Ok(None)
             }
             (None, Some(mut acc)) => {
                 for i in 0..n {
                     acc = self.each(g, i, f, vec![acc.clone(), items.get(i)], pos)?;
                 }
-                Ok(vec![acc])
+                Ok(Some(acc))
             }
         }
     }
@@ -893,29 +1002,76 @@ impl Interp {
                 let f = self.eval(&argn[1], env)?;
                 let saved = self.pc;
                 self.pc = saved.min(lst.s);
+                if g == '∀' || g == '∫' || g == '№' {
+                    // результати не тримаємо: ∀ їх відкидає, ∫ сумує, № лічить на ходу; помилку (не число, 60 цифр,
+                    // ключ не рядок) — лише після всіх викликів, як в еталоні (спершу всі виклики, потім підсумок)
+                    let (mut total, mut m, mut bad): (Val, f64, Option<Box<E>>) = (Val::Int(Int::S(0)), lst.s, None);
+                    let mut counts: Vec<(Rc<PStr>, i64)> = Vec::new();
+                    let mut idx: FxMap<Rc<str>, usize> = FxMap::default();
+                    let r = self.each_sink(g, &items, &f, None, pos, &mut |it, r| {
+                        if g == '№' {
+                            m = m.min(r.c);
+                            if bad.is_some() {
+                                return;
+                            }
+                            match &r.v {
+                                Val::Str(k) => match idx.get(&*k.s) {
+                                    Some(&i) => counts[i].1 += 1,
+                                    None => {
+                                        idx.insert(Rc::from(&*k.s), counts.len());
+                                        counts.push((k.clone(), 1));
+                                    }
+                                },
+                                _ => bad = ngr::<()>(format!("№ (ключ): очікувалося рядок, а не {} {}", kind(&r), brief(&r, 40)), pos).err(),
+                            }
+                        } else if g == '∫' {
+                            m = m.min(r.c);
+                            if let (Val::Int(Int::S(t)), Val::Int(Int::S(x))) = (&total, &r.v) {
+                                if let Some(t2) = t.checked_add(*x) {
+                                    total = Val::Int(Int::S(t2));
+                                    return;
+                                }
+                            }
+                            if bad.is_none() {
+                                match it.num(&r, '∫', pos).and_then(|v| it.exact('＋', &total, &v, '∫', pos)) {
+                                    Ok(t) => total = t,
+                                    Err(e) => bad = Some(e),
+                                }
+                            }
+                        }
+                    });
+                    self.pc = saved;
+                    r?;
+                    self.fn_effects(&argn[1], lst.s);
+                    self.halt_risk(lst.s, &[&argn[1]], true);
+                    if g == '∀' {
+                        return Ok(V::none_c(self.cpc().min(lst.s)));
+                    }
+                    self.taint(m);
+                    if let Some(e) = bad {
+                        return Err(e);
+                    }
+                    if g == '№' {
+                        let mut d = Dict::new();
+                        for (k, n) in counts {
+                            d.set(k, V::new(Val::Int(Int::S(n)), m));
+                        }
+                        return Ok(V::cs(Val::Dict(Rc::new(d)), m, m));
+                    }
+                    self.halt_risk_any(m);
+                    return Ok(V::new(total, m));
+                }
                 let r = self.each_all(g, &items, &f, None, pos);
                 self.pc = saved;
                 let results = r?;
                 self.fn_effects(&argn[1], lst.s);
                 self.halt_risk(lst.s, &[&argn[1]], true);
-                if g == '∀' {
-                    return Ok(V::none_c(self.cpc().min(lst.s)));
-                }
                 if g == 'μ' {
                     return Ok(mk(results, lst.s));
                 }
                 let m = results.iter().fold(lst.s, |a, r| a.min(r.c));
                 self.taint(m);
                 match g {
-                    '∫' => {
-                        let mut total = Val::Int(Int::S(0));
-                        for r in &results {
-                            let v = self.num(r, '∫', pos)?;
-                            total = self.exact('＋', &total, &v, '∫', pos)?;
-                        }
-                        self.halt_risk_any(m);
-                        Ok(V::new(total, m))
-                    }
                     'φ' => {
                         let mut kept = Vec::new();
                         let mut conds = Vec::with_capacity(results.len());
@@ -937,28 +1093,6 @@ impl Interp {
                             Err(e) => return Err(e),
                         };
                         Ok(mk(order.into_iter().map(|i| items.get(i)).collect(), m))
-                    }
-                    '№' => {
-                        let mut counts: Vec<(Rc<PStr>, i64)> = Vec::new();
-                        let mut idx: FxMap<Rc<str>, usize> = FxMap::default();
-                        for r in &results {
-                            let k = match &r.v {
-                                Val::Str(s) => s.clone(),
-                                _ => return ngr(format!("№ (ключ): очікувалося рядок, а не {} {}", kind(r), brief(r, 40)), pos),
-                            };
-                            match idx.get(&*k.s) {
-                                Some(&i) => counts[i].1 += 1,
-                                None => {
-                                    idx.insert(Rc::from(&*k.s), counts.len());
-                                    counts.push((k, 1));
-                                }
-                            }
-                        }
-                        let mut d = Dict::new();
-                        for (k, n) in counts {
-                            d.set(k, V::new(Val::Int(Int::S(n)), m));
-                        }
-                        Ok(V::cs(Val::Dict(Rc::new(d)), m, m))
                     }
                     _ => {
                         // ⊞
@@ -1348,7 +1482,8 @@ impl Interp {
         }
         let scopes: Vec<String> = self.caps.get(tool).cloned().unwrap_or_default();
         let allowed = |it: &mut Interp, real: &str| -> R<bool> {
-            if pathx::inside(real, &it.owner_home) || it.protected.iter().any(|x| x == real) {
+            // real і тека власника — вже справжні шляхи: inside без повторного realpath
+            if pathx::inside_canon(real, &it.owner_home) || it.protected.iter().any(|x| x == real) {
                 let agent = it.agent.clone();
                 it.deny(data!["агент" => J::Str(agent), "назва" => J::s(tool), "шлях" => J::Str(uni::safe(&p)),
                               "причина" => J::s("тека власника або слід")])?;
@@ -1356,7 +1491,15 @@ impl Interp {
             }
             let check = if write { pathx::dirname(real) } else { real.to_string() };
             for base in &scopes {
-                let b = pathx::realpath(&pathx::join(&it.cwd, base));
+                let joined = pathx::join(&it.cwd, base);
+                let b = match it.rp_cache.get(&joined) {
+                    Some(b) => b.clone(),
+                    None => {
+                        let b = pathx::realpath(&joined);
+                        it.rp_cache.insert(joined, b.clone());
+                        b
+                    }
+                };
                 if check == b || check.starts_with(&format!("{}/", b)) || (!write && real == b) {
                     return Ok(true);
                 }

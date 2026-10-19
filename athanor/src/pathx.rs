@@ -126,6 +126,11 @@ pub fn realpath(filename: &str) -> String {
     path
 }
 
+/// inside для шляхів, що вже справжні (realpath): лише порівняння.
+pub fn inside_canon(path: &str, base: &str) -> bool {
+    path == base || (path.starts_with(base) && path.as_bytes().get(base.len()) == Some(&b'/'))
+}
+
 pub fn inside(path: &str, base: &str) -> bool {
     let (p, b) = (realpath(path), realpath(base));
     p == b || p.starts_with(&format!("{}/", b))

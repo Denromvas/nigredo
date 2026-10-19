@@ -389,13 +389,13 @@ class TooDeep(ValueError):
 
 def wrap(p, c=1.0, depth=0):
     if isinstance(p, str) and any(0xD800 <= ord(ch) <= 0xDFFF for ch in p):
-        raise ValueError('у рядку неповний символ (сурогат)')
+        raise ValueError('у рядку неповний символ (сурогат)')       # і в ключі словника — так само
     if isinstance(p, (list, dict)) and depth >= VALUE_MAX_DEPTH:
         raise TooDeep(f'вкладено глибше за {VALUE_MAX_DEPTH} рівнів')
     if isinstance(p, list):
         return V([wrap(e, c, depth + 1) for e in p], c)
     if isinstance(p, dict):
-        return V({str(k): wrap(e, c, depth + 1) for k, e in p.items()}, c)
+        return V({wrap(k).v: wrap(e, c, depth + 1) for k, e in p.items()}, c)
     return V(p, c)
 
 

@@ -206,6 +206,18 @@ fn any_invisible(text: &str, allow: &str) -> bool {
     let (nl, tab) = (allow.contains('\n'), allow.contains('\t'));
     let mut i = 0;
     while i < b.len() {
+        // 8 видимих ASCII поспіль (0x20–0x7E) — одним кроком
+        if i + 8 <= b.len() {
+            let w = u64::from_le_bytes(b[i..i + 8].try_into().unwrap());
+            const LO: u64 = 0x0101_0101_0101_0101;
+            const HI: u64 = 0x8080_8080_8080_8080;
+            let lt20 = w.wrapping_sub(LO * 0x20) & !w & HI;
+            let ge7f = ((w & !HI) + LO) | w; // старший біт: молодші 7 бітів = 0x7F (без переносу між байтами) або ≥ 0x80
+            if (lt20 | (ge7f & HI)) == 0 {
+                i += 8;
+                continue;
+            }
+        }
         let x = b[i];
         if x < 0x80 {
             if (x < 0x20 || x == 0x7f) && !((x == b'\n' && nl) || (x == b'\t' && tab)) {
