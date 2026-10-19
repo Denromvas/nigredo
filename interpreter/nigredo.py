@@ -3255,8 +3255,9 @@ TOOL_SHORT = {v: k for k, v in TOOL_ALIASES.items()}
 WRITE_TOOLS = ('файл.писати', 'бд.писати')          # теки, куди програма може писати (і звідки не беруть код)
 
 
-def read_allowlist(path, cwd=None, prog=None):
-    """«дозволено» — для всіх програм; «для_тек» — {"/абсолютна/тека": [дозволи]} лише для програм у цій теці."""
+def read_allowlist(path, cwd=None, prog=None, approval=None):
+    """«дозволено» — для всіх програм; «для_тек» — {"/абсолютна/тека": [дозволи]} лише для програм у цій теці;
+    «для_програм» — {"відбиток": [дозволи]} лише програмі саме з таким текстом (і модулями) — approval_of."""
     try:
         data = json.load(open(path, encoding='utf-8'))
         lst = [canon_perm(a) for a in data.get('дозволено', [])]
@@ -3266,10 +3267,11 @@ def read_allowlist(path, cwd=None, prog=None):
         for d, extra in per_dir.items():
             if not isinstance(extra, list):
                 raise ValueError(f'«для_тек» → «{d}»: потрібен список')
+        per_prog = per_programs(data)
         # теки запису — з УСІХ записів власника, а не лише цієї теки (суд 8в: програма з теки C, якій дано писати в
-        # A/вхідні, клала туди програму — і та діставала права теки A)
+        # A/вхідні, клала туди програму — і та діставала права теки A); схвалені програми — теж записи власника
         writable = [split_quota(e)[0].partition(':')[2].strip()
-                    for e in lst + [canon_perm(a) for x in per_dir.values() for a in x]
+                    for e in lst + [canon_perm(a) for x in [*per_dir.values(), *per_prog.values()] for a in x]
                     if e.partition(':')[0].strip() in WRITE_TOOLS]
         for d, extra in per_dir.items():
             extra = [canon_perm(a) for a in extra]
@@ -3280,6 +3282,8 @@ def read_allowlist(path, cwd=None, prog=None):
                                 for w in writable):
                     continue
                 lst += extra
+        if approval and approval in per_prog:
+            lst += [canon_perm(a) for a in per_prog[approval]]
         if not all(isinstance(x, str) for x in lst):
             raise ValueError('дозволи мають бути рядками')
         return lst
@@ -3287,20 +3291,53 @@ def read_allowlist(path, cwd=None, prog=None):
         raise Refused(f'не вдалося прочитати дозволи {path}: {e}')
 
 
-def load_allowlist(narrow=None, cwd=None, prog=None):
+def per_programs(data):
+    """«для_програм» з дозволів власника: відбиток (малими літерами) → список дозволів."""
+    per_prog = data.get('для_програм', {})
+    if not isinstance(per_prog, dict):
+        raise ValueError('«для_програм» має бути словником відбиток → список')
+    for h, extra in per_prog.items():
+        if not isinstance(extra, list):
+            raise ValueError(f'«для_програм» → «{h}»: потрібен список')
+    return {h.strip().lower(): extra for h, extra in per_prog.items()}
+
+
+def approval_of(raw, prog):
+    """Відбиток програми для «для_програм»: sha256 її байтів (той самий, що в сліді); якщо програма бере модулі —
+    sha256 рядків «sha програми», «sha модуля»… (модулі — у порядку ⊃, вкладені — одразу за своїм). Змінений байт
+    програми чи будь-якого модуля — інший відбиток, і схвалення вже не діє."""
+    shas = []
+
+    def walk(n):
+        if isinstance(n, tuple) and n:
+            if n[0] == 'import':
+                shas.append(n[5])
+            for x in n:
+                walk(x)
+        elif isinstance(n, list):
+            for x in n:
+                walk(x)
+    walk(prog)
+    own = hashlib.sha256(raw).hexdigest()
+    return own if not shas else hashlib.sha256('\n'.join([own] + shas).encode()).hexdigest()
+
+
+def load_allowlist(narrow=None, cwd=None, prog=None, approval=None):
     """Дозволи власника — OWNER_HOME/дозволи.json (без нього — лише іграшкові інструменти).
     --дозволи ФАЙЛ лише звужує їх: лишається те, що є в обох."""
     try:
-        return _load_allowlist(narrow, cwd, prog)
+        return _load_allowlist(narrow, cwd, prog, approval)
     except StaticError as e:           # квота «≤N» з помилкою у файлі дозволів
         raise Refused(f'дозволи: {e.msg}')
 
 
-def _load_allowlist(narrow, cwd, prog):
+def _load_allowlist(narrow, cwd, prog, approval=None):
     path = os.path.join(OWNER_HOME, 'дозволи.json')
     if os.path.exists(path):
-        owner = read_allowlist(path, cwd, prog)
+        owner = read_allowlist(path, cwd, prog, approval)
         source = f'{path} (sha256 {hashlib.sha256(open(path, "rb").read()).hexdigest()[:16]})'
+        if approval and approval in per_programs(json.load(open(path, encoding='utf-8'))):
+            source += f'; схвалено власником: програма {approval[:16]}…'
     else:
         owner, source = list(DEFAULT_ALLOWED), '(файлу власника немає: лише іграшкові інструменти)'
     quotas, full = owner_quotas(owner), list(owner)
@@ -4803,7 +4840,7 @@ def quota_text(qs):
     return ', '.join(f'«{x["інструмент"]}{":" + x["обмеження"] if x["обмеження"] else ""}» ≤ {x["не_більше"]}' for x in qs)
 
 
-def seal_info(prog, allowed, source, cwd, dir_extra=None):
+def seal_info(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
     """Усе, що отримувач має знати до запуску, — словником (для --печатка і --печатка --json)."""
     def scopes(t, sc):
         if TOOLS[t][4] == 'тека':
@@ -4838,12 +4875,14 @@ def seal_info(prog, allowed, source, cwd, dir_extra=None):
             'субагенти': subs, 'модулі': mods, 'явні_зміни_впевненості': explicit, 'дозволи_власника': safe(source),
             'квоти': quota_list(seal[3]),
             'квоти_власника': [{'інструмент': t, 'обмеження': safe(sc), 'не_більше': n} for t, sc, n in owner_quotas(allowed)],
-            'права_теки': [safe(x) for x in dir_extra] if dir_extra is not None else None, 'тека': safe(cwd), 'в_межах': not missing, 'бракує': missing}
+            'права_теки': [safe(x) for x in dir_extra] if dir_extra is not None else None,
+            'права_схвалення': [safe(x) for x in prog_extra or []], 'тека': safe(cwd), 'в_межах': not missing,
+            'бракує': missing}
 
 
-def seal_report(prog, allowed, source, cwd, dir_extra=None):
+def seal_report(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
     """Текст для людини й моделі: слова автора (намір, імена, шляхи) — у 「」, решта — слова інтерпретатора."""
-    i = seal_info(prog, allowed, source, cwd, dir_extra)
+    i = seal_info(prog, allowed, source, cwd, dir_extra, prog_extra)
     q = lambda sc: ', '.join(f'「{x}」' for x in sc)
     lines = ['ПЕЧАТКА', f'  намір (слова автора): 「{i["намір"]}」' if i['намір'] else '  намір: не вказано автором',
              '  дозволи:']
@@ -4876,10 +4915,48 @@ def seal_report(prog, allowed, source, cwd, dir_extra=None):
         lines.append(f'  права теки {i["тека"]}: {", ".join(i["права_теки"])}')
     else:
         lines.append('  права теки: немає (для цієї теки власник нічого не дав, або це тека, куди програмам дозволено писати)')
+    if i['права_схвалення']:
+        lines.append(f'  права, схвалені власником саме для цієї програми («для_програм»): {", ".join(i["права_схвалення"])}')
     lines.append('  ✓ печатка в межах дозволів власника' if i['в_межах'] else f'  ✗ бракує дозволу власника: {", ".join(i["бракує"])}')
     lines.append('  (права перевіряються й під час виконання: кожен інструмент і кожен субагент — лише в межах агента, '
                  'що його викликає. Цього необхідно, але не досить: намір, імена й вивід — слова автора програми)')
     return '\n'.join(lines)
+
+
+def approval_report(prog, approval, allowed, source, cwd, dir_extra, prog_extra):
+    """ngr --схвалити: відбиток, печатка, переклад і готовий запис «для_програм» — файл дозволів пише сам власник."""
+    caps = prog[2][0][3]
+    quotas = getattr(caps, 'quotas', {})
+    perms = []
+    for t, scopes in caps.items():
+        for sc in scopes or ['']:
+            shown = os.path.realpath(os.path.join(cwd, sc)) if sc and TOOLS[t][4] == 'тека' else sc
+            perms.append(f'{t}:{shown}' if sc else t)
+            if (t, sc) in quotas:
+                perms[-1] += f'≤{quotas[(t, sc)]}'
+    mods = []
+
+    def walk(n):
+        if isinstance(n, tuple) and n:
+            if n[0] == 'import':
+                mods.append(n)
+            for x in n:
+                walk(x)
+        elif isinstance(n, list):
+            for x in n:
+                walk(x)
+    walk(prog)
+    about = f' (sha256 програми й {len(mods)} модулів)' if mods else ' (sha256 програми — той самий, що в сліді)'
+    try:
+        explained = explain_program(prog)
+    except RecursionError:
+        explained = '✗ програма вкладена надто глибоко для перекладу'
+    entry = json.dumps({'для_програм': {approval: perms}}, ensure_ascii=False)
+    return '\n'.join([f'ВІДБИТОК {approval}{about}', '', seal_report(prog, allowed, source, cwd, dir_extra, prog_extra),
+                      '', 'ПЕРЕКЛАД', explained, '',
+                      f'Щоб схвалити саме цю програму, власник додає до {os.path.join(OWNER_HOME, "дозволи.json")}',
+                      f'(у розділ «для_програм» поруч із «дозволено»): {entry[1:-1]}',
+                      'Агенти цей файл не пишуть. Змінений байт програми чи її модуля — інший відбиток, і схвалення не діє.'])
 
 
 # ------------------------------------------------------------------ памʼятка
@@ -4940,7 +5017,8 @@ def cheatsheet():
            'ніхто не перевіряє, це слова автора), програма без дозволів — просто `🜂`. Інструмент, якого нема в печатці,',
            'не пройде розбір; під час виконання кожен виклик ще раз звіряється з дозволами агента, що його робить.',
            'Печатка має вкладатися в дозволи власника (`~/.nigredo/дозволи.json`: «дозволено» — для всіх програм,',
-           '«для_тек» — лише для програм у певній теці; `--дозволи` може їх лише звузити), інакше програма не',
+           '«для_тек» — лише для програм у певній теці, «для_програм» — лише програмі з певним відбитком, тобто саме',
+           'цьому тексту з модулями; `--дозволи` може їх лише звузити), інакше програма не',
            'запуститься. Власник бачить печатку командою `ngr --печатка файл.ngr`: слова автора (намір, імена',
            'субагентів, шляхи) — у `「」`, тож у печатці заборонено `「」`, пробіли поспіль чи по краях і невидиме,',
            'а в імені субагента ще й `/` (ним пишеться вкладеність).', '',
@@ -5053,6 +5131,9 @@ def cheatsheet():
             '- Ліміти: `--кроки` (обчислення; створення великих значень теж коштує кроків), `--розмір` (логічний',
             '  розмір значення — символи й елементи разом зі спільними посиланнями, і цілі), сумарно створене за запуск',
             '  ≤ 20 × `--розмір`, `--слід-розмір` (байти сліду), глибина рекурсії.',
+            '- Точкові права одній програмі: `ngr --схвалити файл.ngr` друкує відбиток і запис «для_програм» — його',
+            '  додає до дозволів **власник** (агенти файл дозволів не пишуть). Змінений байт програми чи модуля — і схвалення',
+            '  не діє.',
             '- Права теки («для_тек») має програма-**файл** у тій теці, але не та, що лежить у теці, куди програмам',
             '  дозволено писати. Код рядком (`-e`) прав теки не має, доки не вказано `--тека` — а її вибирає той, хто',
             '  запускає: від агента з shell це не захищає.',
@@ -5133,6 +5214,8 @@ USAGE = f"""Nigredo {VERSION}
     --розмір N             найбільший рядок/список (типово {MAX_SIZE})
   ngr --перевірити [--json] ФАЙЛ   усі помилки до запуску (розбір, типи, регулярки) і печатка — без виконання
   ngr --перевірити-слід ФАЙЛ [ПРОГРАМА]   (з програмою — ще й чи слід саме від неї)
+  ngr --схвалити ФАЙЛ.ngr  для власника: відбиток програми, печатка, переклад і запис «для_програм» — права саме цій
+                           програмі (змінений байт її чи модуля — і схвалення не діє); файл дозволів пише власник
   ngr --сухо ФАЙЛ.ngr      виконати без записів, надсилань, процесів, агентів і взяти (читання — так): результат —
                            невідомий (впевненість 0); наприкінці — перелік дій, які програма зробила б
   ngr --тести [ТЕКА|ФАЙЛ …] [--json]   прогнати всі *.тест.ngr (кожен — програма з 🜍-перевірками; код 0 — пройшов)
@@ -5144,15 +5227,16 @@ USAGE = f"""Nigredo {VERSION}
 
 
 def write_dirs():
-    """Теки, куди програмам дозволено писати (з дозволів власника: «дозволено» і всі «для_тек»)."""
+    """Теки, куди програмам дозволено писати (з дозволів власника: «дозволено», усі «для_тек» і «для_програм»)."""
     path = os.path.join(OWNER_HOME, 'дозволи.json')
     try:
         data = json.load(open(path, encoding='utf-8'))
     except (OSError, ValueError):
         return []
     entries = list(data.get('дозволено', [])) if isinstance(data, dict) else []
-    for extra in (data.get('для_тек', {}) or {}).values() if isinstance(data, dict) else []:
-        entries += extra if isinstance(extra, list) else []
+    for key in ('для_тек', 'для_програм'):
+        for extra in (data.get(key, {}) or {}).values() if isinstance(data, dict) else []:
+            entries += extra if isinstance(extra, list) else []
     out = []
     for e in entries:
         if not isinstance(e, str):
@@ -5401,7 +5485,7 @@ def main(argv):
         if a == '--сухо':
             opts['dry'] = True
             continue
-        if a in ('--печатка', '--розбір', '--перевірити'):
+        if a in ('--печатка', '--розбір', '--перевірити', '--схвалити'):
             opts['mode'] = a[2:]
         elif a == '--слід':
             opts['trace'] = next(it)
@@ -5486,12 +5570,15 @@ def main(argv):
         prog, perr, errors = None, e, [e]
         if opts['mode'] == 'перевірити':
             errors = all_static_errors(src, cwd, None if path == '<-e>' else path) or [e]
+    approval = approval_of(raw if path != '<-e>' else src.encode(), prog) if prog else None
     try:
         # -e --тека: «програма» лежить у тій теці — і в теці запису прав теки не дістає, як файл там (суд 8в)
-        allowed, source = load_allowlist(opts['allow'], cwd if dir_rights else None,
-                                         os.path.realpath(path if path != '<-e>' else cwd) if dir_rights else None)
+        where = (cwd if dir_rights else None, os.path.realpath(path if path != '<-e>' else cwd) if dir_rights else None)
+        allowed, source = load_allowlist(opts['allow'], *where, approval)
         base, _ = load_allowlist(opts['allow'])
-        dir_extra = [a for a in allowed if a not in base] if dir_rights else None
+        by_dir, _ = load_allowlist(opts['allow'], *where)
+        dir_extra = [a for a in by_dir if a not in base] if dir_rights else None
+        prog_extra = [a for a in allowed if a not in by_dir]       # «для_програм»: схвалено саме цю програму
     except Refused as e:
         print(e, file=sys.stderr)
         return 3
@@ -5514,6 +5601,12 @@ def main(argv):
             if not errors and not missing:
                 print('✓ помилок до запуску не знайдено; печатка в межах дозволів власника')
         return 2 if errors else 3 if missing else 0
+    if opts['mode'] == 'схвалити':
+        if perr:
+            print(perr, file=sys.stderr)
+            return 2
+        print(approval_report(prog, approval, allowed, source, cwd, dir_extra, prog_extra))
+        return 0
     if opts['mode'] in ('розбір', 'печатка'):
         if perr:
             if opts['json']:
@@ -5527,10 +5620,11 @@ def main(argv):
                 print('✗ програма вкладена надто глибоко для перекладу (--розбір)', file=sys.stderr)
                 return 2
             return 0
-        info = seal_info(prog, allowed, source, cwd, dir_extra)
+        info = seal_info(prog, allowed, source, cwd, dir_extra, prog_extra)
         info['програма'] = safe(path if path == '<-e>' else os.path.realpath(path))       # що саме перевірено
         info['sha256'] = hashlib.sha256(raw if path != '<-e>' else src.encode()).hexdigest()
-        print(json.dumps(info, ensure_ascii=False, indent=1) if opts['json'] else seal_report(prog, allowed, source, cwd, dir_extra))
+        print(json.dumps(info, ensure_ascii=False, indent=1) if opts['json']
+              else seal_report(prog, allowed, source, cwd, dir_extra, prog_extra))
         return 0 if info['в_межах'] else 3
     # повтор нічого не робить у світі — дозволи власника не потрібні (і можуть уже змінитися)
     missing = check_program(prog, allowed, cwd) if prog and not replay else []

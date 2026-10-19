@@ -232,11 +232,12 @@ fn run() -> i32 {
     };
     let home = seal::owner_home();
     let prog_real = if dir_rights { Some(pathx::realpath(if is_e { &cwd } else { &path })) } else { None };
-    let allowed = match seal::load_allowlist(&home, if dir_rights { Some(&cwd) } else { None }, prog_real.as_deref()) {
+    let approval = seal::approval_of(if is_e { src.as_bytes() } else { o.raw.as_deref().unwrap() }, &prog);
+    let allowed = match seal::load_allowlist(&home, if dir_rights { Some(&cwd) } else { None }, prog_real.as_deref(), Some(&approval)) {
         Ok(a) => a,
         Err(Back(why)) => hand_over(&why),
     };
-    if let Err(Back(why)) = seal::load_allowlist(&home, None, None) {
+    if let Err(Back(why)) = seal::load_allowlist(&home, None, None, None) {
         hand_over(&why);
     }
     match seal::program_ok(&prog, &seal_caps, &allowed, &cwd, &home) {
