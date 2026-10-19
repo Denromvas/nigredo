@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nfrom datetime import date\n\ntoday = date(2026, 10, 20)\n\nwith open(\"дані/задачі.json\", encoding=\"utf-8\") as f:\n    tasks = json.load(f)\n\noverdue = []\nfor t in tasks:\n    if t.get(\"виконано\"):\n        continue\n    due = date.fromisoformat(t[\"термін\"])\n    if due < today:\n        overdue.append((t[\"задача\"], t[\"відповідальний\"], (today - due).days))\n\noverdue.sort(key=lambda x: (-x[2], x[0]))\n\nfor name, who, days in overdue:\n    print(f\"{name} ({who}): {days} дн.\")\nprint(f\"Прострочено: {len(overdue)}\")\n",
+  "відповідь": "```python\nimport json\nfrom datetime import date\n\ntoday = date(2026, 10, 20)\n\nwith open(\"дані/задачі.json\", encoding=\"utf-8\") as f:\n    tasks = json.load(f)\n\noverdue = []\nfor t in tasks:\n    if t.get(\"виконано\"):\n        continue\n    due = date.fromisoformat(t[\"термін\"])\n    if due < today:\n        overdue.append((t[\"задача\"], t[\"відповідальний\"], (today - due).days))\n\noverdue.sort(key=lambda x: (-x[2], x[0]))\n\nfor name, who, days in overdue:\n    print(f\"{name} ({who}): {days} дн.\")\nprint(f\"Прострочено: {len(overdue)}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "Резервна копія (Денис): 19 дн.\nЗвіт ПДВ (Оля): 10 дн.\nАкт звірки (Оля): 1 дн.\nПрострочено: 3\n",
+  "помилки": ""
+ }
+]

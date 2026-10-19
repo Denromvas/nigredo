@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import sqlite3\n\nАБЕТКА = \"абвгґдеєжзиіїйклмнопрстуфхцчшщьюя\"\n\n\ndef ключ_абетки(текст):\n    return tuple(\n        (АБЕТКА.find(c) if c in АБЕТКА else len(АБЕТКА) + ord(c))\n        for c in текст.casefold()\n    )\n\n\nз = sqlite3.connect(\"дані/склад.db\")\nрядки = з.execute(\n    \"\"\"\n    SELECT т.назва,\n           COALESCE(SUM(CASE\n               WHEN р.тип = 'прихід'  THEN р.кількість\n               WHEN р.тип = 'видаток' THEN -р.кількість\n           END), 0) AS залишок\n    FROM товари т\n    LEFT JOIN рухи р ON р.товар_id = т.id\n    GROUP BY т.id, т.назва\n    \"\"\"\n).fetchall()\nз.close()\n\nвідʼємні = sorted(\n    ((назва, залишок) for назва, залишок in рядки if залишок < 0),\n    key=lambda х: (х[1], ключ_абетки(х[0]), х[0]),\n)\nfor назва, залишок in відʼємні:\n    print(f\"{назва}: {залишок}\")\n\nнульових = sum(1 for _, залишок in рядки if залишок == 0)\nprint(f\"Нульових: {нульових}\")\n",
+  "відповідь": "```python\nimport sqlite3\n\nАБЕТКА = \"абвгґдеєжзиіїйклмнопрстуфхцчшщьюя\"\n\n\ndef ключ_абетки(текст):\n    return tuple(\n        (АБЕТКА.find(c) if c in АБЕТКА else len(АБЕТКА) + ord(c))\n        for c in текст.casefold()\n    )\n\n\nз = sqlite3.connect(\"дані/склад.db\")\nрядки = з.execute(\n    \"\"\"\n    SELECT т.назва,\n           COALESCE(SUM(CASE\n               WHEN р.тип = 'прихід'  THEN р.кількість\n               WHEN р.тип = 'видаток' THEN -р.кількість\n           END), 0) AS залишок\n    FROM товари т\n    LEFT JOIN рухи р ON р.товар_id = т.id\n    GROUP BY т.id, т.назва\n    \"\"\"\n).fetchall()\nз.close()\n\nвідʼємні = sorted(\n    ((назва, залишок) for назва, залишок in рядки if залишок < 0),\n    key=lambda х: (х[1], ключ_абетки(х[0]), х[0]),\n)\nfor назва, залишок in відʼємні:\n    print(f\"{назва}: {залишок}\")\n\nнульових = sum(1 for _, залишок in рядки if залишок == 0)\nprint(f\"Нульових: {нульових}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "Шурупи: -12\nЦвяхи: -5\nФарба: -4\nНульових: 1\n",
+  "помилки": ""
+ }
+]

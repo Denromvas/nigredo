@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import sqlite3\nimport os\n\ncon = sqlite3.connect(os.path.join(\"дані\", \"склад.db\"))\nrows = con.execute(\"\"\"\n    SELECT т.id, т.назва,\n           COALESCE(SUM(CASE р.тип WHEN 'прихід' THEN р.кількість\n                                   WHEN 'видаток' THEN -р.кількість\n                                   ELSE 0 END), 0)\n    FROM товари т\n    LEFT JOIN рухи р ON р.товар_id = т.id\n    GROUP BY т.id, т.назва\n\"\"\").fetchall()\ncon.close()\n\nneg = sorted((r for r in rows if r[2] < 0), key=lambda r: (r[2], r[1]))\nfor _, name, bal in neg:\n    print(f\"{name}: {bal}\")\nprint(f\"Нульових: {sum(1 for r in rows if r[2] == 0)}\")\n",
+  "відповідь": "```python\nimport sqlite3\nimport os\n\ncon = sqlite3.connect(os.path.join(\"дані\", \"склад.db\"))\nrows = con.execute(\"\"\"\n    SELECT т.id, т.назва,\n           COALESCE(SUM(CASE р.тип WHEN 'прихід' THEN р.кількість\n                                   WHEN 'видаток' THEN -р.кількість\n                                   ELSE 0 END), 0)\n    FROM товари т\n    LEFT JOIN рухи р ON р.товар_id = т.id\n    GROUP BY т.id, т.назва\n\"\"\").fetchall()\ncon.close()\n\nneg = sorted((r for r in rows if r[2] < 0), key=lambda r: (r[2], r[1]))\nfor _, name, bal in neg:\n    print(f\"{name}: {bal}\")\nprint(f\"Нульових: {sum(1 for r in rows if r[2] == 0)}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "Шурупи: -12\nЦвяхи: -5\nФарба: -4\nНульових: 1\n",
+  "помилки": ""
+ }
+]

@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "🜂 「табель змін і перетини」 【「читати:дані」】\n← txt 🜔читати 「дані/зміни.csv」\n← rows ▦ txt\n← mins λt 《\n  ← p ✂ ⊢ t 「:」\n  ＋ × 60 ν § p 0 ν § p 1\n》\n← recs μ rows λr 『「w」 ⊢ § r 「працівник」 「d」 ⊢ § r 「дата」 「s」 mins § r 「початок」 「e」 mins § r 「кінець」 「b」 ⊢ § r 「початок」 「f」 ⊢ § r 「кінець」』\n← g ⊞ recs λr § r 「w」\n∀ ↑ κ g λk 《\n  ← l § g k\n  ← t ∫ l λr － § r 「e」 § r 「s」\n  ← h ⌊ ÷ t 60\n  ← m ‰ t 60\n  ← ms ¿ ‹ m 10 〔0{m}〕 σ m\n  » 〔{k}: {h} год {ms} хв〕\n》\n← n ρ recs\n← hits Σ … 0 － n 1 【】 Λacc i Σ … ＋ i 1 － n 1 acc Λa2 j 《\n  ← x § recs i\n  ← y § recs j\n  ← same ∧ ＝ § x 「w」 § y 「w」 ＝ § x 「d」 § y 「d」\n  ← ovl ∧ ‹ § x 「s」 § y 「e」 ‹ § y 「s」 § x 「e」\n  ¿ ∧ same ovl ＋ a2 【【x y】】 a2\n》\n¿ ＝ ρ hits 0\n  » 「Перетинів немає」\n  ∀ hits λp 《\n    ← a § p 0\n    ← b § p 1\n    » 〔Перетин: {§ a 「w」} {§ a 「d」} {§ a 「b」}–{§ a 「f」} і {§ b 「b」}–{§ b 「f」}〕\n  》\n",
+  "відповідь": "```\n🜂 「табель змін і перетини」 【「читати:дані」】\n← txt 🜔читати 「дані/зміни.csv」\n← rows ▦ txt\n← mins λt 《\n  ← p ✂ ⊢ t 「:」\n  ＋ × 60 ν § p 0 ν § p 1\n》\n← recs μ rows λr 『「w」 ⊢ § r 「працівник」 「d」 ⊢ § r 「дата」 「s」 mins § r 「початок」 「e」 mins § r 「кінець」 「b」 ⊢ § r 「початок」 「f」 ⊢ § r 「кінець」』\n← g ⊞ recs λr § r 「w」\n∀ ↑ κ g λk 《\n  ← l § g k\n  ← t ∫ l λr － § r 「e」 § r 「s」\n  ← h ⌊ ÷ t 60\n  ← m ‰ t 60\n  ← ms ¿ ‹ m 10 〔0{m}〕 σ m\n  » 〔{k}: {h} год {ms} хв〕\n》\n← n ρ recs\n← hits Σ … 0 － n 1 【】 Λacc i Σ … ＋ i 1 － n 1 acc Λa2 j 《\n  ← x § recs i\n  ← y § recs j\n  ← same ∧ ＝ § x 「w」 § y 「w」 ＝ § x 「d」 § y 「d」\n  ← ovl ∧ ‹ § x 「s」 § y 「e」 ‹ § y 「s」 § x 「e」\n  ¿ ∧ same ovl ＋ a2 【【x y】】 a2\n》\n¿ ＝ ρ hits 0\n  » 「Перетинів немає」\n  ∀ hits λp 《\n    ← a § p 0\n    ← b § p 1\n    » 〔Перетин: {§ a 「w」} {§ a 「d」} {§ a 「b」}–{§ a 「f」} і {§ b 「b」}–{§ b 「f」}〕\n  》\n```\n",
+  "код_виходу": 0,
+  "вивід": "Іван: 1 год 45 хв\nОля: 17 год 45 хв\nПетро: 20 год 30 хв\nПеретин: Оля 2026-10-15 08:00–12:15 і 12:00–17:00\n",
+  "помилки": ""
+ }
+]

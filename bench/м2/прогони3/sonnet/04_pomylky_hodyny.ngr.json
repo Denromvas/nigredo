@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "🜂 「помилки за годинами з app.log」 【「читати:дані」】\n← txt 🜔читати 「app.log」\n← lines ✂ txt 「\\n」\n← er Σ lines 【】 Λa l ＋ a ⌕ l 「^\\S+ (\\d\\d):\\d\\d:\\d\\d \\[ERROR\\] ([^:]+):」\n← gr ⊞ er λp §p 0\n∀ ↑ κ gr λh 《\n  ← items §gr h\n  ← mods ↑ κ № items λp §p 1\n  » 〔{h}:00 — {ρ items} ({⁀ mods 「, 」})〕\n》\n← cnt № er λp §p 1\n← top § ⇅ ε cnt λp 【－0 §p 1 §p 0】 0\n» 〔Найгірший модуль: {§top 0} ({§top 1})〕\n",
+  "відповідь": "```\n🜂 「помилки за годинами з app.log」 【「читати:дані」】\n← txt 🜔читати 「app.log」\n← lines ✂ txt 「\\n」\n← er Σ lines 【】 Λa l ＋ a ⌕ l 「^\\S+ (\\d\\d):\\d\\d:\\d\\d \\[ERROR\\] ([^:]+):」\n← gr ⊞ er λp §p 0\n∀ ↑ κ gr λh 《\n  ← items §gr h\n  ← mods ↑ κ № items λp §p 1\n  » 〔{h}:00 — {ρ items} ({⁀ mods 「, 」})〕\n》\n← cnt № er λp §p 1\n← top § ⇅ ε cnt λp 【－0 §p 1 §p 0】 0\n» 〔Найгірший модуль: {§top 0} ({§top 1})〕\n```\n",
+  "код_виходу": 0,
+  "вивід": "09:00 — 4 (cache, db)\n11:00 — 1 (db)\n14:00 — 4 (api, auth, cache)\n15:00 — 1 (db)\nНайгірший модуль: cache (5)\n",
+  "помилки": ""
+ }
+]

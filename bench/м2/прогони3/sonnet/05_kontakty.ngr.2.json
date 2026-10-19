@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "🜂 「знайти дублікати контактів за email」 【「читати:дані」】\n← rows ▦ 🜔читати 「контакти.csv」\n← key λp ⇣ ⊢ §p 「email」\n← ems μ rows ∘key\n← uniq Σ ems 【】 Λacc k ¿ ∋ acc k acc ＋ acc 【k】\n← grp ⊞ rows λp key p\n∀ uniq λk 《\n  ← lst §grp k\n  ¿ › ρ lst 1 《\n    » 〔{k}: {ρ lst}〕\n    ∀ lst λp » 〔  {§p 「імʼя」}〕\n  》 ∅\n》\n» 〔Унікальних: {ρ uniq}〕\n",
+  "відповідь": "```\n🜂 「знайти дублікати контактів за email」 【「читати:дані」】\n← rows ▦ 🜔читати 「контакти.csv」\n← key λp ⇣ ⊢ §p 「email」\n← ems μ rows ∘key\n← uniq Σ ems 【】 Λacc k ¿ ∋ acc k acc ＋ acc 【k】\n← grp ⊞ rows λp key p\n∀ uniq λk 《\n  ← lst §grp k\n  ¿ › ρ lst 1 《\n    » 〔{k}: {ρ lst}〕\n    ∀ lst λp » 〔  {§p 「імʼя」}〕\n  》 ∅\n》\n» 〔Унікальних: {ρ uniq}〕\n```\n",
+  "код_виходу": 0,
+  "вивід": "olia@firma.ua: 3\n  Оля Петренко\n  О. Петренко\n  Оля П.\npetro@firma.ua: 2\n  Петро Іваненко\n  Петро\nУнікальних: 4\n",
+  "помилки": ""
+ }
+]

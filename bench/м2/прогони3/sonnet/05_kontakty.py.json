@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import csv\nimport os\nfrom collections import OrderedDict\n\ndef main():\n    шлях = os.path.join(\"дані\", \"контакти.csv\")\n    групи = OrderedDict()\n    with open(шлях, encoding=\"utf-8-sig\", newline=\"\") as f:\n        читач = csv.reader(f)\n        next(читач, None)\n        for рядок in читач:\n            if not рядок or all(not c.strip() for c in рядок):\n                continue\n            імʼя = рядок[0]\n            email = рядок[1].strip().lower() if len(рядок) > 1 else \"\"\n            групи.setdefault(email, []).append(імʼя)\n\n    for email, імена in групи.items():\n        if len(імена) >= 2:\n            print(f\"{email}: {len(імена)}\")\n            for імʼя in імена:\n                print(f\"  {імʼя}\")\n    print(f\"Унікальних: {len(групи)}\")\n\nmain()\n",
+  "відповідь": "```python\nimport csv\nimport os\nfrom collections import OrderedDict\n\ndef main():\n    шлях = os.path.join(\"дані\", \"контакти.csv\")\n    групи = OrderedDict()\n    with open(шлях, encoding=\"utf-8-sig\", newline=\"\") as f:\n        читач = csv.reader(f)\n        next(читач, None)\n        for рядок in читач:\n            if not рядок or all(not c.strip() for c in рядок):\n                continue\n            імʼя = рядок[0]\n            email = рядок[1].strip().lower() if len(рядок) > 1 else \"\"\n            групи.setdefault(email, []).append(імʼя)\n\n    for email, імена in групи.items():\n        if len(імена) >= 2:\n            print(f\"{email}: {len(імена)}\")\n            for імʼя in імена:\n                print(f\"  {імʼя}\")\n    print(f\"Унікальних: {len(групи)}\")\n\nmain()\n```\n",
+  "код_виходу": 0,
+  "вивід": "olia@firma.ua: 3\n  Оля Петренко\n  О. Петренко\n  Оля П.\npetro@firma.ua: 2\n  Петро Іваненко\n  Петро\nУнікальних: 4\n",
+  "помилки": ""
+ }
+]

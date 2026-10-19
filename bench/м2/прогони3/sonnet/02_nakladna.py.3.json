@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import sys\nimport xml.etree.ElementTree as ET\nfrom decimal import Decimal, ROUND_HALF_UP\n\ndef fmt(x):\n    return str(x.quantize(Decimal(\"0.01\"), rounding=ROUND_HALF_UP))\n\ndef main():\n    try:\n        sys.stdout.reconfigure(encoding=\"utf-8\")\n    except Exception:\n        pass\n    root = ET.parse(\"дані/накладна.xml\").getroot()\n    groups = {}\n    total = Decimal(0)\n    for row in root.iter(\"Рядок\"):\n        g = row.get(\"група\", \"\")\n        q = Decimal((row.findtext(\"Кількість\") or \"0\").strip())\n        p = Decimal((row.findtext(\"Ціна\") or \"0\").strip())\n        s = q * p\n        groups[g] = groups.get(g, Decimal(0)) + s\n        total += s\n    print(\"Накладна \" + (root.get(\"номер\") or \"\"))\n    for g in sorted(groups):\n        print(f\"{g}: {fmt(groups[g])}\")\n    print(\"Всього: \" + fmt(total))\n\nmain()\n",
+  "відповідь": "```python\nimport sys\nimport xml.etree.ElementTree as ET\nfrom decimal import Decimal, ROUND_HALF_UP\n\ndef fmt(x):\n    return str(x.quantize(Decimal(\"0.01\"), rounding=ROUND_HALF_UP))\n\ndef main():\n    try:\n        sys.stdout.reconfigure(encoding=\"utf-8\")\n    except Exception:\n        pass\n    root = ET.parse(\"дані/накладна.xml\").getroot()\n    groups = {}\n    total = Decimal(0)\n    for row in root.iter(\"Рядок\"):\n        g = row.get(\"група\", \"\")\n        q = Decimal((row.findtext(\"Кількість\") or \"0\").strip())\n        p = Decimal((row.findtext(\"Ціна\") or \"0\").strip())\n        s = q * p\n        groups[g] = groups.get(g, Decimal(0)) + s\n        total += s\n    print(\"Накладна \" + (root.get(\"номер\") or \"\"))\n    for g in sorted(groups):\n        print(f\"{g}: {fmt(groups[g])}\")\n    print(\"Всього: \" + fmt(total))\n\nmain()\n```\n",
+  "код_виходу": 0,
+  "вивід": "Накладна НК-2026-118\nБакалія: 529.00\nМолочне: 779.98\nНапої: 546.90\nВсього: 1855.88\n",
+  "помилки": ""
+ }
+]

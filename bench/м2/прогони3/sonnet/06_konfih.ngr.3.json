@@ -1,0 +1,20 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": false,
+  "код": "🜂 「злиття INI-конфігурацій base і local」 【「читати:дані」】\n← дай Λd n ¿ ∋ d n §d n 『』\n← розд Λst l 《\n  ← n ⊢ ⊏ l 1 －ρl 1\n  ✎ ✎ st 「s」 n 「d」 ✎ §st 「d」 n дай §st 「d」 n\n》\n← додай Λst l 《\n  ← p ⊳ l 「=」\n  ← k ⊢ ⊏ l 0 p\n  ← v ⊢ ⊏ l ＋p 1 ∅\n  ← s §st 「s」\n  ← d §st 「d」\n  ✎ st 「d」 ✎ d s ✎ дай d s k v\n》\n← крок Λst ln 《\n  ← l ⊢ ln\n  ← c ⊏ l 0 1\n  ¿ ∨ ＝ c 「」 ∨ ＝ c 「#」 ＝ c 「;」 st ¿ ＝ c 「[」 розд st l ¿ ∋ l 「=」 додай st l st\n》\n← розбір λtxt §Σ ✂ txt 「\\n」 『「s」 「」 「d」 『』』 крок 「d」\n← злий Λa b Σ ε b a Λacc p ✎ acc §p 0 Σ ε §p 1 дай acc §p 0 Λm q ✎ m §q 0 §q 1\n← ba розбір 🜔читати 「base.ini」\n← lo розбір 🜔читати 「local.ini」\n← res злий ba lo\n∀ ↑ κ res λs 《\n  » 〔[{s}]〕\n  ∀ ↑ κ §res s λk » 〔{k}={§§res s k}〕\n》\n",
+  "відповідь": "```\n🜂 「злиття INI-конфігурацій base і local」 【「читати:дані」】\n← дай Λd n ¿ ∋ d n §d n 『』\n← розд Λst l 《\n  ← n ⊢ ⊏ l 1 －ρl 1\n  ✎ ✎ st 「s」 n 「d」 ✎ §st 「d」 n дай §st 「d」 n\n》\n← додай Λst l 《\n  ← p ⊳ l 「=」\n  ← k ⊢ ⊏ l 0 p\n  ← v ⊢ ⊏ l ＋p 1 ∅\n  ← s §st 「s」\n  ← d §st 「d」\n  ✎ st 「d」 ✎ d s ✎ дай d s k v\n》\n← крок Λst ln 《\n  ← l ⊢ ln\n  ← c ⊏ l 0 1\n  ¿ ∨ ＝ c 「」 ∨ ＝ c 「#」 ＝ c 「;」 st ¿ ＝ c 「[」 розд st l ¿ ∋ l 「=」 додай st l st\n》\n← розбір λtxt §Σ ✂ txt 「\\n」 『「s」 「」 「d」 『』』 крок 「d」\n← злий Λa b Σ ε b a Λacc p ✎ acc §p 0 Σ ε §p 1 дай acc §p 0 Λm q ✎ m §q 0 §q 1\n← ba розбір 🜔читати 「base.ini」\n← lo розбір 🜔читати 「local.ini」\n← res злий ba lo\n∀ ↑ κ res λs 《\n  » 〔[{s}]〕\n  ∀ ↑ κ §res s λk » 〔{k}={§§res s k}〕\n》\n```\n",
+  "код_виходу": 2,
+  "вивід": "",
+  "помилки": "✗ 20:53 рядок закінчився, а виразові бракує аргументу (щоб продовжити вираз на наступному рядку, зробіть там більший відступ) — чекають аргументів: крок (20:45) бере 2, є 1; Σ (20:16) бере 3, є 2; § (20:15) бере 2, є 0\n"
+ },
+ {
+  "спроба": 2,
+  "гаразд": true,
+  "код": "🜂 「злиття INI-конфігурацій base і local」 【「читати:дані」】\n← дай Λd n ¿ ∋ d n §d n 『』\n← розд Λst l 《\n  ← n ⊢ ⊏ l 1 －ρl 1\n  ✎ ✎ st 「s」 n 「d」 ✎ §st 「d」 n дай §st 「d」 n\n》\n← додай Λst l 《\n  ← p ⊳ l 「=」\n  ← k ⊢ ⊏ l 0 p\n  ← v ⊢ ⊏ l ＋p 1 ∅\n  ← s §st 「s」\n  ← d §st 「d」\n  ✎ st 「d」 ✎ d s ✎ дай d s k v\n》\n← крок Λst ln 《\n  ← l ⊢ ln\n  ← c ⊏ l 0 1\n  ¿ ∨ ＝ c 「」 ∨ ＝ c 「#」 ＝ c 「;」 st ¿ ＝ c 「[」 розд st l ¿ ∋ l 「=」 додай st l st\n》\n← розбір λtxt 《\n  ← fin Σ ✂ txt 「\\n」 『「s」 「」 「d」 『』』 Λst ln крок st ln\n  §fin 「d」\n》\n← злий Λa b Σ ε b a Λacc p ✎ acc §p 0 Σ ε §p 1 дай acc §p 0 Λm q ✎ m §q 0 §q 1\n← ba розбір 🜔читати 「base.ini」\n← lo розбір 🜔читати 「local.ini」\n← res злий ba lo\n∀ ↑ κ res λs 《\n  » 〔[{s}]〕\n  ∀ ↑ κ §res s λk » 〔{k}={§§res s k}〕\n》\n",
+  "відповідь": "```\n🜂 「злиття INI-конфігурацій base і local」 【「читати:дані」】\n← дай Λd n ¿ ∋ d n §d n 『』\n← розд Λst l 《\n  ← n ⊢ ⊏ l 1 －ρl 1\n  ✎ ✎ st 「s」 n 「d」 ✎ §st 「d」 n дай §st 「d」 n\n》\n← додай Λst l 《\n  ← p ⊳ l 「=」\n  ← k ⊢ ⊏ l 0 p\n  ← v ⊢ ⊏ l ＋p 1 ∅\n  ← s §st 「s」\n  ← d §st 「d」\n  ✎ st 「d」 ✎ d s ✎ дай d s k v\n》\n← крок Λst ln 《\n  ← l ⊢ ln\n  ← c ⊏ l 0 1\n  ¿ ∨ ＝ c 「」 ∨ ＝ c 「#」 ＝ c 「;」 st ¿ ＝ c 「[」 розд st l ¿ ∋ l 「=」 додай st l st\n》\n← розбір λtxt 《\n  ← fin Σ ✂ txt 「\\n」 『「s」 「」 「d」 『』』 Λst ln крок st ln\n  §fin 「d」\n》\n← злий Λa b Σ ε b a Λacc p ✎ acc §p 0 Σ ε §p 1 дай acc §p 0 Λm q ✎ m §q 0 §q 1\n← ba розбір 🜔читати 「base.ini」\n← lo розбір 🜔читати 「local.ini」\n← res злий ba lo\n∀ ↑ κ res λs 《\n  » 〔[{s}]〕\n  ∀ ↑ κ §res s λk » 〔{k}={§§res s k}〕\n》\n```\n\nЯ цю програму не запускав, тому не знаю, чи вона дає очікуваний вивід.\n\nПомилка була в рядку `розбір`: функцію `крок` у `Σ` викликали без аргументів. Тепер вона обгорнута в `Λst ln крок st ln`. Згортання я також винесла в блок із проміжним іменем `fin`.\n",
+  "код_виходу": 0,
+  "вивід": "[api]\ntimeout=30\n[cache]\nenabled=true\nttl=300\n[db]\nhost=10.0.0.5\nname=erp\nport=5432\nuser=denys\n[log]\nfile=/var/log/erp.log\nlevel=debug\n",
+  "помилки": ""
+ }
+]

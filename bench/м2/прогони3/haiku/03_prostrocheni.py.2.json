@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nfrom datetime import date\nfrom pathlib import Path\n\nСЬОГОДНІ = date(2026, 10, 20)\nАБЕТКА = \"абвгґдеєжзиіїйклмнопрстуфхцчшщьюя\"\nПОРЯДОК = {ch: i for i, ch in enumerate(АБЕТКА)}\n\n\ndef ключ_абетки(текст):\n    return [ПОРЯДОК.get(ch, 100 + ord(ch)) for ch in текст.lower()]\n\n\ndef main():\n    шлях = Path(\"дані\") / \"задачі.json\"\n    with шлях.open(encoding=\"utf-8\") as f:\n        задачі = json.load(f)\n\n    прострочені = []\n    for з in задачі:\n        if з.get(\"виконано\"):\n            continue\n        термін = date.fromisoformat(з[\"термін\"])\n        if термін < СЬОГОДНІ:\n            дні = (СЬОГОДНІ - термін).days\n            прострочені.append((з[\"задача\"], з[\"відповідальний\"], дні))\n\n    прострочені.sort(key=lambda з: (-з[2], ключ_абетки(з[0])))\n    for назва, відп, дні in прострочені:\n        print(f\"{назва} ({відп}): {дні} дн.\")\n    print(f\"Прострочено: {len(прострочені)}\")\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "відповідь": "```python\nimport json\nfrom datetime import date\nfrom pathlib import Path\n\nСЬОГОДНІ = date(2026, 10, 20)\nАБЕТКА = \"абвгґдеєжзиіїйклмнопрстуфхцчшщьюя\"\nПОРЯДОК = {ch: i for i, ch in enumerate(АБЕТКА)}\n\n\ndef ключ_абетки(текст):\n    return [ПОРЯДОК.get(ch, 100 + ord(ch)) for ch in текст.lower()]\n\n\ndef main():\n    шлях = Path(\"дані\") / \"задачі.json\"\n    with шлях.open(encoding=\"utf-8\") as f:\n        задачі = json.load(f)\n\n    прострочені = []\n    for з in задачі:\n        if з.get(\"виконано\"):\n            continue\n        термін = date.fromisoformat(з[\"термін\"])\n        if термін < СЬОГОДНІ:\n            дні = (СЬОГОДНІ - термін).days\n            прострочені.append((з[\"задача\"], з[\"відповідальний\"], дні))\n\n    прострочені.sort(key=lambda з: (-з[2], ключ_абетки(з[0])))\n    for назва, відп, дні in прострочені:\n        print(f\"{назва} ({відп}): {дні} дн.\")\n    print(f\"Прострочено: {len(прострочені)}\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n",
+  "код_виходу": 0,
+  "вивід": "Резервна копія (Денис): 19 дн.\nЗвіт ПДВ (Оля): 10 дн.\nАкт звірки (Оля): 1 дн.\nПрострочено: 3\n",
+  "помилки": ""
+ }
+]

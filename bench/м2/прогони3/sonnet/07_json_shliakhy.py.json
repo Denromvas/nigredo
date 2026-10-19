@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import json\nimport os\n\ndef main():\n    шлях_файлу = os.path.join(\"дані\", \"структура.json\")\n    with open(шлях_файлу, encoding=\"utf-8\") as f:\n        корінь = json.load(f)\n\n    результат = []\n\n    def обхід(вузол, шлях):\n        if isinstance(вузол, bool):\n            return\n        if isinstance(вузол, (int, float)):\n            if вузол > 100:\n                результат.append((\".\".join(шлях), вузол))\n        elif isinstance(вузол, dict):\n            for ключ, значення in вузол.items():\n                обхід(значення, шлях + [str(ключ)])\n        elif isinstance(вузол, list):\n            for i, значення in enumerate(вузол):\n                обхід(значення, шлях + [str(i)])\n\n    обхід(корінь, [])\n\n    for шлях, значення in результат:\n        print(f\"{шлях} = {значення}\")\n    print(f\"Знайдено: {len(результат)}\")\n\nmain()\n",
+  "відповідь": "```python\nimport json\nimport os\n\ndef main():\n    шлях_файлу = os.path.join(\"дані\", \"структура.json\")\n    with open(шлях_файлу, encoding=\"utf-8\") as f:\n        корінь = json.load(f)\n\n    результат = []\n\n    def обхід(вузол, шлях):\n        if isinstance(вузол, bool):\n            return\n        if isinstance(вузол, (int, float)):\n            if вузол > 100:\n                результат.append((\".\".join(шлях), вузол))\n        elif isinstance(вузол, dict):\n            for ключ, значення in вузол.items():\n                обхід(значення, шлях + [str(ключ)])\n        elif isinstance(вузол, list):\n            for i, значення in enumerate(вузол):\n                обхід(значення, шлях + [str(i)])\n\n    обхід(корінь, [])\n\n    for шлях, значення in результат:\n        print(f\"{шлях} = {значення}\")\n    print(f\"Знайдено: {len(результат)}\")\n\nmain()\n```\n",
+  "код_виходу": 0,
+  "вивід": "відділи.0.бюджет = 1500\nвідділи.0.люди.1.ставка = 120\nвідділи.1.люди.0.ставка = 101\nліміти.місяць = 1000\nліміти.рік.план = 12000\nЗнайдено: 5\n",
+  "помилки": ""
+ }
+]

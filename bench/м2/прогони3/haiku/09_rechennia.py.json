@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import os\nimport re\n\npath = os.path.join(\"дані\", \"текст.txt\")\nwith open(path, encoding=\"utf-8\") as f:\n    text = f.read()\n\n# Речення закінчуються одним або кількома знаками . ! ?; порожні фрагменти пропускаємо\nsentences = [s for s in re.split(r\"[.!?]+\", text) if s.strip()]\n\n# Слово — послідовність літер (Unicode), розділові знаки й тире не враховуються\nsentence_words = [re.findall(r\"[^\\W\\d_]+\", s) for s in sentences]\n\n# Сортуємо за кількістю слів (спадання), при рівності — у порядку тексту\nranked = sorted(\n    ((len(words), k) for k, words in enumerate(sentence_words, start=1)),\n    key=lambda t: (-t[0], t[1]),\n)\n\nfor n, k in ranked[:3]:\n    first_three = \" \".join(sentence_words[k - 1][:3])\n    print(f\"№{k} ({n} слів): {first_three}…\")\n",
+  "відповідь": "```python\nimport os\nimport re\n\npath = os.path.join(\"дані\", \"текст.txt\")\nwith open(path, encoding=\"utf-8\") as f:\n    text = f.read()\n\n# Речення закінчуються одним або кількома знаками . ! ?; порожні фрагменти пропускаємо\nsentences = [s for s in re.split(r\"[.!?]+\", text) if s.strip()]\n\n# Слово — послідовність літер (Unicode), розділові знаки й тире не враховуються\nsentence_words = [re.findall(r\"[^\\W\\d_]+\", s) for s in sentences]\n\n# Сортуємо за кількістю слів (спадання), при рівності — у порядку тексту\nranked = sorted(\n    ((len(words), k) for k, words in enumerate(sentence_words, start=1)),\n    key=lambda t: (-t[0], t[1]),\n)\n\nfor n, k in ranked[:3]:\n    first_three = \" \".join(sentence_words[k - 1][:3])\n    print(f\"№{k} ({n} слів): {first_three}…\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "№7 (16 слів): Вона означає розпад…\n№5 (11 слів): Але шлях складався…\n№2 (9 слів): Майстри шукали камінь…\n",
+  "помилки": ""
+ }
+]

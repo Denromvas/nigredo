@@ -1,0 +1,20 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": false,
+  "код": "import sqlite3\nfrom pathlib import Path\n\nшлях = Path(\"дані\") / \"склад.db\"\n\nз'єднання = sqlite3.connect(шлях)\ntry:\n    рядки = з'єднання.execute(\n        \"\"\"\n        SELECT т.назва,\n               COALESCE(SUM(CASE\n                   WHEN р.тип = 'прихід' THEN р.кількість\n                   WHEN р.тип = 'видаток' THEN -р.кількість\n               END), 0) AS залишок\n        FROM товари т\n        LEFT JOIN рухи р ON р.товар_id = т.id\n        GROUP BY т.id, т.назва\n        \"\"\"\n    ).fetchall()\nfinally:\n    з'єднання.close()\n\nвідʼємні = sorted(\n    ((назва, залишок) for назва, залишок in рядки if залишок < 0),\n    key=lambda х: (х[1], х[0]),\n)\nнульових = sum(1 for _, залишок in рядки if залишок == 0)\n\nfor назва, залишок in відʼємні:\n    print(f\"{назва}: {залишок}\")\nprint(f\"Нульових: {нульових}\")\n",
+  "відповідь": "```python\nimport sqlite3\nfrom pathlib import Path\n\nшлях = Path(\"дані\") / \"склад.db\"\n\nз'єднання = sqlite3.connect(шлях)\ntry:\n    рядки = з'єднання.execute(\n        \"\"\"\n        SELECT т.назва,\n               COALESCE(SUM(CASE\n                   WHEN р.тип = 'прихід' THEN р.кількість\n                   WHEN р.тип = 'видаток' THEN -р.кількість\n               END), 0) AS залишок\n        FROM товари т\n        LEFT JOIN рухи р ON р.товар_id = т.id\n        GROUP BY т.id, т.назва\n        \"\"\"\n    ).fetchall()\nfinally:\n    з'єднання.close()\n\nвідʼємні = sorted(\n    ((назва, залишок) for назва, залишок in рядки if залишок < 0),\n    key=lambda х: (х[1], х[0]),\n)\nнульових = sum(1 for _, залишок in рядки if залишок == 0)\n\nfor назва, залишок in відʼємні:\n    print(f\"{назва}: {залишок}\")\nprint(f\"Нульових: {нульових}\")\n```\n",
+  "код_виходу": 1,
+  "вивід": "",
+  "помилки": "  File \"/tmp/м2-run-7xtm80aw/рішення.py\", line 6\n    з'єднання = sqlite3.connect(шлях)\n     ^\nSyntaxError: unterminated string literal (detected at line 6)\n"
+ },
+ {
+  "спроба": 2,
+  "гаразд": true,
+  "код": "import sqlite3\nfrom pathlib import Path\n\nшлях = Path(\"дані\") / \"склад.db\"\n\nзєднання = sqlite3.connect(шлях)\ntry:\n    рядки = зєднання.execute(\n        \"\"\"\n        SELECT т.назва,\n               COALESCE(SUM(CASE\n                   WHEN р.тип = 'прихід' THEN р.кількість\n                   WHEN р.тип = 'видаток' THEN -р.кількість\n               END), 0) AS залишок\n        FROM товари т\n        LEFT JOIN рухи р ON р.товар_id = т.id\n        GROUP BY т.id, т.назва\n        \"\"\"\n    ).fetchall()\nfinally:\n    зєднання.close()\n\nвідємні = sorted(\n    ((назва, залишок) for назва, залишок in рядки if залишок < 0),\n    key=lambda пара: (пара[1], пара[0]),\n)\nнульових = sum(1 for _, залишок in рядки if залишок == 0)\n\nfor назва, залишок in відємні:\n    print(f\"{назва}: {залишок}\")\nprint(f\"Нульових: {нульових}\")\n",
+  "відповідь": "```python\nimport sqlite3\nfrom pathlib import Path\n\nшлях = Path(\"дані\") / \"склад.db\"\n\nзєднання = sqlite3.connect(шлях)\ntry:\n    рядки = зєднання.execute(\n        \"\"\"\n        SELECT т.назва,\n               COALESCE(SUM(CASE\n                   WHEN р.тип = 'прихід' THEN р.кількість\n                   WHEN р.тип = 'видаток' THEN -р.кількість\n               END), 0) AS залишок\n        FROM товари т\n        LEFT JOIN рухи р ON р.товар_id = т.id\n        GROUP BY т.id, т.назва\n        \"\"\"\n    ).fetchall()\nfinally:\n    зєднання.close()\n\nвідємні = sorted(\n    ((назва, залишок) for назва, залишок in рядки if залишок < 0),\n    key=lambda пара: (пара[1], пара[0]),\n)\nнульових = sum(1 for _, залишок in рядки if залишок == 0)\n\nfor назва, залишок in відємні:\n    print(f\"{назва}: {залишок}\")\nprint(f\"Нульових: {нульових}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "Шурупи: -12\nЦвяхи: -5\nФарба: -4\nНульових: 1\n",
+  "помилки": ""
+ }
+]

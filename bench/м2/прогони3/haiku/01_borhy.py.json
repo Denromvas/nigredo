@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import csv\nfrom collections import defaultdict\nfrom decimal import Decimal, ROUND_HALF_UP\n\nCENT = Decimal(\"0.01\")\n\n\ndef fmt(value):\n    return str(value.quantize(CENT, rounding=ROUND_HALF_UP))\n\n\ndef main():\n    borg = defaultdict(Decimal)\n\n    with open(\"дані/рахунки.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n        reader = csv.DictReader(f)\n        for row in reader:\n            klient = row[\"клієнт\"].strip()\n            suma = Decimal(row[\"сума\"].strip())\n            splacheno = Decimal(row[\"сплачено\"].strip())\n            borg[klient] += suma - splacheno\n\n    dolzhnyky = [(k, v) for k, v in borg.items() if v > 0]\n    dolzhnyky.sort(key=lambda kv: (-kv[1], kv[0]))\n\n    razom = Decimal(\"0\")\n    for klient, suma_borgu in dolzhnyky:\n        print(f\"{klient}: {fmt(suma_borgu)}\")\n        razom += suma_borgu\n\n    print(f\"Разом: {fmt(razom)}\")\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "відповідь": "```python\nimport csv\nfrom collections import defaultdict\nfrom decimal import Decimal, ROUND_HALF_UP\n\nCENT = Decimal(\"0.01\")\n\n\ndef fmt(value):\n    return str(value.quantize(CENT, rounding=ROUND_HALF_UP))\n\n\ndef main():\n    borg = defaultdict(Decimal)\n\n    with open(\"дані/рахунки.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n        reader = csv.DictReader(f)\n        for row in reader:\n            klient = row[\"клієнт\"].strip()\n            suma = Decimal(row[\"сума\"].strip())\n            splacheno = Decimal(row[\"сплачено\"].strip())\n            borg[klient] += suma - splacheno\n\n    dolzhnyky = [(k, v) for k, v in borg.items() if v > 0]\n    dolzhnyky.sort(key=lambda kv: (-kv[1], kv[0]))\n\n    razom = Decimal(\"0\")\n    for klient, suma_borgu in dolzhnyky:\n        print(f\"{klient}: {fmt(suma_borgu)}\")\n        razom += suma_borgu\n\n    print(f\"Разом: {fmt(razom)}\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n",
+  "код_виходу": 0,
+  "вивід": "Агро-Схід: 500.10\nАльфа: 330.00\nФОП Коваль: 330.00\nТОВ Ромашка: 99.90\nРазом: 1260.00\n",
+  "помилки": ""
+ }
+]

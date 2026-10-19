@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import csv\nfrom decimal import Decimal, ROUND_HALF_UP\n\ndef fmt(x):\n    return str(x.quantize(Decimal(\"0.01\"), rounding=ROUND_HALF_UP))\n\ndebts = {}\nwith open(\"дані/рахунки.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n    for row in csv.DictReader(f):\n        if not row or not row.get(\"клієнт\"):\n            continue\n        name = row[\"клієнт\"].strip()\n        amount = Decimal(row[\"сума\"].strip())\n        paid = Decimal(row[\"сплачено\"].strip())\n        debts[name] = debts.get(name, Decimal(0)) + amount - paid\n\nitems = [(n, d) for n, d in debts.items() if d > 0]\nitems.sort(key=lambda p: (-p[1], p[0]))\n\ntotal = Decimal(0)\nfor n, d in items:\n    print(f\"{n}: {fmt(d)}\")\n    total += d\nprint(f\"Разом: {fmt(total)}\")\n",
+  "відповідь": "```python\nimport csv\nfrom decimal import Decimal, ROUND_HALF_UP\n\ndef fmt(x):\n    return str(x.quantize(Decimal(\"0.01\"), rounding=ROUND_HALF_UP))\n\ndebts = {}\nwith open(\"дані/рахунки.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n    for row in csv.DictReader(f):\n        if not row or not row.get(\"клієнт\"):\n            continue\n        name = row[\"клієнт\"].strip()\n        amount = Decimal(row[\"сума\"].strip())\n        paid = Decimal(row[\"сплачено\"].strip())\n        debts[name] = debts.get(name, Decimal(0)) + amount - paid\n\nitems = [(n, d) for n, d in debts.items() if d > 0]\nitems.sort(key=lambda p: (-p[1], p[0]))\n\ntotal = Decimal(0)\nfor n, d in items:\n    print(f\"{n}: {fmt(d)}\")\n    total += d\nprint(f\"Разом: {fmt(total)}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "Агро-Схід: 500.10\nАльфа: 330.00\nФОП Коваль: 330.00\nТОВ Ромашка: 99.90\nРазом: 1260.00\n",
+  "помилки": ""
+ }
+]

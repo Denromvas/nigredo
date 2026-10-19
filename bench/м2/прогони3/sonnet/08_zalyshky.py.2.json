@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import sqlite3\nimport os\n\nconn = sqlite3.connect(os.path.join(\"дані\", \"склад.db\"))\ncur = conn.cursor()\n\ncur.execute(\"\"\"\n    SELECT т.id, т.назва,\n           COALESCE(SUM(CASE WHEN р.тип = 'прихід' THEN р.кількість\n                             WHEN р.тип = 'видаток' THEN -р.кількість\n                             ELSE 0 END), 0) AS залишок\n    FROM товари т\n    LEFT JOIN рухи р ON р.товар_id = т.id\n    GROUP BY т.id\n\"\"\")\nрядки = cur.fetchall()\nconn.close()\n\nвідємні = sorted((r for r in рядки if r[2] < 0), key=lambda r: (r[2], r[1]))\nfor _, назва, залишок in відємні:\n    print(f\"{назва}: {залишок}\")\n\nprint(f\"Нульових: {sum(1 for r in рядки if r[2] == 0)}\")\n",
+  "відповідь": "```python\nimport sqlite3\nimport os\n\nconn = sqlite3.connect(os.path.join(\"дані\", \"склад.db\"))\ncur = conn.cursor()\n\ncur.execute(\"\"\"\n    SELECT т.id, т.назва,\n           COALESCE(SUM(CASE WHEN р.тип = 'прихід' THEN р.кількість\n                             WHEN р.тип = 'видаток' THEN -р.кількість\n                             ELSE 0 END), 0) AS залишок\n    FROM товари т\n    LEFT JOIN рухи р ON р.товар_id = т.id\n    GROUP BY т.id\n\"\"\")\nрядки = cur.fetchall()\nconn.close()\n\nвідємні = sorted((r for r in рядки if r[2] < 0), key=lambda r: (r[2], r[1]))\nfor _, назва, залишок in відємні:\n    print(f\"{назва}: {залишок}\")\n\nprint(f\"Нульових: {sum(1 for r in рядки if r[2] == 0)}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "Шурупи: -12\nЦвяхи: -5\nФарба: -4\nНульових: 1\n",
+  "помилки": ""
+ }
+]

@@ -1,0 +1,20 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": false,
+  "код": "import csv\nfrom pathlib import Path\n\n# email -> імена контактів; dict зберігає порядок першої появи email\ngroups = {}\n\nwith Path(\"дані/контакти.csv\").open(encoding=\"utf-8-sig\", newline=\"\") as f:\n    reader = csv.reader(f)\n    next(reader, None)  # пропускаємо заголовок\n    for row in reader:\n        if len(row) < 2:\n            continue\n        name = row[0]\n        email = row[1].strip().lower()\n        if not email:\n            # порожній email не вважаємо дублікатом і не рахуємо як унікальний\n            continue\n        groups.setdefault(email, []).append(name)\n\nfor email, names in groups.items():\n    if len(names) >= 2:\n        print(f\"email: {email}\")\n        for name in names:\n            print(f\"  {name}\")\n\nprint(f\"Унікальних: {len(groups)}\")\n",
+  "відповідь": "```python\nimport csv\nfrom pathlib import Path\n\n# email -> імена контактів; dict зберігає порядок першої появи email\ngroups = {}\n\nwith Path(\"дані/контакти.csv\").open(encoding=\"utf-8-sig\", newline=\"\") as f:\n    reader = csv.reader(f)\n    next(reader, None)  # пропускаємо заголовок\n    for row in reader:\n        if len(row) < 2:\n            continue\n        name = row[0]\n        email = row[1].strip().lower()\n        if not email:\n            # порожній email не вважаємо дублікатом і не рахуємо як унікальний\n            continue\n        groups.setdefault(email, []).append(name)\n\nfor email, names in groups.items():\n    if len(names) >= 2:\n        print(f\"email: {email}\")\n        for name in names:\n            print(f\"  {name}\")\n\nprint(f\"Унікальних: {len(groups)}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "email: olia@firma.ua\n  Оля Петренко\n  О. Петренко\n  Оля П.\nemail: petro@firma.ua\n  Петро Іваненко\n  Петро\nУнікальних: 4\n",
+  "помилки": ""
+ },
+ {
+  "спроба": 2,
+  "гаразд": true,
+  "код": "import csv\nfrom pathlib import Path\n\n# email -> імена контактів; dict зберігає порядок першої появи email\ngroups = {}\n\nwith Path(\"дані/контакти.csv\").open(encoding=\"utf-8-sig\", newline=\"\") as f:\n    reader = csv.reader(f)\n    next(reader, None)  # пропускаємо заголовок\n    for row in reader:\n        if len(row) < 2:\n            continue\n        name = row[0]\n        email = row[1].strip().lower()\n        if not email:\n            # порожній email не вважаємо дублікатом і не рахуємо як унікальний\n            continue\n        groups.setdefault(email, []).append(name)\n\nfor email, names in groups.items():\n    if len(names) >= 2:\n        print(f\"{email}: {len(names)}\")\n        for name in names:\n            print(f\"  {name}\")\n\nprint(f\"Унікальних: {len(groups)}\")\n",
+  "відповідь": "```python\nimport csv\nfrom pathlib import Path\n\n# email -> імена контактів; dict зберігає порядок першої появи email\ngroups = {}\n\nwith Path(\"дані/контакти.csv\").open(encoding=\"utf-8-sig\", newline=\"\") as f:\n    reader = csv.reader(f)\n    next(reader, None)  # пропускаємо заголовок\n    for row in reader:\n        if len(row) < 2:\n            continue\n        name = row[0]\n        email = row[1].strip().lower()\n        if not email:\n            # порожній email не вважаємо дублікатом і не рахуємо як унікальний\n            continue\n        groups.setdefault(email, []).append(name)\n\nfor email, names in groups.items():\n    if len(names) >= 2:\n        print(f\"{email}: {len(names)}\")\n        for name in names:\n            print(f\"  {name}\")\n\nprint(f\"Унікальних: {len(groups)}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "olia@firma.ua: 3\n  Оля Петренко\n  О. Петренко\n  Оля П.\npetro@firma.ua: 2\n  Петро Іваненко\n  Петро\nУнікальних: 4\n",
+  "помилки": ""
+ }
+]

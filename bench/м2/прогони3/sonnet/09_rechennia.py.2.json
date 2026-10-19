@@ -1,0 +1,20 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": false,
+  "код": "import re\n\nwith open('дані/текст.txt', encoding='utf-8') as f:\n    text = f.read()\n\nsentences = []\nfor part in re.split(r'[.!?]+', text):\n    words = re.findall(r'[^\\W\\d_]+', part)\n    if words:\n        sentences.append(words)\n\nindexed = [(i + 1, w) for i, w in enumerate(sentences)]\ntop = sorted(indexed, key=lambda x: (-len(x[1]), x[0]))[:3]\n\nfor k, w in top:\n    print(f\"№{k} ({len(w)} слів): {' '.join(w[:3])}\")\n",
+  "відповідь": "```python\nimport re\n\nwith open('дані/текст.txt', encoding='utf-8') as f:\n    text = f.read()\n\nsentences = []\nfor part in re.split(r'[.!?]+', text):\n    words = re.findall(r'[^\\W\\d_]+', part)\n    if words:\n        sentences.append(words)\n\nindexed = [(i + 1, w) for i, w in enumerate(sentences)]\ntop = sorted(indexed, key=lambda x: (-len(x[1]), x[0]))[:3]\n\nfor k, w in top:\n    print(f\"№{k} ({len(w)} слів): {' '.join(w[:3])}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "№7 (16 слів): Вона означає розпад\n№5 (11 слів): Але шлях складався\n№2 (9 слів): Майстри шукали камінь\n",
+  "помилки": ""
+ },
+ {
+  "спроба": 2,
+  "гаразд": true,
+  "код": "import re\n\nwith open('дані/текст.txt', encoding='utf-8') as f:\n    text = f.read()\n\nsentences = []\nfor part in re.split(r'[.!?]+', text):\n    words = re.findall(r'[^\\W\\d_]+', part)\n    if words:\n        sentences.append(words)\n\nindexed = [(i + 1, w) for i, w in enumerate(sentences)]\ntop = sorted(indexed, key=lambda x: (-len(x[1]), x[0]))[:3]\n\nfor k, w in top:\n    print(f\"№{k} ({len(w)} слів): {' '.join(w[:3])}…\")\n",
+  "відповідь": "```python\nimport re\n\nwith open('дані/текст.txt', encoding='utf-8') as f:\n    text = f.read()\n\nsentences = []\nfor part in re.split(r'[.!?]+', text):\n    words = re.findall(r'[^\\W\\d_]+', part)\n    if words:\n        sentences.append(words)\n\nindexed = [(i + 1, w) for i, w in enumerate(sentences)]\ntop = sorted(indexed, key=lambda x: (-len(x[1]), x[0]))[:3]\n\nfor k, w in top:\n    print(f\"№{k} ({len(w)} слів): {' '.join(w[:3])}…\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "№7 (16 слів): Вона означає розпад…\n№5 (11 слів): Але шлях складався…\n№2 (9 слів): Майстри шукали камінь…\n",
+  "помилки": ""
+ }
+]

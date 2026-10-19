@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import csv\nimport sys\nfrom decimal import Decimal, ROUND_HALF_UP\n\ndef main():\n    debts = {}\n    with open(\"дані/рахунки.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n        for row in csv.DictReader(f):\n            name = row[\"клієнт\"].strip()\n            total = Decimal(row[\"сума\"].strip())\n            paid = Decimal(row[\"сплачено\"].strip())\n            debts[name] = debts.get(name, Decimal(0)) + (total - paid)\n\n    positive = [(n, d) for n, d in debts.items() if d > 0]\n    positive.sort(key=lambda x: (-x[1], x[0]))\n\n    q = Decimal(\"0.01\")\n    fmt = lambda d: format(d.quantize(q, rounding=ROUND_HALF_UP), \"f\")\n\n    out = [f\"{n}: {fmt(d)}\" for n, d in positive]\n    out.append(f\"Разом: {fmt(sum((d for _, d in positive), Decimal(0)))}\")\n\n    sys.stdout.buffer.write((\"\\n\".join(out) + \"\\n\").encode(\"utf-8\"))\n\nmain()\n",
+  "відповідь": "```python\nimport csv\nimport sys\nfrom decimal import Decimal, ROUND_HALF_UP\n\ndef main():\n    debts = {}\n    with open(\"дані/рахунки.csv\", encoding=\"utf-8-sig\", newline=\"\") as f:\n        for row in csv.DictReader(f):\n            name = row[\"клієнт\"].strip()\n            total = Decimal(row[\"сума\"].strip())\n            paid = Decimal(row[\"сплачено\"].strip())\n            debts[name] = debts.get(name, Decimal(0)) + (total - paid)\n\n    positive = [(n, d) for n, d in debts.items() if d > 0]\n    positive.sort(key=lambda x: (-x[1], x[0]))\n\n    q = Decimal(\"0.01\")\n    fmt = lambda d: format(d.quantize(q, rounding=ROUND_HALF_UP), \"f\")\n\n    out = [f\"{n}: {fmt(d)}\" for n, d in positive]\n    out.append(f\"Разом: {fmt(sum((d for _, d in positive), Decimal(0)))}\")\n\n    sys.stdout.buffer.write((\"\\n\".join(out) + \"\\n\").encode(\"utf-8\"))\n\nmain()\n```\n",
+  "код_виходу": 0,
+  "вивід": "Агро-Схід: 500.10\nАльфа: 330.00\nФОП Коваль: 330.00\nТОВ Ромашка: 99.90\nРазом: 1260.00\n",
+  "помилки": ""
+ }
+]

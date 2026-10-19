@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "🜂 「злиття base.ini і local.ini: розділи й ключі за абеткою」 【「читати:дані」】\n← parse λt 《\n  ← st Σ ✂ t 「\\n」 『「sec」 「」 「out」 【】』 Λa ln 《\n    ← l ⊢ ln\n    ← c ⊏ l 0 1\n    ← i ⊳ l 「=」\n    ← skip ∨ ＝ l 「」 ∨ ＝ c 「#」 ＝ c 「;」\n    ← hdr ＝ c 「[」\n    ← nm ⊢ ⊏ l 1 ¯1\n    ← k ⊢ ⊏ l 0 i\n    ← v ⊢ ⊏ l ＋ i 1 ∅\n    ← sec §a 「sec」\n    ← out §a 「out」\n    ¿ skip a ¿ hdr ✎ ✎ a 「sec」 nm 「out」 ＋ out 【【nm 「」 「」】】 ¿ › i 0 ✎ a 「out」 ＋ out 【【sec k v】】 a\n  》\n  §st 「out」\n》\n← bt 🜔читати 「base.ini」\n← lt 🜔читати 「local.ini」\n← all ＋ parse bt parse lt\n← merged Σ all 『』 Λm t ✎ m Δ 【§t 0 §t 1】 t\n← vals μ ε merged λ【k v】 v\n← rows ⇅ vals λt 【§t 0 §t 1】\n← grp ⊞ rows λt §t 0\n∀ ↑ κ grp λs 《\n  » 〔[{s}]〕\n  ∀ §grp s λt ¿ ＝ §t 1 「」 ∅ » 〔{§t 1}={§t 2}〕\n》\n",
+  "відповідь": "```\n🜂 「злиття base.ini і local.ini: розділи й ключі за абеткою」 【「читати:дані」】\n← parse λt 《\n  ← st Σ ✂ t 「\\n」 『「sec」 「」 「out」 【】』 Λa ln 《\n    ← l ⊢ ln\n    ← c ⊏ l 0 1\n    ← i ⊳ l 「=」\n    ← skip ∨ ＝ l 「」 ∨ ＝ c 「#」 ＝ c 「;」\n    ← hdr ＝ c 「[」\n    ← nm ⊢ ⊏ l 1 ¯1\n    ← k ⊢ ⊏ l 0 i\n    ← v ⊢ ⊏ l ＋ i 1 ∅\n    ← sec §a 「sec」\n    ← out §a 「out」\n    ¿ skip a ¿ hdr ✎ ✎ a 「sec」 nm 「out」 ＋ out 【【nm 「」 「」】】 ¿ › i 0 ✎ a 「out」 ＋ out 【【sec k v】】 a\n  》\n  §st 「out」\n》\n← bt 🜔читати 「base.ini」\n← lt 🜔читати 「local.ini」\n← all ＋ parse bt parse lt\n← merged Σ all 『』 Λm t ✎ m Δ 【§t 0 §t 1】 t\n← vals μ ε merged λ【k v】 v\n← rows ⇅ vals λt 【§t 0 §t 1】\n← grp ⊞ rows λt §t 0\n∀ ↑ κ grp λs 《\n  » 〔[{s}]〕\n  ∀ §grp s λt ¿ ＝ §t 1 「」 ∅ » 〔{§t 1}={§t 2}〕\n》\n```\n",
+  "код_виходу": 0,
+  "вивід": "[api]\ntimeout=30\n[cache]\nenabled=true\nttl=300\n[db]\nhost=10.0.0.5\nname=erp\nport=5432\nuser=denys\n[log]\nfile=/var/log/erp.log\nlevel=debug\n",
+  "помилки": ""
+ }
+]

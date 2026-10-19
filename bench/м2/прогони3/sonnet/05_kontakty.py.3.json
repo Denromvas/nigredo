@@ -1,0 +1,11 @@
+[
+ {
+  "спроба": 1,
+  "гаразд": true,
+  "код": "import csv\nimport os\n\nшлях = os.path.join(\"дані\", \"контакти.csv\")\n\nгрупи = {}\nwith open(шлях, encoding=\"utf-8-sig\", newline=\"\") as f:\n    читач = csv.reader(f)\n    next(читач, None)\n    for рядок in читач:\n        if not рядок or all(not c.strip() for c in рядок):\n            continue\n        імя = рядок[0].strip() if len(рядок) > 0 else \"\"\n        email = (рядок[1] if len(рядок) > 1 else \"\").strip().lower()\n        групи.setdefault(email, []).append(імя)\n\nfor email, імена in групи.items():\n    if len(імена) >= 2:\n        print(f\"{email}: {len(імена)}\")\n        for імя in імена:\n            print(f\"  {імя}\")\n\nprint(f\"Унікальних: {len(групи)}\")\n",
+  "відповідь": "```python\nimport csv\nimport os\n\nшлях = os.path.join(\"дані\", \"контакти.csv\")\n\nгрупи = {}\nwith open(шлях, encoding=\"utf-8-sig\", newline=\"\") as f:\n    читач = csv.reader(f)\n    next(читач, None)\n    for рядок in читач:\n        if not рядок or all(not c.strip() for c in рядок):\n            continue\n        імя = рядок[0].strip() if len(рядок) > 0 else \"\"\n        email = (рядок[1] if len(рядок) > 1 else \"\").strip().lower()\n        групи.setdefault(email, []).append(імя)\n\nfor email, імена in групи.items():\n    if len(імена) >= 2:\n        print(f\"{email}: {len(імена)}\")\n        for імя in імена:\n            print(f\"  {імя}\")\n\nprint(f\"Унікальних: {len(групи)}\")\n```\n",
+  "код_виходу": 0,
+  "вивід": "olia@firma.ua: 3\n  Оля Петренко\n  О. Петренко\n  Оля П.\npetro@firma.ua: 2\n  Петро Іваненко\n  Петро\nУнікальних: 4\n",
+  "помилки": ""
+ }
+]
