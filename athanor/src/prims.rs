@@ -408,7 +408,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             let ok = it.out.write_all(text.as_bytes()).and_then(|_| it.out.write_all(b"\n")).and_then(|_| it.out.flush());
             if let Err(e) = ok {
                 if e.kind() == std::io::ErrorKind::BrokenPipe {
-                    return Err(Box::new(E { msg: String::new(), pos: None, c: 1.0, wh: false, file: None, fatal: true, pipe: true }));
+                    return Err(Box::new(E { msg: String::new(), pos: None, c: 1.0, wh: false, file: None, fatal: true, pipe: true, internal: false }));
                 }
                 return fatal(format!("вивід: {}", e), Some(pos));
             }
@@ -621,6 +621,147 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             Ok(V::dec(q))
         }
         '⌂' => Ok(V::list(it.argv.iter().map(|x| V::str(x.clone())).collect())),
+        '▦' => {
+            let t0 = need_str(&a[0], "▦", pos)?;
+            let text = t0.s.strip_prefix('\u{feff}').unwrap_or(&t0.s);
+            let limit = text.chars().count().max(1);
+            let rd = match crate::csvp::read(text, limit) {
+                Ok(r) => r,
+                Err(e) => return ngr(format!("▦: не CSV ({})", e), pos),
+            };
+            if rd.is_empty() {
+                return Ok(V::list(Vec::new()));
+            }
+            let head = &rd[0];
+            let mut uniq: Vec<&String> = head.iter().collect();
+            uniq.sort();
+            uniq.dedup();
+            if uniq.len() != head.len() {
+                return ngr(format!("▦: однакові заголовки ({}) — значення загубилися б", head.join(", ")), pos);
+            }
+            let keys: Vec<Rc<PStr>> = head.iter().map(|h| Rc::new(PStr::from(h))).collect();
+            let mut out = Vec::new();
+            for (i, r) in rd[1..].iter().enumerate() {
+                if r.is_empty() {
+                    continue;
+                }
+                if r.len() != head.len() {
+                    return ngr(
+                        format!("▦: рядок {} має {} полів, а заголовків {} — нічого не губимо мовчки", i + 2, r.len(), head.len()),
+                        pos,
+                    );
+                }
+                let mut d = Dict::new();
+                for (k, x) in keys.iter().zip(r) {
+                    d.set(k.clone(), V::str(x.clone()));
+                }
+                out.push(V::new(Val::Dict(Rc::new(d)), 1.0));
+            }
+            Ok(V::list(out))
+        }
+        '⌕' | '≋' => {
+            let gs = g.to_string();
+            let x = need_str(&a[0], &gs, pos)?;
+            let pat = need_str(&a[1], &gs, pos)?;
+            let r = match crate::rx::Rx::new(&pat.s) {
+                Ok(r) => r,
+                Err(crate::rx::RxErr::Re(e)) => {
+                    return ngr(format!("{}: хибний шаблон: {}", g, crate::rx::re_error_text(&e, &pat.s)), pos)
+                }
+                Err(crate::rx::RxErr::Rx(m)) => return ngr(format!("{}: {}", g, m), pos),
+                Err(crate::rx::RxErr::Internal(m)) => return internal(m),
+            };
+            let text: Vec<char> = x.s.chars().collect();
+            let max = it.max_size;
+            let mut steps = it.steps_left;
+            let mut pay = |k: i64| -> Result<(), String> {
+                steps -= k;
+                if steps < 0 {
+                    return Err(String::new());
+                }
+                Ok(())
+            };
+            if g == '≋' {
+                let tmpl: Vec<char> = need_str(&a[2], "≋", pos)?.s.chars().collect();
+                let mut out = String::new();
+                let mut last = 0usize;
+                let mut total = 0u64;
+                let mut fail: Option<Box<E>> = None;
+                let res = r.finditer(&text, &mut pay, &mut |m| {
+                    let groups = r.groups(&text, m);
+                    let rep = match r.expand(&tmpl, &groups) {
+                        Ok(s) => s,
+                        Err((true, msg)) => {
+                            fail = Some(ngr::<()>(format!("≋: {}", msg), pos).unwrap_err());
+                            return Err("x".into());
+                        }
+                        Err((false, msg)) => {
+                            fail = Some(internal::<()>(msg).unwrap_err());
+                            return Err("x".into());
+                        }
+                    };
+                    let s0 = m[0].unwrap();
+                    let piece_len = (s0 - last.min(s0)) as u64 + rep.chars().count() as u64;
+                    total += piece_len;
+                    if total > max {
+                        fail = Some(fatal::<()>(format!("≋: значення завелике (> --розмір {})", max), Some(pos)).unwrap_err());
+                        return Err("x".into());
+                    }
+                    out.extend(text[last..s0].iter());
+                    out.push_str(&rep);
+                    last = m[1].unwrap();
+                    Ok(())
+                });
+                it.steps_left = steps;
+                if let Some(e) = fail {
+                    return Err(e);
+                }
+                if let Err(m) = res {
+                    if m.is_empty() {
+                        return fatal("перевищено ліміт кроків (--кроки) у регулярному виразі", Some(pos));
+                    }
+                    return internal(m);
+                }
+                out.extend(text[last..].iter());
+                return Ok(V::str(out));
+            }
+            let mut out: Vec<V> = Vec::new();
+            let mut size = 0u64;
+            let mut fail: Option<Box<E>> = None;
+            let one = r.ngroups == 1;
+            let res = r.finditer(&text, &mut pay, &mut |m| {
+                let groups = r.groups(&text, m);
+                if one {
+                    let item = groups[0].clone().unwrap_or_default();
+                    size += 1 + item.chars().count() as u64;
+                    if size > max {
+                        fail = Some(fatal::<()>(format!("⌕: значення завелике (> --розмір {})", max), Some(pos)).unwrap_err());
+                        return Err("x".into());
+                    }
+                    out.push(V::str(item));
+                } else {
+                    let parts: Vec<String> = groups[1..].iter().map(|p| p.clone().unwrap_or_default()).collect();
+                    size += 1 + parts.iter().map(|p| p.chars().count() as u64 + 1).sum::<u64>();
+                    if size > max {
+                        fail = Some(fatal::<()>(format!("⌕: значення завелике (> --розмір {})", max), Some(pos)).unwrap_err());
+                        return Err("x".into());
+                    }
+                    out.push(V::list(parts.into_iter().map(V::str).collect()));
+                }
+                Ok(())
+            });
+            it.steps_left = steps;
+            if let Some(e) = fail {
+                return Err(e);
+            }
+            if let Err(m) = res {
+                if m.is_empty() {
+                    return fatal("перевищено ліміт кроків (--кроки) у регулярному виразі", Some(pos));
+                }
+                return internal(m);
+            }
+            Ok(V::list(out))
+        }
         _ => crate::prims2::prim(it, g, a, pos),
     }
 }

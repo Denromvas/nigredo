@@ -25,6 +25,7 @@ pub struct E {
     pub file: Option<String>,
     pub fatal: bool,
     pub pipe: bool,
+    pub internal: bool,
 }
 
 impl E {
@@ -44,21 +45,26 @@ impl E {
 pub type R<T> = Result<T, Box<E>>;
 
 pub fn ngr<T>(msg: impl Into<String>, pos: Pos) -> R<T> {
-    Err(Box::new(E { msg: msg.into(), pos: Some(pos), c: 1.0, wh: false, file: None, fatal: false, pipe: false }))
+    Err(Box::new(E { msg: msg.into(), pos: Some(pos), c: 1.0, wh: false, file: None, fatal: false, pipe: false, internal: false }))
 }
 
 pub fn ngr_c<T>(msg: impl Into<String>, pos: Pos, c: f64) -> R<T> {
-    Err(Box::new(E { msg: msg.into(), pos: Some(pos), c, wh: false, file: None, fatal: false, pipe: false }))
+    Err(Box::new(E { msg: msg.into(), pos: Some(pos), c, wh: false, file: None, fatal: false, pipe: false, internal: false }))
+}
+
+/// Вада еталона (виняток Python, не помилка мови) — у еталоні код 4; Атанор повторює те саме.
+pub fn internal<T>(msg: impl Into<String>) -> R<T> {
+    Err(Box::new(E { msg: msg.into(), pos: None, c: 1.0, wh: false, file: None, fatal: true, pipe: false, internal: true }))
 }
 
 pub fn fatal<T>(msg: impl Into<String>, pos: Option<Pos>) -> R<T> {
-    Err(Box::new(E { msg: msg.into(), pos, c: 1.0, wh: false, file: None, fatal: true, pipe: false }))
+    Err(Box::new(E { msg: msg.into(), pos, c: 1.0, wh: false, file: None, fatal: true, pipe: false, internal: false }))
 }
 
 fn terr(e: TraceErr) -> Box<E> {
     match e {
-        TraceErr::Fatal(m) => Box::new(E { msg: m, pos: None, c: 1.0, wh: false, file: None, fatal: true, pipe: false }),
-        TraceErr::Io(m) => Box::new(E { msg: format!("слід: {}", m), pos: None, c: 1.0, wh: false, file: None, fatal: true, pipe: false }),
+        TraceErr::Fatal(m) => Box::new(E { msg: m, pos: None, c: 1.0, wh: false, file: None, fatal: true, pipe: false, internal: false }),
+        TraceErr::Io(m) => Box::new(E { msg: format!("слід: {}", m), pos: None, c: 1.0, wh: false, file: None, fatal: true, pipe: false, internal: false }),
     }
 }
 
@@ -111,6 +117,7 @@ pub struct Interp {
     pub owner_home: String,
     pub paths_seen: Option<Vec<String>>,
     pub denied: bool,
+    pub last_call: Option<(String, Vec<J>)>,
     pub prof: Option<HashMap<String, (u64, std::time::Duration)>>,
 }
 
@@ -1089,6 +1096,7 @@ impl Interp {
         }
         let ac = args.iter().fold(self.cpc(), |a, x| a.min(x.c));
         self.taint(ac);
+        self.last_call = Some((name.to_string(), targs.clone()));
         let hits = self.check_quota(name, &args, &targs, pos)?;
         if lang::WORLD_WRITERS.contains(&name) {
             let agent = self.agent.clone();
@@ -1384,6 +1392,7 @@ impl Interp {
                         file: None,
                         fatal: false,
                         pipe: false,
+                        internal: false,
                     })),
                 }
             }

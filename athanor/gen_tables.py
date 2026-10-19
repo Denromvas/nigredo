@@ -137,6 +137,14 @@ def main():
                 words[cp >> 6] |= 1 << (cp & 63)
         out.append(f'pub static {name}: [u64; 1024] = [' + ', '.join(f'{w:#x}' for w in words) + '];')
 
+    # ідентифікатори Python (назви груп у регулярках): початок і продовження
+    r = ranges(lambda cp: not 0xD800 <= cp <= 0xDFFF and ch(cp).isidentifier())
+    out.append(f'pub static ID_START: [(u32, u32); {len(r)}] = [' + ', '.join(f'({a}, {b})' for a, b in r) + '];')
+    r = ranges(lambda cp: not 0xD800 <= cp <= 0xDFFF and ('a' + ch(cp)).isidentifier())
+    out.append(f'pub static ID_CONT: [(u32, u32); {len(r)}] = [' + ', '.join(f'({a}, {b})' for a, b in r) + '];')
+    r = ranges(lambda cp: not 0xD800 <= cp <= 0xDFFF and ch(cp).isprintable())
+    out.append(f'pub static PRINTABLE: [(u32, u32); {len(r)}] = [' + ', '.join(f'({a}, {b})' for a, b in r) + '];')
+
     # регістр: символ → рядок (лише де відрізняється); остання сигма — класи case-ignorable / cased
     for name, f in (('LOWER', str.lower), ('UPPER', str.upper), ('CASEFOLD', str.casefold)):
         m = [(cp, f(ch(cp))) for cp in range(MAXCP) if not 0xD800 <= cp <= 0xDFFF and f(ch(cp)) != ch(cp)]

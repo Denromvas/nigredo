@@ -14,7 +14,9 @@ mod pathx;
 mod prims;
 mod prims2;
 mod pyf;
+mod csvp;
 mod rng;
+mod rx;
 mod sampler;
 mod seal;
 mod sha;
@@ -39,7 +41,7 @@ const SOURCE_SHA: &str = env!("ATHANOR_SOURCE_SHA");
 
 /// Гліфи, які Атанор виконує сам (решта — еталон: XML, регулярки, дати, CSV, схеми, паралельні виклики).
 fn glyph_ok(g: char) -> bool {
-    !matches!(g, '‖' | 'χ' | '↘' | '⌕' | '≋' | '▦' | '✓' | '◷')
+    !matches!(g, '‖' | 'χ' | '↘' | '✓' | '◷')
 }
 
 thread_local! {
@@ -359,6 +361,7 @@ fn execute(
         owner_home: home.to_string(),
         paths_seen: None,
         denied: false,
+        last_call: None,
         prof: if std::env::var_os("ATHANOR_PROFILE").is_some() { Some(Default::default()) } else { None },
     };
     let mut head = vec![
@@ -417,6 +420,16 @@ fn execute(
                 return 4;
             }
             0
+        }
+        Err(e) if e.internal => {
+            // як у еталона: виняток Python (вада мови) — код 4, у слід «внутрішня»
+            let mut d = vec![("внутрішня".to_string(), J::Bool(true)), ("повідомлення".into(), J::Str(e.msg.clone()))];
+            if let Some((n, a)) = &it.last_call {
+                d.push(("останній_виклик".into(), J::Obj(vec![("назва".into(), J::s(n)), ("аргументи".into(), J::Arr(a.clone()))])));
+            }
+            let _ = it.rec("помилка", d);
+            eprintln!("✗ внутрішня помилка інтерпретатора Nigredo ({}) — це вада мови, не програми; слід: {}", e.msg, paths[0]);
+            4
         }
         Err(e) if e.pipe => {
             if let Ok(f) = std::fs::OpenOptions::new().write(true).open("/dev/null") {
