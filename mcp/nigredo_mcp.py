@@ -20,6 +20,11 @@ import tempfile
 HERE = os.path.dirname(os.path.realpath(__file__))
 NGR = os.path.join(HERE, '..', 'interpreter', 'nigredo.py')   # модуль (правило видимості)
 NGR_RUN = os.path.join(HERE, '..', 'interpreter', 'ngr.py')     # запускач (кешований байткод)
+# виконавець: Атанор (нативний; чого не вміє — сам віддає еталону), якщо зібрано, інакше еталон
+ATHANOR = next((p for p in (os.path.join(HERE, '..', 'athanor', 'target', t, 'release', 'athanor')
+                            for t in ('aarch64-unknown-linux-gnu', 'x86_64-unknown-linux-gnu', '.'))
+                if os.path.isfile(p) and os.access(p, os.X_OK)), None)
+ENGINE = [ATHANOR] if ATHANOR else [sys.executable, NGR_RUN]
 # браузер, написаний на Nigredo; інший файл може вказати лише той, хто запускає сервер (власник), — не агент
 BROWSER = os.path.realpath(os.environ.get('NIGREDO_BROWSER') or os.path.join(HERE, '..', 'браузер', 'браузер.ngr'))
 WORKDIR = os.path.realpath(os.path.expanduser(os.environ.get('NIGREDO_WORKDIR', '~/nigredo-робоча')))
@@ -44,7 +49,7 @@ def bad_text(*texts):
 def ngr(*args, timeout=120, env=None):
     """Запуск ngr у своїй групі процесів: на тайм-ауті гине вся група — і тест, що саме йде (суд 8б: лишався сиротою)."""
     import signal
-    p = subprocess.Popen([sys.executable, NGR_RUN, *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    p = subprocess.Popen([*ENGINE, *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                          cwd=WORKDIR, stdin=subprocess.DEVNULL, env=env or os.environ, start_new_session=True)
     try:
         out, err = p.communicate(timeout=timeout)
@@ -89,6 +94,11 @@ def tools():
          'description': 'Знайти ВСІ помилки програми до запуску — розбір, типи, небезпечні регулярки — і звірити печатку '
                         'з дозволами власника. Без виконання. Відповідь — JSON: гаразд, помилки (рядок, стовпець, '
                         'повідомлення з підказкою), печатка.',
+         'inputSchema': {'type': 'object', 'properties': {'code': code}, 'required': ['code']}},
+        {'name': 'nigredo_shvalyty',
+         'description': 'Коли програмі бракує прав: відбиток програми, її печатка, переклад і готовий запис '
+                        '«для_програм» — права саме цій програмі (змінений байт — і схвалення не діє). Без виконання. '
+                        'Покажи це власникові: дозволи пише лише він, агент цей файл не змінює.',
          'inputSchema': {'type': 'object', 'properties': {'code': code}, 'required': ['code']}},
         {'name': 'nigredo_rozbir',
          'description': 'Переклад програми українським псевдокодом — без виконання.',
@@ -157,6 +167,9 @@ def call(name, a):
         return [clean((out or err).strip()), clean(js.strip())], rc != 0   # rc 3 — печатка не в межах дозволів власника
     if name == 'nigredo_pereviryty':
         rc, out, err = ngr('--перевірити', '--json', '--тека', WORKDIR, '-e', a['code'])
+        return [clean((out or err).strip())], rc != 0
+    if name == 'nigredo_shvalyty':
+        rc, out, err = ngr('--схвалити', '--тека', WORKDIR, '-e', a['code'])
         return [clean((out or err).strip())], rc != 0
     if name == 'nigredo_rozbir':
         rc, out, err = ngr('--розбір', '--тека', WORKDIR, '-e', a['code'])

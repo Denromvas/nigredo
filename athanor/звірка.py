@@ -103,6 +103,8 @@ def compare(prog, timeout):
             why = a[2].decode('utf-8', 'replace').strip().removeprefix('атанор: не виконую сам (').removesuffix(')')
             return prog, 'еталон', why, None
         p = run_one(['python3', REF], prog, home, tmp, 'п', timeout)
+        if p[0] == 'час' and a[0] != 'час':        # еталон у рази повільніший — дати йому більше часу, а не рахувати різницею
+            p = run_one(['python3', REF], prog, home, tmp, 'п', timeout * 8)
         diffs = []
         if a[0] != p[0]:
             diffs.append(f'код: атанор {a[0]}, еталон {p[0]}')

@@ -820,6 +820,41 @@ def main():
           and got4.returncode == 3 and 'дозволено писати' in got4.stderr,
           'суд 8в: програма в теці запису іншої теки власника — без прав теки A; модуль і команда звідти — відмова; сама A — читає',
           got0.stderr + got.stdout + got.stderr + got2.stderr + got3.stdout + got3.stderr + got4.stderr)
+    # «для_програм»: права саме цій програмі (за відбитком тексту й модулів); змінений байт — права немає
+    sx = tmp / 'схв'
+    for d_ in (sx / 'дані', sx / 'вихід', sx / 'вл'):
+        d_.mkdir(parents=True, exist_ok=True)
+    (sx / 'дані' / 'a.txt').write_text('привіт', encoding='utf-8')
+    (sx / 'вл' / 'дозволи.json').write_text('{"дозволено": ["оракул"]}', encoding='utf-8')
+    envx = dict(env, NIGREDO_HOME=str(sx / 'вл'))
+    (sx / 'мод.ngr').write_text('🜂 【「читати:дані」】\n← прочитай λf 🜔читати f\n', encoding='utf-8')
+    (sx / 'п.ngr').write_text('🜂 「копія」 【「читати:дані」 「писати:вихід」】\n⊃ 「мод.ngr」 【「прочитай」】\n'
+                             '» 🜔писати 「вихід/b.txt」 прочитай 「дані/a.txt」\n', encoding='utf-8')
+    got0 = run([str(sx / 'п.ngr')], envx)
+    appr = run(['--схвалити', str(sx / 'п.ngr')], envx)
+    entry = re.search(r'"для_програм": (\{.*\})', appr.stdout)
+    (sx / 'вл' / 'дозволи.json').write_text(json.dumps({'дозволено': ['оракул'], 'для_програм': json.loads(entry.group(1))}
+                                                       if entry else {}, ensure_ascii=False), encoding='utf-8')
+    got1 = run([str(sx / 'п.ngr')], envx)
+    seal_ = run(['--печатка', str(sx / 'п.ngr')], envx)
+    (sx / 'мод.ngr').write_text('🜂 【「читати:дані」】\n← прочитай λf ＋ 🜔читати f 「!」\n', encoding='utf-8')
+    got2 = run([str(sx / 'п.ngr')], envx)
+    check(got0.returncode == 3 and appr.returncode == 0 and 'ВІДБИТОК' in appr.stdout and entry is not None
+          and got1.returncode == 0 and (sx / 'вихід' / 'b.txt').read_text(encoding='utf-8') == 'привіт'
+          and 'схвалено власником' in seal_.stdout and 'для_програм' in seal_.stdout
+          and got2.returncode == 3 and 'просить більше' in got2.stderr,
+          '«для_програм»: --схвалити друкує запис; схвалена програма — з правами, змінений модуль — відмова',
+          got0.stderr + appr.stdout[-400:] + got1.stderr + seal_.stdout[-300:] + got2.stderr)
+    # тека запису схваленої програми — теж тека запису: модуль звідти — відмова
+    (sx / 'вихід' / 'м2.ngr').write_text('🜂\n← f λx x\n', encoding='utf-8')
+    (sx / 'бере2.ngr').write_text('🜂\n⊃ 「вихід/м2.ngr」 【「f」】\n» f 1\n', encoding='utf-8')
+    got3 = run([str(sx / 'бере2.ngr')], envx)
+    (sx / 'вл' / 'дозволи.json').write_text('{"для_програм": ["x"]}', encoding='utf-8')
+    got4 = run([str(sx / 'бере2.ngr')], envx)
+    check(got3.returncode == 3 and 'дозволено писати' in got3.stderr and got4.returncode == 3
+          and '«для_програм» має бути словником' in got4.stderr,
+          '«для_програм»: його теки запису — теки запису для «чужий код не модуль»; не словник — відмова',
+          got3.stdout + got3.stderr + got4.stderr)
     got = run(['-e', f'🜂 【「взяти:127.0.0.1:{port}」】\n» ☂ 🜔взяти 「http://@127.0.0.1:{port}/」 λe e'], env)
     check('поза дозволеним' in got.stdout, 'взяти (суд 8в): порожній логін «http://@хост/» — відмова за правами',
           got.stdout + got.stderr)
@@ -1053,6 +1088,13 @@ def main():
     tres = json.loads(got_t.stdout.splitlines()[0])['result']
     check(not tres.get('isError') and '"пройшли": 1' in tres['content'][0]['text'], 'MCP: nigredo_testy проганяє *.тест.ngr робочої теки',
           got_t.stdout[-400:])
+    got_s = subprocess.run([sys.executable, str(mcp)], input=json.dumps({'jsonrpc': '2.0', 'id': 10, 'method': 'tools/call',
+                           'params': {'name': 'nigredo_shvalyty', 'arguments': {'code': f'🜂 【「читати:{DATA}」】\n» 1'}}}) + '\n',
+                           capture_output=True, text=True, env=dict(env, NIGREDO_WORKDIR=str(work)))
+    sres = json.loads(got_s.stdout.splitlines()[0])['result']
+    stext = sres['content'][0]['text']
+    check(not sres.get('isError') and 'ВІДБИТОК' in stext and '"для_програм"' in stext and 'ПЕРЕКЛАД' in stext,
+          'MCP: nigredo_shvalyty — відбиток і запис «для_програм» для власника, без виконання', got_s.stdout[-400:])
     check(not res[4].get('isError') and '✓ повтор збігся' in txt(4) and res[5].get('isError')
           and '1 дій не виконано' in txt(6) and not (DATA / 'звіти' / 'mcp_сухо.txt').exists(),
           'MCP: nigredo_povtoryty (лише сліди власника) і nigredo_vykonaty з suho', got.stdout[-800:] + got.stderr)
