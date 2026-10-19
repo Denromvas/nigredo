@@ -29,6 +29,7 @@ mod trace;
 mod types;
 mod uni;
 mod value;
+mod xml;
 
 use crate::json::J;
 use crate::lexer::Back;
@@ -43,7 +44,11 @@ const SOURCE_SHA: &str = env!("ATHANOR_SOURCE_SHA");
 
 /// Гліфи, які Атанор виконує сам (решта — еталон: XML, регулярки, дати, CSV, схеми, паралельні виклики).
 fn glyph_ok(g: char) -> bool {
-    !matches!(g, '‖' | 'χ' | '↘')
+    match g {
+        '‖' => false,
+        'χ' | '↘' => xml::available(), // та сама libexpat, що в Python (dlopen); без неї — еталон
+        _ => true,
+    }
 }
 
 thread_local! {
@@ -212,7 +217,8 @@ fn run() -> i32 {
     let parsed = (|| -> Result<(ast::Node, Rc<ast::Caps>), Back> {
         let toks = lexer::lex(&src)?;
         lexer::check_twins(&toks)?;
-        let mut p = parser::Parser::new(toks, tools::supported, glyph_ok);
+        let stack = if is_e { Vec::new() } else { vec![pathx::realpath(&path)] };
+        let mut p = parser::Parser::with(toks, tools::supported, glyph_ok, Some(cwd.clone()), None, stack, false, seal::owner_home());
         let prog = p.program()?;
         if types::has_type_errors(&prog) {
             return lexer::back("помилки типів");
@@ -364,6 +370,7 @@ fn execute(
         paths_seen: None,
         denied: false,
         last_call: None,
+        modules: Default::default(),
         prof: if std::env::var_os("ATHANOR_PROFILE").is_some() { Some(Default::default()) } else { None },
     };
     let mut head = vec![

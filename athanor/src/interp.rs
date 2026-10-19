@@ -118,6 +118,7 @@ pub struct Interp {
     pub paths_seen: Option<Vec<String>>,
     pub denied: bool,
     pub last_call: Option<(String, Vec<J>)>,
+    pub modules: HashMap<String, Rc<Env>>,
     pub prof: Option<HashMap<String, (u64, std::time::Duration)>>,
 }
 
@@ -182,6 +183,10 @@ impl Interp {
             return fatal("перевищено ліміт кроків (--кроки)", Some(pos));
         }
         Ok(())
+    }
+
+    pub fn step_pub(&mut self, pos: Pos) -> R<()> {
+        self.step(pos)
     }
 
     pub fn work(&mut self, units: u64, pos: Pos) -> R<()> {
@@ -450,7 +455,7 @@ impl Interp {
             }
             K::Bind(name, slot, value) => {
                 if let K::Lam(l) = &value.k {
-                    let f = V::new(Val::Fn(Rc::new(Func { lam: l.clone(), env: env.clone(), name: Some(name.clone()) })), self.cpc());
+                    let f = V::new(Val::Fn(Rc::new(Func { lam: l.clone(), env: env.clone(), name: Some(name.clone()), module: env.module.clone() })), self.cpc());
                     env.vars.borrow_mut()[*slot as usize] = f.clone();
                     return Ok(f);
                 }
@@ -458,7 +463,7 @@ impl Interp {
                 env.vars.borrow_mut()[*slot as usize] = val.clone();
                 Ok(val)
             }
-            K::Lam(l) => Ok(V::new(Val::Fn(Rc::new(Func { lam: l.clone(), env: env.clone(), name: None })), self.cpc())),
+            K::Lam(l) => Ok(V::new(Val::Fn(Rc::new(Func { lam: l.clone(), env: env.clone(), name: None, module: env.module.clone() })), self.cpc())),
             K::Seal(intent, caps) => {
                 self.caps = caps.clone();
                 self.seal_caps = caps.clone();
@@ -483,6 +488,33 @@ impl Interp {
                 self.tool_end(job, outcome)
             }
             K::Deleg(..) => self.delegate(n, env),
+            K::Import(m) => {
+                let menv = match self.modules.get(&m.real) {
+                    Some(e) => e.clone(),
+                    None => {
+                        let agent = self.agent.clone();
+                        self.rec(
+                            "модуль",
+                            data!["агент" => J::Str(agent), "шлях" => J::Str(uni::safe(&m.rel)), "файл" => J::Str(uni::safe(&m.real)),
+                                  "sha256" => J::s(&m.sha), "дозволи" => caps_json(&m.module.caps)],
+                        )?;
+                        let info = Rc::new(ModInfo { rel: uni::safe(&pathx::relpath(&m.real, &self.cwd)), caps: m.module.caps.clone() });
+                        let menv = Rc::new(Env { vars: std::cell::RefCell::new(vec![V::none(); m.module.nslots as usize]), parent: None, module: Some(info) });
+                        self.modules.insert(m.real.clone(), menv.clone());
+                        if let K::Block(stmts, _) = &m.module.prog.k {
+                            for st in &stmts[1..] {
+                                self.eval(st, &menv)?;
+                            }
+                        }
+                        menv
+                    }
+                };
+                for (_, mslot, slot) in &m.names {
+                    let v = menv.vars.borrow()[*mslot as usize].clone();
+                    env.vars.borrow_mut()[*slot as usize] = v;
+                }
+                Ok(V::none())
+            }
             K::Op(g, args) => {
                 let t = std::time::Instant::now();
                 let r = self.lazy_op(*g, args, env, pos);
@@ -514,8 +546,8 @@ impl Interp {
             self.depth -= 1;
             return fatal("надто глибока рекурсія", Some(pos));
         }
-        if f.c >= 1.0 && lam.simple {
-            let env = Rc::new(Env { vars: std::cell::RefCell::new(args), parent: Some(func.env.clone()) });
+        if f.c >= 1.0 && lam.simple && func.module.is_none() {
+            let env = Env::child(args, &func.env);
             let r = self.eval(&lam.body, &env);
             self.depth -= 1;
             return r;
@@ -526,6 +558,20 @@ impl Interp {
         if f.c < 1.0 {
             self.taint_effects(&[&lam.body], f.c);
             self.halt_risk(f.c, &[&lam.body], false);
+        }
+        let saved_caps = self.caps.clone();
+        let mut mod_q = false;
+        if let Some(m) = &func.module {
+            // печатка модуля діє: права — перетин прав агента й печатки модуля
+            self.caps = Rc::new(intersect_caps(&self.caps, &m.caps, &self.cwd));
+            if !m.caps.quotas.is_empty() {
+                mod_q = true;
+                self.quota_stack.push(Rc::new(QuotaTable {
+                    who: format!("модуль {}", m.rel),
+                    quotas: m.caps.quotas.clone(),
+                    tok: format!("модуль@{:p}", Rc::as_ptr(&m.caps)),
+                }));
+            }
         }
         let r = (|| -> R<V> {
             let mut vars = Vec::with_capacity(lam.nslots);
@@ -559,10 +605,21 @@ impl Interp {
                     Param::Name(_) => vars.push(a),
                 }
             }
-            let env = Rc::new(Env { vars: std::cell::RefCell::new(vars), parent: Some(func.env.clone()) });
+            let env = Env::child(vars, &func.env);
             let res = self.eval(&lam.body, &env)?;
             Ok(if f.c < res.c { capc(&res, f.c) } else { res })
         })();
+        let r = match (r, &func.module) {
+            (Err(mut e), Some(m)) if e.file.is_none() && !e.pipe && !e.internal => {
+                e.file = Some(m.rel.clone());
+                Err(e)
+            }
+            (r, _) => r,
+        };
+        if mod_q {
+            self.quota_stack.pop();
+        }
+        self.caps = saved_caps;
         self.pc = saved;
         self.depth -= 1;
         r
@@ -633,7 +690,7 @@ impl Interp {
         let n = items.len();
         let want = if acc.is_some() { 2 } else { 1 };
         let fast = match &f.v {
-            Val::Fn(func) if f.c >= 1.0 && func.lam.simple && !func.lam.escapes && func.lam.params.len() == want => Some(func.clone()),
+            Val::Fn(func) if f.c >= 1.0 && func.lam.simple && func.module.is_none() && !func.lam.escapes && func.lam.params.len() == want => Some(func.clone()),
             _ => None,
         };
         let wrap = |mut e: Box<E>, i: usize| -> Box<E> {
@@ -645,7 +702,7 @@ impl Interp {
         };
         match (fast, acc) {
             (Some(func), None) => {
-                let env1 = Rc::new(Env { vars: std::cell::RefCell::new(vec![V::none()]), parent: Some(func.env.clone()) });
+                let env1 = Env::child(vec![V::none()], &func.env);
                 let mut out = Vec::with_capacity(n);
                 for i in 0..n {
                     let x = items.get(i);
@@ -662,7 +719,7 @@ impl Interp {
                 Ok(out)
             }
             (Some(func), Some(mut acc)) => {
-                let env1 = Rc::new(Env { vars: std::cell::RefCell::new(vec![V::none(), V::none()]), parent: Some(func.env.clone()) });
+                let env1 = Env::child(vec![V::none(), V::none()], &func.env);
                 for i in 0..n {
                     let x = items.get(i);
                     self.depth += 1;
@@ -1484,4 +1541,38 @@ fn pos_bl3(a: u64, b: u64) -> u64 {
         }
     }
     total
+}
+
+/// intersect_caps: права, що є і в a, і в b (теки — за справжніми шляхами; хости й імена — точний збіг).
+pub fn intersect_caps(a: &Caps, b: &Caps, cwd: &str) -> Caps {
+    let mut out = Caps::default();
+    for (t, sa) in &a.tools {
+        let sb = match b.get(t) {
+            Some(x) => x,
+            None => continue,
+        };
+        let (_, needs, kind, _) = crate::parser::tool_info(t).unwrap();
+        if !needs {
+            out.tools.push((t.clone(), Vec::new()));
+            continue;
+        }
+        let real = |x: &str| pathx::realpath(&pathx::join(cwd, x));
+        let mut keep: Vec<String> = if kind == "тека" {
+            let mut k: Vec<String> = sa.iter().filter(|x| sb.iter().any(|y| pathx::inside(&real(x), &real(y)))).cloned().collect();
+            k.extend(sb.iter().filter(|y| sa.iter().any(|x| pathx::inside(&real(y), &real(x)))).cloned());
+            k
+        } else if kind == "команда" {
+            let mut k: Vec<String> = sa.iter().filter(|x| sb.iter().any(|y| crate::parser::cmd_within(x, y))).cloned().collect();
+            k.extend(sb.iter().filter(|y| sa.iter().any(|x| crate::parser::cmd_within(y, x))).cloned());
+            k
+        } else {
+            sa.iter().filter(|x| sb.contains(x)).cloned().collect()
+        };
+        if !keep.is_empty() {
+            keep.sort();
+            keep.dedup();
+            out.tools.push((t.clone(), keep));
+        }
+    }
+    out
 }

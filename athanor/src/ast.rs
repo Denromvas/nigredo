@@ -97,6 +97,38 @@ pub enum K {
     Seal(Rc<str>, Rc<Caps>),
     Tool(&'static str, Vec<Node>),
     Deleg(Rc<str>, Rc<str>, Rc<Caps>, Box<Node>),
+    Import(Rc<ModImport>),
+}
+
+/// ⊃: розібраний модуль (дерево, кількість імен верхнього рівня, печатка).
+#[derive(Debug)]
+pub struct Module {
+    pub prog: Node,
+    pub nslots: u32,
+    pub caps: Rc<Caps>,
+}
+
+#[derive(Debug)]
+pub struct ModImport {
+    pub rel: String,                      // шлях відносно кореня (як у еталона: relpath(real, root))
+    pub names: Vec<(Rc<str>, u32, u32)>,  // імʼя, номер у модулі, номер тут
+    pub module: Rc<Module>,
+    pub sha: String,
+    pub real: String,
+}
+
+/// const_expr: сталий вираз верхнього рівня модуля.
+pub fn const_expr(n: &Node) -> bool {
+    match &n.k {
+        K::Lit(_) | K::Var(..) => true,
+        K::List(xs) | K::Dict(xs) => xs.iter().all(const_expr),
+        K::Tmpl(ps) => ps.iter().all(|p| match p {
+            TPart::Text(..) => true,
+            TPart::Hole(_, x) => const_expr(x),
+        }),
+        K::Op(g, xs) => lang::is_pure_glyphs(*g) && xs.iter().all(const_expr),
+        _ => false,
+    }
 }
 
 pub fn fn_slots(g: char) -> Option<&'static [usize]> {
@@ -182,6 +214,7 @@ fn props(k: &K) -> (u8, u8) {
             (e, T_NONE)
         }
         K::Deleg(_, _, _, body) => (body.eff & WORLD, T_NONE),
+        K::Import(m) => (m.module.prog.eff, T_NONE),
     }
 }
 

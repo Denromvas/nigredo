@@ -178,6 +178,10 @@ fn delegations<'a>(n: &'a Node, parent: &'a Caps, out: &mut Vec<(&'a Caps, &'a C
             }
         }
         K::Bind(_, _, v) => delegations(v, parent, out),
+        K::Import(m) => {
+            out.push((parent, &m.module.caps));
+            delegations(&m.module.prog, &m.module.caps, out);
+        }
         K::Lam(l) => delegations(&l.body, parent, out),
         K::Tmpl(ps) => {
             for p in ps {
@@ -190,10 +194,95 @@ fn delegations<'a>(n: &'a Node, parent: &'a Caps, out: &mut Vec<(&'a Caps, &'a C
     }
 }
 
+fn modules<'a>(n: &'a Node, out: &mut Vec<&'a str>) {
+    match &n.k {
+        K::Import(m) => {
+            out.push(&m.real);
+            modules(&m.module.prog, out);
+        }
+        K::Block(xs, _) => {
+            for x in xs {
+                modules(x, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Теки, куди програмам дозволено писати (write_dirs еталона): з усіх записів власника.
+fn write_dirs(home: &str) -> Vec<String> {
+    let path = pathx::join(home, "дозволи.json");
+    let text = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(_) => return Vec::new(),
+    };
+    let data = match json::loads(&text) {
+        Ok(P::Obj(kv)) => kv,
+        _ => return Vec::new(),
+    };
+    let mut entries: Vec<String> = Vec::new();
+    if let Some(P::Arr(xs)) = get(&data, "дозволено") {
+        for x in xs {
+            if let P::Str(s, false) = x {
+                entries.push(s.clone());
+            }
+        }
+    }
+    if let Some(P::Obj(d)) = get(&data, "для_тек") {
+        for (_, _, v) in d {
+            if let P::Arr(xs) = v {
+                for x in xs {
+                    if let P::Str(s, false) = x {
+                        entries.push(s.clone());
+                    }
+                }
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for e in entries {
+        let base = match split_quota(&canon_perm(&e)) {
+            Ok((b, _)) => b,
+            Err(_) => continue,
+        };
+        let (t, _, sc) = partition(&base, ':');
+        let sc = pathx::expanduser(sc.trim_matches(py_ws));
+        if lang::WRITE_TOOLS.contains(&t.trim_matches(py_ws)) && sc.starts_with('/') {
+            out.push(pathx::realpath(&sc));
+        }
+    }
+    out
+}
+
 /// check_program: чи все в межах (печатка й субагенти ⊆ власника; субагент ⊆ батька за справжніми шляхами).
 pub fn program_ok(prog: &Node, seal: &Caps, allowed: &Allowed, cwd: &str, home: &str) -> Result<bool, Back> {
     if !check_allowlist(seal, allowed, cwd, home)?.is_empty() {
         return Ok(false);
+    }
+    let mut mods = Vec::new();
+    modules(prog, &mut mods);
+    if !mods.is_empty() {
+        // код, який могла написати програма, — не модуль
+        let mut writable = Vec::new();
+        for a in &allowed.full {
+            let (cb, _) = split_quota(&canon_perm(a))?;
+            if lang::WRITE_TOOLS.contains(&partition(&cb, ':').0.trim_matches(py_ws)) {
+                let (b, _) = split_quota(a)?;
+                let sc = partition(&b, ':').2.trim_matches(py_ws).to_string();
+                writable.push(pathx::realpath(&pathx::join(cwd, &pathx::expanduser(&sc))));
+            }
+        }
+        for t in lang::WRITE_TOOLS.iter() {
+            for w in seal.get(t).cloned().unwrap_or_default() {
+                writable.push(pathx::realpath(&pathx::join(cwd, &w)));
+            }
+        }
+        writable.extend(write_dirs(home));
+        for m in mods {
+            if writable.iter().any(|w| pathx::inside(m, w)) {
+                return Ok(false);
+            }
+        }
     }
     let mut ds = Vec::new();
     delegations(prog, seal, &mut ds);

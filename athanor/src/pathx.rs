@@ -146,3 +146,22 @@ pub fn isfile(p: &str) -> bool {
 pub fn _ino(p: &str) -> u64 {
     std::fs::metadata(p).map(|m| m.ino()).unwrap_or(0)
 }
+
+/// os.path.relpath(path, start).
+pub fn relpath(path: &str, start: &str) -> String {
+    let a = abspath(path);
+    let b = abspath(start);
+    let pa: Vec<&str> = a.split('/').filter(|x| !x.is_empty()).collect();
+    let pb: Vec<&str> = b.split('/').filter(|x| !x.is_empty()).collect();
+    let mut i = 0;
+    while i < pa.len() && i < pb.len() && pa[i] == pb[i] {
+        i += 1;
+    }
+    let mut parts: Vec<&str> = vec![".."; pb.len() - i];
+    parts.extend(&pa[i..]);
+    if parts.is_empty() {
+        ".".into()
+    } else {
+        parts.join("/")
+    }
+}

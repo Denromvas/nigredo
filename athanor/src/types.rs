@@ -189,6 +189,12 @@ impl Ck {
             }
             K::Deleg(_, _, _, body) => self.t(body),
             K::Seal(..) => Ty::None,
+            K::Import(m) => {
+                for (nm, _, _) in &m.names {
+                    self.env.last_mut().unwrap().insert(nm.clone(), Ty::Any);
+                }
+                Ty::None
+            }
             K::Op(g, args) => self.op(*g, args, n),
         }
     }
