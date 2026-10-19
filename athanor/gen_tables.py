@@ -128,6 +128,15 @@ def main():
         r = ranges(pred)
         out.append(f'pub static {name}: [(u32, u32); {len(r)}] = [' + ', '.join(f'({a}, {b})' for a, b in r) + '];')
 
+    # бітові карти BMP (0..0xFFFF) для швидкої перевірки: невидимі, пробіли, літери-й-цифри
+    for name, pred in (('INVISIBLE_BMP', lambda cp: N.invisible(ch(cp))), ('ISSPACE_BMP', lambda cp: ch(cp).isspace()),
+                       ('ISALNUM_BMP', lambda cp: ch(cp).isalnum())):
+        words = [0] * 1024
+        for cp in range(0x10000):
+            if pred(cp):
+                words[cp >> 6] |= 1 << (cp & 63)
+        out.append(f'pub static {name}: [u64; 1024] = [' + ', '.join(f'{w:#x}' for w in words) + '];')
+
     # регістр: символ → рядок (лише де відрізняється); остання сигма — класи case-ignorable / cased
     for name, f in (('LOWER', str.lower), ('UPPER', str.upper), ('CASEFOLD', str.casefold)):
         m = [(cp, f(ch(cp))) for cp in range(MAXCP) if not 0xD800 <= cp <= 0xDFFF and f(ch(cp)) != ch(cp)]

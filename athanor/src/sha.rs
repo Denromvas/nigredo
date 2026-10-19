@@ -25,6 +25,45 @@ impl Sha256 {
     }
 
     fn block(&mut self, b: &[u8]) {
+        #[cfg(target_arch = "aarch64")]
+        {
+            if std::arch::is_aarch64_feature_detected!("sha2") {
+                unsafe { self.block_hw(b) };
+                return;
+            }
+        }
+        self.block_sw(b)
+    }
+
+    /// Апаратні інструкції SHA-256 (ARMv8 Crypto).
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "sha2")]
+    unsafe fn block_hw(&mut self, b: &[u8]) {
+        use std::arch::aarch64::*;
+        let mut abcd = vld1q_u32(self.h.as_ptr());
+        let mut efgh = vld1q_u32(self.h.as_ptr().add(4));
+        let (abcd0, efgh0) = (abcd, efgh);
+        let mut m = [
+            vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(b.as_ptr()))),
+            vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(b.as_ptr().add(16)))),
+            vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(b.as_ptr().add(32)))),
+            vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(b.as_ptr().add(48)))),
+        ];
+        for i in 0..16 {
+            let k = vld1q_u32(K.as_ptr().add(4 * i));
+            let wk = vaddq_u32(m[i % 4], k);
+            let t = abcd;
+            abcd = vsha256hq_u32(abcd, efgh, wk);
+            efgh = vsha256h2q_u32(efgh, t, wk);
+            if i < 12 {
+                m[i % 4] = vsha256su1q_u32(vsha256su0q_u32(m[i % 4], m[(i + 1) % 4]), m[(i + 2) % 4], m[(i + 3) % 4]);
+            }
+        }
+        vst1q_u32(self.h.as_mut_ptr(), vaddq_u32(abcd, abcd0));
+        vst1q_u32(self.h.as_mut_ptr().add(4), vaddq_u32(efgh, efgh0));
+    }
+
+    fn block_sw(&mut self, b: &[u8]) {
         let mut w = [0u32; 64];
         for i in 0..16 {
             w[i] = u32::from_be_bytes([b[4 * i], b[4 * i + 1], b[4 * i + 2], b[4 * i + 3]]);

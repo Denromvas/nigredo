@@ -58,28 +58,18 @@ pub fn iso_now() -> String {
 /// Текст файлу як open(encoding='utf-8').read(n): строгий UTF-8, універсальні переноси (\r\n і \r → \n).
 fn read_text(path: &str, limit: usize) -> Result<Result<String, ()>, std::io::Error> {
     let bytes = std::fs::read(path)?;
-    let s = match std::str::from_utf8(&bytes) {
+    let s = match String::from_utf8(bytes) {
         Ok(s) => s,
         Err(_) => return Ok(Err(())),
     };
-    let mut out = String::with_capacity(s.len().min(limit * 4));
-    let mut n = 0usize;
-    let mut it = s.chars().peekable();
-    while let Some(c) = it.next() {
-        if n >= limit {
-            break;
-        }
-        if c == '\r' {
-            if it.peek() == Some(&'\n') {
-                it.next();
-            }
-            out.push('\n');
-        } else {
-            out.push(c);
-        }
-        n += 1;
+    let s = if s.contains('\r') { s.replace("\r\n", "\n").replace('\r', "\n") } else { s };
+    if s.len() <= limit {
+        return Ok(Ok(s));
     }
-    Ok(Ok(out))
+    match s.char_indices().nth(limit) {
+        Some((b, _)) => Ok(Ok(s[..b].to_string())),
+        None => Ok(Ok(s)),
+    }
 }
 
 pub fn run(it: &mut Interp, name: &str, args: &[V], pos: Pos) -> R<V> {

@@ -9,7 +9,7 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 NGR = os.path.join(HERE, '..', '..', 'interpreter', 'ngr.py')
-ATHANOR = os.path.join(HERE, '..', '..', 'athanor', 'target', 'release', 'athanor')   # нативний виконавець (якщо зібрано)
+ATHANOR = next((p for p in (os.path.join(HERE, '..', '..', 'athanor', 'target', t, 'release', 'athanor') for t in ('aarch64-unknown-linux-musl', 'x86_64-unknown-linux-musl', '')) if os.path.exists(p)), '')   # нативний виконавець (якщо зібрано)
 
 
 def cpu(cmd, cwd, env):
@@ -36,7 +36,7 @@ def main():
         with open(os.path.join(home, 'дозволи.json'), 'w', encoding='utf-8') as f:
             f.write('{"дозволено": ["файл.читати:%s"]}' % os.path.join(d, 'дані'))
         env = dict(os.environ, NIGREDO_HOME=home)
-        nat = os.path.exists(ATHANOR)
+        nat = bool(ATHANOR)
         print('| Задача | Nigredo, с | Python, с | Nigredo/Python | вивід однаковий |' + (' Атанор, с | Атанор/Python | вивід Атанора той самий |' if nat else ''))
         print('|---|---|---|---|---|' + ('---|---|---|' if nat else ''))
         for name in ('слова', 'арифм'):

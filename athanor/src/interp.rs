@@ -111,6 +111,17 @@ pub struct Interp {
     pub owner_home: String,
     pub paths_seen: Option<Vec<String>>,
     pub denied: bool,
+    pub prof: Option<HashMap<String, (u64, std::time::Duration)>>,
+}
+
+impl Interp {
+    pub fn prof_add(&mut self, k: &str, t: std::time::Instant) {
+        if let Some(p) = self.prof.as_mut() {
+            let e = p.entry(k.to_string()).or_insert((0, std::time::Duration::ZERO));
+            e.0 += 1;
+            e.1 += t.elapsed();
+        }
+    }
 }
 
 macro_rules! data {
@@ -151,7 +162,10 @@ impl Interp {
     }
 
     pub fn rec(&mut self, event: &str, data: Vec<(String, J)>) -> R<()> {
-        self.trace.rec(event, data).map_err(terr)
+        let t = std::time::Instant::now();
+        let r = self.trace.rec(event, data).map_err(terr);
+        self.prof_add("слід", t);
+        r
     }
 
     #[inline]
@@ -463,7 +477,12 @@ impl Interp {
             }
             K::Deleg(..) => self.delegate(n, env),
             K::Op(g, args) => {
-                let r = self.lazy_op(*g, args, env, pos)?;
+                let t = std::time::Instant::now();
+                let r = self.lazy_op(*g, args, env, pos);
+                if self.prof.is_some() {
+                    self.prof_add(&format!("лінивий {}", g), t);
+                }
+                let r = r?;
                 self.sized(r, g.encode_utf8(&mut [0u8; 4]), pos)
             }
             K::Lit(_) | K::Var(..) | K::Call(..) => unreachable!(),
@@ -734,7 +753,7 @@ impl Interp {
                     }
                     '№' => {
                         let mut counts: Vec<(Rc<PStr>, i64)> = Vec::new();
-                        let mut idx: HashMap<Rc<str>, usize> = HashMap::new();
+                        let mut idx: FxMap<Rc<str>, usize> = FxMap::default();
                         for r in &results {
                             let k = match &r.v {
                                 Val::Str(s) => s.clone(),
@@ -757,7 +776,7 @@ impl Interp {
                     _ => {
                         // ⊞
                         let mut groups: Vec<(Rc<PStr>, Vec<V>)> = Vec::new();
-                        let mut idx: HashMap<Rc<str>, usize> = HashMap::new();
+                        let mut idx: FxMap<Rc<str>, usize> = FxMap::default();
                         for (x, r) in items.iter().zip(&results) {
                             let k = match &r.v {
                                 Val::Str(s) => s.clone(),
@@ -869,6 +888,16 @@ impl Interp {
     }
 
     fn strict(&mut self, g: char, args: &[V], pos: Pos) -> R<V> {
+        if self.prof.is_some() {
+            let t = std::time::Instant::now();
+            let r = self.strict_(g, args, pos);
+            self.prof_add(&g.to_string(), t);
+            return r;
+        }
+        self.strict_(g, args, pos)
+    }
+
+    fn strict_(&mut self, g: char, args: &[V], pos: Pos) -> R<V> {
         let amin = args.iter().fold(1.0f64, |a, x| a.min(x.c));
         self.taint(amin);
         if lang::is_heavy(g) {
@@ -1033,7 +1062,9 @@ impl Interp {
     fn tool_do(&mut self, job: &Job) -> (Option<V>, Option<Box<E>>, Vec<String>) {
         self.paths_seen = Some(Vec::new());
         self.denied = false;
+        let t = std::time::Instant::now();
         let r = crate::tools::run(self, job.name, &job.args, job.pos);
+        self.prof_add(job.name, t);
         let paths = self.paths_seen.take().unwrap_or_default();
         match r {
             Ok(v) => (Some(v), None, paths),
@@ -1076,11 +1107,16 @@ impl Interp {
         if name == "час" {
             c = c.min(self.decided_c);
         }
+        let t = std::time::Instant::now();
         let stored = self.trace.keep(&res).map_err(terr)?;
+        self.prof_add("сховище", t);
         let res = if c < 1.0 { capc(&res, c) } else { res };
         self.taint(c);
+        let t = std::time::Instant::now();
+        let tv = trace_val(&res, false);
+        self.prof_add("trace_val", t);
         let mut d = data!["агент" => J::Str(job.agent.clone()), "назва" => J::s(name), "аргументи" => J::Arr(job.targs.clone()),
-                          "результат" => trace_val(&res, false), "впевненість" => fj(c), "значення" => J::Str(stored)];
+                          "результат" => tv, "впевненість" => fj(c), "значення" => J::Str(stored)];
         if !job.paths.is_empty() {
             d.push(("шлях".into(), J::Arr(job.paths.iter().map(|p| J::s(p)).collect())));
         }
@@ -1090,6 +1126,13 @@ impl Interp {
 
     /// _path_ok: права на шлях (теки з печатки, не тека власника й не слід).
     pub fn path_ok(&mut self, tool: &str, p: &Val, pos: Pos, write: bool) -> R<String> {
+        let t = std::time::Instant::now();
+        let r = self.path_ok_(tool, p, pos, write);
+        self.prof_add("path_ok", t);
+        r
+    }
+
+    fn path_ok_(&mut self, tool: &str, p: &Val, pos: Pos, write: bool) -> R<String> {
         let p = match p {
             Val::Str(s) => s.s.to_string(),
             _ => return ngr(format!("{}: шлях має бути рядком", tool), pos),

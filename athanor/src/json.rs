@@ -21,20 +21,28 @@ impl J {
 }
 
 pub fn escape_into(out: &mut String, s: &str) {
+    out.reserve(s.len() + 2);
     out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '\u{8}' => out.push_str("\\b"),
-            '\u{c}' => out.push_str("\\f"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
+    let b = s.as_bytes();
+    let mut start = 0;
+    for (i, &c) in b.iter().enumerate() {
+        if c >= 0x20 && c != b'"' && c != b'\\' {
+            continue;
         }
+        out.push_str(&s[start..i]);
+        match c {
+            b'"' => out.push_str("\\\""),
+            b'\\' => out.push_str("\\\\"),
+            b'\n' => out.push_str("\\n"),
+            b'\r' => out.push_str("\\r"),
+            b'\t' => out.push_str("\\t"),
+            8 => out.push_str("\\b"),
+            12 => out.push_str("\\f"),
+            c => out.push_str(&format!("\\u{:04x}", c)),
+        }
+        start = i + 1;
     }
+    out.push_str(&s[start..]);
     out.push('"');
 }
 

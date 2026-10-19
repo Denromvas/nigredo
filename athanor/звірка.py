@@ -20,7 +20,7 @@ from collections import Counter
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 ROOT = os.path.dirname(HERE)
-BIN = os.path.join(HERE, 'target', 'release', 'athanor')
+BIN = next((p for p in (os.path.join(HERE, 'target', t, 'release', 'athanor') for t in ('aarch64-unknown-linux-musl', 'x86_64-unknown-linux-musl', '')) if os.path.exists(p)))
 REF = os.path.join(ROOT, 'interpreter', 'ngr.py')
 SKIP_DIRS = ('архів', 'target', '.git', 'site/пісочниця/вихід')
 VOLATILE = {'час', 'запуск', 'інтерпретатор', 'хеш', 'попередній'}
