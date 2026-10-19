@@ -9,7 +9,7 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 NGR = os.path.join(HERE, '..', '..', 'interpreter', 'ngr.py')
-ATHANOR = next((p for p in (os.path.join(HERE, '..', '..', 'athanor', 'target', t, 'release', 'athanor') for t in ('aarch64-unknown-linux-musl', 'x86_64-unknown-linux-musl', '')) if os.path.exists(p)), '')   # нативний виконавець (якщо зібрано)
+ATHANOR = next((p for p in (os.path.join(HERE, '..', '..', 'athanor', 'target', t, 'release', 'athanor') for t in ('aarch64-unknown-linux-gnu', 'x86_64-unknown-linux-gnu', '', 'aarch64-unknown-linux-musl')) if os.path.exists(p)), '')   # нативний виконавець (якщо зібрано)
 
 
 def cpu(cmd, cwd, env):

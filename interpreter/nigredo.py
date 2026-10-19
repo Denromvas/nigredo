@@ -21,7 +21,9 @@ from decimal import ROUND_HALF_UP, Decimal
 
 VERSION = '0.7'
 MAX_DEPTH = 2000
-MAX_NEST = 1000                    # вкладеність виразу в тексті програми (глибше — помилка до запуску, суд 8)
+WALK_MAX_DEPTH = 2000     # показ, порівняння, JSON, ключі ⇅ обходять значення не глибше: далі — «вкладене надто глибоко»
+#                           (межа мови, а не стека CPython — та сама в еталоні й Атанорі, від версії Python не залежить)
+MAX_NEST = 1000                   # вкладеність виразу в тексті програми (глибше — помилка до запуску, суд 8)
 MAX_SIZE = 5_000_000      # найбільший логічний розмір значення (символів + елементів); --розмір N
 ALLOC_FACTOR = 20         # сумарно за запуск можна створити не більше ALLOC_FACTOR × --розмір
 MAX_INT_BITS = 100_000    # найбільше ціле (≈ 30 000 десяткових цифр)
@@ -282,7 +284,14 @@ def fmt_num(n):
     return str(n)
 
 
-def show(x, top=True):
+class DeepValue(RecursionError):
+    """Значення глибше за WALK_MAX_DEPTH: ловлять ті самі місця, що й переповнення стеку, — тими самими словами."""
+
+    def __init__(self):
+        super().__init__(f'значення вкладене глибше за {WALK_MAX_DEPTH} рівнів')
+
+
+def show(x, top=True, d=0):
     """Друкована форма. Рядок верхнього рівня — як є."""
     v = x.v
     if isinstance(v, str):
@@ -294,19 +303,62 @@ def show(x, top=True):
     if isinstance(v, NUM):
         return fmt_num(v)
     if isinstance(v, list):
-        return '【' + ' '.join(show(e, False) for e in v) + '】'
+        if d >= WALK_MAX_DEPTH:
+            raise DeepValue
+        return '【' + ' '.join(show(e, False, d + 1) for e in v) + '】'
     if isinstance(v, dict):
-        return '『' + ' '.join(f'{show(V(k), False)} {show(e, False)}' for k, e in v.items()) + '』'
+        if d >= WALK_MAX_DEPTH:
+            raise DeepValue
+        return '『' + ' '.join(f'{show(V(k), False)} {show(e, False, d + 1)}' for k, e in v.items()) + '』'
     return f'λ{v.name or ""}'
 
 
-def to_json(x):
+def show_head(x, n):
+    """Початок show(x, False) — щонайменше n символів (або весь, якщо коротший) без обходу всього значення:
+    глибоке чи величезне значення в повідомленні про помилку не заважає."""
+    out, size, stack, e = [], 0, [], x
+    while True:
+        if e is not None:
+            v = e.v
+            if isinstance(v, list):
+                out.append('【')
+                stack.append(('】', iter(v), [True]))
+            elif isinstance(v, dict):
+                out.append('『')
+                stack.append(('』', iter(v.items()), [True]))
+            else:
+                out.append(show(e, False))
+            size += len(out[-1])
+            e = None
+        if size >= n or not stack:
+            return ''.join(out)
+        close, items, first = stack[-1]
+        e = next(items, None)
+        if e is None:
+            stack.pop()
+            out.append(close)
+            size += 1
+            continue
+        piece = '' if first[0] else ' '
+        first[0] = False
+        if isinstance(e, tuple):
+            k, e = e
+            piece += show(V(k), False) + ' '
+        out.append(piece)
+        size += len(piece)
+
+
+def to_json(x, d=0):
     """JSON без втрат: десяткові пишуться числом JSON точно (без float)."""
     v = x.v
     if isinstance(v, list):
-        return '[' + ', '.join(to_json(e) for e in v) + ']'
+        if d >= WALK_MAX_DEPTH:
+            raise DeepValue
+        return '[' + ', '.join(to_json(e, d + 1) for e in v) + ']'
     if isinstance(v, dict):
-        return '{' + ', '.join(f'{json.dumps(k, ensure_ascii=False)}: {to_json(e)}' for k, e in v.items()) + '}'
+        if d >= WALK_MAX_DEPTH:
+            raise DeepValue
+        return '{' + ', '.join(f'{json.dumps(k, ensure_ascii=False)}: {to_json(e, d + 1)}' for k, e in v.items()) + '}'
     if isinstance(v, Decimal):
         return fmt_num(v)
     if isinstance(v, Fn):
@@ -352,26 +404,48 @@ def mk(items, extra=1.0):
     return V(items, min([extra] + [e.c for e in items]), extra)
 
 
-def capc(x, c):
-    """Встановити впевненість c значенню і всьому, що в ньому."""
+def capc(x, c, d=0):
+    """Встановити впевненість c значенню і всьому, що в ньому (будь-якої глибини — не падає)."""
     v = x.v
+    if d >= WALK_MAX_DEPTH and isinstance(v, (list, dict)):
+        return _capc_deep(x, c)
     if isinstance(v, list):
-        return V([capc(e, c) for e in v], c, min(x.s, c))
+        return V([capc(e, c, d + 1) for e in v], c, min(x.s, c))
     if isinstance(v, dict):
-        return V({k: capc(e, c) for k, e in v.items()}, c, min(x.s, c))
+        return V({k: capc(e, c, d + 1) for k, e in v.items()}, c, min(x.s, c))
     return V(v, c)
+
+
+def _capc_deep(x, c):
+    """capc без рекурсії: список чи словник збирається, щойно готові всі його елементи."""
+    out, todo = [], [(x, False)]
+    while todo:
+        e, ready = todo.pop()
+        v = e.v
+        if not isinstance(v, (list, dict)):
+            out.append(V(v, c))
+        elif not ready:
+            todo.append((e, True))
+            todo.extend((i, False) for i in reversed(v if isinstance(v, list) else list(v.values())))
+        else:
+            items = out[len(out) - len(v):]
+            del out[len(out) - len(v):]
+            out.append(V(items if isinstance(v, list) else dict(zip(v, items)), c, min(e.s, c)))
+    return out[0]
 
 
 UA_ORDER = {ch: i for i, ch in enumerate('абвгґдеєжзиіїйклмнопрстуфхцчшщьюя')}
 
 
-def sort_key(e):
+def sort_key(e, d=0):
     """Ключ сортування: числа, рядки (українська абетка) і списки з них — поелементно (складений ключ)."""
     v = e.v
     if isinstance(v, str):
         return (1, [(UA_ORDER.get(ch, 100 + ord(ch)), ch) for ch in v.casefold()], v)
     if isinstance(v, list):
-        return (2, [sort_key(x) for x in v])
+        if d >= WALK_MAX_DEPTH:
+            raise DeepValue
+        return (2, [sort_key(x, d + 1) for x in v])
     return (0, v)
 
 
@@ -415,21 +489,26 @@ def safe(s):
     return ''.join({'\n': '↵', '\t': '⇥'}.get(ch, f'⟨U+{ord(ch):04X}⟩') if ch in bad else ch for ch in s)
 
 
-def deep_eq(a, b):
-    if a is b:
-        return True
+def deep_eq(a, b, d=0):
     va, vb = a.v, b.v
+    if a is b or va is vb and isinstance(va, (list, dict)):     # той самий список — рівний, без обходу
+        return True
     if isinstance(va, bool) or isinstance(vb, bool):
         return type(va) is type(vb) and va == vb
     if isinstance(va, list) and isinstance(vb, list):
-        return len(va) == len(vb) and all(deep_eq(x, y) for x, y in zip(va, vb))
+        if d >= WALK_MAX_DEPTH:
+            raise DeepValue
+        return len(va) == len(vb) and all(deep_eq(x, y, d + 1) for x, y in zip(va, vb))
     if isinstance(va, dict) and isinstance(vb, dict):
-        return va.keys() == vb.keys() and all(deep_eq(va[k], vb[k]) for k in va)
+        if d >= WALK_MAX_DEPTH:
+            raise DeepValue
+        return va.keys() == vb.keys() and all(deep_eq(va[k], vb[k], d + 1) for k in va)
     return va == vb
 
 
 def brief(x, n=120):
-    s = safe(show(x, False))
+    """Значення для повідомлення: перші n символів показу (весь показ не будується — глибоке не заважає)."""
+    s = safe(show_head(x, n + 1))
     return s if len(s) <= n else s[:n] + '…'
 
 
@@ -2819,7 +2898,9 @@ def _db(it, pos, tool, p, sql, params, write):
     args = []
     for x in params.v:              # дробове — текстом, щоб не втратити точність (колонка REAL/NUMERIC перетворить)
         v = x.v
-        if isinstance(v, bool) or isinstance(v, int) or v is None or isinstance(v, str):
+        if isinstance(v, int) and not isinstance(v, bool) and abs(v) >= 2 ** 63:
+            args.append(str(v))      # поза INTEGER SQLite — текстом, як і велике десяткове (а не OverflowError, код 4)
+        elif isinstance(v, bool) or isinstance(v, int) or v is None or isinstance(v, str):
             args.append(int(v) if isinstance(v, bool) else v)
         elif isinstance(v, (Decimal, float)):
             args.append(int(v) if v == int(v) and abs(v) < 2 ** 63 else str(v))
@@ -2843,6 +2924,7 @@ def _db(it, pos, tool, p, sql, params, write):
                               isolation_level=None, timeout=5)
     except sqlite3.Error as e:
         raise NgrError(f'{tool}: {e}: {p.v}', pos)
+    cur = None
     try:
         con.setlimit(sqlite3.SQLITE_LIMIT_ATTACHED, 0)
         con.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 4 * it.max_size)      # одне значення — не більше за --розмір (суд 7)
@@ -2894,6 +2976,8 @@ def _db(it, pos, tool, p, sql, params, write):
                 else sql_err(str(e))
             raise NgrError(f'{tool}: {msg}', pos)
     finally:
+        if cur is not None:   # запит, перерваний посеред рядків, тримав би блокування бази, доки курсор не прибере
+            cur.close()       # збирач сміття (цикл виняток → кадр): наступний запис — «база зайнята»
         con.close()
 
 
@@ -4180,6 +4264,8 @@ class Interp:
                     order = sorted(range(len(items)), key=lambda i: sort_key(results[i]))
                 except TypeError:
                     raise NgrError('⇅: ключі мають бути одного типу (числа, рядки або списки з них — поелементно)', pos)
+                except RecursionError:          # порівняння ключів-списків, вкладених у тисячі рівнів (не код 4)
+                    raise NgrError('⇅: ключі вкладені надто глибоко', pos, m)
                 return mk([items[i] for i in order], m)
             if g == '№':                          # скільки елементів з кожним ключем — будова й ключі, як у ⊞
                 counts = {}

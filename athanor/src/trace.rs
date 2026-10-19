@@ -29,19 +29,19 @@ pub fn line_of(rec: &J) -> String {
 }
 
 /// trace_val: значення для сліду (невидиме — ⟨U+…⟩); довге — підсумком.
-pub fn trace_val(x: &V, full: bool) -> J {
-    let s = uni::visible(&show(x, false), "\n\t", true);
+pub fn trace_val(x: &V, full: bool) -> crate::interp::R<J> {
+    let s = uni::visible(&show(x, false)?, "\n\t", true);
     let n = s.chars().count();
     if full || n <= 4000 {
-        return J::Str(s);
+        return Ok(J::Str(s));
     }
     let start: String = s.chars().take(1000).collect();
-    J::Obj(vec![
+    Ok(J::Obj(vec![
         ("підсумок".into(), J::Bool(true)),
         ("довжина".into(), J::Int(n as i64)),
         ("sha256".into(), J::Str(sha::sha256_hex(s.as_bytes()))),
         ("початок".into(), J::Str(start)),
-    ])
+    ]))
 }
 
 /// enc_v: точне кодування значення для сховища повтору.

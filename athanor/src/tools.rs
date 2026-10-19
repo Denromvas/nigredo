@@ -10,7 +10,11 @@ use crate::value::*;
 use std::rc::Rc;
 
 pub fn supported(name: &str) -> bool {
-    matches!(name, "оракул" | "жереб" | "час" | "файл.читати" | "файл.писати" | "файл.список")
+    match name {
+        "оракул" | "жереб" | "час" | "файл.читати" | "файл.писати" | "файл.список" => true,
+        "бд.читати" | "бд.писати" => crate::sqlite::available(), // та сама libsqlite3, що в Python (dlopen)
+        _ => false,
+    }
 }
 
 pub fn os_err(tool: &str, e: &std::io::Error, p: &str) -> String {
@@ -75,7 +79,7 @@ fn read_text(path: &str, limit: usize) -> Result<Result<String, ()>, std::io::Er
 pub fn run(it: &mut Interp, name: &str, args: &[V], pos: Pos) -> R<V> {
     match name {
         "оракул" => {
-            let h = sha::sha256(show(&args[0], true).as_bytes());
+            let h = sha::sha256(show(&args[0], true)?.as_bytes());
             let k = ((h[1] as u32) << 8 | h[2] as u32) as f64;
             let c = pyf::round(0.3 + 0.69 * k / 65535.0, 2);
             Ok(V::new(Val::Bool(h[0] & 1 == 1), c))
@@ -125,6 +129,8 @@ pub fn run(it: &mut Interp, name: &str, args: &[V], pos: Pos) -> R<V> {
                 Err(e) => ngr(os_err("файл.список", &e, &p), pos),
             }
         }
+        "бд.читати" => crate::sqlite::run(it, name, args, pos, false),
+        "бд.писати" => crate::sqlite::run(it, name, args, pos, true),
         _ => fatal(format!("інструмент «{}» Атанор не виконує", name), Some(pos)),
     }
 }
@@ -132,7 +138,7 @@ pub fn run(it: &mut Interp, name: &str, args: &[V], pos: Pos) -> R<V> {
 fn path_text(v: &V) -> String {
     match &v.v {
         Val::Str(s) => s.s.to_string(),
-        _ => show(v, true),
+        _ => show(v, true).unwrap_or_default(), // не рядок — відмова раніше, ніж знадобиться показ
     }
 }
 

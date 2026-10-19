@@ -23,6 +23,7 @@ mod sampler;
 mod seal;
 mod sha;
 mod sort;
+mod sqlite;
 mod tables;
 mod tools;
 mod trace;

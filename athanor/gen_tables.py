@@ -218,7 +218,7 @@ def lang():
     out.append(f'pub static FN_SLOTS: [(char, &[usize]); {len(fs)}] = [' +
                ', '.join(f"('\\u{{{ord(g):x}}}', &[{', '.join(map(str, v))}])" for g, v in fs) + '];')
     for name in ('MAX_DEPTH', 'MAX_NEST', 'MAX_SIZE', 'ALLOC_FACTOR', 'MAX_INT_BITS', 'MAX_TRACE', 'DEFAULT_STEPS',
-                 'VALUE_MAX_DEPTH', 'DEC_EXP'):
+                 'VALUE_MAX_DEPTH', 'WALK_MAX_DEPTH', 'DEC_EXP'):
         out.append(f'pub const {name}: u64 = {getattr(N, name)};')
     out.append(f'pub const UA_ORDER: &str = {rs("абвгґдеєжзиіїйклмнопрстуфхцчшщьюя")};')
     # типи до запуску: TYPE_REQ — гліф → альтернативи (рядок назв через кому), TYPE_RES, TOOL_TYPES

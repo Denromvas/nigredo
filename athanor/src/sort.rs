@@ -22,13 +22,19 @@ fn ua_order(c: char) -> u32 {
     }
 }
 
-pub fn sort_key(x: &V) -> SK {
-    match &x.v {
+/// Ключ списку, глибшого за WALK, — deep() (як DeepValue в sort_key еталона).
+pub fn sort_key(x: &V, d: usize) -> R<SK> {
+    Ok(match &x.v {
         Val::Str(s) => SK::Str(uni::casefold(&s.s).chars().map(|c| (ua_order(c), c)).collect(), s.clone()),
-        Val::List(l) => SK::List(l.iter().map(sort_key).collect()),
+        Val::List(l) => {
+            if d >= WALK {
+                return deep();
+            }
+            SK::List(l.iter().map(|e| sort_key(e, d + 1)).collect::<R<_>>()?)
+        }
         Val::Int(_) | Val::Dec(_) | Val::Float(_) | Val::Bool(_) => SK::Num(x.v.clone()),
         v => SK::Other(v.clone()),
-    }
+    })
 }
 
 fn tag(k: &SK) -> u8 {
@@ -113,7 +119,7 @@ fn pairs_lt(p: &[(u32, char)], q: &[(u32, char)]) -> bool {
 
 /// Порядок індексів після стабільного сортування за sort_key (як sorted у Python); помилка ⇅ — ключі не порівняти.
 pub fn sort_order(items: &[V], pos: Pos) -> R<Vec<usize>> {
-    let keys: Vec<SK> = items.iter().map(sort_key).collect();
+    let keys: Vec<SK> = items.iter().map(|x| sort_key(x, 0)).collect::<R<_>>()?;
     match timsort(&keys) {
         Ok(o) => Ok(o),
         Err(()) => ngr("⇅: ключі мають бути одного типу (числа, рядки або списки з них — поелементно)", pos),

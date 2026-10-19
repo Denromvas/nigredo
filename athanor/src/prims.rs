@@ -31,7 +31,7 @@ fn need_str(x: &V, g: &str, pos: Pos) -> R<Rc<PStr>> {
     }
 }
 
-fn need_list(x: &V, g: &str, pos: Pos) -> R<Rc<Vec<V>>> {
+fn need_list(x: &V, g: &str, pos: Pos) -> R<Rc<List>> {
     match &x.v {
         Val::List(l) => Ok(l.clone()),
         _ => ngr(format!("{}: очікувалося список, а не {} {}", g, kind(x), brief(x, 40)), pos),
@@ -192,8 +192,8 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                 _ => unreachable!(),
             }
         }
-        '＝' => Ok(V::b(deep_eq(&a[0], &a[1]))),
-        '≠' => Ok(V::b(!deep_eq(&a[0], &a[1]))),
+        '＝' => Ok(V::b(deep_eq(&a[0], &a[1])?)),
+        '≠' => Ok(V::b(!deep_eq(&a[0], &a[1])?)),
         '‹' | '›' | '≤' | '≥' => {
             let ord = if let (Val::Str(x), Val::Str(y)) = (&a[0].v, &a[1].v) {
                 x.s.cmp(&y.s)
@@ -211,7 +211,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
         '¬' => Ok(V::b(!boolean(&a[0], g, pos)?)),
         '►' => it.call(&a[0], vec![a[1].clone()], pos),
         '▶' => it.call(&a[0], vec![a[1].clone(), a[2].clone()], pos),
-        '☠' => ngr(show(&a[0], true), pos),
+        '☠' => ngr(show(&a[0], true)?, pos),
         '…' => {
             let (x, y) = (n(it, a, 0, g, pos)?, n(it, a, 1, g, pos)?);
             let (x, y) = match (x, y) {
@@ -350,7 +350,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                 if i > 0 {
                     out.push_str(&sep.s);
                 }
-                out.push_str(&show(e, true));
+                out.push_str(&show(e, true)?);
             }
             Ok(V::str(out))
         }
@@ -358,7 +358,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             if a[0].n > it.max_size {
                 return fatal(format!("σ: значення завелике (> --розмір {})", it.max_size), Some(pos));
             }
-            Ok(V::str(show(&a[0], true)))
+            Ok(V::str(show(&a[0], true)?))
         }
         'ν' => {
             let s0 = need_str(&a[0], "ν", pos)?;
@@ -396,19 +396,19 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             if a[0].n > it.max_size {
                 return fatal(format!("Δ: значення завелике (> --розмір {})", it.max_size), Some(pos));
             }
-            Ok(V::str(to_json(&a[0])))
+            Ok(V::str(to_json(&a[0])?))
         }
         '»' => {
             if a[0].n > it.max_size {
                 return fatal(format!("»: значення завелике для друку (> --розмір {})", it.max_size), Some(pos));
             }
-            let text = uni::visible(&show(&a[0], true), "\n\t", true);
+            let text = uni::visible(&show(&a[0], true)?, "\n\t", true);
             let agent = it.agent.clone();
-            it.rec("вивід", vec![("агент".into(), crate::json::J::Str(agent)), ("текст".into(), trace_val(&V::str(text.clone()), true))])?;
+            it.rec("вивід", vec![("агент".into(), crate::json::J::Str(agent)), ("текст".into(), trace_val(&V::str(text.clone()), true)?)])?;
             let ok = it.out.write_all(text.as_bytes()).and_then(|_| it.out.write_all(b"\n")).and_then(|_| it.out.flush());
             if let Err(e) = ok {
                 if e.kind() == std::io::ErrorKind::BrokenPipe {
-                    return Err(Box::new(E { msg: String::new(), pos: None, c: 1.0, wh: false, file: None, fatal: true, pipe: true, internal: false }));
+                    return Err(Box::new(E { msg: String::new(), pos: None, c: 1.0, wh: false, file: None, fatal: true, pipe: true, internal: false, deep: false }));
                 }
                 return fatal(format!("вивід: {}", e), Some(pos));
             }
@@ -422,7 +422,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             }
             let cf = to_f64(&c);
             let agent = it.agent.clone();
-            let tv = trace_val(&a[0], false);
+            let tv = trace_val(&a[0], false)?;
             it.rec(
                 "впевненість",
                 vec![
@@ -450,7 +450,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                     "відсів",
                     vec![
                         ("агент".into(), crate::json::J::Str(agent)),
-                        ("значення".into(), trace_val(x, false)),
+                        ("значення".into(), trace_val(x, false)?),
                         ("впевненість".into(), crate::json::J::Float(x.c)),
                         ("поріг".into(), crate::json::J::Float(t)),
                         ("рішення".into(), crate::json::J::s(if ok { "лишено" } else { "відкинуто" })),
@@ -475,7 +475,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                     ("агент".into(), crate::json::J::Str(agent)),
                     ("дія".into(), crate::json::J::s("запамʼятати")),
                     ("ключ".into(), crate::json::J::s(&key.s)),
-                    ("значення".into(), trace_val(&val, false)),
+                    ("значення".into(), trace_val(&val, false)?),
                     ("впевненість".into(), crate::json::J::Float(val.c)),
                 ],
             )?;
@@ -493,7 +493,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                     ("агент".into(), crate::json::J::Str(agent)),
                     ("дія".into(), crate::json::J::s("пригадати")),
                     ("ключ".into(), crate::json::J::s(&key.s)),
-                    ("значення".into(), trace_val(&res, false)),
+                    ("значення".into(), trace_val(&res, false)?),
                     ("впевненість".into(), crate::json::J::Float(res.c)),
                 ],
             )?;
@@ -508,7 +508,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                 "перевірка",
                 vec![
                     ("агент".into(), crate::json::J::Str(agent)),
-                    ("значення".into(), trace_val(&a[0], false)),
+                    ("значення".into(), trace_val(&a[0], false)?),
                     ("результат".into(), crate::json::J::s(if ok { "пройдена" } else { "НЕ пройдена" })),
                     ("впевненість".into(), crate::json::J::Float(r.c)),
                 ],
@@ -524,7 +524,14 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                 let y = need_str(&a[1], "∋", pos)?;
                 Ok(V::b(x.s.contains(&*y.s)))
             }
-            Val::List(l) => Ok(V::b(l.iter().any(|e| deep_eq(e, &a[1])))),
+            Val::List(l) => {
+                for e in l.iter() {
+                    if deep_eq(e, &a[1])? {
+                        return Ok(V::b(true));
+                    }
+                }
+                Ok(V::b(false))
+            }
             Val::Dict(d) => {
                 let y = need_str(&a[1], "∋", pos)?;
                 Ok(V::b(d.find(&y.s).is_some()))
@@ -564,7 +571,14 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                     None => -1,
                 }))
             }
-            Val::List(l) => Ok(V::i64(l.iter().position(|e| deep_eq(e, &a[1])).map(|i| i as i64).unwrap_or(-1))),
+            Val::List(l) => {
+                for (i, e) in l.iter().enumerate() {
+                    if deep_eq(e, &a[1])? {
+                        return Ok(V::i64(i as i64));
+                    }
+                }
+                Ok(V::i64(-1))
+            }
             _ => ngr(format!("⊳: очікувався рядок чи список, а не {}", kind(&a[0])), pos),
         },
         '⇄' => {

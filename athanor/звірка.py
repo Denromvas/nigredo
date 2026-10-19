@@ -20,7 +20,7 @@ from collections import Counter
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 ROOT = os.path.dirname(HERE)
-BIN = next((p for p in (os.path.join(HERE, 'target', t, 'release', 'athanor') for t in ('aarch64-unknown-linux-musl', 'x86_64-unknown-linux-musl', '')) if os.path.exists(p)))
+BIN = next((p for p in (os.path.join(HERE, 'target', t, 'release', 'athanor') for t in ('aarch64-unknown-linux-gnu', 'x86_64-unknown-linux-gnu', '', 'aarch64-unknown-linux-musl')) if os.path.exists(p)))
 REF = os.path.join(ROOT, 'interpreter', 'ngr.py')
 SKIP_DIRS = ('архів', 'target', '.git', 'site/пісочниця/вихід')
 VOLATILE = {'час', 'запуск', 'інтерпретатор', 'хеш', 'попередній'}
@@ -52,7 +52,7 @@ def make_home(tmp):
     return home
 
 
-def norm_trace(path):
+def norm_trace(path, timed=False):
     if not path or not os.path.exists(path):
         return None
     recs, clock = [], set()
@@ -61,6 +61,8 @@ def norm_trace(path):
         if r.get('назва') == 'час' and 'результат' in r:      # годинник: два запуски — різні секунди
             clock.add(r.get('значення'))
             r = {k: v for k, v in r.items() if k not in ('результат', 'значення')}
+        if timed and r.get('подія') == 'кінець':     # SQLite списує кроки й за часом роботи запиту
+            r.pop('кроків', None)
         recs.append({k: v for k, v in r.items() if k not in VOLATILE})
     store = path + '.дані'
     data = None
@@ -88,7 +90,8 @@ def run_one(cmd, prog, home, tmp, tag, timeout):
         code, out, err = 'час', b'', b''
     dt = time.perf_counter() - t0
     tpath = open(tpf, encoding='utf-8').read() if os.path.exists(tpf) else None
-    return code, out, err, norm_trace(tpath), dt
+    timed = 'бд.' in open(prog, encoding='utf-8', errors='replace').read()
+    return code, out, err, norm_trace(tpath, timed), dt
 
 
 def compare(prog, timeout):
