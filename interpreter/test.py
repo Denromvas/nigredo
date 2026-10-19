@@ -1213,6 +1213,23 @@ def main():
             fmt_bad.append(ex.name)
     check(not fmt_bad, 'ngr --формат на прикладах: той самий вивід програм, повторне форматування — без змін', ', '.join(fmt_bad))
 
+    # ngr --repl: сеанс рядків JSON; імена спільні, частина з помилкою не приймається, межі — на весь сеанс, код — у сліді
+    reqs = ['{"код": "🜂 【「жереб」】\\n← x 5"}', '{"код": "← y × x"}', '{"код": "» ＋ x 1"}', '{"код": "← x 1"}',
+            '{"код": "÷ 1 － x x"}', '{"код": "🜔читати 「a」"}', 'сміття', '{"код": "🜔жереб 6"}', '{"кінець": true}']
+    tpf = tmp / 'repl.шлях'
+    rp = subprocess.run([*NGR_CMD, '--repl'], input='\n'.join(reqs) + '\n', capture_output=True, text=True,
+                        env=dict(env, NIGREDO_TRACE_PATH_FILE=str(tpf)))
+    ans = [json.loads(x) for x in rp.stdout.splitlines()]
+    tr_repl = sorted((pathlib.Path(env['NIGREDO_HOME']) / 'сліди').glob('*-repl-*.jsonl'))[-1]
+    vr = run(['--перевірити-слід', str(tr_repl)], env)
+    codes = [json.loads(x)['текст'] for x in tr_repl.read_text(encoding='utf-8').splitlines() if '"код"' in x]
+    check(rp.returncode == 0 and [a_['гаразд'] for a_ in ans] == [True, False, True, False, False, False, False, True]
+          and ans[0]['значення'] == '5' and ans[2]['вивід'] == '6\n' and 'перепризначаються' in ans[3]['помилка']
+          and 'ділення на нуль' in ans[4]['помилка'] and 'немає в печатці' in ans[5]['помилка']
+          and vr.returncode == 0 and 'СЕАНС REPL' in vr.stdout and '» ＋ x 1' in codes,
+          'ngr --repl: спільні імена, відхилені частини, печатка на весь сеанс, слід з кодом кожної частини',
+          rp.stdout + rp.stderr + vr.stdout)
+
     sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',
           'перегенеруйте: ngr --памʼятка > ДЛЯ_АГЕНТІВ.md')
