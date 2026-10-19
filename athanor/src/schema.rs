@@ -14,7 +14,27 @@ struct Leaf {
     nullable: bool,
     bounds: Option<(Option<Dec>, Option<Dec>)>,
     enum_num: Option<Vec<Dec>>,
-    enum_str: Option<Vec<String>>,
+    enum_str: Option<std::collections::HashSet<String>>,
+}
+
+thread_local! {
+    /// Розібраний останній рядок схеми (за тим самим Rc): 【S】 на n елементів розбирає S раз, а не n (як кеш еталона).
+    static LAST: std::cell::RefCell<Option<(std::rc::Rc<PStr>, std::rc::Rc<Result<Leaf, String>>)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+fn leaf_cached(sv: &std::rc::Rc<PStr>) -> std::rc::Rc<Result<Leaf, String>> {
+    LAST.with(|c| {
+        let mut c = c.borrow_mut();
+        if let Some((k, v)) = c.as_ref() {
+            if std::rc::Rc::ptr_eq(k, sv) {
+                return v.clone();
+            }
+        }
+        let v = std::rc::Rc::new(leaf(&sv.s));
+        *c = Some((sv.clone(), v.clone()));
+        v
+    })
 }
 
 /// SCHEMA_NUM: [¯-]?[0-9]+(\.[0-9]+)?
@@ -88,7 +108,9 @@ fn leaf(sv: &str) -> Result<Leaf, String> {
             if !alts.iter().all(|a| schema_num(a)) {
                 return Err(format!("перелік чисел «{}» — цифрами 0–9 (¯ для відʼємних)", uni::safe(rest)));
             }
-            l.enum_num = Some(alts.iter().map(|a| num_dec(a)).collect());
+            let mut en: Vec<Dec> = alts.iter().map(|a| num_dec(a)).collect();
+            en.sort_by(|x, y| x.cmp(y)); // пошук — двійковий (перелік на n значень — не n²)
+            l.enum_num = Some(en);
         } else {
             l.enum_str = Some(alts.iter().map(|a| a.to_string()).collect());
         }
@@ -113,7 +135,8 @@ pub fn check(it: &mut Interp, x: &V, sch: &V, path: &str, errs: &mut Vec<String>
     let where_ = if path.is_empty() { "значення".to_string() } else { path.to_string() };
     match &sch.v {
         Val::Str(sv) => {
-            let l = match leaf(&sv.s) {
+            let cached = leaf_cached(sv);
+            let l = match &*cached {
                 Ok(l) => l,
                 Err(e) => return ngr(format!("✓: {}", e), pos),
             };
@@ -162,7 +185,7 @@ pub fn check(it: &mut Interp, x: &V, sch: &V, path: &str, errs: &mut Vec<String>
                     Val::Float(f) => Dec::parse(&crate::pyf::repr(*f)).unwrap(),
                     other => num_as_dec(other).unwrap(),
                 };
-                if !en.iter().any(|e| e.cmp(&d) == Ordering::Equal) {
+                if en.binary_search_by(|e| e.cmp(&d)).is_err() {
                     errs.push(format!("{}: {} — не з переліку {}", where_, brief(x, 30), rest));
                 }
             } else if let Some(en) = &l.enum_str {

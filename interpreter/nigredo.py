@@ -1903,7 +1903,7 @@ def _verify(path, program=None):
                  'записів': n, 'останній': last, 'заборонено': denied, 'квоту_вичерпано': quota_hits,
                  'перехоплено_помилок': caught,
                  'підсумовано_значень': summed, 'тека': head.get('тека'), 'аргументи': head.get('аргументи'),
-                 'режим': 'повтор' if head.get('повтор') else 'сухо' if dry else 'звичайний'})
+                 'режим': 'повтор' if head.get('повтор') else 'сухо' if dry else 'repl' if head.get('repl') else 'звичайний'})
     notes = [f'тека {safe(str(head.get("тека", "—")))}',
              f'аргументи {safe(json.dumps(head.get("аргументи"), ensure_ascii=False))}']
     notes.append(f'⚠ спроб поза правами («заборонено»): {len(denied)} — ' + '; '.join(denied[:5])
@@ -1927,7 +1927,8 @@ def _verify(path, program=None):
         info['внутрішня_помилка'] = True
     mode = (f' — ПОВТОР сліду {safe(str(head.get("повтор")))}: жоден інструмент не діяв, «інструмент» — записані значення'
             if head.get('повтор') else ' — СУХИЙ ПРОГІН: записи, надсилання, процеси й агенти НЕ виконувалися, їхні '
-            '«інструмент» — заглушки з впевненістю 0' if dry else '')
+            '«інструмент» — заглушки з впевненістю 0' if dry else ' — СЕАНС REPL: код надходив частинами, кожна — у '
+            'записі «код»' if head.get('repl') else '')
     return f'✓ слід цілий і завершений ({last}){mode}: {n} записів; {about}\n  ' + '\n  '.join(notes), info
 
 
@@ -5157,6 +5158,7 @@ def cheatsheet():
            '  `‹ 「5」 3`, умова не ●/○, `§ список 「ключ」`, небезпечна регулярка, `÷ x 0` — помилка до запуску.',
            '  `ngr --перевірити --json файл` — усі помилки одразу (з місцем і підказкою) і печатка, без виконання.',
            '  `ngr --формат файл` — той самий код у канонічному вигляді (пробіли, відступи, цифри 0–9; коментарі лишаються).',
+           '  `ngr --repl` — сеанс частинами: рядок JSON `{"код": "…"}` на вхід (перша — з печаткою), рядок JSON на вихід.',
            '- **Кінець рядка завершує вираз.** Бракує аргументу в кінці рядка — помилка до запуску. Довгий вираз',
            '  продовжуйте на наступних рядках **з більшим відступом**; усередині `【】` і `『』` перенос вільний.',
            '  Зайве після завершеного виразу — теж помилка. Кілька виразів в одному рядку — через `¦`.',
@@ -5400,6 +5402,8 @@ USAGE = f"""Nigredo {VERSION}
     --розмір N             найбільший рядок/список (типово {MAX_SIZE})
   ngr --перевірити [--json] ФАЙЛ   усі помилки до запуску (розбір, типи, регулярки) і печатка — без виконання
   ngr --перевірити-слід ФАЙЛ [ПРОГРАМА]   (з програмою — ще й чи слід саме від неї)
+  ngr --repl [--тека ТЕКА]  сеанс для агента: рядки JSON {{"код": "…"}} на вхід (перша частина — з печаткою 🜂),
+                           рядок JSON на вихід (гаразд, вивід, значення, впевненість, помилка); {{"кінець": true}} — край
   ngr --формат ФАЙЛ.ngr    канонічний текст програми (пробіли, відступи, цифри 0–9; коментарі лишаються) — у stdout;
                            розбір дає те саме дерево
   ngr --схвалити ФАЙЛ.ngr  для власника: відбиток програми, печатка, переклад і запис «для_програм» — права саме цій
@@ -5560,6 +5564,8 @@ def load_replay(tpath, program=None):
     if not msg.startswith('✓'):
         return None, f'✗ повторити неможливо: {msg}'
     recs = [json.loads(line) for line in open(tpath, encoding='utf-8', newline='').read().split('\n') if line]
+    if recs and recs[0].get('repl'):
+        return None, '✗ сеанс --repl не повторюється цілим (код надходив частинами — у записах «код»)'
     store = {}
     try:
         with open(tpath + '.дані', encoding='utf-8') as f:
@@ -5673,6 +5679,9 @@ def main(argv):
         if a == '--сухо':
             opts['dry'] = True
             continue
+        if a == '--repl':
+            opts['mode'] = 'repl'
+            continue
         if a in ('--печатка', '--розбір', '--перевірити', '--схвалити', '--формат'):
             opts['mode'] = a[2:]
         elif a == '--слід':
@@ -5740,6 +5749,11 @@ def main(argv):
         prog_args = list(head.get('аргументи') or [])
         opts.update(seed=lim.get('зерно', 0), steps=lim.get('кроки', DEFAULT_STEPS), size=lim.get('розмір', MAX_SIZE),
                     tsize=lim.get('слід', MAX_TRACE))
+    if opts['mode'] == 'repl':
+        if src is not None:
+            print('✗ --repl бере код зі stdin (рядки JSON), а не з файлу чи -e', file=sys.stderr)
+            return 2
+        return repl_main(opts)
     if src is None:
         print(USAGE, file=sys.stderr)
         return 2
@@ -5931,6 +5945,106 @@ def main(argv):
             if o is not sys.stderr:
                 o.close()
         for o in locals().get('stores', []):
+            o.close()
+
+
+def repl_main(opts):
+    """ngr --repl: сеанс для агента. На вхід — рядки JSON: {"код": "…"} (перша частина починається печаткою 🜂 — вона
+    діє на весь сеанс) або {"кінець": true}; на вихід — рядок JSON на кожен: гаразд, вивід, значення, впевненість,
+    помилка. Кожна частина розбирається разом з усіма прийнятими (імена й типи — спільні, перепризначити не можна),
+    виконується лише нове; код кожної частини — у сліді (запис «код»). Частина з помилкою не приймається (імена з неї
+    невидимі далі), але дії до помилки вже сталися — як у звичайному запуску. Межі (--кроки …) — на весь сеанс."""
+    import io
+    cwd = opts['dir'] or os.getcwd()
+    dir_rights = opts['dir'] is not None
+
+    def reply(**d):
+        sys.stdout.write(json.dumps(d, ensure_ascii=False) + '\n')
+        sys.stdout.flush()
+
+    # місця в повідомленнях — у рядках усього сеансу (прийняті частини підряд); «рядок» відповіді — де почалася ця частина
+    accepted, done, interp, trace, top, outs = None, 0, None, None, None, []
+    code = 0
+    try:
+        for line in sys.stdin:
+            if not line.strip():
+                continue
+            try:
+                req = json.loads(line)
+                if not isinstance(req, dict):
+                    raise ValueError
+            except ValueError:
+                reply(гаразд=False, помилка='✗ очікувався рядок JSON: {"код": "…"} або {"кінець": true}')
+                continue
+            if req.get('кінець') is True:
+                break
+            chunk = req.get('код')
+            if not isinstance(chunk, str) or any(0xD800 <= ord(c) <= 0xDFFF for c in chunk):
+                reply(гаразд=False, помилка='✗ «код» має бути рядком (UTF-8)')
+                continue
+            candidate = chunk if accepted is None else accepted + '\n' + chunk
+            first = 1 if accepted is None else accepted.count('\n') + 2
+            try:
+                prog = parse(candidate, cwd, None)
+            except StaticError as e:
+                if trace:
+                    trace('код', текст=visible(chunk), прийнято=False, помилка=safe(str(e)))
+                reply(гаразд=False, рядок=first, помилка=safe(str(e)))
+                continue
+            if interp is None:                  # перша частина: печатка, дозволи власника, слід
+                allowed, source = load_allowlist(opts['allow'], cwd if dir_rights else None, cwd if dir_rights else None)
+                missing = check_program(prog, allowed, cwd)
+                if missing:
+                    reply(гаразд=False, помилка=f'✗ печатка просить більше, ніж дозволив власник: {", ".join(missing)}')
+                    return 3
+                key = owner_key()
+                os.makedirs(os.path.join(OWNER_HOME, 'сліди'), mode=0o700, exist_ok=True)
+                stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
+                tpath = os.path.join(OWNER_HOME, 'сліди', f'{stamp}-repl-{os.getpid()}.jsonl')
+                outs = [open(tpath, 'x', encoding='utf-8'), open(tpath + '.дані', 'x', encoding='utf-8')]
+                trace = Trace(outs[:1], key, opts['tsize'], outs[1:])
+                trace('початок', версія=VERSION, інтерпретатор=INTERP_SHA, програма='<repl>',
+                      sha256=hashlib.sha256(chunk.encode()).hexdigest(), аргументи=[],
+                      час=datetime.now(timezone.utc).isoformat(timespec='seconds'), запуск=os.urandom(6).hex(),
+                      тека=safe(cwd), дозволи_власника=safe(source), дозволено=allowed,
+                      ліміти={'кроки': opts['steps'], 'розмір': opts['size'], 'слід': opts['tsize'], 'зерно': opts['seed']},
+                      repl=True)
+                interp = Interp(trace, seed=opts['seed'], steps=opts['steps'], cwd=cwd, argv=[], protected=[tpath],
+                                max_size=opts['size'])
+                owner_q = Caps()
+                for t, sc, q in owner_quotas(allowed):
+                    owner_q.quotas[(t, sc)] = min(q, owner_q.quotas.get((t, sc), q))
+                if owner_q.quotas:
+                    interp.quota_stack.append(('власник', owner_q, 'власник'))
+                top = {'\0parent': {}}
+            trace('код', текст=visible(chunk), прийнято=True)
+            buf = io.StringIO()
+            interp.out = buf
+            result = V(None)
+            try:
+                for st in prog[2][done:]:
+                    result = interp.eval(st, top)
+            except Fatal as e:
+                trace('помилка', повідомлення=safe(str(e)))
+                reply(гаразд=False, рядок=first, вивід=buf.getvalue(), помилка=safe(str(e)), кінець=True)
+                return 1
+            except NgrError as e:
+                trace('помилка частини', повідомлення=safe(str(e)))
+                reply(гаразд=False, рядок=first, вивід=buf.getvalue(), помилка=safe(str(e)))
+                continue
+            accepted, done = candidate, len(prog[2])
+            reply(гаразд=True, рядок=first, вивід=buf.getvalue(), значення=visible(show(result, False)), впевненість=result.c)
+        if trace:
+            trace('кінець', кроків=opts['steps'] - interp.steps_left)
+        return code
+    except Exception as e:                       # вада інтерпретатора: чесно, без трасування Python
+        if trace:
+            trace('помилка', внутрішня=True, повідомлення=f'{type(e).__name__}: {e}')
+        reply(гаразд=False, помилка=f'✗ внутрішня помилка інтерпретатора Nigredo ({type(e).__name__}: {e}) — вада мови',
+              кінець=True)
+        return 4
+    finally:
+        for o in outs:
             o.close()
 
 
