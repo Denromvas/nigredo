@@ -9,6 +9,7 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 NGR = os.path.join(HERE, '..', '..', 'interpreter', 'ngr.py')
+ATHANOR = os.path.join(HERE, '..', '..', 'athanor', 'target', 'release', 'athanor')   # нативний виконавець (якщо зібрано)
 
 
 def cpu(cmd, cwd, env):
@@ -35,8 +36,9 @@ def main():
         with open(os.path.join(home, 'дозволи.json'), 'w', encoding='utf-8') as f:
             f.write('{"дозволено": ["файл.читати:%s"]}' % os.path.join(d, 'дані'))
         env = dict(os.environ, NIGREDO_HOME=home)
-        print('| Задача | Nigredo, с | Python, с | Nigredo/Python | вивід однаковий |')
-        print('|---|---|---|---|---|')
+        nat = os.path.exists(ATHANOR)
+        print('| Задача | Nigredo, с | Python, с | Nigredo/Python | вивід однаковий |' + (' Атанор, с | Атанор/Python | вивід Атанора той самий |' if nat else ''))
+        print('|---|---|---|---|---|' + ('---|---|---|' if nat else ''))
         for name in ('слова', 'арифм'):
             prog = os.path.join(d, name + '.ngr')
             with open(os.path.join(HERE, name + '.ngr'), encoding='utf-8') as src, open(prog, 'w', encoding='utf-8') as dst:
@@ -44,7 +46,11 @@ def main():
             tn, (on, en, cn) = cpu([sys.executable, NGR, prog], d, env)
             tp, (op, ep, cp) = cpu([sys.executable, os.path.join(HERE, name + '.py')], d, env)
             same = cn == 0 and cp == 0 and on.split() == op.split()
-            print(f'| {name} | {tn:.2f} | {tp:.2f} | {tn / tp:.1f}× | {"так" if same else "НІ: " + (en or ep)[:80]} |')
+            row = f'| {name} | {tn:.2f} | {tp:.2f} | {tn / tp:.1f}× | {"так" if same else "НІ: " + (en or ep)[:80]} |'
+            if nat:
+                ta, (oa, ea, ca) = cpu([ATHANOR, prog], d, dict(env, ATHANOR_NO_FALLBACK='1'))
+                row += f' {ta:.3f} | {ta / tp:.2f}× | {"так" if ca == 0 and oa == on else "НІ: " + ea[:80]} |'
+            print(row)
 
 
 if __name__ == '__main__':

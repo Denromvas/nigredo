@@ -1,0 +1,19 @@
+[package]
+name = "athanor"
+version = "0.1.0"
+edition = "2021"
+description = "Атанор — нативний виконавець Nigredo (еталон — interpreter/nigredo.py)"
+license = "MIT"
+
+[[bin]]
+name = "athanor"
+path = "src/main.rs"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+debug = false
+codegen-units = 4
+lto = "thin"
+panic = "unwind"
