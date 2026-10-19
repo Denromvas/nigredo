@@ -621,6 +621,16 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             Ok(V::dec(q))
         }
         '⌂' => Ok(V::list(it.argv.iter().map(|x| V::str(x.clone())).collect())),
+        'χ' => match &a[0].v {
+            Val::Str(s) => crate::xml::parse(it, &s.s, pos),
+            Val::Dict(_) => Ok(V::str(crate::xml::write(it, &a[0], pos)?)),
+            _ => ngr(format!("χ: очікувався рядок XML або елемент (словник), а не {}", kind(&a[0])), pos),
+        },
+        '↘' => {
+            need_dict(&a[0], "↘", pos)?;
+            let p = need_str(&a[1], "↘", pos)?;
+            crate::xml::path(it, &a[0], &p.s, pos)
+        }
         '✓' => {
             let mut errs = Vec::new();
             crate::schema::check(it, &a[0], &a[1], "", &mut errs, pos, 0)?;

@@ -140,14 +140,26 @@ impl Dict {
     }
 }
 
+/// Модуль, у якому визначено функцію: (шлях для повідомлень, печатка модуля) — права при виклику.
+#[derive(Debug)]
+pub struct ModInfo {
+    pub rel: String,
+    pub caps: Rc<crate::ast::Caps>,
+}
+
 pub struct Env {
     pub vars: RefCell<Vec<V>>,
     pub parent: Option<Rc<Env>>,
+    pub module: Option<Rc<ModInfo>>,
 }
 
 impl Env {
     pub fn new(n: usize, parent: Option<Rc<Env>>) -> Rc<Env> {
-        Rc::new(Env { vars: RefCell::new(vec![V::none(); n]), parent })
+        let module = parent.as_ref().and_then(|p| p.module.clone());
+        Rc::new(Env { vars: RefCell::new(vec![V::none(); n]), parent, module })
+    }
+    pub fn child(vars: Vec<V>, parent: &Rc<Env>) -> Rc<Env> {
+        Rc::new(Env { vars: RefCell::new(vars), parent: Some(parent.clone()), module: parent.module.clone() })
     }
     pub fn at(self: &Rc<Env>, hops: u32) -> Rc<Env> {
         let mut e = self.clone();
@@ -162,6 +174,7 @@ pub struct Func {
     pub lam: Rc<Lambda>,
     pub env: Rc<Env>,
     pub name: Option<Rc<str>>,
+    pub module: Option<Rc<ModInfo>>,
 }
 
 impl std::fmt::Debug for Func {

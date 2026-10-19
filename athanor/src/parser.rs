@@ -37,6 +37,11 @@ pub struct Parser {
     /// інструменти й гліфи, які Атанор виконує сам (решта — еталон)
     pub supported_tool: fn(&str) -> bool,
     pub supported_glyph: fn(char) -> bool,
+    base: Option<String>,
+    root: Option<String>,
+    stack: Vec<String>,
+    module: bool,
+    home: String,
 }
 
 pub fn tool_info(name: &str) -> Option<(u8, bool, &'static str, &'static str)> {
@@ -190,6 +195,12 @@ pub fn narrower(tool: &str, child: &str, parent: &str) -> bool {
 
 impl Parser {
     pub fn new(t: Vec<Token>, supported_tool: fn(&str) -> bool, supported_glyph: fn(char) -> bool) -> Parser {
+        Parser::with(t, supported_tool, supported_glyph, None, None, Vec::new(), false, String::new())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with(t: Vec<Token>, supported_tool: fn(&str) -> bool, supported_glyph: fn(char) -> bool, base: Option<String>,
+                root: Option<String>, stack: Vec<String>, module: bool, home: String) -> Parser {
         let mut agent_names = HashMap::new();
         agent_names.insert(uni::skeleton("головний").unwrap(), "головний".to_string());
         Parser {
@@ -203,6 +214,11 @@ impl Parser {
             depth: 0,
             supported_tool,
             supported_glyph,
+            root: root.or_else(|| base.clone()),
+            base,
+            stack,
+            module,
+            home,
         }
     }
 
@@ -262,8 +278,115 @@ impl Parser {
             return back("програма має починатися з печатки");
         }
         let stmts = self.statements(None)?;
+        if self.module {
+            for st in &stmts[1..] {
+                let ok = match &st.k {
+                    K::Import(_) => true,
+                    K::Bind(_, _, v) => v.is_lam() || const_expr(v),
+                    _ => false,
+                };
+                if !ok {
+                    return back("модуль на верхньому рівні лише називає функції й сталі");
+                }
+            }
+        }
         let n = self.scopes[0].order.len() as u32;
         Ok(Node::new((1, 1), K::Block(stmts, n)))
+    }
+
+    /// Номер імені верхнього рівня (для ⊃).
+    pub fn top_slot(&self, name: &str) -> Option<(Option<u8>, u32)> {
+        self.scopes[0].names.get(name).copied()
+    }
+
+    fn import_(&mut self, pos: Pos) -> Result<Node, Back> {
+        if self.i as isize - 1 != self.head || self.scopes.len() != 1 {
+            return back("⊃ — лише на початку інструкції верхнього рівня");
+        }
+        let path = self.expr()?;
+        let names = self.expr()?;
+        let rel: Rc<str> = match &path.k {
+            K::Lit(Lit::Str(s)) => s.clone(),
+            _ => return back("⊃: шлях — буквальний рядок"),
+        };
+        let names: Vec<(Rc<str>, Pos)> = match &names.k {
+            K::List(xs) if !xs.is_empty() => {
+                let mut out = Vec::new();
+                for e in xs {
+                    match &e.k {
+                        K::Lit(Lit::Str(s)) => out.push((s.clone(), e.pos)),
+                        _ => return back("⊃: імена — рядки"),
+                    }
+                }
+                out
+            }
+            _ => return back("⊃: імена — непорожній список"),
+        };
+        let base = match &self.base {
+            None => return back("⊃: модулі — лише в програмах із текою"),
+            Some(b) => b.clone(),
+        };
+        if !rel.ends_with(".ngr") || rel.starts_with('/') {
+            return back("⊃: модуль — відносний шлях до .ngr");
+        }
+        plain_text(&rel, false)?;
+        let real = crate::pathx::realpath(&crate::pathx::join(&base, &rel));
+        let root = self.root.clone().unwrap_or_default();
+        if !crate::pathx::inside(&real, &root) || crate::pathx::inside(&real, &self.home) {
+            return back("⊃: модуль поза текою програми");
+        }
+        if self.stack.contains(&real) {
+            return back("⊃: циклічний імпорт");
+        }
+        let raw = std::fs::read(&real).map_err(|_| Back("⊃: модуль не прочитати".into()))?;
+        let src = String::from_utf8(raw.clone()).map_err(|_| Back("⊃: модуль не UTF-8".into()))?;
+        let toks = crate::lexer::lex(&src)?;
+        crate::lexer::check_twins(&toks)?;
+        let mut stack = self.stack.clone();
+        stack.push(real.clone());
+        let mut sub = Parser::with(toks, self.supported_tool, self.supported_glyph, Some(crate::pathx::dirname(&real)),
+                                   Some(root.clone()), stack, true, self.home.clone());
+        let prog = sub.program()?;
+        if crate::types::has_type_errors(&prog) {
+            return back("помилки типів у модулі");
+        }
+        let mcaps = sub.seal_caps().unwrap_or_default();
+        let parent = self.cap_stack.last().cloned().unwrap_or_default();
+        for (t, scopes) in &mcaps.tools {
+            let ps = match parent.get(t) {
+                Some(ps) => ps,
+                None => return back("модуль просить, чого нема в печатці"),
+            };
+            for sc in scopes {
+                if !ps.is_empty() && !ps.contains(sc) && !ps.iter().any(|p| narrower(t, sc, p)) {
+                    return back("модуль просить ширше");
+                }
+            }
+        }
+        let mut out = Vec::new();
+        for (nm, _) in &names {
+            let (ar, mslot) = match sub.top_slot(nm) {
+                Some(x) => x,
+                None => return back("у модулі немає імені"),
+            };
+            if self.scopes[0].names.contains_key(nm) {
+                return back("імʼя вже назване");
+            }
+            let sc = &mut self.scopes[0];
+            let slot = sc.order.len() as u32;
+            sc.names.insert(nm.clone(), (ar, slot));
+            sc.order.push(nm.clone());
+            out.push((nm.clone(), mslot, slot));
+        }
+        let nslots = sub.scopes[0].order.len() as u32;
+        let module = Rc::new(Module { prog, nslots, caps: mcaps });
+        Ok(Node::new(pos, K::Import(Rc::new(ModImport {
+            rel: crate::pathx::relpath(&real, &root),
+            names: out,
+            module,
+            sha: crate::sha::sha256_hex(&raw),
+            real,
+        }))))
     }
 
     pub fn seal_caps(&self) -> Option<Rc<Caps>> {
@@ -592,7 +715,7 @@ impl Parser {
             }
             'λ' => self.lam(1, pos),
             'Λ' => self.lam(2, pos),
-            '⊃' => back("модулі — еталон"),
+            '⊃' => self.import_(pos),
             '∘' => {
                 let name = self.name_tok()?;
                 match self.resolve(&name) {
