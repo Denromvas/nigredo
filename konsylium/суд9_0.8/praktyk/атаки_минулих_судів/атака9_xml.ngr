@@ -1,0 +1,27 @@
+🜂 「XML: DTD, сутності, кодування, CDATA, коментарі, XInclude」
+← т λs ☂ Δ χ s λe 〔відмова: {⊏ e 0 110}〕
+» 〔1 DOCTYPE: {т 「<!DOCTYPE a [<!ENTITY x "y">]><a>&x;</a>」}〕
+» 〔2 doctype малими: {т 「<!doctype a><a/>」}〕
+» 〔3 DOCTYPE після коментаря: {т 「<!-- x --><!DOCTYPE a SYSTEM "file:///etc/passwd"><a/>」}〕
+» 〔4 DOCTYPE після PI: {т 「<?xml version="1.0"?><?pi x?><!DOCTYPE a [<!ENTITY % p "x">]><a/>」}〕
+» 〔5 сутність без DTD: {т 「<a>&x;</a>」}〕
+» 〔6 вбудовані сутності: {т 「<a b="&lt;&amp;&quot;">&lt;x&gt; &amp; &apos;</a>」}〕
+» 〔7 числові посилання: {т 「<a>&#1055;&#x456;&#x200B;</a>」}〕
+» 〔8 CDATA з DOCTYPE усередині: {т 「<a><![CDATA[<!DOCTYPE x>]]></a>」}〕
+» 〔9 коментар з DOCTYPE: {т 「<a><!-- <!DOCTYPE x> --></a>」}〕
+» 〔10 XInclude: {т 「<a xmlns:xi="http://www.w3.org/2001/XInclude"><xi:include href="file:///etc/passwd" parse="text"/></a>」}〕
+» 〔11 кодування UTF-16 в оголошенні: {т 「<?xml version="1.0" encoding="UTF-16"?><a>x</a>」}〕
+» 〔12 кодування latin-1: {т 「<?xml version="1.0" encoding="ISO-8859-1"?><a>é</a>」}〕
+» 〔13 два корені: {т 「<a/><b/>」}〕
+» 〔14 порожньо: {т 「」}〕
+» 〔15 BOM: {т δ 「"\\ufeff<a>x</a>"」}〕
+» 〔16 змішаний вміст: {т 「<a>до<b>в</b>після</a>」}〕
+» 〔17 пробіли значущі: {т 「<a>  1 200,50  </a>」}〕
+» 〔18 неоголошений префікс: {т 「<s:a>x</s:a>」}〕
+» 〔19 два простори, одна назва: {т 「<r xmlns:p="urn:a" xmlns:q="urn:b"><p:Amt>1</p:Amt><q:Amt>2</q:Amt></r>」}〕
+» 〔20 атрибут xmlns: {т 「<a xmlns="urn:x" x:y="1" xmlns:x="urn:y"/>」}〕
+» 〔21 керівний символ: {т δ 「"<a>\\u0001</a>"」}〕
+» 〔22 bidi у тексті: {т δ 「"<a>\\u202eabc</a>"」}〕
+» 〔23 незакритий тег: {т 「<a><b></a>」}〕
+» 〔24 ENTITY без DOCTYPE: {т 「<!ENTITY x "y"><a/>」}〕
+» 〔25 DOCTYPE у другому рядку з пробілами: {т 「\n  <!DOCTYPE\ta><a/>」}〕

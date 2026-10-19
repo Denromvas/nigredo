@@ -1,0 +1,8 @@
+🜂 「XML: чужий простір імен видає себе за Nm; атрибути з різних просторів зливаються」 【】
+← д χ 「<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02" xmlns:z="urn:evil"><Ntry><Amt>1.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><z:Nm>Підставний</z:Nm><Nm>Справжній</Nm></Ntry></Document>」
+» μ ↘ д 「//Nm」 λe 〔{§e 「текст」} ({§e 「простір」})〕
+← а ☂ χ 「<x xmlns:a="urn:a" xmlns:b="urn:b" a:id="1" b:id="2" id="3"/>」 λe e
+» а
+※ DTD у коментарі й CDATA — законний документ
+» ☂ ρ χ 「<a><!-- <!DOCTYPE заборонено? --></a>」 λe ＋ 「коментар: 」 e
+» ☂ ρ χ 「<a><![CDATA[<!ENTITY x>]]></a>」 λe ＋ 「CDATA: 」 e

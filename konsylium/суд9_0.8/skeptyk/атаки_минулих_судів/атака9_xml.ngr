@@ -1,0 +1,18 @@
+🜂
+← спр Λn т » 〔{n}: {☂ σ χ т λe ＋ 「ПОМИЛКА 」 e}〕
+спр 「1 doctype」 「<!DOCTYPE a [<!ENTITY x "y">]><a>&x;</a>」
+спр 「2 doctype малими」 「<!doctype a><a/>」
+спр 「3 doctype у коментарі」 「<a><!-- <!DOCTYPE --></a>」
+спр 「4 doctype у CDATA」 「<a><![CDATA[<!DOCTYPE x>]]></a>」
+спр 「5 сутність невідома」 「<a>&x;</a>」
+спр 「6 символьне посилання」 「<a>&#60;!DOCTYPE a&#62;</a>」
+спр 「7 xinclude」 「<a xmlns:xi="http://www.w3.org/2001/XInclude"><xi:include href="/etc/passwd" parse="text"/></a>」
+спр 「8 інструкція обробки」 「<?xml-stylesheet href="http://x"?><a><?php echo 1?>т</a>」
+спр 「9 utf-16 декларація」 「<?xml version="1.0" encoding="UTF-16"?><a>т</a>」
+спр 「10 NUL-посилання」 「<a>&#0;</a>」
+спр 「11 керівний символ-посилання」 「<a>&#x8;</a>」
+спр 「12 bidi-посилання」 「<a>&#x202E;txt.exe</a>」
+спр 「13 ZWSP-посилання в атрибуті」 「<a b="x&#x200B;y"/>」
+спр 「14 префікс без простору」 「<p:a/>」
+спр 「15 два кореневі」 「<a/><b/>」
+спр 「16 атрибут-двійник через простір」 「<a xmlns:p="u1" xmlns:q="u2" p:x="1" q:x="2"/>」
