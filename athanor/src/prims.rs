@@ -621,6 +621,58 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             Ok(V::dec(q))
         }
         '⌂' => Ok(V::list(it.argv.iter().map(|x| V::str(x.clone())).collect())),
+        '◷' => {
+            let tname = |v: &Val| -> &'static str {
+                match v {
+                    Val::Int(_) => "int",
+                    Val::Dec(_) => "Decimal",
+                    Val::Float(_) => "float",
+                    Val::Bool(_) => "bool",
+                    Val::None => "NoneType",
+                    Val::List(_) => "list",
+                    Val::Dict(_) => "dict",
+                    Val::Fn(_) => "Fn",
+                    Val::Str(_) => "str",
+                }
+            };
+            let iso = |v: &Val| -> R<crate::dates::Dt> {
+                match v {
+                    Val::Str(s) => match crate::dates::iso(&s.s) {
+                        Some(d) => Ok(d),
+                        None => {
+                            let t: String = uni::safe(&s.s).chars().take(40).collect();
+                            ngr(format!("◷: «{}» — не дата ISO (2026-10-15 або 2026-10-15T09:30:00)", t), pos)
+                        }
+                    },
+                    other => ngr(format!("◷: дата — рядок ISO (2026-10-15 або 2026-10-15T09:30:00), а не {}", tname(other)), pos),
+                }
+            };
+            let da = iso(&a[0].v)?;
+            let derr = |e: crate::dates::DateErr| -> R<V> {
+                match e {
+                    crate::dates::DateErr::Tz => ngr("◷: одна дата з часовим поясом, інша — без; додайте пояс до обох", pos),
+                    crate::dates::DateErr::Range => ngr("◷: дата поза межами (рік 1–9999)", pos),
+                    crate::dates::DateErr::Dec(s) => dec_err(g, s, pos),
+                }
+            };
+            match &a[1].v {
+                Val::Str(_) => {
+                    let db = iso(&a[1].v)?;
+                    match crate::dates::diff(&da, &db) {
+                        Ok(v) => Ok(V::new(v, 1.0)),
+                        Err(e) => derr(e),
+                    }
+                }
+                Val::Int(_) | Val::Dec(_) | Val::Float(_) => {
+                    let nn = to_dec(&a[1].v);
+                    match crate::dates::add(&da, &nn) {
+                        Ok(s) => Ok(V::str(s)),
+                        Err(e) => derr(e),
+                    }
+                }
+                _ => ngr("◷: другий аргумент — дата (рядок ISO) або кількість днів (число)", pos),
+            }
+        }
         '▦' => {
             let t0 = need_str(&a[0], "▦", pos)?;
             let text = t0.s.strip_prefix('\u{feff}').unwrap_or(&t0.s);
