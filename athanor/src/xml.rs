@@ -319,7 +319,7 @@ pub fn write(it: &mut Interp, el: &V, pos: Pos) -> R<String> {
 }
 
 fn value(v: &V, what: &str, tag: &str, pos: Pos) -> R<String> {
-    let s = show(v, true);
+    let s = show(v, true)?;
     if let Some(b) = char_bad(&s) {
         return ngr(format!("χ: {} елемента «{}» має символ U+{:04X}, якого не буває в XML", what, uni::safe(tag), b as u32), pos);
     }
@@ -392,7 +392,7 @@ fn build(it: &mut Interp, x: &V, depth: usize, parent_ns: Option<String>, pos: P
         },
     };
     let kids = match dget(&d, "діти").map(|v| &v.v) {
-        None => Rc::new(Vec::new()),
+        None => Rc::new(List::default()),
         Some(Val::List(l)) => l.clone(),
         Some(_) => return ngr(format!("χ: 「діти」 елемента «{}» — список", uni::safe(&tag)), pos),
     };
@@ -619,7 +619,7 @@ pub fn path(it: &mut Interp, root: &V, path: &str, pos: Pos) -> R<V> {
             return Ok(match attr_get(e, &name) {
                 Some(v) => (match &v.v {
                     Val::Str(s) => s.s.to_string(),
-                    _ => show(&v, true),
+                    _ => show(&v, true)?,
                 }) == want,
                 None => false,
             });

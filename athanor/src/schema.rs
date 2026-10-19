@@ -166,7 +166,7 @@ pub fn check(it: &mut Interp, x: &V, sch: &V, path: &str, errs: &mut Vec<String>
                     errs.push(format!("{}: {} — не з переліку {}", where_, brief(x, 30), rest));
                 }
             } else if let Some(en) = &l.enum_str {
-                let s = show(x, true);
+                let s = show(x, true)?;
                 if !en.contains(&s) {
                     errs.push(format!("{}: {} — не з переліку {}", where_, brief(x, 30), rest));
                 }
@@ -204,18 +204,22 @@ pub fn check(it: &mut Interp, x: &V, sch: &V, path: &str, errs: &mut Vec<String>
             };
             // поля: «k?» — необовʼязкове; той самий ключ двічі (k і k?) — діє останній
             let mut fields: Vec<(String, bool, V)> = Vec::new();
+            let mut fidx: FxMap<String, usize> = FxMap::default();
             for (k, s_) in sd.keys.iter().zip(&sd.vals) {
                 if &*k.s == "…" {
                     continue;
                 }
                 let name = k.s.trim_end_matches('?').to_string();
                 let opt = k.s.ends_with('?');
-                match fields.iter_mut().find(|f| f.0 == name) {
-                    Some(f) => {
-                        f.1 = opt;
-                        f.2 = s_.clone();
+                match fidx.get(&name) {
+                    Some(&i) => {
+                        fields[i].1 = opt;
+                        fields[i].2 = s_.clone();
                     }
-                    None => fields.push((name, opt, s_.clone())),
+                    None => {
+                        fidx.insert(name.clone(), fields.len());
+                        fields.push((name, opt, s_.clone()));
+                    }
                 }
             }
             it.work(64 * (fields.len() + d.len()) as u64, pos)?;
@@ -233,7 +237,7 @@ pub fn check(it: &mut Interp, x: &V, sch: &V, path: &str, errs: &mut Vec<String>
                     }
                 }
             }
-            let extra: Vec<usize> = (0..d.len()).filter(|&i| !fields.iter().any(|f| *f.0 == *d.keys[i].s)).collect();
+            let extra: Vec<usize> = (0..d.len()).filter(|&i| !fidx.contains_key(&*d.keys[i].s)).collect();
             match sd.get("…") {
                 None => {
                     if !extra.is_empty() {

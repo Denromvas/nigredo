@@ -492,6 +492,13 @@ def main():
          f"» ☂ 🜔бд.писати 「{bd}/a.db」 「ATTACH '{tmp}/x.db' AS x」 【】 λe 2"], benv)
     check('спроб поза правами («заборонено»): 2' in run(['--перевірити-слід', str(str_)], benv).stdout,
           'SQLite: відмови білого списку (зміна через бд.читати, ATTACH) — «заборонено» в підсумку сліду')
+    got = run(['-e', bseal + f'» 🜔бд.читати 「{bd}/a.db」 「SELECT ? AS v, typeof(?) AS t」 【12345678901234567890 ¯9223372036854775809】'], benv)
+    check(got.returncode == 0 and '「12345678901234567890」' in got.stdout and '「text」' in got.stdout,
+          'бд: ціле поза INTEGER SQLite — параметром-текстом, а не вада (код 4)', got.stdout + got.stderr[-300:])
+    got = run(['-e', bseal + f'» ☂ 🜔бд.читати 「{bd}/a.db」 「SELECT 1e999 AS f UNION ALL SELECT 1」 【】 λe e\n'
+                             f'» 🜔бд.писати 「{bd}/a.db」 「CREATE TABLE блок(x)」 【】'], benv)
+    check(got.returncode == 0 and got.stdout.endswith('\n0\n'),
+          'бд: читання, перерване помилкою посеред рядків, не лишає блокування бази', got.stdout + got.stderr[-300:])
     # суд 7 (Новачок)
     got = run(['-e', bseal + f'» ☂ ρ 🜔бд.читати 「{bd}/a.db」 「SELECT group_concat(hex(zeroblob(200000000))) AS z」 【】 λe 「межа」'], benv)
     check(got.stdout == 'межа\n', 'бд.читати: памʼять SQLite обмежено — помилка програми, не код 4', got.stdout + got.stderr[-300:])
@@ -513,6 +520,26 @@ def main():
     got = run(['-e', '🜂\n» ⌕ 「a[[b]」 ＋ 「[[」 「b]」\n» ≋ 「x--y」 ＋ 「[-」 「-]」 「_」'], env)
     check(got.stdout == '【「[」 「[」 「b」】\nx__y\n' and got.stderr == '', 'регулярка з «[[» чи «--»: попередження Python не потрапляє у вивід',
           got.stdout + got.stderr)
+    got = run(['--кроки', '1000000000', '--розмір', '300000000', '-e', '🜂\n← x Σ …1 5000 【】 Λa i 【a】\n'
+               '← y Σ …1 5000 【】 Λa i 【a】\n» ☂ ρ ⇅ 【x y】 λz z λe e'], env)
+    check(got.returncode == 0 and got.stdout == '⇅: ключі вкладені надто глибоко\n',
+          '⇅: ключі, вкладені в тисячі рівнів, — помилка мови, а не вада (код 4)', got.stdout + got.stderr[-300:])
+    # межа обходу — 2000 рівнів (WALK_MAX_DEPTH), а не стек CPython: та сама для 【】 і 『』, будь-якого листка й гліфа
+    deep_prog = ('🜂\n← x Σ …1 {d} 【1】 Λa i 【a】\n← y Σ …1 {d} 『「k」 「v」』 Λa i 『「k」 a』\n'
+                 '» ☂ ρ σ x λe e\n» ☂ ＝ y y λe e\n» ☂ ＝ y Σ …1 {d} 『「k」 「v」』 Λa i 『「k」 a』 λe e\n'
+                 '» ☂ ρ Δ y λe e\n» ☂ ρ ⇅ 【x x】 λz z λe e\n» ☂ ρ 〔{{y}}〕 λe e')
+    got = run(['-e', deep_prog.format(d=1999)], env)
+    check(got.returncode == 0 and got.stdout == '4001\n●\n●\n14003\n2\n12003\n', 'значення на 2000 рівнів — показ, ＝, JSON, ⇅, 〔〕 працюють',
+          got.stdout + got.stderr[-300:])
+    got = run(['-e', deep_prog.format(d=2000)], env)
+    check(got.returncode == 0 and got.stdout == 'σ: значення вкладене надто глибоко\n●\n＝: значення вкладене надто глибоко\n'
+          'Δ: значення вкладене надто глибоко\n⇅: ключі вкладені надто глибоко\n〔〕: значення вкладене надто глибоко\n',
+          'на 2001 рівні — «вкладене надто глибоко» (той самий список — рівний без обходу)', got.stdout + got.stderr[-300:])
+    got = run(['-e', '🜂\n← x Σ …1 5000 【】 Λa i 【a】\n» ☂ № 【1】 λq x λe e\n» ☂ ¿ x 1 2 λe ρ e\n'
+               '← u ≈ 【1】 0.5\n» ρ ¿ ＝ ρ u 1 x 【】'], env)
+    check(got.returncode == 0 and got.stdout == f'№ (ключ): очікувалося рядок, а не список {"【" * 40}…\n80\n1\n',
+          'глибоке значення в повідомленні про помилку — його початок (а не код 4); невпевнене глибоке — без падіння',
+          got.stdout + got.stderr[-300:])
     got = run(['--перевірити', '-e', '🜂\n← крок Λa x ＋ a 1\n» Σ 【1 2】 0 крок\n» μ 【1】 λx крок x'], env)
     check('«крок» у місці функції для Σ — це виклик; функцію як значення передають ∘крок' in got.stdout
           and got.stdout.count('∘крок') == 1, 'М2 (задачі3): голе імʼя ←-функції в Σ — підказка ∘імʼя', got.stdout)

@@ -91,11 +91,84 @@ impl std::hash::Hasher for Fx {
 pub type FxBuild = std::hash::BuildHasherDefault<Fx>;
 pub type FxMap<K, V> = HashMap<K, V, FxBuild>;
 
+/// Елементи списку (Vec, але звільнення глибоко вкладеного — без рекурсії, див. drop_later).
+#[derive(Debug, Default, Clone)]
+pub struct List(pub Vec<V>);
+
+impl std::ops::Deref for List {
+    type Target = Vec<V>;
+    #[inline]
+    fn deref(&self) -> &Vec<V> {
+        &self.0
+    }
+}
+
+impl FromIterator<V> for List {
+    fn from_iter<I: IntoIterator<Item = V>>(it: I) -> List {
+        List(it.into_iter().collect())
+    }
+}
+
+impl Drop for List {
+    fn drop(&mut self) {
+        if cascades(&self.0) {
+            drop_later(Later::Vals(std::mem::take(&mut self.0)));
+        }
+    }
+}
+
+/// Чи звільнення цих значень потягне звільнення вкладених (єдині власники списків, словників, функцій).
+#[inline]
+fn cascades(vals: &[V]) -> bool {
+    vals.iter().any(|e| match &e.v {
+        Val::List(l) => Rc::strong_count(l) == 1 && !l.0.is_empty(),
+        Val::Dict(d) => Rc::strong_count(d) == 1 && !d.vals.is_empty(),
+        Val::Fn(f) => Rc::strong_count(f) == 1,
+        _ => false,
+    })
+}
+
+enum Later {
+    Vals(#[allow(dead_code)] Vec<V>),
+    Env(#[allow(dead_code)] Vec<V>, #[allow(dead_code)] Option<Rc<Env>>),
+}
+
+thread_local! {
+    static DROP_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static DROP_QUEUE: RefCell<Vec<Later>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Звільнити вкладене: до 1000 рівнів — рекурсією, глибше — у чергу, яку розбирає найзовнішній виклик
+/// (значення в мільйони рівнів — Σ, що загортає, чи ланцюг замикань — не переповнюють стек).
+fn drop_later(x: Later) {
+    let d = DROP_DEPTH.with(|c| c.get());
+    if d >= 1000 {
+        DROP_QUEUE.with(|q| q.borrow_mut().push(x));
+        return;
+    }
+    DROP_DEPTH.with(|c| c.set(d + 1));
+    drop(x);
+    if d == 0 {
+        while let Some(y) = DROP_QUEUE.with(|q| q.borrow_mut().pop()) {
+            drop(y);
+        }
+    }
+    DROP_DEPTH.with(|c| c.set(d));
+}
+
 #[derive(Debug, Default)]
 pub struct Dict {
     pub keys: Vec<Rc<PStr>>,
     pub vals: Vec<V>,
     index: RefCell<Option<FxMap<Rc<str>, usize>>>,
+}
+
+impl Drop for Dict {
+    fn drop(&mut self) {
+        if cascades(&self.vals) {
+            drop_later(Later::Vals(std::mem::take(&mut self.vals)));
+        }
+    }
 }
 
 impl Dict {
@@ -170,6 +243,15 @@ impl Env {
     }
 }
 
+impl Drop for Env {
+    fn drop(&mut self) {
+        let vars = self.vars.get_mut();
+        if cascades(vars) || self.parent.as_ref().map_or(false, |p| Rc::strong_count(p) == 1) {
+            drop_later(Later::Env(std::mem::take(vars), self.parent.take()));
+        }
+    }
+}
+
 pub struct Func {
     pub lam: Rc<Lambda>,
     pub env: Rc<Env>,
@@ -191,7 +273,7 @@ pub enum Val {
     Dec(Rc<Dec>),
     Float(f64),
     Str(Rc<PStr>),
-    List(Rc<Vec<V>>),
+    List(Rc<List>),
     Dict(Rc<Dict>),
     Fn(Rc<Func>),
 }
@@ -246,10 +328,10 @@ impl V {
         V::new(Val::Str(Rc::new(PStr::new(s))), c)
     }
     pub fn list(items: Vec<V>) -> V {
-        V::new(Val::List(Rc::new(items)), 1.0)
+        V::new(lst(items), 1.0)
     }
     pub fn listc(items: Vec<V>, c: f64) -> V {
-        V::new(Val::List(Rc::new(items)), c)
+        V::new(lst(items), c)
     }
     pub fn dec(d: Dec) -> V {
         V::new(Val::Dec(Rc::new(d)), 1.0)
@@ -261,6 +343,11 @@ impl V {
     pub fn is_str(&self) -> bool {
         matches!(self.v, Val::Str(_))
     }
+}
+
+#[inline]
+pub fn lst(items: Vec<V>) -> Val {
+    Val::List(Rc::new(List(items)))
 }
 
 pub fn lit_val(l: &crate::lexer::Lit) -> Val {
@@ -287,26 +374,73 @@ pub fn env_get(env: &Rc<Env>, hops: u32, slot: u32) -> V {
 /// mk: список, чия впевненість — мінімум вмісту (і extra); будова — extra.
 pub fn mk(items: Vec<V>, extra: f64) -> V {
     let c = items.iter().fold(extra, |a, e| a.min(e.c));
-    V::cs(Val::List(Rc::new(items)), c, extra)
+    V::cs(lst(items), c, extra)
 }
 
-/// capc: встановити впевненість c значенню і всьому, що в ньому.
+/// Обхід значення (показ, порівняння, JSON, ключі ⇅) — не глибше за стільки рівнів (WALK_MAX_DEPTH еталона).
+pub const WALK: usize = crate::lang::WALK_MAX_DEPTH as usize;
+
+/// Значення глибше за WALK: місце виклику перетворює на свою помилку (як RecursionError в еталоні).
+pub fn deep<T>() -> crate::interp::R<T> {
+    Err(Box::new(crate::interp::E {
+        msg: format!("DeepValue: значення вкладене глибше за {} рівнів", WALK),
+        pos: None,
+        c: 1.0,
+        wh: false,
+        file: None,
+        fatal: true,
+        pipe: false,
+        internal: true,
+        deep: true,
+    }))
+}
+
+/// capc: встановити впевненість c значенню і всьому, що в ньому (будь-якої глибини — не падає).
 pub fn capc(x: &V, c: f64) -> V {
+    capc_d(x, c, 0)
+}
+
+fn capc_d(x: &V, c: f64, d: usize) -> V {
     match &x.v {
+        Val::List(_) | Val::Dict(_) if d >= WALK => capc_deep(x, c),
         Val::List(l) => {
-            let items: Vec<V> = l.iter().map(|e| capc(e, c)).collect();
-            V { v: Val::List(Rc::new(items)), c, s: x.s.min(c), n: x.n }
+            let items: Vec<V> = l.iter().map(|e| capc_d(e, c, d + 1)).collect();
+            V { v: lst(items), c, s: x.s.min(c), n: x.n }
         }
-        Val::Dict(d) => {
-            let nd = Dict {
-                keys: d.keys.clone(),
-                vals: d.vals.iter().map(|e| capc(e, c)).collect(),
-                index: RefCell::new(None),
-            };
+        Val::Dict(dd) => {
+            let nd = Dict { keys: dd.keys.clone(), vals: dd.vals.iter().map(|e| capc_d(e, c, d + 1)).collect(), index: RefCell::new(None) };
             V { v: Val::Dict(Rc::new(nd)), c, s: x.s.min(c), n: x.n }
         }
         _ => V { v: x.v.clone(), c, s: c, n: x.n },
     }
+}
+
+/// capc без рекурсії: список чи словник збирається, щойно готові всі його елементи.
+fn capc_deep(x: &V, c: f64) -> V {
+    let mut out: Vec<V> = Vec::new();
+    let mut todo: Vec<(&V, bool)> = vec![(x, false)];
+    while let Some((e, ready)) = todo.pop() {
+        let kids: &[V] = match &e.v {
+            Val::List(l) => &l.0,
+            Val::Dict(dd) => &dd.vals,
+            _ => {
+                out.push(V { v: e.v.clone(), c, s: c, n: e.n });
+                continue;
+            }
+        };
+        if !ready {
+            todo.push((e, true));
+            todo.extend(kids.iter().rev().map(|k| (k, false)));
+            continue;
+        }
+        let items = out.split_off(out.len() - kids.len());
+        let v = match &e.v {
+            Val::Dict(dd) => Val::Dict(Rc::new(Dict { keys: dd.keys.clone(), vals: items, index: RefCell::new(None) })),
+            _ => lst(items),
+        };
+        out.push(V { v, c, s: e.s.min(c), n: e.n });
+    }
+    out.pop().unwrap()
 }
 
 pub fn kind(x: &V) -> &'static str {
@@ -337,119 +471,192 @@ pub fn fmt_num(v: &Val) -> String {
     }
 }
 
-fn show_into(out: &mut String, x: &V, top: bool) {
-    match &x.v {
-        Val::Str(s) => {
-            if top {
-                out.push_str(&s.s);
-            } else {
-                out.push('「');
-                let t: &str = &s.s;
-                let b = t.as_bytes();
-                out.reserve(b.len() + 4);
-                let mut start = 0;
-                let mut i = 0;
-                while i < b.len() {
-                    let c = b[i];
-                    let rep = if c == b'\\' {
-                        Some(("\\\\", 1))
-                    } else if c == b'\n' {
-                        Some(("\\n", 1))
-                    } else if c == 0xE3 && i + 2 < b.len() && b[i + 1] == 0x80 && b[i + 2] == 0x8D {
-                        Some(("\\」", 3))
-                    } else {
-                        None
-                    };
-                    if let Some((r, w)) = rep {
-                        out.push_str(&t[start..i]);
-                        out.push_str(r);
-                        i += w;
-                        start = i;
-                    } else {
-                        i += 1;
-                    }
-                }
-                out.push_str(&t[start..]);
-                out.push('」');
-            }
+fn show_str(out: &mut String, t: &str) {
+    out.push('「');
+    let b = t.as_bytes();
+    out.reserve(b.len() + 4);
+    let mut start = 0;
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i];
+        let rep = if c == b'\\' {
+            Some(("\\\\", 1))
+        } else if c == b'\n' {
+            Some(("\\n", 1))
+        } else if c == 0xE3 && i + 2 < b.len() && b[i + 1] == 0x80 && b[i + 2] == 0x8D {
+            Some(("\\」", 3))
+        } else {
+            None
+        };
+        if let Some((r, w)) = rep {
+            out.push_str(&t[start..i]);
+            out.push_str(r);
+            i += w;
+            start = i;
+        } else {
+            i += 1;
         }
+    }
+    out.push_str(&t[start..]);
+    out.push('」');
+}
+
+/// Показ скаляра (не списку й не словника) — як show(x, False).
+fn show_leaf(out: &mut String, x: &V) {
+    match &x.v {
+        Val::Str(s) => show_str(out, &s.s),
         Val::None => out.push('∅'),
         Val::Bool(b) => out.push(if *b { '●' } else { '○' }),
         Val::Int(_) | Val::Dec(_) | Val::Float(_) => out.push_str(&fmt_num(&x.v)),
-        Val::List(l) => {
-            out.push('【');
-            for (i, e) in l.iter().enumerate() {
-                if i > 0 {
-                    out.push(' ');
-                }
-                show_into(out, e, false);
-            }
-            out.push('】');
-        }
-        Val::Dict(d) => {
-            out.push('『');
-            for (i, (k, e)) in d.keys.iter().zip(&d.vals).enumerate() {
-                if i > 0 {
-                    out.push(' ');
-                }
-                show_into(out, &V::new(Val::Str(k.clone()), 1.0), false);
-                out.push(' ');
-                show_into(out, e, false);
-            }
-            out.push('』');
-        }
         Val::Fn(f) => {
             out.push('λ');
             if let Some(n) = &f.name {
                 out.push_str(n);
             }
         }
+        Val::List(_) | Val::Dict(_) => unreachable!(),
     }
 }
 
-pub fn show(x: &V, top: bool) -> String {
-    if let (true, Val::Str(s)) = (top, &x.v) {
-        return s.s.to_string();
-    }
-    let mut out = String::new();
-    show_into(&mut out, x, top);
-    out
-}
-
-/// Глибина вкладеності значення (для меж рекурсії еталона).
-pub fn depth(x: &V) -> usize {
-    match &x.v {
-        Val::List(l) => 1 + l.iter().map(depth).max().unwrap_or(0),
-        Val::Dict(d) => 1 + d.vals.iter().map(depth).max().unwrap_or(0),
-        _ => 0,
-    }
-}
-
-pub fn to_json_into(out: &mut String, x: &V) {
+fn show_into(out: &mut String, x: &V, d: usize) -> crate::interp::R<()> {
     match &x.v {
         Val::List(l) => {
+            if d >= WALK {
+                return deep();
+            }
+            out.push('【');
+            for (i, e) in l.iter().enumerate() {
+                if i > 0 {
+                    out.push(' ');
+                }
+                show_into(out, e, d + 1)?;
+            }
+            out.push('】');
+        }
+        Val::Dict(dd) => {
+            if d >= WALK {
+                return deep();
+            }
+            out.push('『');
+            for (i, (k, e)) in dd.keys.iter().zip(&dd.vals).enumerate() {
+                if i > 0 {
+                    out.push(' ');
+                }
+                show_str(out, &k.s);
+                out.push(' ');
+                show_into(out, e, d + 1)?;
+            }
+            out.push('』');
+        }
+        _ => show_leaf(out, x),
+    }
+    Ok(())
+}
+
+/// Друкована форма (рядок верхнього рівня — як є); глибше за WALK — deep().
+pub fn show(x: &V, top: bool) -> crate::interp::R<String> {
+    if let (true, Val::Str(s)) = (top, &x.v) {
+        return Ok(s.s.to_string());
+    }
+    let mut out = String::new();
+    show_into(&mut out, x, 0)?;
+    Ok(out)
+}
+
+/// show_head еталона: початок show(x, False) — щонайменше n символів (або весь) без обходу всього значення.
+pub fn show_head(x: &V, n: usize) -> String {
+    let mut out = String::new();
+    let mut size = 0usize;
+    let mut stack: Vec<(char, &V, usize)> = Vec::new(); // (закриття, список чи словник, наступний елемент)
+    let mut e: Option<&V> = Some(x);
+    loop {
+        if let Some(cur) = e.take() {
+            match &cur.v {
+                Val::List(_) => {
+                    out.push('【');
+                    size += 1;
+                    stack.push(('】', cur, 0));
+                }
+                Val::Dict(_) => {
+                    out.push('『');
+                    size += 1;
+                    stack.push(('』', cur, 0));
+                }
+                _ => {
+                    let at = out.len();
+                    show_leaf(&mut out, cur);
+                    size += out[at..].chars().count();
+                }
+            }
+        }
+        if size >= n {
+            return out;
+        }
+        let top = match stack.last_mut() {
+            Some(t) => t,
+            None => return out,
+        };
+        let (close, cont, i) = (top.0, top.1, top.2);
+        let len = match &cont.v {
+            Val::List(l) => l.len(),
+            Val::Dict(dd) => dd.len(),
+            _ => 0,
+        };
+        if i >= len {
+            stack.pop();
+            out.push(close);
+            size += 1;
+            continue;
+        }
+        top.2 += 1;
+        let at = out.len();
+        if i > 0 {
+            out.push(' ');
+        }
+        match &cont.v {
+            Val::List(l) => e = Some(&l[i]),
+            Val::Dict(dd) => {
+                show_str(&mut out, &dd.keys[i].s);
+                out.push(' ');
+                e = Some(&dd.vals[i]);
+            }
+            _ => {}
+        }
+        size += out[at..].chars().count();
+    }
+}
+
+fn to_json_into(out: &mut String, x: &V, d: usize) -> crate::interp::R<()> {
+    match &x.v {
+        Val::List(l) => {
+            if d >= WALK {
+                return deep();
+            }
             out.push('[');
             for (i, e) in l.iter().enumerate() {
                 if i > 0 {
                     out.push_str(", ");
                 }
-                to_json_into(out, e);
+                to_json_into(out, e, d + 1)?;
             }
             out.push(']');
         }
-        Val::Dict(d) => {
+        Val::Dict(dd) => {
+            if d >= WALK {
+                return deep();
+            }
             out.push('{');
-            for (i, (k, e)) in d.keys.iter().zip(&d.vals).enumerate() {
+            for (i, (k, e)) in dd.keys.iter().zip(&dd.vals).enumerate() {
                 if i > 0 {
                     out.push_str(", ");
                 }
                 json::escape_into(out, &k.s);
                 out.push_str(": ");
-                to_json_into(out, e);
+                to_json_into(out, e, d + 1)?;
             }
             out.push('}');
         }
-        Val::Dec(d) => out.push_str(&fmt_dec(d)),
+        Val::Dec(dd) => out.push_str(&fmt_dec(dd)),
         Val::Fn(_) => out.push_str("\"λ\""),
         Val::Str(s) => json::escape_into(out, &s.s),
         Val::None => out.push_str("null"),
@@ -457,12 +664,13 @@ pub fn to_json_into(out: &mut String, x: &V) {
         Val::Int(i) => out.push_str(&i.to_string()),
         Val::Float(f) => out.push_str(&json::dumps(&json::J::Float(*f), false)),
     }
+    Ok(())
 }
 
-pub fn to_json(x: &V) -> String {
+pub fn to_json(x: &V) -> crate::interp::R<String> {
     let mut out = String::new();
-    to_json_into(&mut out, x);
-    out
+    to_json_into(&mut out, x, 0)?;
+    Ok(out)
 }
 
 /// Числове значення для порівнянь: ціле, десяткове (float — точно).
@@ -489,29 +697,42 @@ pub fn is_num(v: &Val) -> bool {
     matches!(v, Val::Int(_) | Val::Dec(_) | Val::Float(_))
 }
 
-/// Python ==: числа (і bool як число), рядки, ∅; списки й словники — за вмістом (deep_eq окремо); функції — тотожність.
-pub fn deep_eq(a: &V, b: &V) -> bool {
-    match (&a.v, &b.v) {
+/// deep_eq еталона: той самий список чи словник — рівний без обходу; глибше за WALK — deep().
+pub fn deep_eq(a: &V, b: &V) -> crate::interp::R<bool> {
+    deep_eq_d(a, b, 0)
+}
+
+fn deep_eq_d(a: &V, b: &V, d: usize) -> crate::interp::R<bool> {
+    Ok(match (&a.v, &b.v) {
+        (Val::List(x), Val::List(y)) if Rc::ptr_eq(x, y) => true,
+        (Val::Dict(x), Val::Dict(y)) if Rc::ptr_eq(x, y) => true,
         (Val::Bool(x), Val::Bool(y)) => x == y,
         (Val::Bool(_), _) | (_, Val::Bool(_)) => false,
         (Val::List(x), Val::List(y)) => {
-            Rc::ptr_eq(x, y) || (x.len() == y.len() && x.iter().zip(y.iter()).all(|(p, q)| deep_eq(p, q)))
-        }
-        (Val::Dict(x), Val::Dict(y)) => {
-            if Rc::ptr_eq(x, y) {
-                return true;
+            if d >= WALK {
+                return deep();
             }
             if x.len() != y.len() {
-                return false;
+                return Ok(false);
+            }
+            for (p, q) in x.iter().zip(y.iter()) {
+                if !deep_eq_d(p, q, d + 1)? {
+                    return Ok(false);
+                }
+            }
+            true
+        }
+        (Val::Dict(x), Val::Dict(y)) => {
+            if d >= WALK {
+                return deep();
+            }
+            // спершу множини ключів (va.keys() == vb.keys()), потім значення в порядку першого
+            if x.len() != y.len() || x.keys.iter().any(|k| y.find(&k.s).is_none()) {
+                return Ok(false);
             }
             for (k, v) in x.keys.iter().zip(&x.vals) {
-                match y.get(&k.s) {
-                    Some(w) => {
-                        if !deep_eq(v, w) {
-                            return false;
-                        }
-                    }
-                    None => return false,
+                if !deep_eq_d(v, y.get(&k.s).unwrap(), d + 1)? {
+                    return Ok(false);
                 }
             }
             true
@@ -521,11 +742,12 @@ pub fn deep_eq(a: &V, b: &V) -> bool {
         (Val::Fn(x), Val::Fn(y)) => Rc::ptr_eq(x, y),
         (x, y) if is_num(x) && is_num(y) => num_cmp(x, y) == Some(Ordering::Equal),
         _ => false,
-    }
+    })
 }
 
+/// Значення для повідомлення: перші n символів показу (весь показ не будується — глибоке не заважає).
 pub fn brief(x: &V, n: usize) -> String {
-    let s = uni::safe(&show(x, false));
+    let s = uni::safe(&show_head(x, n + 1));
     if s.chars().count() <= n {
         s
     } else {

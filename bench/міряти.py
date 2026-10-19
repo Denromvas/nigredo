@@ -22,6 +22,12 @@ import time
 BENCH = pathlib.Path(__file__).resolve().parent
 ROOT = BENCH.parent
 NGR = ROOT / 'interpreter' / 'ngr.py'
+# виконавець Nigredo: Атанор (нативний; чого не вміє — сам віддає еталону), якщо зібрано, інакше еталон на Python;
+# --еталон — лише Python-інтерпретатор
+ATHANOR = next((p for p in (ROOT / 'athanor' / 'target' / t / 'release' / 'athanor'
+                            for t in ('aarch64-unknown-linux-gnu', 'x86_64-unknown-linux-gnu', '.', 'aarch64-unknown-linux-musl'))
+                if p.exists()), None)
+NGR_CMD = [str(ATHANOR)] if ATHANOR and '--еталон' not in sys.argv else [sys.executable, str(NGR)]
 
 try:
     import tiktoken
@@ -133,7 +139,7 @@ def main():
                 prog = d / '.рішення.тимч.ngr'
                 prog.write_text(text.replace('{ПОРТ}', str(port)), encoding='utf-8')
             if lang == 'ngr':
-                cmd = [sys.executable, str(NGR), str(prog), '--', str(port)]
+                cmd = NGR_CMD + [str(prog), '--', str(port)]
             else:
                 cmd = [sys.executable, str(prog), str(port)]
             tpf = home / 'шлях_сліду.txt'
@@ -143,7 +149,7 @@ def main():
                                    times, reset)
                 if lang == 'ngr':                                           # М7: останній запуск — повторити зі сліду
                     hits0 = Server.hits
-                    rp = subprocess.run([sys.executable, str(NGR), '--повторити', tpf.read_text(encoding='utf-8'),
+                    rp = subprocess.run(NGR_CMD + ['--повторити', tpf.read_text(encoding='utf-8'),
                                          str(prog)], cwd=d, env=env, capture_output=True, text=True, timeout=120)
                     replayed = rp.returncode == 0 and rp.stdout == out[len(out) - len(rp.stdout):] and \
                         '✓ повтор збігся' in rp.stderr and Server.hits == hits0      # і сервер не отримав жодного запиту
@@ -174,7 +180,7 @@ def main():
         meta = json.loads((d / 'помилка.json').read_text(encoding='utf-8'))
         py = subprocess.run([sys.executable, '-m', 'py_compile', str(d / 'рішення.py')], capture_output=True)
         pf = subprocess.run(flakes + [str(d / 'рішення.py')], capture_output=True) if flakes else None
-        ng = subprocess.run([sys.executable, str(NGR), '--перевірити', str(d / 'рішення.ngr')], capture_output=True,
+        ng = subprocess.run(NGR_CMD + ['--перевірити', str(d / 'рішення.ngr')], capture_output=True,
                             text=True, env=env)
         bugs.append({'задача': d.name, 'назва': (d / 'помилка.md').read_text(encoding='utf-8').strip('# \n'),
                      'клас': meta['клас'], 'чому_клас': meta.get('чому', ''),
@@ -182,7 +188,7 @@ def main():
                      'ngr': ng.returncode != 0, 'чим': (ng.stdout.strip().splitlines() or [''])[0][:110]})
     falses = []                    # хибні тривоги: правильні програми, які --перевірити не мусить відкидати
     for f in sorted((BENCH / 'правильні').glob('*.ngr')):
-        ng = subprocess.run([sys.executable, str(NGR), '--перевірити', str(f)], capture_output=True, text=True, env=env)
+        ng = subprocess.run(NGR_CMD + ['--перевірити', str(f)], capture_output=True, text=True, env=env)
         falses.append({'назва': f.stem, 'тривога': ng.returncode != 0, 'чим': (ng.stdout.strip().splitlines() or [''])[0][:110]})
     for p in (BENCH / 'помилки').rglob('__pycache__'):
         shutil.rmtree(p, ignore_errors=True)
@@ -202,7 +208,8 @@ def report(rows, bugs=(), falses=()):
     unit = 'токени o200k' if ENC else 'символи (tiktoken немає)'
     lines = ['# Мірило: Nigredo проти Python', '',
              f'Згенеровано `bench/міряти.py` ({time.strftime("%Y-%m-%d")}). Одиниця — {unit}. Nigredo — **з печаткою** '
-             f'(обовʼязкова частина програми); у дужках — без печаток. Час — з запуском інтерпретатора.', '',
+             f'(обовʼязкова частина програми); у дужках — без печаток. Час — з запуском інтерпретатора. Виконавець '
+             f'Nigredo — {"Атанор (нативний; чого не вміє — віддає еталону)" if NGR_CMD[0] != sys.executable else "еталон на Python"}.', '',
              '| Задача | Python | Nigredo | Python, ток. | Nigredo, ток. (без печ.) | Python, с | Nigredo, с | Примітки |',
              '|---|---|---|---|---|---|---|---|']
     mark = lambda r: '—' if r is None else ('✓' if r['ok'] else '✗')   # noqa: E731

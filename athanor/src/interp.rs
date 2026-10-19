@@ -26,6 +26,7 @@ pub struct E {
     pub fatal: bool,
     pub pipe: bool,
     pub internal: bool,
+    pub deep: bool, // значення глибше за WALK (DeepValue еталона): місце виклику дає свою помилку
 }
 
 impl E {
@@ -45,26 +46,26 @@ impl E {
 pub type R<T> = Result<T, Box<E>>;
 
 pub fn ngr<T>(msg: impl Into<String>, pos: Pos) -> R<T> {
-    Err(Box::new(E { msg: msg.into(), pos: Some(pos), c: 1.0, wh: false, file: None, fatal: false, pipe: false, internal: false }))
+    Err(Box::new(E { msg: msg.into(), pos: Some(pos), c: 1.0, wh: false, file: None, fatal: false, pipe: false, internal: false, deep: false }))
 }
 
 pub fn ngr_c<T>(msg: impl Into<String>, pos: Pos, c: f64) -> R<T> {
-    Err(Box::new(E { msg: msg.into(), pos: Some(pos), c, wh: false, file: None, fatal: false, pipe: false, internal: false }))
+    Err(Box::new(E { msg: msg.into(), pos: Some(pos), c, wh: false, file: None, fatal: false, pipe: false, internal: false, deep: false }))
 }
 
 /// Вада еталона (виняток Python, не помилка мови) — у еталоні код 4; Атанор повторює те саме.
 pub fn internal<T>(msg: impl Into<String>) -> R<T> {
-    Err(Box::new(E { msg: msg.into(), pos: None, c: 1.0, wh: false, file: None, fatal: true, pipe: false, internal: true }))
+    Err(Box::new(E { msg: msg.into(), pos: None, c: 1.0, wh: false, file: None, fatal: true, pipe: false, internal: true, deep: false }))
 }
 
 pub fn fatal<T>(msg: impl Into<String>, pos: Option<Pos>) -> R<T> {
-    Err(Box::new(E { msg: msg.into(), pos, c: 1.0, wh: false, file: None, fatal: true, pipe: false, internal: false }))
+    Err(Box::new(E { msg: msg.into(), pos, c: 1.0, wh: false, file: None, fatal: true, pipe: false, internal: false, deep: false }))
 }
 
 fn terr(e: TraceErr) -> Box<E> {
     match e {
-        TraceErr::Fatal(m) => Box::new(E { msg: m, pos: None, c: 1.0, wh: false, file: None, fatal: true, pipe: false, internal: false }),
-        TraceErr::Io(m) => Box::new(E { msg: format!("слід: {}", m), pos: None, c: 1.0, wh: false, file: None, fatal: true, pipe: false, internal: false }),
+        TraceErr::Fatal(m) => Box::new(E { msg: m, pos: None, c: 1.0, wh: false, file: None, fatal: true, pipe: false, internal: false, deep: false }),
+        TraceErr::Io(m) => Box::new(E { msg: format!("слід: {}", m), pos: None, c: 1.0, wh: false, file: None, fatal: true, pipe: false, internal: false, deep: false }),
     }
 }
 
@@ -420,7 +421,11 @@ impl Interp {
                 let c = vals.iter().fold(self.cpc(), |a, v| a.min(v.c));
                 let mut s = String::new();
                 for v in &vals {
-                    s.push_str(&show(v, true));
+                    match show(v, true) {
+                        Ok(t) => s.push_str(&t),
+                        Err(e) if e.deep => return ngr_c("〔〕: значення вкладене надто глибоко", pos, c),
+                        Err(e) => return Err(e),
+                    }
                 }
                 Ok(V::strc(s, c))
             }
@@ -632,7 +637,7 @@ impl Interp {
         }
     }
 
-    fn need_list<'a>(&self, x: &'a V, g: &str, pos: Pos) -> R<&'a Rc<Vec<V>>> {
+    fn need_list<'a>(&self, x: &'a V, g: &str, pos: Pos) -> R<&'a Rc<List>> {
         match &x.v {
             Val::List(l) => Ok(l),
             _ => ngr(format!("{}: очікувалося список, а не {} {}", g, kind(x), brief(x, 40)), pos),
@@ -662,7 +667,7 @@ impl Interp {
         }
     }
 
-    fn seq(&self, x: &V, g: char, pos: Pos) -> R<Rc<Vec<V>>> {
+    fn seq(&self, x: &V, g: char, pos: Pos) -> R<Rc<List>> {
         match &x.v {
             Val::List(l) => Ok(l.clone()),
             Val::Str(s) => Ok(Rc::new(s.s.chars().map(|ch| V::strc(ch.to_string(), x.c)).collect())),
@@ -926,7 +931,11 @@ impl Interp {
                         Ok(mk(kept, m))
                     }
                     '⇅' => {
-                        let order = crate::sort::sort_order(&results, pos)?;
+                        let order = match crate::sort::sort_order(&results, pos) {
+                            Ok(o) => o,
+                            Err(e) if e.deep => return ngr_c("⇅: ключі вкладені надто глибоко", pos, m),
+                            Err(e) => return Err(e),
+                        };
                         Ok(mk(order.into_iter().map(|i| items.get(i)).collect(), m))
                     }
                     '№' => {
@@ -1086,6 +1095,7 @@ impl Interp {
         }
         let res = match self.prim(g, args, pos) {
             Ok(r) => r,
+            Err(e) if e.deep => return ngr_c(format!("{}: значення вкладене надто глибоко", g), pos, self.cpc().min(amin)),
             Err(mut e) => {
                 if !e.fatal {
                     e.c = e.c.min(self.cpc()).min(amin);
@@ -1138,7 +1148,14 @@ impl Interp {
 
     pub fn tool_begin(&mut self, name: &'static str, args: Vec<V>, pos: Pos) -> R<Job> {
         let full = matches!(name, "агент" | "мережа.взяти" | "мережа.послати" | "файл.писати" | "бд.писати" | "процес");
-        let targs: Vec<J> = args.iter().map(|a| trace_val(a, full)).collect();
+        let targs: Vec<J> = match args.iter().map(|a| trace_val(a, full)).collect() {
+            Ok(t) => t,
+            Err(e) if e.deep => {
+                let c = args.iter().fold(self.cpc(), |m, a| m.min(a.c));
+                return ngr_c(format!("{}: аргумент вкладений надто глибоко", name), pos, c);
+            }
+            Err(e) => return Err(e),
+        };
         if !self.caps.has(name) {
             let agent = self.agent.clone();
             self.rec(
@@ -1214,6 +1231,10 @@ impl Interp {
                     self.denied = false;
                     let a0 = args[0].v.clone();
                     self.path_ok(name, &a0, pos, name == "файл.писати")?;
+                } else if name.starts_with("бд.") {
+                    self.denied = false;
+                    let a = args.to_vec();
+                    crate::sqlite::rights(self, name, &a, pos, name == "бд.писати")?;
                 }
                 let q = format!("{}{}≤{}", name, if sc.is_empty() { String::new() } else { format!(":{}", sc) }, limit);
                 let agent = self.agent.clone();
@@ -1249,6 +1270,7 @@ impl Interp {
         let paths = self.paths_seen.take().unwrap_or_default();
         match r {
             Ok(v) => (Some(v), None, paths),
+            Err(e) if e.deep => (None, ngr_c::<()>(format!("{}: значення вкладене надто глибоко", job.name), job.pos, job.ac).err(), paths),
             Err(e) => {
                 if self.denied {
                     let q = job.quota.clone();
@@ -1294,7 +1316,7 @@ impl Interp {
         let res = if c < 1.0 { capc(&res, c) } else { res };
         self.taint(c);
         let t = std::time::Instant::now();
-        let tv = trace_val(&res, false);
+        let tv = trace_val(&res, false)?;
         self.prof_add("trace_val", t);
         let mut d = data!["агент" => J::Str(job.agent.clone()), "назва" => J::s(name), "аргументи" => J::Arr(job.targs.clone()),
                           "результат" => tv, "впевненість" => fj(c), "значення" => J::Str(stored)];
@@ -1450,6 +1472,7 @@ impl Interp {
                         fatal: false,
                         pipe: false,
                         internal: false,
+                        deep: false,
                     })),
                 }
             }
@@ -1464,7 +1487,11 @@ impl Interp {
         self.caps = saved_caps;
         self.mem_c = saved_memc;
         let res = r?;
-        let shown = trace_val(&res, false);
+        let shown = match trace_val(&res, false) {
+            Ok(s) => s,
+            Err(e) if e.deep => return ngr_c(format!("субагент «{}»: результат вкладений надто глибоко", name), pos, res.c),
+            Err(e) => return Err(e),
+        };
         let agent = self.agent.clone();
         self.rec("субагент повернув", data!["агент" => J::Str(agent), "субагент" => J::s(&name), "результат" => shown, "впевненість" => fj(res.c)])?;
         Ok(res)
@@ -1486,7 +1513,7 @@ pub fn dec_err<T>(g: char, s: u32, pos: Pos) -> R<T> {
 
 /// Елементи циклу: справжній список або ряд цілих `…` (на льоту).
 pub enum Items {
-    List(Rc<Vec<V>>),
+    List(Rc<List>),
     Range { start: i64, len: usize, c: f64 },
 }
 
