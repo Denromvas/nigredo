@@ -510,6 +510,9 @@ def main():
     got = run(['--перевірити', '-e', '🜂\n» ＋ 1 〔{＋ 1}〕'], env)
     check('чекають аргументів: ＋ (2:9) бере 2, є 1' in got.stdout and '» (' not in got.stdout and '(2:3)' not in got.stdout,
           'підказка арності в шаблоні — лише вирази всередині {…}', got.stdout)
+    got = run(['-e', '🜂\n» ⌕ 「a[[b]」 ＋ 「[[」 「b]」\n» ≋ 「x--y」 ＋ 「[-」 「-]」 「_」'], env)
+    check(got.stdout == '【「[」 「[」 「b」】\nx__y\n' and got.stderr == '', 'регулярка з «[[» чи «--»: попередження Python не потрапляє у вивід',
+          got.stdout + got.stderr)
     got = run(['--перевірити', '-e', '🜂\n← крок Λa x ＋ a 1\n» Σ 【1 2】 0 крок\n» μ 【1】 λx крок x'], env)
     check('«крок» у місці функції для Σ — це виклик; функцію як значення передають ∘крок' in got.stdout
           and got.stdout.count('∘крок') == 1, 'М2 (задачі3): голе імʼя ←-функції в Σ — підказка ∘імʼя', got.stdout)

@@ -311,3 +311,42 @@ pub fn safe(s: &str) -> String {
     }
     out
 }
+
+pub fn is_identifier(s: &str) -> bool {
+    let mut it = s.chars();
+    match it.next() {
+        None => false,
+        Some(c) => in_ranges(&ID_START, c as u32) && it.all(|c| in_ranges(&ID_CONT, c as u32)),
+    }
+}
+
+pub fn isprintable(c: char) -> bool {
+    in_ranges(&PRINTABLE, c as u32)
+}
+
+/// repr(str) Python.
+pub fn py_repr(s: &str) -> String {
+    let q = if s.contains('\'') && !s.contains('"') { '"' } else { '\'' };
+    let mut out = String::new();
+    out.push(q);
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '\t' => out.push_str("\\t"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            c if c == q => {
+                out.push('\\');
+                out.push(c);
+            }
+            c if (c as u32) < 0x20 || c as u32 == 0x7f => out.push_str(&format!("\\x{:02x}", c as u32)),
+            c if (c as u32) < 0x7f => out.push(c),
+            c if isprintable(c) => out.push(c),
+            c if (c as u32) <= 0xff => out.push_str(&format!("\\x{:02x}", c as u32)),
+            c if (c as u32) <= 0xffff => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push_str(&format!("\\U{:08x}", c as u32)),
+        }
+    }
+    out.push(q);
+    out
+}

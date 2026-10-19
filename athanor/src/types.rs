@@ -223,7 +223,17 @@ impl Ck {
                 self.errs += 1;
             }
         }
-        // ⌕ ≋ ‖ — їх Атанор ще не виконує: до сюди не доходять (розбір віддає еталону)
+        let lit_pat = match args.get(1).map(|a| &a.k) {
+            Some(K::Lit(Lit::Str(p))) if g == '⌕' || g == '≋' => Some(p.clone()),
+            _ => None,
+        };
+        let mut pat_groups = None;
+        if let Some(p) = &lit_pat {
+            match crate::rx::Rx::new(p) {
+                Ok(r) => pat_groups = Some(r.ngroups),
+                Err(_) => self.errs += 1, // помилка шаблону (чи вада еталона) — до еталона
+            }
+        }
         match g {
             '＋' => {
                 let known: Vec<&Ty> = actual.iter().filter(|x| **x != Ty::Any).collect();
@@ -248,6 +258,11 @@ impl Ck {
             'μ' => list_of(body),
             '✂' | 'κ' => Ty::ListOf(Rc::new(Ty::Str)),
             '…' => Ty::ListOf(Rc::new(Ty::Num)),
+            '⌕' if lit_pat.is_some() => match pat_groups {
+                Some(1) => Ty::ListOf(Rc::new(Ty::Str)),
+                Some(_) => Ty::ListOf(Rc::new(Ty::ListOf(Rc::new(Ty::Str)))),
+                None => Ty::List,
+            },
             _ => match lang::TYPE_RES.binary_search_by(|x| x.0.cmp(&g)) {
                 Ok(i) => named(lang::TYPE_RES[i].1),
                 Err(_) => Ty::Any,

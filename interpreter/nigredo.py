@@ -1997,7 +1997,10 @@ class Rx:
         if len(pat) > 1000:
             raise RxError('шаблон довший за 1000 символів')
         try:
-            tree = P.parse(pat)
+            import warnings
+            with warnings.catch_warnings():           # FutureWarning re («nested set») — не вивід програми
+                warnings.simplefilter('ignore')
+                tree = P.parse(pat)
         except re.error as e:
             raise RxError(f'хибний шаблон: {e}')
         flags = tree.state.flags
