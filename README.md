@@ -55,7 +55,7 @@ Full protocols, every participant's report and solutions: [`konsylium/`](konsyli
 ### Measured against Python (honestly)
 
 `bench/` runs the same tasks in both languages; `bench/м2/` asks models (Sonnet, Haiku) to write both from the same
-task — Nigredo with its cheat sheet, Python with nothing extra. Numbers as of 2026-10-16:
+task — Nigredo with its cheat sheet, Python with nothing extra. Numbers as of 2026-10-16 (speed — 2026-10-19):
 
 | | Nigredo | Python | Note |
 |---|---|---|---|
@@ -63,8 +63,8 @@ task — Nigredo with its cheat sheet, Python with nothing extra. Numbers as of 
 | Program length, **with** the seal | 1.01× (author's 12 tasks); **0.88×** on models' own first-try programs for 20 tasks of `bench/м2` (36 pairs, one per task × model; only where both languages passed — the 4 pairs that drop out are all Haiku tasks where Nigredo failed, so the harder cases are missing; the cheat sheet advises short names, the Python prompt does not; 10 of the 20 tasks are the rerun after fixing the cheat sheet on them, so this is not a held-out set) | 1× | the seal costs ~13 tokens |
 | Bugs caught before running (14 real ones) | 9 | 3 (with pyflakes), 1 (py_compile) | 0 false alarms on 10 correct programs; 5 classes Nigredo misses are listed |
 | Models writing it right first try (hard set, 3 runs each) | Sonnet 29/30, Haiku 24/30 (first run: 24/30 and 24/30) | Sonnet 30/30, Haiku 26/30 (first run: 30, 27) | 10 tasks not in the cheat sheet. The rerun is on the **same** tasks after fixing a `⌕` defect and the cheat sheet that those misses exposed, so it is not a held-out measurement; ±1–2 of 30 is noise. Misses left are mostly prefix-notation arity. After a second try (the model sees the expected output): 30 and 29 vs 30 and 30 |
-| Speed, small tasks (median) | 2.2× slower | 1× | interpreter start-up dominates |
-| Speed, large data (200k words / 200k-step loop) | ~8× / ~28× slower | 1× | the honest weak spot: a tree-walking interpreter on top of Python; `python3 bench/великі/міряти.py`, last run — `bench/великі/РЕЗУЛЬТАТИ.txt` (CPU time, phone, varies with load) |
+| Speed, small tasks (median) | **0.49×** (about 2× faster) | 1× | with the native engine Athanor (`athanor/`, Rust): ~6 ms of CPU to run a one-line program, signed trace included, against ~26 ms for Python's `print(1)`; the reference interpreter on Python is 2.2× slower |
+| Speed, large data (200k words / 200k-step loop) | ~1.2× / ~1.1× slower | 1× | Athanor; the reference interpreter is ~8× / ~30× slower. `python3 bench/великі/міряти.py`, last run — `bench/великі/РЕЗУЛЬТАТИ.txt` (CPU time, phone, varies with load) |
 | Owner knows what a program may do / did | seal + signed trace, replay, dry run | — | Python has no such mechanism inside the language |
 
 ### Try it
@@ -82,7 +82,11 @@ lynx-style `[N]` link markers, numbered absolute links; `N` follows link N; `п�
 names every host it may visit, a sub-agent with network-only rights fetches, invisible characters come out as `⟨U+…⟩`.
 Over MCP it is the `nigredo_brauzer` tool.
 
-Python ≥ 3.10, no dependencies. The language's own words (glyph names, errors, docs) are Ukrainian.
+Python ≥ 3.10, no dependencies. **Athanor**, the native engine: `sh athanor/зібрати.sh` (Rust, std only), then run
+`athanor/target/<host>/release/athanor` exactly like `ngr` — same output, same signed trace; whatever it does not
+implement itself (network, processes, agents, `‖`, the checking/replay modes) it hands to the reference interpreter
+before any action. Every change is checked against the reference on all ~4900 programs in the repo
+(`python3 athanor/звірка.py`: 1961 run natively, 0 differences). The language's own words (glyph names, errors, docs) are Ukrainian.
 
 **Honest limits:** Nigredo is a transparency and audit tool, **not an OS sandbox** — an agent with shell access can
 bypass it entirely. Confidence is a conservative bound, not a probability. The interpreter and the language were
@@ -133,7 +137,10 @@ written by Claude (Anthropic) as an agent; the project owner is Denis Romaniuk. 
 
 ## Запуск
 
-Python ≥ 3.10, без залежностей.
+Python ≥ 3.10, без залежностей. **Атанор** — нативний виконавець (`athanor/`, Rust без залежностей): `sh athanor/зібрати.sh`,
+далі `athanor/target/<ціль>/release/athanor` — як `ngr`: той самий вивід і підписаний слід; чого сам не вміє (мережа,
+процеси, агенти, `‖`, режими перевірки й повтору) — до будь-якої дії віддає еталонному інтерпретатору. Кожну зміну
+звіряю з еталоном на всіх ~4900 програмах репозиторію (`python3 athanor/звірка.py`: 1961 виконано нативно, розбіжностей 0).
 
 ```
 python3 interpreter/ngr.py examples/ahent.ngr     # або ngr, якщо зробити симлінк
@@ -176,7 +183,7 @@ python3 interpreter/test.py                            # приклади, 73 п
 ### Порівняння з Python — чесно
 
 `bench/` виконує ті самі задачі обома мовами; `bench/м2/` просить моделі (Sonnet, Haiku) написати обидва рішення з того
-самого завдання — Nigredo з памʼяткою, Python без нічого. Станом на 2026-10-16:
+самого завдання — Nigredo з памʼяткою, Python без нічого. Станом на 2026-10-16 (швидкість — 2026-10-19):
 
 | | Nigredo | Python | Примітка |
 |---|---|---|---|
@@ -184,8 +191,8 @@ python3 interpreter/test.py                            # приклади, 73 п
 | Довжина програм **з** печаткою | 1,01× (12 задач автора); **0,88×** на програмах моделей з першої спроби для 20 задач `bench/м2` (36 пар — одна на задачу × модель; лише де обидві мови пройшли — 4 пари, що випали, усі з Haiku, де Nigredo впала, тож важчих випадків тут немає; памʼятка радить короткі імена, підказка Python — ні; 10 із 20 задач — повтор після правок памʼятки на них, тож це не відкладений набір) | 1× | печатка — ~13 токенів |
 | Помилок спіймано до запуску (14 справжніх) | 9 | 3 (з pyflakes), 1 (py_compile) | 0 хибних тривог на 10 правильних програмах; 5 класів, яких Nigredo не ловить, перелічено |
 | Моделі пишуть правильно з першої спроби (складний набір, по 3 прогони) | Sonnet 29/30, Haiku 24/30 (перший прогін: 24/30 і 24/30) | Sonnet 30/30, Haiku 26/30 (перший: 30, 27) | 10 задач поза памʼяткою. Повтор — на **тих самих** задачах після виправлення вади `⌕` і памʼятки, які ці промахи виявили, тож це не відкладений вимір; ±1–2 з 30 — шум. Решта промахів — переважно арність префіксного запису. З другої спроби (модель бачить очікуваний вивід): 30 і 29 проти 30 і 30 |
-| Швидкість, малі задачі (медіана) | у 2,2× повільніше | 1× | переважає запуск інтерпретатора |
-| Швидкість, великі дані (200 тис. слів / цикл на 200 тис. кроків) | у ~8× / ~28× повільніше | 1× | чесне слабке місце: інтерпретатор дерева поверх Python; `python3 bench/великі/міряти.py`, останній прогін — `bench/великі/РЕЗУЛЬТАТИ.txt` (процесорний час на телефоні, залежить від навантаження) |
+| Швидкість, малі задачі (медіана) | **0,49×** (приблизно вдвічі швидше) | 1× | з нативним виконавцем Атанор (`athanor/`, Rust): однорядкова програма разом із підписаним слідом — ~6 мс процесорного часу проти ~26 мс на `print(1)` у Python; еталонний інтерпретатор на Python — у 2,2× повільніше |
+| Швидкість, великі дані (200 тис. слів / цикл на 200 тис. кроків) | у ~1,2× / ~1,1× повільніше | 1× | Атанор; еталон — у ~8× / ~30× повільніше. `python3 bench/великі/міряти.py`, останній прогін — `bench/великі/РЕЗУЛЬТАТИ.txt` (процесорний час на телефоні, залежить від навантаження) |
 | Власник знає, що програмі дозволено й що вона зробила | печатка + підписаний слід, повтор, сухий прогін | — | у самій мові Python такого механізму немає |
 
 ## Браузер для агентів — на самій Nigredo
