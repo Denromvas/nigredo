@@ -26,6 +26,11 @@ impl PStr {
     pub fn from(s: &str) -> PStr {
         PStr::new(s.to_string())
     }
+    /// Довжина в символах уже відома (частина рядка, розрізаного ✂).
+    #[inline]
+    pub fn with_nch(s: &str, nch: usize) -> PStr {
+        PStr { s: s.into(), nch, idx: RefCell::new(None) }
+    }
     pub fn ascii(&self) -> bool {
         self.nch == self.s.len()
     }
@@ -90,6 +95,60 @@ impl std::hash::Hasher for Fx {
 
 pub type FxBuild = std::hash::BuildHasherDefault<Fx>;
 pub type FxMap<K, V> = HashMap<K, V, FxBuild>;
+
+/// Одна копія на всі повтори коротких рядків (слова з ✂, ключі й значення JSON): рядки незмінні, тож спільне значення
+/// нічим не відрізнити від окремих копій. Якщо повторів мало (після 1024 різних — повторів менше), кеш вимикається.
+pub struct Interner<'a> {
+    recent: [Option<(&'a str, Rc<PStr>)>; 4], // останні — без хешування (ключі записів ідуть тим самим порядком)
+    turn: usize,
+    map: FxMap<&'a str, Rc<PStr>>,
+    misses: u32,
+    hits: u32,
+    on: bool,
+    always: bool,
+}
+
+impl<'a> Interner<'a> {
+    pub fn new() -> Interner<'a> {
+        Interner { recent: [None, None, None, None], turn: 0, map: FxMap::default(), misses: 0, hits: 0, on: true, always: false }
+    }
+    /// Без вимикання — для ключів словників (їх мало й вони повторюються майже завжди).
+    pub fn always() -> Interner<'a> {
+        Interner { always: true, ..Interner::new() }
+    }
+    #[inline]
+    pub fn get(&mut self, s: &'a str, nch: impl FnOnce() -> usize) -> Rc<PStr> {
+        if self.on && s.len() <= 32 {
+            for (k, r) in self.recent.iter().flatten() {
+                if k.len() == s.len() && *k == s {
+                    self.hits += 1;
+                    return r.clone();
+                }
+            }
+            if let Some(r) = self.map.get(s) {
+                self.hits += 1;
+                let r = r.clone();
+                self.recent[self.turn & 3] = Some((s, r.clone()));
+                self.turn += 1;
+                return r;
+            }
+            self.misses += 1;
+            if self.misses == 1024 && self.hits < self.misses && !self.always {
+                self.on = false;
+                self.map = FxMap::default();
+                self.recent = [None, None, None, None];
+            }
+            let r = Rc::new(PStr::with_nch(s, nch()));
+            if self.on {
+                self.map.insert(s, r.clone());
+                self.recent[self.turn & 3] = Some((s, r.clone()));
+                self.turn += 1;
+            }
+            return r;
+        }
+        Rc::new(PStr::with_nch(s, nch()))
+    }
+}
 
 /// Елементи списку (Vec, але звільнення глибоко вкладеного — без рекурсії, див. drop_later).
 #[derive(Debug, Default, Clone)]
@@ -174,6 +233,10 @@ impl Drop for Dict {
 impl Dict {
     pub fn new() -> Dict {
         Dict::default()
+    }
+    /// Ключі, про які відомо, що вони не повторюються (у порядку).
+    pub fn from_unique(keys: Vec<Rc<PStr>>, vals: Vec<V>) -> Dict {
+        Dict { keys, vals, index: RefCell::new(None) }
     }
     pub fn len(&self) -> usize {
         self.keys.len()
@@ -265,7 +328,7 @@ impl std::fmt::Debug for Func {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum Val {
     None,
     Bool(bool),
@@ -276,6 +339,37 @@ pub enum Val {
     List(Rc<List>),
     Dict(Rc<Dict>),
     Fn(Rc<Func>),
+}
+
+impl Clone for Val {
+    /// Скаляри — копіюванням на місці (найчастіше в циклах), решта — збільшення лічильника посилань.
+    #[inline(always)]
+    fn clone(&self) -> Val {
+        match self {
+            Val::Int(Int::S(x)) => Val::Int(Int::S(*x)),
+            Val::None => Val::None,
+            Val::Bool(b) => Val::Bool(*b),
+            Val::Float(f) => Val::Float(*f),
+            _ => self.clone_rc(),
+        }
+    }
+}
+
+impl Val {
+    #[inline(never)]
+    fn clone_rc(&self) -> Val {
+        match self {
+            Val::Int(i) => Val::Int(i.clone()),
+            Val::Dec(d) => Val::Dec(d.clone()),
+            Val::Str(x) => Val::Str(x.clone()),
+            Val::List(x) => Val::List(x.clone()),
+            Val::Dict(x) => Val::Dict(x.clone()),
+            Val::Fn(x) => Val::Fn(x.clone()),
+            Val::None => Val::None,
+            Val::Bool(b) => Val::Bool(*b),
+            Val::Float(f) => Val::Float(*f),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -471,6 +565,15 @@ pub fn fmt_num(v: &Val) -> String {
     }
 }
 
+/// Чи є в 8 байтах «\\», перенос рядка чи 0xE3 (перший байт «」») — SWAR.
+#[inline(always)]
+pub fn word_has_show_esc(w: u64) -> bool {
+    const LO: u64 = 0x0101_0101_0101_0101;
+    const HI: u64 = 0x8080_8080_8080_8080;
+    let zero = |x: u64| x.wrapping_sub(LO) & !x & HI;
+    (zero(w ^ (LO * 0x5C)) | zero(w ^ (LO * 0x0A)) | zero(w ^ (LO * 0xE3))) != 0
+}
+
 fn show_str(out: &mut String, t: &str) {
     out.push('「');
     let b = t.as_bytes();
@@ -478,6 +581,10 @@ fn show_str(out: &mut String, t: &str) {
     let mut start = 0;
     let mut i = 0;
     while i < b.len() {
+        if i + 8 <= b.len() && !word_has_show_esc(u64::from_le_bytes(b[i..i + 8].try_into().unwrap())) {
+            i += 8;
+            continue;
+        }
         let c = b[i];
         let rep = if c == b'\\' {
             Some(("\\\\", 1))

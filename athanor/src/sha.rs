@@ -33,9 +33,7 @@ impl Sha256 {
         #[cfg(target_arch = "aarch64")]
         {
             if std::arch::is_aarch64_feature_detected!("sha2") {
-                for c in b.chunks_exact(64) {
-                    unsafe { self.block_hw(c) };
-                }
+                unsafe { self.blocks_hw(b) };
                 return;
             }
         }
@@ -44,33 +42,47 @@ impl Sha256 {
         }
     }
 
-    /// Апаратні інструкції SHA-256 (ARMv8 Crypto).
+    /// Апаратні інструкції SHA-256 (ARMv8 Crypto): усі блоки одним викликом — стан і сталі в регістрах.
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "sha2")]
-    #[inline]
-    unsafe fn block_hw(&mut self, b: &[u8]) {
+    unsafe fn blocks_hw(&mut self, data: &[u8]) {
         use std::arch::aarch64::*;
         let mut abcd = vld1q_u32(self.h.as_ptr());
         let mut efgh = vld1q_u32(self.h.as_ptr().add(4));
-        let (abcd0, efgh0) = (abcd, efgh);
-        let mut m = [
-            vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(b.as_ptr()))),
-            vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(b.as_ptr().add(16)))),
-            vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(b.as_ptr().add(32)))),
-            vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(b.as_ptr().add(48)))),
-        ];
-        for i in 0..16 {
-            let k = vld1q_u32(K.as_ptr().add(4 * i));
-            let wk = vaddq_u32(m[i % 4], k);
-            let t = abcd;
-            abcd = vsha256hq_u32(abcd, efgh, wk);
-            efgh = vsha256h2q_u32(efgh, t, wk);
-            if i < 12 {
-                m[i % 4] = vsha256su1q_u32(vsha256su0q_u32(m[i % 4], m[(i + 1) % 4]), m[(i + 2) % 4], m[(i + 3) % 4]);
+        let k: [uint32x4_t; 16] = std::array::from_fn(|i| vld1q_u32(K.as_ptr().add(4 * i)));
+        for b in data.chunks_exact(64) {
+            let (abcd0, efgh0) = (abcd, efgh);
+            let mut m0 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(b.as_ptr())));
+            let mut m1 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(b.as_ptr().add(16))));
+            let mut m2 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(b.as_ptr().add(32))));
+            let mut m3 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(b.as_ptr().add(48))));
+            macro_rules! round {
+                ($m:expr, $k:expr) => {{
+                    let wk = vaddq_u32($m, $k);
+                    let t = abcd;
+                    abcd = vsha256hq_u32(abcd, efgh, wk);
+                    efgh = vsha256h2q_u32(efgh, t, wk);
+                }};
             }
+            for r in 0..3 {
+                round!(m0, k[4 * r]);
+                m0 = vsha256su1q_u32(vsha256su0q_u32(m0, m1), m2, m3);
+                round!(m1, k[4 * r + 1]);
+                m1 = vsha256su1q_u32(vsha256su0q_u32(m1, m2), m3, m0);
+                round!(m2, k[4 * r + 2]);
+                m2 = vsha256su1q_u32(vsha256su0q_u32(m2, m3), m0, m1);
+                round!(m3, k[4 * r + 3]);
+                m3 = vsha256su1q_u32(vsha256su0q_u32(m3, m0), m1, m2);
+            }
+            round!(m0, k[12]);
+            round!(m1, k[13]);
+            round!(m2, k[14]);
+            round!(m3, k[15]);
+            abcd = vaddq_u32(abcd, abcd0);
+            efgh = vaddq_u32(efgh, efgh0);
         }
-        vst1q_u32(self.h.as_mut_ptr(), vaddq_u32(abcd, abcd0));
-        vst1q_u32(self.h.as_mut_ptr().add(4), vaddq_u32(efgh, efgh0));
+        vst1q_u32(self.h.as_mut_ptr(), abcd);
+        vst1q_u32(self.h.as_mut_ptr().add(4), efgh);
     }
 
     fn block_sw(&mut self, b: &[u8]) {

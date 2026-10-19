@@ -20,7 +20,7 @@ fn strs(p: &P) -> Result<Vec<String>, Back> {
         P::Arr(xs) => xs
             .iter()
             .map(|x| match x {
-                P::Str(s, false) => Ok(s.clone()),
+                P::Str(s, false) => Ok(s.to_string()),
                 _ => back("дозвіл — не рядок"),
             })
             .collect(),
@@ -28,7 +28,7 @@ fn strs(p: &P) -> Result<Vec<String>, Back> {
     }
 }
 
-fn get<'a>(kv: &'a [(String, bool, P)], k: &str) -> Option<&'a P> {
+fn get<'a, 'b>(kv: &'a [(std::borrow::Cow<'b, str>, bool, P<'b>)], k: &str) -> Option<&'a P<'b>> {
     kv.iter().find(|(x, s, _)| x == k && !s).map(|(_, _, v)| v)
 }
 
@@ -46,7 +46,7 @@ fn read_allowlist(path: &str, cwd: Option<&str>, prog: Option<&str>) -> Result<V
     };
     let per_dir: Vec<(String, Vec<String>)> = match get(kv, "для_тек") {
         None => Vec::new(),
-        Some(P::Obj(d)) => d.iter().map(|(k, _, v)| Ok((k.clone(), strs(v)?))).collect::<Result<_, Back>>()?,
+        Some(P::Obj(d)) => d.iter().map(|(k, _, v)| Ok((k.to_string(), strs(v)?))).collect::<Result<_, Back>>()?,
         Some(_) => return back("для_тек — не словник"),
     };
     let mut writable = Vec::new();
@@ -224,7 +224,7 @@ fn write_dirs(home: &str) -> Vec<String> {
     if let Some(P::Arr(xs)) = get(&data, "дозволено") {
         for x in xs {
             if let P::Str(s, false) = x {
-                entries.push(s.clone());
+                entries.push(s.to_string());
             }
         }
     }
@@ -233,7 +233,7 @@ fn write_dirs(home: &str) -> Vec<String> {
             if let P::Arr(xs) = v {
                 for x in xs {
                     if let P::Str(s, false) = x {
-                        entries.push(s.clone());
+                        entries.push(s.to_string());
                     }
                 }
             }

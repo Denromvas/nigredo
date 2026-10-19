@@ -24,6 +24,8 @@ pub struct Node {
     pub eff: u8,
     pub tt: u8,
     pub lv: Option<crate::value::V>, // значення літерала (готове: виконання лише ставить впевненість)
+    pub ints: u32,  // цілочислове дерево (＋ － × ‰ над іменами й цілими літералами): скільки вузлів; 0 — не таке
+    pub icmp: bool, // корінь такого дерева — порівняння (‹ › ≤ ≥ ＝ ≠): дає ●/○, тож не буває операндом
 }
 
 #[derive(Debug)]
@@ -151,7 +153,8 @@ impl Node {
             K::Lit(l) => Some(crate::value::V::new(crate::value::lit_val(l), 1.0)),
             _ => None,
         };
-        Node { pos, k, eff, tt, lv }
+        let (ints, icmp) = int_shape(&k, &lv);
+        Node { pos, k, eff, tt, lv, ints, icmp }
     }
 
     pub fn is_lam(&self) -> bool {
@@ -167,6 +170,23 @@ impl Node {
             };
         }
         self.tt == T_NONE
+    }
+}
+
+fn int_shape(k: &K, lv: &Option<crate::value::V>) -> (u32, bool) {
+    use crate::value::Val;
+    match k {
+        K::Lit(_) => (matches!(lv, Some(v) if matches!(v.v, Val::Int(crate::int::Int::S(_)))) as u32, false),
+        K::Var(..) => (1, false),
+        K::Op(g, args) if args.len() == 2 && args.iter().all(|a| a.ints > 0 && !a.icmp) => {
+            let n = 1 + args[0].ints + args[1].ints;
+            match g {
+                '＋' | '－' | '×' | '‰' => (n, false),
+                '‹' | '›' | '≤' | '≥' | '＝' | '≠' => (n, true),
+                _ => (0, false),
+            }
+        }
+        _ => (0, false),
     }
 }
 

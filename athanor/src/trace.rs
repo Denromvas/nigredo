@@ -30,6 +30,13 @@ pub fn line_of(rec: &J) -> String {
 
 /// trace_val: значення для сліду (невидиме — ⟨U+…⟩); довге — підсумком.
 pub fn trace_val(x: &V, full: bool) -> crate::interp::R<J> {
+    if let (false, Val::Str(p)) = (full, &x.v) {
+        if p.nch + 2 > 4000 {
+            if let Some(j) = long_str_summary(&p.s, p.nch) {
+                return Ok(j);
+            }
+        }
+    }
     let s = uni::visible(&show(x, false)?, "\n\t", true);
     let n = s.chars().count();
     if full || n <= 4000 {
@@ -111,20 +118,118 @@ impl Trace {
 
     /// keep: точне значення — у сховище (раз на вміст); повертає sha256 для запису в слід.
     pub fn keep(&mut self, x: &V) -> Result<String, TraceErr> {
-        let e = enc_v(x);
-        let h = sha::sha256_hex(dumps(&e, true).as_bytes());
+        // запис сховища — один буфер: місце під голову (довжина стала: sha256 — 64 знаки), далі JSON значення;
+        // рядок (найчастіше великий результат інструмента) — у JSON прямо, без копії-посередника J
+        const HEAD0: &str = "{\"sha256\": \"";
+        const HEAD1: &str = "\", \"значення\": ";
+        let hl = HEAD0.len() + 64 + HEAD1.len();
+        let mut buf = String::new();
+        let e = match &x.v {
+            Val::Str(s) if x.c == 1.0 && x.s == 1.0 => {
+                buf.reserve(hl + s.s.len() + s.s.len() / 8 + 8);
+                buf.push_str(&" ".repeat(hl));
+                crate::json::escape_into(&mut buf, &s.s);
+                None
+            }
+            _ => {
+                let e = enc_v(x);
+                buf.push_str(&" ".repeat(hl));
+                buf.push_str(&dumps(&e, true));
+                Some(e)
+            }
+        };
+        let h = sha::sha256_hex(buf[hl..].as_bytes());
         if !self.kept.contains(&h) && !self.stores.is_empty() {
             self.kept.insert(h.clone());
-            let line = dumps(&J::Obj(vec![("sha256".into(), J::Str(h.clone())), ("значення".into(), e)]), false) + "\n";
-            self.bytes += line.len() as u64;
+            // словники вже за порядком — sort_keys нічого не змінює: той самий JSON, без другого екранування
+            if let Some(e) = &e {
+                if unsorted(e) {
+                    buf.truncate(hl);
+                    buf.push_str(&dumps(e, false));
+                }
+            }
+            let head = format!("{}{}{}", HEAD0, h, HEAD1);
+            // SAFETY: голова й заповнювач — однакової довжини (ASCII-пробіли на місці цілих символів голови)
+            unsafe { buf.as_mut_vec()[..hl].copy_from_slice(head.as_bytes()) };
+            buf.push_str("}\n");
+            self.bytes += buf.len() as u64;
             if self.bytes > self.limit {
                 return Err(TraceErr::Fatal(format!("слід перевищив {} байтів (--слід-розмір) — програму зупинено", self.limit)));
             }
             for o in self.stores.iter_mut() {
-                o.write_all(line.as_bytes()).map_err(|e| TraceErr::Io(e.to_string()))?;
+                o.write_all(buf.as_bytes()).map_err(|e| TraceErr::Io(e.to_string()))?;
                 o.flush().map_err(|e| TraceErr::Io(e.to_string()))?;
             }
         }
         Ok(h)
     }
+}
+
+/// Чи змінить sort_keys запис: є словник із ключами не за порядком (у Python — за кодами символів, як порівняння str).
+fn unsorted(j: &J) -> bool {
+    match j {
+        J::Obj(kv) => kv.windows(2).any(|w| w[0].0 > w[1].0) || kv.iter().any(|(_, v)| unsorted(v)),
+        J::Arr(xs) => xs.iter().any(unsorted),
+        _ => false,
+    }
+}
+
+/// Підсумок довгого рядка без побудови visible(show(x)): показ рядка — «「» + екрановане (\\ \n \」) + «」»; якщо
+/// невидимого й «⟨» немає, visible нічого не міняє, тож довжина, sha256 і початок рахуються прямо з рядка
+/// (невидиме в показі — те саме, що в рядку: показ додає лише видимі символи). Інакше — None (звичайний шлях).
+fn long_str_summary(t: &str, nch: usize) -> Option<J> {
+    if t.contains('⟨') || !uni::hidden(t, "\n\t").is_empty() {
+        return None;
+    }
+    struct Out {
+        h: sha::Sha256,
+        start: String,
+        left: usize, // скільки символів початку ще бракує
+        n: usize,    // довжина показу в символах
+    }
+    impl Out {
+        fn put(&mut self, piece: &str, chars: usize) {
+            self.h.update(piece.as_bytes());
+            self.n += chars;
+            if self.left > 0 {
+                for c in piece.chars().take(self.left) {
+                    self.start.push(c);
+                    self.left -= 1;
+                }
+            }
+        }
+    }
+    let mut o = Out { h: sha::Sha256::new(), start: String::new(), left: 1000, n: 0 };
+    o.put("「", 1);
+    let b = t.as_bytes();
+    let (mut run, mut i, mut esc_n) = (0usize, 0usize, 0usize);
+    while i < b.len() {
+        if i + 8 <= b.len() && !crate::value::word_has_show_esc(u64::from_le_bytes(b[i..i + 8].try_into().unwrap())) {
+            i += 8;
+            continue;
+        }
+        let (esc, w): (&str, usize) = match b[i] {
+            b'\\' => ("\\\\", 1),
+            b'\n' => ("\\n", 1),
+            0xE3 if b[i..].starts_with("」".as_bytes()) => ("\\」", 3),
+            _ => {
+                i += 1;
+                continue;
+            }
+        };
+        o.put(&t[run..i], 0);
+        o.put(esc, 0);
+        esc_n += 1;
+        i += w;
+        run = i;
+    }
+    o.put(&t[run..], 0);
+    o.put("」", 1);
+    o.n += nch + esc_n; // кожне екранування — на символ довше
+    Some(J::Obj(vec![
+        ("підсумок".into(), J::Bool(true)),
+        ("довжина".into(), J::Int(o.n as i64)),
+        ("sha256".into(), J::Str(sha::hex(&o.h.finish()))),
+        ("початок".into(), J::Str(o.start)),
+    ]))
 }

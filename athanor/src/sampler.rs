@@ -52,7 +52,15 @@ pub fn finish(path: &str) {
         let t = ItimerVal { iv_sec: 0, iv_usec: 0, v_sec: 0, v_usec: 0 };
         setitimer(2, &t, std::ptr::null_mut());
         let n = COUNT.load(Ordering::Relaxed).min(N);
-        let mut s = String::new();
+        let mut s = format!("start {:x}\n", start as usize); // PIE: зсув завантаження — за адресою цієї функції
+        // виконувані ділянки бібліотек (libc тощо): «lib початок кінець зсув шлях» — профіль.py розкладе й їх
+        for line in std::fs::read_to_string("/proc/self/maps").unwrap_or_default().lines() {
+            let f: Vec<&str> = line.split_whitespace().collect();
+            if f.len() >= 6 && f[1].contains('x') && f[5].starts_with('/') {
+                let (a, b) = f[0].split_once('-').unwrap_or(("0", "0"));
+                s.push_str(&format!("lib {} {} {} {}\n", a, b, f[2], f[5]));
+            }
+        }
         for i in 0..n {
             s.push_str(&format!("{:x}\n", PCS[i]));
         }
