@@ -1190,6 +1190,29 @@ def main():
     check(not alarms and not crashes, 'таблиця типів = виконання: 0 хибних тривог, 0 падінь на всіх комбінаціях типів',
           '\n'.join(alarms[:10] + crashes[:10]))
 
+    # ngr --формат: канонічний текст; той самий вивід програми; повторне форматування нічого не змінює
+    messy = tmp / 'неохайна.ngr'
+    messy.write_text('🜂   「тест」   【「оракул」】\n※ коментар\n←  x   ＋ 1\n      ２\n» 【 1 2  】   ※ хвіст\n\n\n» x\n'
+                     '← f λx 《 ← a × x 2\n   ＋ a 1 》\n» μ 【1\n 2\n 】   ∘f\n', encoding='utf-8')
+    fm = run(['--формат', str(messy)], env)
+    want = ('🜂 「тест」 【「оракул」】\n※ коментар\n← x ＋ 1\n  2\n» 【1 2】 ※ хвіст\n\n» x\n← f λx 《← a × x 2\n  ＋ a 1》\n'
+            '» μ 【1\n    2\n  】 ∘f\n')
+    check(fm.returncode == 0 and fm.stdout == want, 'ngr --формат: пробіли, відступи продовження, цифри 0–9, коментарі на місці',
+          fm.stdout + fm.stderr)
+    fmt_bad = []
+    for ex in sorted((ROOT / 'examples').glob('*.ngr')):
+        f1 = run(['--формат', str(ex)], env).stdout
+        tmpf = ex.parent / f'_формат_{ex.name}'
+        try:
+            tmpf.write_text(f1, encoding='utf-8')
+            f2 = run(['--формат', str(tmpf)], env).stdout
+            same = run([str(tmpf)], env).stdout == run([str(ex)], env).stdout
+        finally:
+            tmpf.unlink()
+        if f1 != f2 or not same:
+            fmt_bad.append(ex.name)
+    check(not fmt_bad, 'ngr --формат на прикладах: той самий вивід програм, повторне форматування — без змін', ', '.join(fmt_bad))
+
     sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',
           'перегенеруйте: ngr --памʼятка > ДЛЯ_АГЕНТІВ.md')
