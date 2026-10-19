@@ -621,6 +621,16 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             Ok(V::dec(q))
         }
         '⌂' => Ok(V::list(it.argv.iter().map(|x| V::str(x.clone())).collect())),
+        '✓' => {
+            let mut errs = Vec::new();
+            crate::schema::check(it, &a[0], &a[1], "", &mut errs, pos, 0)?;
+            if !errs.is_empty() {
+                let more = if errs.len() > 10 { format!(" … ще {}", errs.len() - 10) } else { String::new() };
+                let shown: Vec<&str> = errs.iter().take(10).map(|e| e.as_str()).collect();
+                return ngr(format!("✓: не відповідає схемі: {}{}", shown.join("; "), more), pos);
+            }
+            Ok(a[0].clone())
+        }
         '◷' => {
             let tname = |v: &Val| -> &'static str {
                 match v {
