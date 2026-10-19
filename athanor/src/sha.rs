@@ -25,19 +25,29 @@ impl Sha256 {
     }
 
     fn block(&mut self, b: &[u8]) {
+        self.blocks(b)
+    }
+
+    /// Кілька блоків по 64 байти поспіль (апаратно — одним викликом).
+    fn blocks(&mut self, b: &[u8]) {
         #[cfg(target_arch = "aarch64")]
         {
             if std::arch::is_aarch64_feature_detected!("sha2") {
-                unsafe { self.block_hw(b) };
+                for c in b.chunks_exact(64) {
+                    unsafe { self.block_hw(c) };
+                }
                 return;
             }
         }
-        self.block_sw(b)
+        for c in b.chunks_exact(64) {
+            self.block_sw(c);
+        }
     }
 
     /// Апаратні інструкції SHA-256 (ARMv8 Crypto).
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "sha2")]
+    #[inline]
     unsafe fn block_hw(&mut self, b: &[u8]) {
         use std::arch::aarch64::*;
         let mut abcd = vld1q_u32(self.h.as_ptr());
@@ -109,9 +119,10 @@ impl Sha256 {
                 self.buf.clear();
             }
         }
-        while d.len() >= 64 {
-            self.block(&d[..64]);
-            d = &d[64..];
+        let full = d.len() / 64 * 64;
+        if full > 0 {
+            self.blocks(&d[..full]);
+            d = &d[full..];
         }
         self.buf.extend_from_slice(d);
     }

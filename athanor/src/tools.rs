@@ -63,7 +63,7 @@ fn read_text(path: &str, limit: usize) -> Result<Result<String, ()>, std::io::Er
         Err(_) => return Ok(Err(())),
     };
     let s = if s.contains('\r') { s.replace("\r\n", "\n").replace('\r', "\n") } else { s };
-    if s.len() <= limit {
+    if s.len() <= limit || s.chars().count() <= limit {
         return Ok(Ok(s));
     }
     match s.char_indices().nth(limit) {

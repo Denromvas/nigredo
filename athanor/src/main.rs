@@ -303,6 +303,13 @@ fn run() -> i32 {
             let _ = std::fs::write(&f, &main_trace);
         }
     }
+    if std::env::var_os("ATHANOR_SAMPLE").is_none() {
+        // кінець: дерево й значення не розбираємо — процес усе одно завершується (звільнення мільйонів значень
+        // і munmap великих буферів коштували б помітно)
+        let _ = std::io::stdout().flush();
+        std::process::exit(code);
+    }
+    std::mem::forget(prog);
     code
 }
 
@@ -403,7 +410,7 @@ fn execute(
             eprintln!("  {:10} {:8} разів {:?}", k, n, d);
         }
     }
-    match result {
+    let code = match result {
         Ok(_) => {
             let steps = o.steps - it.steps_left;
             if it.rec("кінець", vec![("кроків".into(), J::Int(steps))]).is_err() {
@@ -430,7 +437,11 @@ fn execute(
             eprintln!("{}", text);
             1
         }
-    }
+    };
+    let _ = it.out.flush();
+    std::mem::forget(it);
+    std::mem::forget(root);
+    code
 }
 
 /// Проба для звірки з Python: рядок «операція аргументи…» → результат (athanor/проба.py).
