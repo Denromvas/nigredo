@@ -619,6 +619,122 @@ impl Interp {
         }
     }
 
+    /// f для кожного елемента (з acc — згортка Σ: повертає [acc]). Швидкий шлях — одне середовище на весь цикл, коли
+    /// функція певна, з простими параметрами і без λ/🜁 у тілі (середовище не може пережити виклик): те саме, що
+    /// call() для кожного, без створення середовища щоразу.
+    fn each_all(&mut self, g: char, items: &Items, f: &V, acc: Option<V>, pos: Pos) -> R<Vec<V>> {
+        let n = items.len();
+        let want = if acc.is_some() { 2 } else { 1 };
+        let fast = match &f.v {
+            Val::Fn(func) if f.c >= 1.0 && func.lam.simple && !func.lam.escapes && func.lam.params.len() == want => Some(func.clone()),
+            _ => None,
+        };
+        let wrap = |mut e: Box<E>, i: usize| -> Box<E> {
+            if !e.fatal && !e.wh {
+                e.msg = format!("{}, елемент №{} (§ {}): {}", g, i + 1, i, e.msg);
+                e.wh = true;
+            }
+            e
+        };
+        match (fast, acc) {
+            (Some(func), None) => {
+                let env1 = Rc::new(Env { vars: std::cell::RefCell::new(vec![V::none()]), parent: Some(func.env.clone()) });
+                let mut out = Vec::with_capacity(n);
+                for i in 0..n {
+                    let x = items.get(i);
+                    self.depth += 1;
+                    if self.depth > lang::MAX_DEPTH {
+                        self.depth -= 1;
+                        return fatal("надто глибока рекурсія", Some(pos));
+                    }
+                    env1.vars.borrow_mut()[0] = x;
+                    let r = self.eval(&func.lam.body, &env1);
+                    self.depth -= 1;
+                    out.push(r.map_err(|e| wrap(e, i))?);
+                }
+                Ok(out)
+            }
+            (Some(func), Some(mut acc)) => {
+                let env1 = Rc::new(Env { vars: std::cell::RefCell::new(vec![V::none(), V::none()]), parent: Some(func.env.clone()) });
+                for i in 0..n {
+                    let x = items.get(i);
+                    self.depth += 1;
+                    if self.depth > lang::MAX_DEPTH {
+                        self.depth -= 1;
+                        return fatal("надто глибока рекурсія", Some(pos));
+                    }
+                    {
+                        let mut v = env1.vars.borrow_mut();
+                        v[0] = acc;
+                        v[1] = x;
+                    }
+                    let r = self.eval(&func.lam.body, &env1);
+                    self.depth -= 1;
+                    acc = r.map_err(|e| wrap(e, i))?;
+                }
+                Ok(vec![acc])
+            }
+            (None, None) => {
+                let mut out = Vec::with_capacity(n);
+                for i in 0..n {
+                    out.push(self.each(g, i, f, vec![items.get(i)], pos)?);
+                }
+                Ok(out)
+            }
+            (None, Some(mut acc)) => {
+                for i in 0..n {
+                    acc = self.each(g, i, f, vec![acc.clone(), items.get(i)], pos)?;
+                }
+                Ok(vec![acc])
+            }
+        }
+    }
+
+    /// Список для циклу. `… a b` з малими цілими — без створення списку: ті самі кроки, межі, впевненість, що й
+    /// у eval(Op …) + strict + sized, а елементи — на льоту (Items::Range).
+    fn eval_list_arg(&mut self, n: &Node, env: &Rc<Env>) -> R<(V, Option<Items>)> {
+        let args = match &n.k {
+            K::Op('…', args) => args,
+            _ => return Ok((self.eval(n, env)?, None)),
+        };
+        let pos = n.pos;
+        self.step(pos)?;
+        let a0 = self.eval(&args[0], env)?;
+        let a1 = self.eval(&args[1], env)?;
+        let (x, y) = match (&a0.v, &a1.v) {
+            (Val::Int(Int::S(x)), Val::Int(Int::S(y))) if self.prof.is_none() => (*x, *y),
+            _ => {
+                let r = self.strict('…', &[a0, a1], pos)?;
+                return Ok((self.sized(r, "…", pos)?, None));
+            }
+        };
+        let amin = 1.0f64.min(a0.c).min(a1.c);
+        self.taint(amin);
+        let cnt = y as i128 - x as i128 + 1;
+        if cnt > self.max_size as i128 {
+            return fatal(format!("…: ряд завеликий ({} > --розмір {})", cnt, self.max_size), Some(pos));
+        }
+        let len = if cnt > 0 { cnt as usize } else { 0 };
+        let ce = a0.c.min(a1.c);
+        let n_list = 1 + len as u64 + range_bl3(x, len);
+        if amin < 1.0 {
+            self.halt_risk_any(amin);
+        }
+        let c2 = ce.min(amin).min(self.cpc());
+        let meta = V { v: Val::None, c: ce.min(c2), s: ce.min(a0.s).min(a1.s), n: n_list };
+        if n_list > self.max_size {
+            return fatal(format!("…: значення завелике (логічний розмір {} > --розмір {})", n_list, self.max_size), Some(pos));
+        }
+        if n_list > 1 {
+            self.work(n_list, pos)?;
+            self.alloc += n_list;
+            if self.alloc > lang::ALLOC_FACTOR * self.max_size {
+                return fatal(format!("сумарно створено забагато ({} > {} × --розмір)", self.alloc, lang::ALLOC_FACTOR), Some(pos));
+            }
+        }
+        Ok((meta, Some(Items::Range { start: x, len, c: ce })))
+    }
+
     fn lazy_op(&mut self, g: char, argn: &[Node], env: &Rc<Env>, pos: Pos) -> R<V> {
         match g {
             '¿' => {
@@ -699,19 +815,16 @@ impl Interp {
                 }
             }
             '∀' | 'μ' | 'φ' | '⇅' | '⊞' | '∫' | '№' => {
-                let lst = self.eval(&argn[0], env)?;
+                let (lst, range) = self.eval_list_arg(&argn[0], env)?;
                 self.taint(lst.c);
-                let items = self.seq(&lst, g, pos)?;
+                let items = match range {
+                    Some(r) => r,
+                    None => Items::List(self.seq(&lst, g, pos)?),
+                };
                 let f = self.eval(&argn[1], env)?;
                 let saved = self.pc;
                 self.pc = saved.min(lst.s);
-                let r = (|| -> R<Vec<V>> {
-                    let mut out = Vec::with_capacity(items.len());
-                    for (i, x) in items.iter().enumerate() {
-                        out.push(self.each(g, i, &f, vec![x.clone()], pos)?);
-                    }
-                    Ok(out)
-                })();
+                let r = self.each_all(g, &items, &f, None, pos);
                 self.pc = saved;
                 let results = r?;
                 self.fn_effects(&argn[1], lst.s);
@@ -740,16 +853,17 @@ impl Interp {
                         for r in &results {
                             conds.push(self.boolean(r, g, pos)?);
                         }
-                        for ((x, r), ok) in items.iter().zip(&results).zip(conds) {
+                        for (i, (r, ok)) in results.iter().zip(conds).enumerate() {
                             if ok {
-                                kept.push(if r.c < x.c { capc(x, r.c) } else { x.clone() });
+                                let x = items.get(i);
+                                kept.push(if r.c < x.c { capc(&x, r.c) } else { x });
                             }
                         }
                         Ok(mk(kept, m))
                     }
                     '⇅' => {
                         let order = crate::sort::sort_order(&results, pos)?;
-                        Ok(mk(order.into_iter().map(|i| items[i].clone()).collect(), m))
+                        Ok(mk(order.into_iter().map(|i| items.get(i)).collect(), m))
                     }
                     '№' => {
                         let mut counts: Vec<(Rc<PStr>, i64)> = Vec::new();
@@ -777,12 +891,13 @@ impl Interp {
                         // ⊞
                         let mut groups: Vec<(Rc<PStr>, Vec<V>)> = Vec::new();
                         let mut idx: FxMap<Rc<str>, usize> = FxMap::default();
-                        for (x, r) in items.iter().zip(&results) {
+                        for (i, r) in results.iter().enumerate() {
+                            let x = items.get(i);
                             let k = match &r.v {
                                 Val::Str(s) => s.clone(),
                                 _ => return ngr(format!("⊞ (ключ): очікувалося рядок, а не {} {}", kind(r), brief(r, 40)), pos),
                             };
-                            let el = if r.c < x.c { capc(x, r.c) } else { x.clone() };
+                            let el = if r.c < x.c { capc(&x, r.c) } else { x };
                             match idx.get(&*k.s) {
                                 Some(&i) => groups[i].1.push(el),
                                 None => {
@@ -803,17 +918,18 @@ impl Interp {
                 }
             }
             'Σ' => {
-                let lst = self.eval(&argn[0], env)?;
-                let mut acc = self.eval(&argn[1], env)?;
+                let (lst, range) = self.eval_list_arg(&argn[0], env)?;
+                let acc = self.eval(&argn[1], env)?;
                 let f = self.eval(&argn[2], env)?;
                 let saved = self.pc;
                 self.pc = saved.min(lst.s);
                 let r = (|| -> R<V> {
-                    let items = self.seq(&lst, g, pos)?;
-                    for (i, x) in items.iter().enumerate() {
-                        acc = self.each(g, i, &f, vec![acc.clone(), x.clone()], pos)?;
-                    }
-                    Ok(acc.clone())
+                    let items = match range {
+                        Some(r) => r,
+                        None => Items::List(self.seq(&lst, g, pos)?),
+                    };
+                    let out = self.each_all(g, &items, &f, Some(acc), pos)?;
+                    Ok(out.into_iter().next().unwrap())
                 })();
                 self.pc = saved;
                 let acc = r?;
@@ -1300,4 +1416,63 @@ pub fn to_dec(x: &Val) -> Dec {
 
 pub fn dec_err<T>(g: char, s: u32, pos: Pos) -> R<T> {
     ngr(format!("{}: десяткове число поза межами ({})", g, dec::signal_name(s)), pos)
+}
+
+/// Елементи циклу: справжній список або ряд цілих `…` (на льоту).
+pub enum Items {
+    List(Rc<Vec<V>>),
+    Range { start: i64, len: usize, c: f64 },
+}
+
+impl Items {
+    pub fn len(&self) -> usize {
+        match self {
+            Items::List(l) => l.len(),
+            Items::Range { len, .. } => *len,
+        }
+    }
+
+    #[inline]
+    pub fn get(&self, i: usize) -> V {
+        match self {
+            Items::List(l) => l[i].clone(),
+            Items::Range { start, c, .. } => {
+                let v = start + i as i64;
+                V { v: Val::Int(Int::S(v)), c: *c, s: *c, n: 1 + (64 - v.unsigned_abs().leading_zeros() as u64) / 3 }
+            }
+        }
+    }
+}
+
+/// Σ bit_length(|i|) // 3 для i від x, len штук (логічний розмір ряду без створення списку).
+fn range_bl3(x: i64, len: usize) -> u64 {
+    if len == 0 {
+        return 0;
+    }
+    let y = x + (len as i64 - 1);
+    let mut total = 0u64;
+    // невідʼємна частина [max(x,0), y]
+    if y >= 0 {
+        total += pos_bl3(x.max(0) as u64, y as u64);
+    }
+    // відʼємна частина [x, min(y,-1)] → |i| ∈ [-min(y,-1), -x]
+    if x < 0 {
+        let hi = x.unsigned_abs();
+        let lo = if y < 0 { y.unsigned_abs() } else { 1 };
+        total += pos_bl3(lo, hi);
+    }
+    total
+}
+
+fn pos_bl3(a: u64, b: u64) -> u64 {
+    let mut total = 0u64;
+    for k in 1..=64u32 {
+        let lo = 1u64 << (k - 1);
+        let hi = if k == 64 { u64::MAX } else { (1u64 << k) - 1 };
+        let (l, h) = (a.max(lo), b.min(hi));
+        if l <= h {
+            total += (h - l + 1) * (k as u64 / 3);
+        }
+    }
+    total
 }

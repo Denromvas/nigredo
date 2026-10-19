@@ -468,7 +468,8 @@ impl Parser {
         self.scopes.pop();
         let body = body?;
         let simple = params.iter().all(|p| matches!(p, Param::Name(_)));
-        Ok(Node::new(pos, K::Lam(Rc::new(Lambda { params, nslots: flat.len(), body, simple }))))
+        let escapes = captures(&body);
+        Ok(Node::new(pos, K::Lam(Rc::new(Lambda { params, nslots: flat.len(), body, simple, escapes }))))
     }
 
     fn caps_literal(&mut self, inherit: bool) -> Result<Caps, Back> {

@@ -38,6 +38,20 @@ pub struct Lambda {
     pub nslots: usize,
     pub body: Node,
     pub simple: bool,
+    pub escapes: bool, // у тілі є λ чи 🜁: середовище виклику може пережити виклик (у циклі — нове щоразу)
+}
+
+/// Чи є у піддереві вузол, що захоплює середовище (λ, 🜁).
+pub fn captures(n: &Node) -> bool {
+    match &n.k {
+        K::Lam(_) | K::Deleg(..) => true,
+        K::Call(_, _, _, xs) | K::Op(_, xs) | K::List(xs) | K::Dict(xs) | K::Block(xs, _) | K::Tool(_, xs) => {
+            xs.iter().any(captures)
+        }
+        K::Bind(_, _, v) => captures(v),
+        K::Tmpl(ps) => ps.iter().any(|p| matches!(p, TPart::Hole(_, x) if captures(x))),
+        _ => false,
+    }
 }
 
 #[derive(Debug)]

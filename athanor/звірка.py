@@ -69,6 +69,9 @@ def norm_trace(path):
     return recs, data
 
 
+EXTRA = []
+
+
 def run_one(cmd, prog, home, tmp, tag, timeout):
     tpf = os.path.join(tmp, f'{tag}.шлях')
     env = dict(os.environ, NIGREDO_HOME=home, NIGREDO_TRACE_PATH_FILE=tpf, PYTHONHASHSEED='0')
@@ -78,7 +81,7 @@ def run_one(cmd, prog, home, tmp, tag, timeout):
         os.remove(tpf)
     t0 = time.perf_counter()
     try:
-        p = subprocess.run(cmd + [prog], capture_output=True, timeout=timeout, env=env, cwd=os.path.dirname(prog),
+        p = subprocess.run(cmd + EXTRA + [prog], capture_output=True, timeout=timeout, env=env, cwd=os.path.dirname(prog),
                            stdin=subprocess.DEVNULL)
         code, out, err = p.returncode, p.stdout, p.stderr
     except subprocess.TimeoutExpired:
@@ -125,7 +128,9 @@ def main():
     ap.add_argument('--зразок', type=int, default=0)
     ap.add_argument('--час', type=float, default=60)
     ap.add_argument('--звіт', default=os.path.join(HERE, 'ЗВІРКА.md'))
+    ap.add_argument('--прапорці', default='', help='додаткові прапорці обом виконавцям, напр. «--кроки 500»')
     a = ap.parse_args()
+    EXTRA[:] = a.прапорці.split()
     progs = programs(a.шляхи)
     if a.зразок:
         progs = progs[::max(1, len(progs) // a.зразок)]
