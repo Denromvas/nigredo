@@ -6,7 +6,9 @@
 
   python3 athanor/звірка.py [-j 4] [--до N] [--зразок K] [шляхи…]
 
-Друкує розбіжності й підсумок; пише athanor/ЗВІРКА.md."""
+Без шляхів — усі .ngr, які відстежує git (відтворюваний корпус: до суду 9б звірка брала все з диска, разом із
+неопублікованими робочими файлами суддів, тож число програм гуляло — 4916, 3807…). Друкує розбіжності й підсумок; пише
+athanor/ЗВІРКА.md (у репозиторії — разом із комітом, на якому прогнано)."""
 import argparse
 import concurrent.futures as cf
 import json
@@ -26,7 +28,16 @@ SKIP_DIRS = ('архів', 'target', '.git', 'site/пісочниця/вихід
 VOLATILE = {'час', 'запуск', 'інтерпретатор', 'хеш', 'попередній'}
 
 
+def tracked():
+    """Програми, які відстежує git (без SKIP_DIRS)."""
+    names = subprocess.run(['git', '-C', ROOT, 'ls-files', '-z', '--', '*.ngr'], capture_output=True).stdout
+    rels = [x for x in names.decode('utf-8', 'surrogateescape').split('\0') if x]
+    return sorted(os.path.join(ROOT, r) for r in rels if not any(r == s or r.startswith(s + '/') for s in SKIP_DIRS))
+
+
 def programs(paths):
+    if not paths:
+        return tracked()
     out = []
     for base in paths:
         if os.path.isfile(base):
@@ -127,7 +138,7 @@ def compare(prog, timeout):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('шляхи', nargs='*', default=[ROOT])
+    ap.add_argument('шляхи', nargs='*', default=[])
     ap.add_argument('-j', type=int, default=3)
     ap.add_argument('--до', type=int, default=0)
     ap.add_argument('--зразок', type=int, default=0)
@@ -153,7 +164,18 @@ def main():
     whys = Counter(r[2] for r in res if r[1] == 'еталон')
     sa = sum(r[3][0] for r in res if r[3])
     sp = sum(r[3][1] for r in res if r[3])
+    rev = subprocess.run(['git', '-C', ROOT, 'rev-parse', '--short', 'HEAD'], capture_output=True, text=True).stdout.strip()
+    dirty = subprocess.run(['git', '-C', ROOT, 'status', '--porcelain', '--untracked-files=no'], capture_output=True,
+                           text=True).stdout.strip()
+    sha = (subprocess.run([BIN, '--відбиток'], capture_output=True, text=True).stdout.split('бінарника') + [' ?'])[1].split()
+    groups = Counter(os.path.relpath(r[0], ROOT).split('/')[0] + ('/' + os.path.relpath(r[0], ROOT).split('/')[1]
+                     if os.path.relpath(r[0], ROOT).startswith('konsylium/') else '') for r in res)
     lines = [f'# Звірка Атанора з еталоном', '',
+             f'Прогін {time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())}, коміт `{rev}`{" + незакомічені зміни" if dirty else ""}; '
+             f'бінарник Атанора — sha256 `{sha[0][:16]}…` (`ngr --відбиток`). Корпус: '
+             + ('усі `.ngr`, які відстежує git (крім архіву), — будь-хто відтворить той самий прогін з того самого коміту.'
+                if not a.шляхи else f'шляхи {", ".join(a.шляхи)}.'),
+             '', 'За теками: ' + ', '.join(f'{k} — {n}' for k, n in sorted(groups.items())) + '.', '',
              f'Програм: {len(res)}. Атанор виконав сам: {cnt["так"] + cnt["різниця"] + cnt["годинник"]} — однаково '
              f'{cnt["так"]}, розбіжностей {cnt["різниця"]}, залежних від годинника (не порівнюються) {cnt["годинник"]}. '
              f'Віддав еталону: {cnt["еталон"]}.',
