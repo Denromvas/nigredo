@@ -111,6 +111,7 @@ pub struct Interp {
     pub world_c: f64,
     pub decided_c: f64,
     pub depth: u64,
+    pub wdepth: u64, // сумарна висота тіл активних викликів (MAX_WORK)
     pub ends: u64,
     pub quota_stack: Vec<Rc<QuotaTable>>,
     pub quota_used: HashMap<(String, String, String), u64>,
@@ -622,16 +623,34 @@ impl Interp {
         }
     }
 
+    /// Межа глибини (too_deep еталона): 2000 викликів чи MAX_WORK — сума висот тіл активних викликів (суд 9б).
+    fn enter(&mut self, h: u64, pos: Pos) -> R<()> {
+        self.depth += 1;
+        self.wdepth += h;
+        if self.depth > lang::MAX_DEPTH || self.wdepth > lang::MAX_WORK {
+            let msg = if self.depth > lang::MAX_DEPTH {
+                "надто глибока рекурсія".to_string()
+            } else {
+                format!("надто глибока рекурсія: виклики × вкладеність їхнього коду — понад {} рівнів", lang::MAX_WORK)
+            };
+            self.depth -= 1;
+            self.wdepth -= h;
+            return fatal(msg, Some(pos));
+        }
+        Ok(())
+    }
+
+    fn leave(&mut self, h: u64) {
+        self.depth -= 1;
+        self.wdepth -= h;
+    }
+
     /// Швидкий шлях call для λ з одним параметром у вже створеному середовищі (↻): ті самі глибина й межа.
     fn call_in(&mut self, func: &Rc<Func>, env: &Rc<Env>, arg: V, pos: Pos) -> R<V> {
-        self.depth += 1;
-        if self.depth > lang::MAX_DEPTH {
-            self.depth -= 1;
-            return fatal("надто глибока рекурсія", Some(pos));
-        }
+        self.enter(func.lam.height, pos)?;
         env.vars.borrow_mut()[0] = arg;
         let r = self.eval(&func.lam.body, env);
-        self.depth -= 1;
+        self.leave(func.lam.height);
         r
     }
 
@@ -648,15 +667,11 @@ impl Interp {
                 f.c.min(self.cpc()),
             );
         }
-        self.depth += 1;
-        if self.depth > lang::MAX_DEPTH {
-            self.depth -= 1;
-            return fatal("надто глибока рекурсія", Some(pos));
-        }
+        self.enter(lam.height, pos)?;
         if f.c >= 1.0 && lam.simple && func.module.is_none() {
             let env = Env::child(args, &func.env);
             let r = self.eval(&lam.body, &env);
-            self.depth -= 1;
+            self.leave(lam.height);
             return r;
         }
         let saved = self.pc;
@@ -728,7 +743,7 @@ impl Interp {
         }
         self.caps = saved_caps;
         self.pc = saved;
-        self.depth -= 1;
+        self.leave(lam.height);
         r
     }
 
@@ -822,9 +837,8 @@ impl Interp {
                 if matches!(func.lam.body.k, K::Var(_, 0, 0)) && self.halt_c >= 1.0 && self.try_stack.is_empty() {
                     // λx x: результат — сам елемент (той самий крок на імʼя, та сама межа глибини)
                     for i in 0..n {
-                        if self.depth + 1 > lang::MAX_DEPTH {
-                            return fatal("надто глибока рекурсія", Some(pos));
-                        }
+                        self.enter(func.lam.height, pos)?;
+                        self.leave(func.lam.height);
                         self.step(func.lam.body.pos)?;
                         sink(self, items.get(i));
                     }
@@ -833,14 +847,10 @@ impl Interp {
                 let env1 = Env::child(vec![V::none()], &func.env);
                 for i in 0..n {
                     let x = items.get(i);
-                    self.depth += 1;
-                    if self.depth > lang::MAX_DEPTH {
-                        self.depth -= 1;
-                        return fatal("надто глибока рекурсія", Some(pos));
-                    }
+                    self.enter(func.lam.height, pos)?;
                     env1.vars.borrow_mut()[0] = x;
                     let r = self.eval(&func.lam.body, &env1);
-                    self.depth -= 1;
+                    self.leave(func.lam.height);
                     let r = r.map_err(|e| wrap(e, i))?;
                     sink(self, r);
                 }
@@ -850,18 +860,14 @@ impl Interp {
                 let env1 = Env::child(vec![V::none(), V::none()], &func.env);
                 for i in 0..n {
                     let x = items.get(i);
-                    self.depth += 1;
-                    if self.depth > lang::MAX_DEPTH {
-                        self.depth -= 1;
-                        return fatal("надто глибока рекурсія", Some(pos));
-                    }
+                    self.enter(func.lam.height, pos)?;
                     {
                         let mut v = env1.vars.borrow_mut();
                         v[0] = acc;
                         v[1] = x;
                     }
                     let r = self.eval(&func.lam.body, &env1);
-                    self.depth -= 1;
+                    self.leave(func.lam.height);
                     acc = r.map_err(|e| wrap(e, i))?;
                 }
                 Ok(Some(acc))

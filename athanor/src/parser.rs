@@ -34,6 +34,7 @@ pub struct Parser {
     ctx: Vec<Ctx>,
     head: isize,
     depth: usize,
+    peak: usize, // найглибша вкладеність у поточному тілі λ (висота тіла — для MAX_WORK)
     /// інструменти й гліфи, які Атанор виконує сам (решта — еталон)
     pub supported_tool: fn(&str) -> bool,
     pub supported_glyph: fn(char) -> bool,
@@ -212,6 +213,7 @@ impl Parser {
             ctx: vec![Ctx::Stmt(0)],
             head: -1,
             depth: 0,
+            peak: 0,
             supported_tool,
             supported_glyph,
             root: root.or_else(|| base.clone()),
@@ -431,6 +433,9 @@ impl Parser {
             return back("вкладено глибше за MAX_NEST");
         }
         self.depth += 1;
+        if self.depth > self.peak {
+            self.peak = self.depth;
+        }
         let r = self.expr_();
         self.depth -= 1;
         r
@@ -587,12 +592,16 @@ impl Parser {
             sc.order.push(p.clone());
         }
         self.scopes.push(sc);
+        let (base, outer) = (self.depth, self.peak);
+        self.peak = base;
         let body = self.expr();
+        let height = (self.peak - base) as u64; // висота тіла: рівнів вкладеності від λ (≥ 1)
+        self.peak = outer.max(self.peak);
         self.scopes.pop();
         let body = body?;
         let simple = params.iter().all(|p| matches!(p, Param::Name(_)));
         let escapes = captures(&body);
-        Ok(Node::new(pos, K::Lam(Rc::new(Lambda { params, nslots: flat.len(), body, simple, escapes }))))
+        Ok(Node::new(pos, K::Lam(Rc::new(Lambda { params, nslots: flat.len(), body, simple, escapes, height }))))
     }
 
     fn caps_literal(&mut self, inherit: bool) -> Result<Caps, Back> {

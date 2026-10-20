@@ -37,6 +37,7 @@ pub static DEFAULT_ALLOWED: [&str; 3] = ["\u{43e}\u{440}\u{430}\u{43a}\u{443}\u{
 pub static FN_SLOTS: [(char, &[usize]); 12] = [('\u{3a3}', &[2]), ('\u{3bc}', &[1]), ('\u{3c6}', &[1]), ('\u{2016}', &[1]), ('\u{2116}', &[1]), ('\u{21bb}', &[1, 2]), ('\u{21c5}', &[1]), ('\u{2200}', &[1]), ('\u{222b}', &[1]), ('\u{229e}', &[1]), ('\u{2602}', &[1]), ('\u{1f70d}', &[1])];
 pub const MAX_DEPTH: u64 = 2000;
 pub const MAX_NEST: u64 = 1000;
+pub const MAX_WORK: u64 = 200000;
 pub const MAX_SIZE: u64 = 5000000;
 pub const ALLOC_FACTOR: u64 = 20;
 pub const MAX_INT_BITS: u64 = 100000;
