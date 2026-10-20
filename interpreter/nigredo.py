@@ -24,6 +24,8 @@ MAX_DEPTH = 2000
 WALK_MAX_DEPTH = 2000     # показ, порівняння, JSON, ключі ⇅ обходять значення не глибше: далі — «вкладене надто глибоко»
 #                           (межа мови, а не стека CPython — та сама в еталоні й Атанорі, від версії Python не залежить)
 MAX_NEST = 1000                   # вкладеність виразу в тексті програми (глибше — помилка до запуску, суд 8)
+MAX_WORK = 200_000                # глибина обчислення: сума висот тіл усіх активних викликів (суд 9б: 2000 × 1000 рівнів
+                                  # — це ~2 млн кадрів, а стек виконавця скінченний; межа — правило мови, однакове в обох)
 MAX_SIZE = 5_000_000      # найбільший логічний розмір значення (символів + елементів); --розмір N
 ALLOC_FACTOR = 20         # сумарно за запуск можна створити не більше ALLOC_FACTOR × --розмір
 MAX_INT_BITS = 100_000    # найбільше ціле (≈ 30 000 десяткових цифр)
@@ -218,11 +220,17 @@ class V:
             self.n = 1
 
 
-class Fn:
-    __slots__ = ('params', 'body', 'env', 'name', 'mod', 'simple')
+def too_deep(depth):
+    """Текст межі глибини: 2000 викликів чи MAX_WORK (виклики × висота їхніх тіл) — однаковий в обох виконавцях."""
+    return 'надто глибока рекурсія' if depth > MAX_DEPTH else \
+        f'надто глибока рекурсія: виклики × вкладеність їхнього коду — понад {MAX_WORK} рівнів'
 
-    def __init__(self, params, body, env, name=None):
-        self.params, self.body, self.env, self.name = params, body, env, name
+
+class Fn:
+    __slots__ = ('params', 'body', 'env', 'name', 'mod', 'simple', 'h')
+
+    def __init__(self, params, body, env, name=None, h=1):
+        self.params, self.body, self.env, self.name, self.h = params, body, env, name, h   # h — висота тіла (MAX_WORK)
         self.simple = all(isinstance(p, str) for p in params)   # без розбору 【a b】 — швидкий виклик
         e = env                                   # функція модуля: (шлях, печатка модуля) — права при виклику
         while e is not None and '\0модуль' not in e:
@@ -888,6 +896,7 @@ class Parser:
         self.ctx = [('stmt', 0)]    # ('stmt', відступ інструкції) або ('items',) усередині 【】『』
         self.head = -1              # індекс токена, з якого почалася поточна інструкція
         self.frames = []            # незавершені вирази [початок, [(початок, кінець, вкладені)…]] — для підказки арності
+        self.peak = 0               # найглибша вкладеність у поточному тілі λ (висота тіла — для MAX_WORK)
         self.last_span = None       # (початок, кінець, вкладені) щойно розібраного виразу
 
     def peek(self):
@@ -1021,6 +1030,8 @@ class Parser:
         if len(self.frames) >= MAX_NEST:
             raise StaticError(f'вираз вкладено глибше за {MAX_NEST} рівнів — розбийте на ← проміжні імена', self.t[self.i][2])
         self.frames.append([start, kids])
+        if len(self.frames) > self.peak:
+            self.peak = len(self.frames)
         try:
             node = self.expr_()
         finally:
@@ -1149,9 +1160,13 @@ class Parser:
         if len(set(flat)) != len(flat):
             raise StaticError('однакові імена параметрів', pos)
         self.scopes.append({p: 0 for p in flat})
+        base, outer = len(self.frames), self.peak
+        self.peak = base
         body = self.expr()
+        h = self.peak - base                     # висота тіла: рівнів вкладеності від λ (≥ 1)
+        self.peak = max(outer, self.peak)
         self.scopes.pop()
-        return ('lam', pos, params, body)
+        return ('lam', pos, params, body, h)
 
     def import_(self, pos):
         """⊃ 「шлях.ngr」 【「імʼя」 …】: розібрати модуль зараз (щоб знати арності), перевірити його печатку."""
@@ -3705,7 +3720,7 @@ class Interp:
         self.world_c = 1.0     # наскільки сумнівно могли змінити зовнішній стан (жереб, файли, агенти, мережа)
         self.decided_c = 1.0   # найсумнівніше рішення в запуску: від нього залежить і тривалість (годинник)
 
-        self.depth = 0
+        self.depth = self.wdepth = 0       # викликів і їхньої сумарної висоти (MAX_DEPTH, MAX_WORK)
         self.defer_node = None  # тіло ‖, чий виклик інструмента відкладено
         self.tl = threading.local()   # для дії інструмента (і в потоці ‖): справжні шляхи, які він узяв
         self.ends = 0           # скільки записів «інструмент» уже зроблено (номер виклику для повтору)
@@ -4034,18 +4049,22 @@ class Interp:
             raise NgrError(f'функція чекає {len(f.params)} аргумент(и), а дано {len(args)}', pos, min(fn.c, self.cpc))
         if fn.c >= 1 and f.mod is None and f.simple:      # швидкий шлях: pc, taint, права не змінюються
             self.depth += 1
-            if self.depth > MAX_DEPTH:
+            self.wdepth += f.h
+            if self.depth > MAX_DEPTH or self.wdepth > MAX_WORK:
                 self.depth -= 1
-                raise Fatal('надто глибока рекурсія', pos)
+                self.wdepth -= f.h
+                raise Fatal(too_deep(self.depth + 1), pos)
             env = dict(zip(f.params, args))
             env['\0parent'] = f.env
             try:
                 return self.eval(f.body, env)
             finally:
                 self.depth -= 1
+                self.wdepth -= f.h
         self.depth += 1
-        if self.depth > MAX_DEPTH:
-            raise Fatal('надто глибока рекурсія', pos)
+        self.wdepth += f.h
+        if self.depth > MAX_DEPTH or self.wdepth > MAX_WORK:
+            raise Fatal(too_deep(self.depth), pos)
         saved = self.pc
         self.pc = min(saved, fn.c)
         self.taint(fn.c)
@@ -4083,6 +4102,7 @@ class Interp:
             self.caps = saved_caps
             self.pc = saved
             self.depth -= 1
+            self.wdepth -= f.h
 
     def need(self, x, k, g, pos):
         if type(x.v) is NEED_FAST.get(k):           # швидко: точний тип (bool окремо від int — тут не трапляється)
@@ -4272,14 +4292,14 @@ class Interp:
             return result
         if k == 'bind':
             if node[3][0] == 'lam':
-                fn = V(Fn(node[3][2], node[3][3], env, node[2]), self.cpc)
+                fn = V(Fn(node[3][2], node[3][3], env, node[2], node[3][4]), self.cpc)
                 env[node[2]] = fn
                 return fn
             val = self.eval(node[3], env)
             env[node[2]] = val
             return val
         if k == 'lam':
-            return V(Fn(node[2], node[3], env), self.cpc)
+            return V(Fn(node[2], node[3], env, h=node[4]), self.cpc)
         if k == 'call':
             fn = self.lookup(env, node[2], pos)
             return self.call(fn, [self.eval(a, env) for a in node[3]], pos)
@@ -5531,7 +5551,8 @@ def cheatsheet():
             '  разом із програмою.',
             '- Ліміти: `--кроки` (обчислення; створення великих значень теж коштує кроків), `--розмір` (логічний',
             '  розмір значення — символи й елементи разом зі спільними посиланнями, і цілі), сумарно створене за запуск',
-            '  ≤ 20 × `--розмір`, `--слід-розмір` (байти сліду після запису «початок»), глибина рекурсії (2000 викликів).',
+            '  ≤ 20 × `--розмір`, `--слід-розмір` (байти сліду після запису «початок»), глибина рекурсії (2000 викликів',
+            '  і 200 000 рівнів: виклики × вкладеність їхнього коду).',
             '- Точкові права одній програмі: `ngr --схвалити файл.ngr` друкує відбиток і запис «для_програм» — його',
             '  додає до дозволів **власник** (агенти файл дозволів не пишуть). Змінений байт програми чи модуля — і схвалення',
             '  не діє.',
@@ -6381,8 +6402,8 @@ def walk_imports(n):
 
 def entry():
     """Точка входу: глибока рекурсія — в окремому потоці з великим стеком. Запускач — interpreter/ngr.py.
-    Межі мови — 2000 викликів (MAX_DEPTH) і 1000 рівнів коду (MAX_NEST), тож обчислення сягає ~2 млн рівнів; Python
-    мусить витримати їх усі, а не впасти з кодом 4 на ~100 тис. (суд 9: 1900 викликів × 60 вкладених ＋)."""
+    Межа мови — MAX_WORK (200 000 рівнів: виклики × висота їхніх тіл) і ще MAX_NEST верхнього рівня; Python мусить
+    витримати їх усі, а не впасти з кодом 4 (суд 9: 1900 викликів × 60 вкладених ＋ — ~114 тис.)."""
     sys.setrecursionlimit(10_000_000)
     threading.stack_size(1024 * 1024 * 1024 - 4096)
     result = [1]

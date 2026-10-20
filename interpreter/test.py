@@ -1029,6 +1029,23 @@ def main():
     got, ref = both(['-e', deep])
     check(got.returncode == ref.returncode == 0 and got.stdout == ref.stdout == '114000\n',
           'рекурсія 1900 × 60 вкладених ＋ — у межах мови, без коду 4 (суд 9)', got.stderr[-300:] + ref.stderr[-300:])
+    # суд 9б: глибина — правило мови (виклики × висота тіла ≤ MAX_WORK), а не розмір стеку: ☂ ¿ ∧ на межі — однаково,
+    # без SIGABRT і «обірваного» сліду
+    for name_, body_, n_ in (('☂', '☂ ' * 100 + 'f － n 1' + ' λe 0' * 100, 1999), ('¿', '¿ ● ' * 100 + 'f － n 1' + ' 0' * 100, 1999),
+                             ('∧', '∧ ● ' * 100 + 'f － n 1', 1999), ('μ λ', '§ μ 【n】 λk ' + '＋ 1 ' * 200 + 'f － k 1 0', 999)):
+        rr_ = []
+        for k_, cmd_ in enumerate((NGR_CMD, [sys.executable, str(NGR)])):
+            tp_ = tmp / f'глиб{len(body_)}_{k_}.jsonl'
+            r_ = subprocess.run([*cmd_, '--слід', str(tp_), '-e', f'🜂\n← f λn ¿ ≤ n 0 0 {body_}\n» f {n_}'],
+                                capture_output=True, text=True, env=env)
+            rr_.append((r_.returncode, r_.stdout, r_.stderr, run(['--перевірити-слід', str(tp_)], env).stdout))
+        check(rr_[0][:3] == rr_[1][:3] and rr_[0][0] == 1 and 'понад 200000 рівнів' in rr_[0][2]
+              and all('обірвано' not in x[3] and '✓' in x[3] for x in rr_),
+              f'глибина: рекурсія {n_} × {len(body_.split())}… рівнів {name_} — «надто глибока рекурсія» в обох, слід цілий (суд 9б)',
+              rr_[0][2][-300:] + rr_[1][2][-300:] + rr_[0][3][-200:])
+    got, ref = both(['-e', '🜂\n← f λn ¿ ≤ n 0 0 ' + '☂ ' * 96 + 'f － n 1' + ' λe 0' * 96 + '\n» f 1999'])
+    check(got.returncode == ref.returncode == 0 and got.stdout == ref.stdout == '0\n',
+          'глибина: 1999 × 96 рівнів ☂ (у межі MAX_WORK) — відповідь в обох (суд 9б)', got.stderr[-300:] + ref.stderr[-300:])
     (tmp / 'бд_вл').mkdir()
     (tmp / 'бд_вл' / 'дозволи.json').write_text(json.dumps({'дозволено': [f'бд.писати:{DATA}/звіти', f'бд.читати:{DATA}/звіти',
                                                                         'жереб']}, ensure_ascii=False), encoding='utf-8')
