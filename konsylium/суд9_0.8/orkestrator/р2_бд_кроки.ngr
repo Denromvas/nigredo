@@ -1,0 +1,2 @@
+🜂 「р2: кроки рекурсивного CTE на мільйон рядків」 【「бд.читати:дані」】
+» 🜔бд.читати 「дані/база.db」 「WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<1000000) SELECT count(*) AS n FROM c」 【】

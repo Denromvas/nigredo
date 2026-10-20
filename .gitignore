@@ -24,6 +24,7 @@ bench/м2/прогін.log
 bench/м2/прогін2.log
 konsylium/*/protokol/run_r*.out
 konsylium/*/protokol/сервер.out
+konsylium/*/protokol/сервер*.out
 konsylium/*/protokol/памʼять.log
 konsylium/**/novachok/двісті_тисяч.txt
 konsylium/**/novachok/атака10_5б_вкладеність.тест.ngr

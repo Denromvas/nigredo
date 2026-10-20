@@ -1,0 +1,21 @@
+ok 0
+бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+бд.писати: VACUUM заборонено (VACUUM INTO пише файл поза текою з печатки)
+бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+бд.писати: load_extension заборонено (і в тригерах та VIEW)
+ok 1
+ok 0
+ok 0
+ok 0
+ok 0
+бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+бд.читати: «delete» поза дозволеним — лише SELECT (WITH, VALUES) і довідкові PRAGMA (table_info …); для змін — бд.писати
+бд.читати: лише одна інструкція SQL за раз
+[{"cid": 0, "name": "type", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0}, {"cid": 1, "name": "name", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0}, {"cid": 2, "name": "tbl_name", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0}, {"cid": 3, "name": "rootpage", "type": "INT", "notnull": 0, "dflt_value": null, "pk": 0}, {"cid": 4, "name": "sql", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0}]
+бд.читати: дія поза дозволеним (лише SELECT; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+[{"i": 1}, {"i": 2}, {"i": 3}]
+бд.читати: немає такого файлу: file:../звіти/а.db
+бд.читати: «../звіти/а.db» поза дозволеним (дані)
+бд.писати: «/tmp/х.db» поза дозволеним (звіти)
+бд.писати: «../вийшов.db» поза дозволеним (звіти)

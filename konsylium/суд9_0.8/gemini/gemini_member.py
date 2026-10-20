@@ -17,7 +17,9 @@ import time
 import urllib.error
 import urllib.request
 
-MODEL = 'gemini-4-argon'  # з 2026-10-16; запасні — 3.6/3.7-flash
+MODEL = os.environ.get('GEMINI_MODEL', 'gemini-4-argon')  # з 2026-10-16; запасні — 3.6/3.7-flash
+MODELS = [MODEL] + [m for m in ('gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash') if m != MODEL]
+USED = []                                                  # які моделі справді відповіли (пишемо у звіт)
 ENV = pathlib.Path(os.environ['GEMINI_ENV_FILE'])   # файл .env з рядком GEMINI_API_KEY=…
 HERE = pathlib.Path(__file__).resolve().parent
 K = HERE.parent
@@ -39,23 +41,30 @@ def key():
 
 def ask(history):
     body = {'systemInstruction': {'parts': [{'text': ROLE}]}, 'contents': history}
-    for attempt in range(9):            # перевантаження (503) — довше чекаємо й переходимо на запасні моделі
-        model = (MODEL, 'gemini-3.6-flash', 'gemini-3.7-flash')[min(attempt // 3, 2)]
-        req = urllib.request.Request(
-            f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
-            data=json.dumps(body).encode(), headers={'Content-Type': 'application/json', 'x-goog-api-key': key()})
-        try:
-            d = json.load(urllib.request.urlopen(req, timeout=600))
-            break
-        except urllib.error.HTTPError as e:
-            if e.code not in (404, 429, 500, 503) or attempt == 8:
-                raise
-            time.sleep(30 * (attempt % 3 + 1))
-        except (urllib.error.URLError, ConnectionError, TimeoutError, OSError):
-            if attempt == 8:                       # мережа телефона буває нестабільною
-                raise
-            time.sleep(30)
-    return ''.join(p.get('text', '') for p in d['candidates'][0]['content']['parts'] if not p.get('thought'))
+    for attempt in range(30):           # перевантаження (503) буває годинами — колами по всіх моделях, кожні 5 хв
+        for model in list(MODELS):
+            req = urllib.request.Request(
+                f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
+                data=json.dumps(body).encode(), headers={'Content-Type': 'application/json', 'x-goog-api-key': key()})
+            try:
+                d = json.load(urllib.request.urlopen(req, timeout=600))
+                USED.append(model)
+                return ''.join(p.get('text', '') for p in d['candidates'][0]['content']['parts']
+                               if not p.get('thought'))
+            except urllib.error.HTTPError as e:
+                err = e.read()
+                print(f'{model}: {e.code} {err[:300]!r}', file=sys.stderr, flush=True)
+                if e.code not in (404, 429, 500, 503):
+                    raise
+                wait = re.search(rb'"retryDelay": "(\d+)', err)
+                if e.code == 429 and wait and int(wait.group(1)) <= 120:   # хвилинна межа — почекати й повторити
+                    time.sleep(int(wait.group(1)) + 5)
+                elif e.code in (404, 429) and len(MODELS) > 1:   # денну квоту вичерпано чи моделі нема — до кінця
+                    MODELS.remove(model)
+            except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
+                print(f'{model}: мережа: {e}', file=sys.stderr, flush=True)   # мережа телефона буває нестабільною
+        time.sleep(300)
+    sys.exit('Gemini не відповів за 30 кіл')
 
 
 def say(history, log, text):
@@ -63,7 +72,7 @@ def say(history, log, text):
     log.append(f'## → Gemini\n\n{text}\n')
     ans = ask(history)
     history.append({'role': 'model', 'parts': [{'text': ans}]})
-    log.append(f'## ← Gemini\n\n{ans}\n')
+    log.append(f'## ← Gemini ({USED[-1]})\n\n{ans}\n')
     return ans
 
 
@@ -135,7 +144,8 @@ def round1():
     stats = ', '.join(f'{k}: {runs[l]} запусків' for l, k in zip('АБВ', ('А (ціни)', 'Б (XML)', 'В (схема)')))
     report = say(history, log, f'Підсумок запусків (рахував скрипт): {stats}. Тепер напиши звіт раунду 1 '
                  'строго за шаблоном із ПРАВИЛ (Markdown, без вступу). Роль: «Gemini — незалежний експерт».')
-    (HERE / 'звіт_раунд1.md').write_text(report.strip() + '\n', encoding='utf-8')
+    (HERE / 'звіт_раунд1.md').write_text(f'_Модель: {", ".join(sorted(set(USED)))}_\n\n' + report.strip() + '\n',
+                                         encoding='utf-8')
     (HERE / 'розмова_раунд1.md').write_text('\n'.join(log), encoding='utf-8')
 
 
@@ -147,7 +157,8 @@ def round2():
               'чому (особливо — найсерйозніші знахідки інших, підкріплені запусками), що змінило думку, остаточний '
               'голос А/Б/В. Ти не можеш сам запускати код, тож не стверджуй як факт те, чого не перевіряв; '
               'твердження інших без запусків зважуй відповідно. Markdown, без вступу.')
-    (HERE / 'звіт_раунд2.md').write_text(ans.strip() + '\n', encoding='utf-8')
+    (HERE / 'звіт_раунд2.md').write_text(f'_Модель: {", ".join(sorted(set(USED)))}_\n\n' + ans.strip() + '\n',
+                                         encoding='utf-8')
     (HERE / 'розмова_раунд2.md').write_text('\n'.join(log), encoding='utf-8')
 
 

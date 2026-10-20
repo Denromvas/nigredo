@@ -1,0 +1,2 @@
+процес: вивід понад 1 МБ — зупинено
+процес: [Errno 7] Argument list too long: '/usr/bin/echo'
