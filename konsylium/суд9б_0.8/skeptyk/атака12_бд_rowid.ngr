@@ -1,0 +1,10 @@
+🜂 「атака12: випадковість SQLite без жодної функції — ROWID після 2⁶³−1」 【「бд.писати:звіти」】
+← б 「звіти/rowid.db」
+» 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS t(x)」 【】
+» 🜔бд.писати б 「DELETE FROM t」 【】
+» 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS n(i)」 【】
+» 🜔бд.писати б 「DELETE FROM n」 【】
+» 🜔бд.писати б 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, 0)」 【】
+» 🜔бд.писати б 「INSERT INTO t(x) VALUES (1)」 【】
+← жр 🜔бд.писати б 「WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM c WHERE i < (SELECT rowid % 100 + 1 FROM t WHERE x = 1)) INSERT INTO n SELECT i FROM c」 【】
+» 〔випадкове 0–99 з ROWID SQLite (без права «жереб»): {－ жр 1}〕
