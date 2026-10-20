@@ -3002,7 +3002,7 @@ def _db(it, pos, tool, p, sql, params, write):
                               isolation_level=None, timeout=5)
     except sqlite3.Error as e:
         raise NgrError(f'{tool}: {e}: {p.v}', pos)
-    cur = None
+    cur, helper = None, []
     try:
         con.setlimit(sqlite3.SQLITE_LIMIT_ATTACHED, 0)
         con.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 4 * it.max_size)      # одне значення — не більше за --розмір (суд 7)
@@ -3010,9 +3010,10 @@ def _db(it, pos, tool, p, sql, params, write):
         if write:                        # база не росте без меж (zeroblob заповнив би диск телефона)
             page = con.execute('PRAGMA page_size').fetchone()[0]
             con.execute(f'PRAGMA max_page_count = {DB_MAX_BYTES // page}')
-        con.set_authorizer(auth)
-        con.set_progress_handler(progress, 1000)
         try:
+            helper = _db_guard(con, it, why, write)     # до authorizer і лічби кроків: це не запит програми
+            con.set_authorizer(auth)
+            con.set_progress_handler(progress, 1000)
             before = con.total_changes
             cur = con.execute(sql.v, args)
             if write:                       # усі змінені рядки (зокрема з RETURNING і тригерами), а не rowcount
@@ -3057,6 +3058,8 @@ def _db(it, pos, tool, p, sql, params, write):
         if cur is not None:   # запит, перерваний посеред рядків, тримав би блокування бази, доки курсор не прибере
             cur.close()       # збирач сміття (цикл виняток → кадр): наступний запис — «база зайнята»
         con.close()
+        for h in helper:
+            h.close()
 
 
 DB_ACTION_NAMES = ('SQLITE_PRAGMA', 'SQLITE_ATTACH', 'SQLITE_DETACH', 'SQLITE_TRANSACTION', 'SQLITE_SAVEPOINT',
@@ -3068,35 +3071,111 @@ DB_ACTION_NAMES = ('SQLITE_PRAGMA', 'SQLITE_ATTACH', 'SQLITE_DETACH', 'SQLITE_TR
                    'SQLITE_FUNCTION', 'SQLITE_COPY')
 
 
-DB_CLOCK = {'date', 'time', 'datetime', 'julianday', 'unixepoch', 'strftime', 'timediff', 'current_date',
-            'current_time', 'current_timestamp'}       # можуть узяти поточний час
+DB_CLOCK = ('date', 'time', 'datetime', 'julianday', 'unixepoch', 'strftime', 'timediff')   # дата з даних — без прав
+DB_NOW = ('current_date', 'current_time', 'current_timestamp')                             # лише годинник
+DB_NOW_TIMES = (b'now', b'subsec', b'subsecond')   # час «зараз» (BLOB теж: date(x'6e6f77'))
+DB_NOW_MODS = (b'localtime', b'utc')               # часовий пояс машини — не дані
+
+
+def db_word(x):
+    """Аргумент функції дат SQLite так, як його порівнює сам SQLite: байти до першого NUL, малі — лише ASCII."""
+    if isinstance(x, str):
+        x = x.encode('utf-8', 'surrogatepass')
+    return x.split(b'\0', 1)[0].lower() if isinstance(x, bytes) else None
 DB_DENIED_WHY = ('load_', 'годинник', 'випадковість')   # ці причини відмови — у тексті помилки як є
+DB_UDF_ERR = 'user-defined function raised exception'   # текст SQLite, коли своя функція відмовила
+
+
+def _db_rights(it):
+    """(годинник, жереб) SQLite: «час» і «жереб» без квоти (її не порахувати), як 🜔час і 🜔жереб (суд 9)."""
+    return 'час' in it.caps, 'жереб' in it.caps and not any(t == 'жереб' for _, table, _ in it.quota_stack
+                                                             for t, _ in table.quotas)
 
 
 def _db_auth(write, it):
     """authorizer SQLite: лише дії з білого списку; кожну відмову — у why (за ним і «заборонено»). Годинник і
-    випадковість SQLite — лише з правами «час» і «жереб» (без квоти: її не порахувати), як 🜔час і 🜔жереб (суд 9)."""
+    випадковість — не тут (authorizer не бачить DEFAULT стовпця, а за назвою забороняв і дату з даних, суд 9б), а у
+    _db_guard: свої функції на зʼєднанні."""
     import sqlite3
     acts, why = _db_acts()[1 if write else 0], []
-    clock_ok = 'час' in it.caps
-    rand_ok = 'жереб' in it.caps and not any(t == 'жереб' for _, table, _ in it.quota_stack for t, _ in table.quotas)
 
     def auth(action, a1, a2, db, view):
         f = (a2 or '').lower()
         if action == sqlite3.SQLITE_FUNCTION and f == 'load_extension':
             why.append(f'load_extension{f" у тригері чи VIEW «{view}»" if view else ""}')
             return sqlite3.SQLITE_DENY
-        if action == sqlite3.SQLITE_FUNCTION and f in DB_CLOCK and not clock_ok:
-            why.append(f'годинник SQLite ({f}) без права «час» — дати рахуйте в Nigredo (◷) чи дайте «час» у печатці')
-            return sqlite3.SQLITE_DENY
-        if action == sqlite3.SQLITE_FUNCTION and f in ('random', 'randomblob') and not rand_ok:
-            why.append(f'випадковість SQLite ({f}) без права «жереб» (з квотою «жереб≤N» — лише 🜔жереб)')
-            return sqlite3.SQLITE_DENY
         if action in acts or (action == sqlite3.SQLITE_PRAGMA and (a1 or '').lower() in DB_INFO_PRAGMAS):   # SQL — без регістру
             return sqlite3.SQLITE_OK
+        if write and action == sqlite3.SQLITE_DROP_TEMP_TRIGGER and (a1 or '').startswith('ngr_rowid_'):
+            return sqlite3.SQLITE_OK     # DROP TABLE прибирає й тимчасовий тригер _db_guard на цій таблиці
         why.append(next((n[7:] for n in DB_ACTION_NAMES if getattr(sqlite3, n, None) == action), f'дія SQLite {action}'))
         return sqlite3.SQLITE_DENY
     return why, auth
+
+
+def _db_guard(con, it, why, write):
+    """Годинник і випадковість SQLite — лише з правами (суд 9б): без «час» функції дат — свої, на цьому зʼєднанні (їх
+    бачить і DEFAULT, і тригер, і VIEW): дата з даних — як у SQLite, а 'now', виклик без часу, localtime/utc і
+    CURRENT_* — відмова; без «жереб» так само random/randomblob, а запис у таблицю з rowid 2⁶³−1 — відмова (далі SQLite
+    бере rowid навмання). Тимчасові тригери — у памʼяті, у файл бази не потрапляють."""
+    import sqlite3
+    clock_ok, rand_ok = _db_rights(it)
+    helper = []
+
+    def builtin(name, a):           # справжня функція SQLite — на окремому зʼєднанні без підмін
+        if not helper:
+            helper.append(sqlite3.connect(':memory:'))
+        return helper[0].execute(f'SELECT {name}({", ".join("?" * len(a))})', a).fetchone()[0]
+
+    def refuse(msg):
+        why.append(msg)
+        raise sqlite3.Error(msg)
+
+    def clock(name):
+        def f(*a):
+            # як сам SQLite (parseDateOrTime, parseModifier): текст чи BLOB до першого NUL, регістр — лише ASCII;
+            # час — 1-й аргумент (у strftime — 2-й, у timediff — обидва), далі — модифікатори
+            k = 1 if name == 'strftime' else 0
+            times, mods = (a, ()) if name == 'timediff' else (a[k:k + 1], a[k + 1:])
+            now = (not times and name != 'timediff') or any(db_word(x) in DB_NOW_TIMES for x in times) \
+                or any(db_word(x) in DB_NOW_MODS for x in mods)
+            if now:
+                refuse(f'годинник SQLite ({name} — поточний час чи часовий пояс) без права «час» — '
+                       'дати з даних рахуються, «зараз» — лише з «час» у печатці')
+            return builtin(name, a)
+        return f
+
+    def now(name):
+        return lambda: refuse(f'годинник SQLite ({name}) без права «час» — дати рахуйте в Nigredo (◷) чи дайте «час» у печатці')
+
+    def rand(name):
+        return lambda *a: refuse(f'випадковість SQLite ({name}) без права «жереб» (з квотою «жереб≤N» — лише 🜔жереб)')
+    if not clock_ok:
+        for n in DB_CLOCK:
+            con.create_function(n, -1, clock(n), deterministic=True)
+        for n in DB_NOW:
+            con.create_function(n, 0, now(n), deterministic=True)
+    if not rand_ok:
+        con.create_function('random', 0, rand('random'), deterministic=True)
+        con.create_function('randomblob', 1, rand('randomblob'), deterministic=True)
+        if write:
+            con.execute('PRAGMA temp_store = MEMORY')
+            con.create_function('ngr_rowid', 2, lambda t, hidden: refuse(
+                f'випадковість SQLite (таблиця «{safe(t)}» ' + ('ховає rowid стовпцями rowid, _rowid_ і oid — запис у '
+                'неї не перевірити' if hidden else 'дійшла до rowid 2⁶³−1 — далі SQLite бере його навмання') +
+                ') без права «жереб»'), deterministic=True)
+            tables = [r[0] for r in con.execute("SELECT name FROM pragma_table_list WHERE schema = 'main' "
+                                                "AND type = 'table' AND wr = 0 AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' "
+                                                "ORDER BY name")]
+            for i, t in enumerate(tables):
+                q = t.replace('"', '""')
+                cols = {r[0].lower() for r in con.execute('SELECT name FROM pragma_table_xinfo(?)', (t,))}
+                alias = next((a for a in ('rowid', '_rowid_', 'oid') if a not in cols), None)
+                when = f'(SELECT max({alias}) FROM main."{q}") = 9223372036854775807' if alias else '1'
+                lit = t.replace("'", "''")
+                con.execute(f'CREATE TEMP TRIGGER "ngr_rowid_{i}" BEFORE INSERT ON main."{q}" WHEN {when} '
+                            f"BEGIN SELECT ngr_rowid('{lit}', {0 if alias else 1}); END")
+    return helper
 
 
 def _db_static_ok(it, pos, tool, p, sql):
@@ -3325,11 +3404,14 @@ TOOLS = {
     'файл.писати': (2, '🜔писати шлях текст → ∅', 'записати (перезаписати) текстовий файл', True, 'тека', t_write),
     'файл.список': (1, '🜔список тека → список', 'імена в теці', True, 'тека', t_list),
     'бд.читати': (3, '🜔бд.читати шлях 「SELECT … ?」 【параметри】 → список словників', 'запит SQLite лише на читання '
-                  '(лише SELECT і довідкові PRAGMA table_info, index_list…; файл відкрито лише на читання). Годинник '
-                  'SQLite (date(\'now\'), CURRENT_TIMESTAMP…) — лише з 「час」, random() — лише з 「жереб」 без квоти', True, 'тека', t_db_read),
+                  '(лише SELECT і довідкові PRAGMA table_info, index_list…; файл відкрито лише на читання). Дати з даних '
+                  'SQLite рахує й без прав; «зараз» (date(\'now\'), CURRENT_TIMESTAMP, \'localtime\'…) — лише з 「час」, '
+                  'random() — лише з 「жереб」 без квоти — і в DEFAULT, тригерах, VIEW. Дробовий параметр іде текстом '
+                  '(точність): порівнюйте з CAST(? AS REAL). Запит — до 30 с, хоч би які --кроки', True, 'тека', t_db_read),
     'бд.писати': (3, '🜔бд.писати шлях 「INSERT … ?」 【параметри】 → змінено рядків', 'зміна SQLite (INSERT UPDATE DELETE, '
                   'CREATE/DROP/ALTER; без ATTACH, VACUUM, PRAGMA); файл створюється, якщо нема; повертає лише кількість '
-                  'змінених рядків — читати — бд.читати', True, 'тека', t_db_write),
+                  'змінених рядків — читати — бд.читати. Годинник і жереб — як у бд.читати; без 「жереб」 запис у '
+                  'таблицю з rowid 2⁶³−1 — відмова (далі SQLite бере rowid навмання)', True, 'тека', t_db_write),
     'мережа.взяти': (1, '🜔взяти url → рядок', 'HTTP GET (до 1 МБ, 30 с; адреса — повністю в сліді: даними в адресі '
                      'теж можна поділитися з хостом, тож дозволяйте лише хости, яким довіряєте)', True, 'хост', t_fetch),
     'мережа.послати': (2, '🜔послати url тіло → рядок', 'HTTP POST: тіло-рядок — як текст, список чи словник — як JSON; '

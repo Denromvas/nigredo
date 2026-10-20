@@ -19,6 +19,7 @@ extern "C" {
 
 type AuthCb = extern "C" fn(*mut c_void, c_int, *const c_char, *const c_char, *const c_char, *const c_char) -> c_int;
 type ProgCb = extern "C" fn(*mut c_void) -> c_int;
+type FnCb = extern "C" fn(*mut c_void, c_int, *mut *mut c_void);
 
 struct Lib {
     open_v2: extern "C" fn(*const c_char, *mut *mut c_void, c_int, *const c_char) -> c_int,
@@ -46,6 +47,24 @@ struct Lib {
     set_authorizer: extern "C" fn(*mut c_void, Option<AuthCb>, *mut c_void) -> c_int,
     progress: extern "C" fn(*mut c_void, c_int, Option<ProgCb>, *mut c_void),
     total_changes: extern "C" fn(*mut c_void) -> i64,
+    bind_double: extern "C" fn(*mut c_void, c_int, c_double) -> c_int,
+    bind_blob: extern "C" fn(*mut c_void, c_int, *const c_void, c_int, isize) -> c_int,
+    column_blob: extern "C" fn(*mut c_void, c_int) -> *const c_void,
+    create_function: extern "C" fn(*mut c_void, *const c_char, c_int, c_int, *mut c_void, Option<FnCb>, *const c_void,
+                                   *const c_void, *const c_void) -> c_int,
+    user_data: extern "C" fn(*mut c_void) -> *mut c_void,
+    value_type: extern "C" fn(*mut c_void) -> c_int,
+    value_int64: extern "C" fn(*mut c_void) -> i64,
+    value_double: extern "C" fn(*mut c_void) -> c_double,
+    value_text: extern "C" fn(*mut c_void) -> *const u8,
+    value_blob: extern "C" fn(*mut c_void) -> *const c_void,
+    value_bytes: extern "C" fn(*mut c_void) -> c_int,
+    result_error: extern "C" fn(*mut c_void, *const c_char, c_int),
+    result_null: extern "C" fn(*mut c_void),
+    result_int64: extern "C" fn(*mut c_void, i64),
+    result_double: extern "C" fn(*mut c_void, c_double),
+    result_text: extern "C" fn(*mut c_void, *const c_char, c_int, isize),
+    result_blob: extern "C" fn(*mut c_void, *const c_void, c_int, isize),
 }
 
 fn load() -> Option<&'static Lib> {
@@ -99,6 +118,23 @@ fn load() -> Option<&'static Lib> {
             set_authorizer: sym!("sqlite3_set_authorizer"),
             progress: sym!("sqlite3_progress_handler"),
             total_changes: sym!("sqlite3_total_changes64"),
+            bind_double: sym!("sqlite3_bind_double"),
+            bind_blob: sym!("sqlite3_bind_blob"),
+            column_blob: sym!("sqlite3_column_blob"),
+            create_function: sym!("sqlite3_create_function_v2"),
+            user_data: sym!("sqlite3_user_data"),
+            value_type: sym!("sqlite3_value_type"),
+            value_int64: sym!("sqlite3_value_int64"),
+            value_double: sym!("sqlite3_value_double"),
+            value_text: sym!("sqlite3_value_text"),
+            value_blob: sym!("sqlite3_value_blob"),
+            value_bytes: sym!("sqlite3_value_bytes"),
+            result_error: sym!("sqlite3_result_error"),
+            result_null: sym!("sqlite3_result_null"),
+            result_int64: sym!("sqlite3_result_int64"),
+            result_double: sym!("sqlite3_result_double"),
+            result_text: sym!("sqlite3_result_text"),
+            result_blob: sym!("sqlite3_result_blob"),
         })
     })
     .as_ref()
@@ -294,17 +330,248 @@ fn fetch_row(l: &Lib, st: *mut c_void) -> Result<Vec<Cell>, PyErr> {
 
 struct AuthCtx {
     write: bool,
-    clock_ok: bool, // годинник SQLite — лише з правом «час»
-    rand_ok: bool,  // random()/randomblob() — лише з «жереб» без квоти (суд 9)
     why: Vec<String>,
 }
 
-const DB_CLOCK: [&str; 10] =
-    ["date", "time", "datetime", "julianday", "unixepoch", "strftime", "timediff", "current_date", "current_time", "current_timestamp"];
+fn auth_ctx(_it: &Interp, write: bool) -> AuthCtx {
+    AuthCtx { write, why: Vec::new() }
+}
 
-fn auth_ctx(it: &Interp, write: bool) -> AuthCtx {
+/// (годинник, жереб) SQLite: «час» і «жереб» без квоти (її не порахувати), як 🜔час і 🜔жереб (суд 9).
+fn db_rights(it: &Interp) -> (bool, bool) {
     let rand_ok = it.caps.has("жереб") && !it.quota_stack.iter().any(|q| q.quotas.iter().any(|((t, _), _)| t == "жереб"));
-    AuthCtx { write, clock_ok: it.caps.has("час"), rand_ok, why: Vec::new() }
+    (it.caps.has("час"), rand_ok)
+}
+
+const DB_CLOCK: [&str; 7] = ["date", "time", "datetime", "julianday", "unixepoch", "strftime", "timediff"];
+const DB_NOW: [&str; 3] = ["current_date", "current_time", "current_timestamp"];
+const UDF_ERR: &[u8] = b"user-defined function raised exception\0";
+
+/// Значення аргументу чи результату функції SQLite — як його бачить модуль sqlite3 Python.
+enum SqlV {
+    Null,
+    Int(i64),
+    Float(f64),
+    Text(String),
+    Blob(Vec<u8>),
+}
+
+/// Своя функція на зʼєднанні (_db_guard): 0 — дата з даних, 1 — CURRENT_*, 2 — random/randomblob, 3 — rowid.
+struct FnCtx {
+    name: &'static str,
+    kind: u8,
+    g: *mut Guard,
+}
+
+struct Guard {
+    auth: *mut AuthCtx,
+    helper: *mut c_void, // справжні функції SQLite — на окремому зʼєднанні без підмін
+    fns: Vec<Box<FnCtx>>,
+}
+
+unsafe fn sql_value(l: &Lib, v: *mut c_void) -> Option<SqlV> {
+    Some(match (l.value_type)(v) {
+        1 => SqlV::Int((l.value_int64)(v)),
+        2 => SqlV::Float((l.value_double)(v)),
+        3 => {
+            let p = (l.value_text)(v);
+            let n = (l.value_bytes)(v) as usize;
+            let b = if p.is_null() { &[][..] } else { std::slice::from_raw_parts(p, n) };
+            SqlV::Text(String::from_utf8(b.to_vec()).ok()?) // Python: str — не UTF-8 → виняток
+        }
+        4 => {
+            let p = (l.value_blob)(v) as *const u8;
+            let n = (l.value_bytes)(v) as usize;
+            SqlV::Blob(if p.is_null() { Vec::new() } else { std::slice::from_raw_parts(p, n).to_vec() })
+        }
+        _ => SqlV::Null,
+    })
+}
+
+/// db_word: аргумент функції дат так, як його порівнює сам SQLite — байти до першого NUL, малі — лише ASCII.
+fn db_word(x: &SqlV) -> Option<Vec<u8>> {
+    let b = match x {
+        SqlV::Text(s) => s.as_bytes(),
+        SqlV::Blob(b) => &b[..],
+        _ => return None,
+    };
+    let end = b.iter().position(|&c| c == 0).unwrap_or(b.len());
+    Some(b[..end].to_ascii_lowercase())
+}
+
+fn refusal(f: &FnCtx, a: &[SqlV]) -> Option<String> {
+    let name = f.name;
+    match f.kind {
+        0 => {
+            let k = if name == "strftime" { 1 } else { 0 };
+            let (times, mods): (&[SqlV], &[SqlV]) = if name == "timediff" {
+                (a, &[])
+            } else {
+                (&a[k.min(a.len())..(k + 1).min(a.len())], &a[(k + 1).min(a.len())..])
+            };
+            let is = |x: &SqlV, ws: &[&[u8]]| db_word(x).map_or(false, |w| ws.contains(&&w[..]));
+            let now = (times.is_empty() && name != "timediff")
+                || times.iter().any(|x| is(x, &[b"now", b"subsec", b"subsecond"]))
+                || mods.iter().any(|x| is(x, &[b"localtime", b"utc"]));
+            now.then(|| format!("годинник SQLite ({} — поточний час чи часовий пояс) без права «час» — дати з даних рахуються, «зараз» — лише з «час» у печатці", name))
+        }
+        1 => Some(format!("годинник SQLite ({}) без права «час» — дати рахуйте в Nigredo (◷) чи дайте «час» у печатці", name)),
+        2 => Some(format!("випадковість SQLite ({}) без права «жереб» (з квотою «жереб≤N» — лише 🜔жереб)", name)),
+        _ => {
+            let t = match a.first() {
+                Some(SqlV::Text(t)) => uni::safe(t),
+                _ => String::new(),
+            };
+            let hidden = matches!(a.get(1), Some(SqlV::Int(h)) if *h != 0);
+            Some(format!(
+                "випадковість SQLite (таблиця «{}» {}) без права «жереб»",
+                t,
+                if hidden { "ховає rowid стовпцями rowid, _rowid_ і oid — запис у неї не перевірити" } else { "дійшла до rowid 2⁶³−1 — далі SQLite бере його навмання" }
+            ))
+        }
+    }
+}
+
+/// Справжня функція SQLite на допоміжному зʼєднанні: helper.execute('SELECT f(?, …)', a).fetchone()[0].
+fn builtin(l: &Lib, g: &mut Guard, name: &str, a: &[SqlV]) -> Option<SqlV> {
+    if g.helper.is_null() {
+        g.helper = open(l, ":memory:").ok()?;
+    }
+    let db = g.helper;
+    let sql = format!("SELECT {}({})", name, vec!["?"; a.len()].join(", "));
+    let c = CString::new(sql.clone()).ok()?;
+    let mut st: *mut c_void = std::ptr::null_mut();
+    if (l.prepare_v2)(db, c.as_ptr(), sql.len() as c_int + 1, &mut st, std::ptr::null_mut()) != 0 || st.is_null() {
+        return None;
+    }
+    for (i, x) in a.iter().enumerate() {
+        let p = i as c_int + 1;
+        match x {
+            SqlV::Null => (l.bind_null)(st, p),
+            SqlV::Int(v) => (l.bind_int64)(st, p, *v),
+            SqlV::Float(v) => (l.bind_double)(st, p, *v),
+            SqlV::Text(s) => (l.bind_text)(st, p, s.as_ptr() as *const c_char, s.len() as c_int, -1),
+            SqlV::Blob(b) => (l.bind_blob)(st, p, b.as_ptr() as *const c_void, b.len() as c_int, -1),
+        };
+    }
+    let out = if (l.step)(st) == SQLITE_ROW {
+        match (l.column_type)(st, 0) {
+            1 => Some(SqlV::Int((l.column_int64)(st, 0))),
+            2 => Some(SqlV::Float((l.column_double)(st, 0))),
+            3 => {
+                let p = (l.column_text)(st, 0);
+                let n = (l.column_bytes)(st, 0) as usize;
+                let b = if p.is_null() { &[][..] } else { unsafe { std::slice::from_raw_parts(p, n) } };
+                String::from_utf8(b.to_vec()).ok().map(SqlV::Text)
+            }
+            4 => {
+                let p = (l.column_blob)(st, 0) as *const u8;
+                let n = (l.column_bytes)(st, 0) as usize;
+                Some(SqlV::Blob(if p.is_null() { Vec::new() } else { unsafe { std::slice::from_raw_parts(p, n).to_vec() } }))
+            }
+            _ => Some(SqlV::Null),
+        }
+    } else {
+        None
+    };
+    (l.finalize)(st);
+    out
+}
+
+extern "C" fn on_fn(ctx: *mut c_void, argc: c_int, argv: *mut *mut c_void) {
+    let l = load().expect("libsqlite3");
+    let f = unsafe { &*((l.user_data)(ctx) as *const FnCtx) };
+    let g = unsafe { &mut *f.g };
+    let fail = || (l.result_error)(ctx, UDF_ERR.as_ptr() as *const c_char, -1);
+    let args: Option<Vec<SqlV>> = (0..argc.max(0) as usize).map(|i| unsafe { sql_value(l, *argv.add(i)) }).collect();
+    let Some(args) = args else { return fail() };
+    if let Some(msg) = refusal(f, &args) {
+        unsafe { (*g.auth).why.push(msg) };
+        return fail();
+    }
+    match builtin(l, g, f.name, &args) {
+        Some(SqlV::Null) => (l.result_null)(ctx),
+        Some(SqlV::Int(v)) => (l.result_int64)(ctx, v),
+        Some(SqlV::Float(v)) => (l.result_double)(ctx, v),
+        Some(SqlV::Text(s)) => (l.result_text)(ctx, s.as_ptr() as *const c_char, s.len() as c_int, -1),
+        Some(SqlV::Blob(b)) => (l.result_blob)(ctx, b.as_ptr() as *const c_void, b.len() as c_int, -1),
+        None => fail(),
+    }
+}
+
+fn exec(l: &Lib, db: *mut c_void, sql: &str, args: &[Arg]) -> Result<Vec<String>, PyErr> {
+    let st = execute(l, db, sql, args)?;
+    let mut out = Vec::new();
+    let mut rc = st.rc;
+    while rc == SQLITE_ROW {
+        let row = fetch_row(l, st.st);
+        rc = (l.step)(st.st);
+        let err = if rc != SQLITE_ROW && rc != SQLITE_DONE { Some(db_err(l, db)) } else { None };
+        match (row, err) {
+            (Ok(c), None) => {
+                if let Some(Cell::Text(t)) = c.into_iter().next() {
+                    out.push(t);
+                }
+            }
+            (Err(e), _) | (_, Some(e)) => {
+                (l.finalize)(st.st);
+                return Err(e);
+            }
+        }
+    }
+    if !st.st.is_null() {
+        (l.finalize)(st.st);
+    }
+    Ok(out)
+}
+
+/// _db_guard: без «час» — свої функції дат (дата з даних — як у SQLite; 'now', без часу, localtime/utc, CURRENT_* —
+/// відмова), без «жереб» — random/randomblob і запис у таблицю з rowid 2⁶³−1 (тимчасові тригери в памʼяті) — відмова.
+fn guard(l: &Lib, db: *mut c_void, it: &Interp, g: &mut Guard, write: bool) -> Result<(), PyErr> {
+    let (clock_ok, rand_ok) = db_rights(it);
+    let gp = g as *mut Guard;
+    let add = |name: &'static str, n: c_int, kind: u8, g: &mut Guard| -> Result<(), PyErr> {
+        let f = Box::new(FnCtx { name, kind, g: gp });
+        let c = CString::new(name).unwrap();
+        let rc = (l.create_function)(db, c.as_ptr(), n, 1 | 0x800, &*f as *const FnCtx as *mut c_void, Some(on_fn),
+                                     std::ptr::null(), std::ptr::null(), std::ptr::null());
+        g.fns.push(f);
+        if rc != 0 {
+            return Err(PyErr::Sql("Error creating function".into()));
+        }
+        Ok(())
+    };
+    if !clock_ok {
+        for n in DB_CLOCK {
+            add(n, -1, 0, g)?;
+        }
+        for n in DB_NOW {
+            add(n, 0, 1, g)?;
+        }
+    }
+    if !rand_ok {
+        add("random", 0, 2, g)?;
+        add("randomblob", 1, 2, g)?;
+        if write {
+            exec(l, db, "PRAGMA temp_store = MEMORY", &[])?;
+            add("ngr_rowid", 2, 3, g)?;
+            let tables = exec(l, db, r"SELECT name FROM pragma_table_list WHERE schema = 'main' AND type = 'table' AND wr = 0 AND name NOT LIKE 'sqlite\_%' ESCAPE '\' ORDER BY name", &[])?;
+            for (i, t) in tables.iter().enumerate() {
+                let q = t.replace('"', "\"\"");
+                let cols: Vec<String> = exec(l, db, "SELECT name FROM pragma_table_xinfo(?)", &[Arg::Text(t.clone())])?
+                    .iter().map(|c| c.to_ascii_lowercase()).collect();
+                let alias = ["rowid", "_rowid_", "oid"].into_iter().find(|a| !cols.iter().any(|c| c == a));
+                let when = match alias {
+                    Some(a) => format!("(SELECT max({}) FROM main.\"{}\") = 9223372036854775807", a, q),
+                    None => "1".into(),
+                };
+                let lit = t.replace('\'', "''");
+                exec(l, db, &format!("CREATE TEMP TRIGGER \"ngr_rowid_{}\" BEFORE INSERT ON main.\"{}\" WHEN {} BEGIN SELECT ngr_rowid('{}', {}); END",
+                                     i, q, when, lit, if alias.is_some() { 0 } else { 1 }), &[])?;
+            }
+        }
+    }
+    Ok(())
 }
 
 const INFO_PRAGMAS: [&str; 7] = ["table_info", "table_xinfo", "table_list", "index_list", "index_info", "index_xinfo", "foreign_key_list"];
@@ -333,20 +600,15 @@ extern "C" fn on_auth(ud: *mut c_void, action: c_int, a1: *const c_char, a2: *co
         cx.why.push(format!("load_extension{}", view.map(|v| format!(" у тригері чи VIEW «{}»", v)).unwrap_or_default()));
         return 1;
     }
-    if action == 31 && DB_CLOCK.contains(&f.as_str()) && !cx.clock_ok {
-        cx.why.push(format!("годинник SQLite ({}) без права «час» — дати рахуйте в Nigredo (◷) чи дайте «час» у печатці", f));
-        return 1;
-    }
-    if action == 31 && (f == "random" || f == "randomblob") && !cx.rand_ok {
-        cx.why.push(format!("випадковість SQLite ({}) без права «жереб» (з квотою «жереб≤N» — лише 🜔жереб)", f));
-        return 1;
-    }
     let read = [20, 21, 31, 33];
     let write = [18, 23, 9, 2, 11, 26, 1, 10, 27, 8, 17, 7, 16];
     let ok = read.contains(&action) || (cx.write && write.contains(&action))
         || (action == 19 && INFO_PRAGMAS.contains(&uni::lower(a1.as_deref().unwrap_or("")).as_str()));
     if ok {
         return 0;
+    }
+    if cx.write && action == 14 && a1.as_deref().map_or(false, |t| t.starts_with("ngr_rowid_")) {
+        return 0; // DROP TABLE прибирає й тимчасовий тригер guard на цій таблиці
     }
     cx.why.push(action_name(action));
     1
@@ -547,6 +809,7 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
         Err(PyErr::Other(m)) => return internal(m),
     };
     let mut auth = auth_ctx(it, write);
+    let mut grd = Guard { auth: &mut auth as *mut AuthCtx, helper: std::ptr::null_mut(), fns: Vec::new() };
     let mut prog = ProgCtx { it: it as *mut Interp, deadline };
     let result = (|| -> R<V> {
         (l.limit)(db, 7, 0);
@@ -566,10 +829,11 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
                 PyErr::Other(m) => m,
             });
         }
-        (l.set_authorizer)(db, Some(on_auth), &mut auth as *mut AuthCtx as *mut c_void);
-        (l.progress)(db, 1000, Some(on_progress), &mut prog as *mut ProgCtx as *mut c_void);
-        let before = (l.total_changes)(db);
         let r = (|| -> Result<V, Result<PyErr, Box<E>>> {
+            guard(l, db, it, &mut grd, write).map_err(Ok)?; // до authorizer і лічби кроків: це не запит програми
+            (l.set_authorizer)(db, Some(on_auth), &mut auth as *mut AuthCtx as *mut c_void);
+            (l.progress)(db, 1000, Some(on_progress), &mut prog as *mut ProgCtx as *mut c_void);
+            let before = (l.total_changes)(db);
             let st = execute(l, db, &sql, &bound).map_err(Ok)?;
             let fin = |s: &Stmt| {
                 if !s.st.is_null() {
@@ -686,6 +950,9 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
         }
     })();
     (l.close_v2)(db);
+    if !grd.helper.is_null() {
+        (l.close_v2)(grd.helper);
+    }
     result
 }
 
