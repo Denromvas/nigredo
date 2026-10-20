@@ -419,7 +419,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                     Err(WrapErr::Deep) => ngr(format!("δ: JSON вкладений надто глибоко (не глибше за {} рівнів)", lang::VALUE_MAX_DEPTH), pos),
                     Err(WrapErr::Surrogate) => ngr("δ: не JSON: у рядку неповний символ (сурогат)", pos),
                 },
-                Err(LoadErr::Syntax(m)) => ngr(format!("δ: не JSON: {}", m), pos),
+                Err(LoadErr::Syntax(m)) => ngr(format!("δ: не JSON: {}", json_uk(&m)), pos),
                 Err(LoadErr::Constant(c)) => ngr(format!("δ: не JSON: «{}» — не число JSON", c), pos),
                 Err(LoadErr::TooDeep) => ngr(format!("δ: JSON вкладений надто глибоко (не глибше за {} рівнів)", lang::VALUE_MAX_DEPTH), pos),
                 Err(LoadErr::Ngr(m)) => ngr(m, pos),
@@ -1010,4 +1010,50 @@ fn wrap_c<'a>(p: &'a P<'_>, c: f64, depth: u64, keys: &mut Interner<'a>, strs: &
             Ok(V::new(Val::Dict(Rc::new(Dict::from_unique(ks, vs))), c))
         }
     }
+}
+
+/// Помилка JSON словами (json_uk еталона; суд 9б: «Expecting value: line 1 column 1 (char 0)»).
+pub fn json_uk(m: &str) -> String {
+    const UK: [(&str, &str); 11] = [
+        ("Expecting value", "очікувалося значення"),
+        ("Extra data", "зайві дані після значення"),
+        ("Expecting property name enclosed in double quotes", "очікувалася назва поля в подвійних лапках"),
+        ("Expecting ':' delimiter", "очікувалася «:»"),
+        ("Expecting ',' delimiter", "очікувалася «,»"),
+        ("Unterminated string starting at", "незакритий рядок, що почався"),
+        ("Invalid control character at", "керівний символ у рядку"),
+        ("Invalid \\uXXXX escape", "хибне \\uXXXX"),
+        ("Invalid \\escape", "хибне екранування"),
+        ("Illegal trailing comma before end of object", "зайва кома перед кінцем обʼєкта"),
+        ("Illegal trailing comma before end of array", "зайва кома перед кінцем масиву"),
+    ];
+    let mut s = m.to_string();
+    for (en, uk) in UK {
+        if let Some(rest) = s.strip_prefix(en) {
+            s = format!("{}{}", uk, rest);
+            break;
+        }
+    }
+    // «line L column C (char N)» → «рядок L, стовпець C (символ N)»
+    if let Some(i) = s.rfind("line ") {
+        let tail = &s[i + 5..];
+        let num = |t: &str| -> Option<(String, usize)> {
+            let n = t.bytes().take_while(|b| b.is_ascii_digit()).count();
+            if n == 0 { None } else { Some((t[..n].to_string(), n)) }
+        };
+        if let Some((l, a)) = num(tail) {
+            if let Some(t2) = tail[a..].strip_prefix(" column ") {
+                if let Some((c, b)) = num(t2) {
+                    if let Some(t3) = t2[b..].strip_prefix(" (char ") {
+                        if let Some((ch, k)) = num(t3) {
+                            if &t3[k..] == ")" {
+                                s = format!("{}рядок {}, стовпець {} (символ {})", &s[..i], l, c, ch);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    s
 }

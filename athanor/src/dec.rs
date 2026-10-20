@@ -20,6 +20,18 @@ pub const ROUNDED: u32 = 64;
 pub const CLAMPED: u32 = 128;
 
 /// Назва сигналу, як type(e).__name__ у Python.
+/// Чому впала десяткова операція — словами (dec_why еталона; суд 9б: було «(Inexact)»).
+pub fn why(s: u32) -> &'static str {
+    match s {
+        OVERFLOW => "порядок числа завеликий",
+        UNDERFLOW | SUBNORMAL => "порядок числа замалий",
+        INEXACT | ROUNDED => "точний результат довший за 60 значущих цифр — округліть (≅)",
+        DIVZERO => "ділення на нуль",
+        INVALID => "недопустима операція з числом",
+        _ => "порядок числа поза межами",
+    }
+}
+
 pub fn signal_name(s: u32) -> &'static str {
     match s {
         INVALID => "InvalidOperation",

@@ -1052,9 +1052,13 @@ def main():
                      '← нам 1\n← นาม 2\n← नाम 3\n» ＋ ＋ нам นาม नाम'])
     check(got.stdout == ref.stdout == '🜄: значення вкладене надто глибоко\n∅\n6\n',
           '🜄 надто глибокого — помилка ДО запису в памʼять; імена зі знаками голосних (суд 9)', got.stdout + got.stderr)
-    got, ref = both(['-e', '🜂\n» ☂ δ 「{"a":1,"a":2}」 λe e\n» ☂ δ 「[{"b":{"c":1,"c":1}}]」 λe e\n» δ 「{"a":1,"b":2}」'])
-    check(got.stdout == ref.stdout and got.stdout.count('ключ в обʼєкті повторюється') == 2 and '『「a」 1 「b」 2』' in got.stdout,
-          'δ: повтор ключа в обʼєкті JSON — помилка в обох, а не «останній перемагає» (суд 9б)', got.stdout + ref.stdout)
+    got, ref = both(['-e', '🜂\n» ☂ δ 「{"a":1,"a":2}」 λe e\n» ☂ δ 「[{"b":{"c":1,"c":1}}]」 λe e\n» δ 「{"a":1,"b":2}」\n'
+                     '» ☂ δ 「」 λe e\n» ☂ ‰ ν 「3.14159265358979323846264338327950288419716939937510582097494459」 7 λe e'])
+    check(got.stdout == ref.stdout and got.stdout.count('ключ в обʼєкті повторюється') == 2 and '『「a」 1 「b」 2』' in got.stdout
+          and 'очікувалося значення: рядок 1, стовпець 1 (символ 0)' in got.stdout and 'Inexact' not in got.stdout
+          and 'довший за 60 значущих цифр' in got.stdout,
+          'δ: повтор ключа — помилка в обох (а не «останній перемагає»); помилки JSON і десяткових — словами, а не '
+          '«Expecting value», «(Inexact)» (суд 9б)', got.stdout + ref.stdout)
     got, ref = both(['-e', '🜂\n» ☂ ◷ 「2026-02-29」 1 λe e\n» ☂ ◷ 「2026-2-1」 1 λe e\n» ☂ ▦ δ 「"a,b\\\\rc,d"」 λe e\n'
                      '» ☂ δ δ 「"\\\\ufeff[1]"」 λe e'])
     check(got.stdout == ref.stdout and 'такої дати чи часу немає' in got.stdout and 'не дата ISO' in got.stdout
