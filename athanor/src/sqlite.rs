@@ -533,7 +533,8 @@ fn guard(l: &Lib, db: *mut c_void, it: &Interp, g: &mut Guard, write: bool) -> R
     let add = |name: &'static str, n: c_int, kind: u8, g: &mut Guard| -> Result<(), PyErr> {
         let f = Box::new(FnCtx { name, kind, g: gp });
         let c = CString::new(name).unwrap();
-        let rc = (l.create_function)(db, c.as_ptr(), n, 1 | 0x800, &*f as *const FnCtx as *mut c_void, Some(on_fn),
+        let flags = if kind == 1 || kind == 2 { 1 } else { 1 | 0x800 }; // як у SQLite: CURRENT_* і random — недетерміновані (9б)
+        let rc = (l.create_function)(db, c.as_ptr(), n, flags, &*f as *const FnCtx as *mut c_void, Some(on_fn),
                                      std::ptr::null(), std::ptr::null(), std::ptr::null());
         g.fns.push(f);
         if rc != 0 {
@@ -707,21 +708,8 @@ fn static_ok(it: &mut Interp, pos: Pos, tool: &str, path: &str, sql: &str) -> R<
     Ok(())
 }
 
-const SQL_ERRORS: [(&str, &str); 10] = [
-    ("Incorrect number of bindings", "кількість «?» у запиті не дорівнює кількості параметрів"),
-    ("no such table", "немає такої таблиці"),
-    ("no such column", "немає такого стовпця"),
-    ("syntax error", "синтаксична помилка SQL"),
-    ("UNIQUE constraint failed", "порушено унікальність"),
-    ("NOT NULL constraint failed", "порожнє значення там, де заборонено"),
-    ("database is locked", "база зайнята"),
-    ("database or disk is full", "база досягла межі розміру"),
-    ("string or blob too big", "значення більше за --розмір"),
-    ("unable to open", "не вдалося відкрити базу"),
-];
-
 fn sql_err(m: &str) -> String {
-    for (en, uk) in SQL_ERRORS {
+    for (en, uk) in crate::lang::SQL_ERRORS {
         if m.contains(en) {
             return format!("{} ({})", uk, m);
         }
@@ -814,22 +802,13 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
     let result = (|| -> R<V> {
         (l.limit)(db, 7, 0);
         (l.limit)(db, 0, (4 * it.max_size).min(i32::MAX as u64) as c_int);
-        let setup = (|| -> Result<(), PyErr> {
-            pragma(l, db, &format!("PRAGMA hard_heap_limit = {}", (64u64 << 20).max(32 * it.max_size)))?;
-            if write {
-                let page = pragma(l, db, "PRAGMA page_size")?.unwrap_or(4096);
-                pragma(l, db, &format!("PRAGMA max_page_count = {}", 64 * 1024 * 1024 / page))?;
-            }
-            Ok(())
-        })();
-        if let Err(e) = setup {
-            return internal(match e {
-                PyErr::Sql(m) => format!("OperationalError: {}", m),
-                PyErr::Memory => "MemoryError".into(),
-                PyErr::Other(m) => m,
-            });
-        }
         let r = (|| -> Result<V, Result<PyErr, Box<E>>> {
+            // page_size уже читає схему: файл — не база чи схема пошкоджена — помилка програми, а не код 4 (суд 9б)
+            pragma(l, db, &format!("PRAGMA hard_heap_limit = {}", (64u64 << 20).max(32 * it.max_size))).map_err(Ok)?;
+            if write {
+                let page = pragma(l, db, "PRAGMA page_size").map_err(Ok)?.unwrap_or(4096);
+                pragma(l, db, &format!("PRAGMA max_page_count = {}", 64 * 1024 * 1024 / page)).map_err(Ok)?;
+            }
             guard(l, db, it, &mut grd, write).map_err(Ok)?; // до authorizer і лічби кроків: це не запит програми
             (l.set_authorizer)(db, Some(on_auth), &mut auth as *mut AuthCtx as *mut c_void);
             (l.progress)(db, 1000, Some(on_progress), &mut prog as *mut ProgCtx as *mut c_void);
