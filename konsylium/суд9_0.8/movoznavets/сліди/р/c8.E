@@ -1,0 +1,27 @@
+1: процес: «sh -c echo а; echo б» поза дозволеним (sh -c echo, echo, ls; дозвіл — початок команди за словами)
+
+
+3: процес: «sh -c echo $0 x» поза дозволеним (sh -c echo, echo, ls; дозвіл — початок команди за словами)
+4: процес: «sh -c echo в» поза дозволеним (sh -c echo, echo, ls; дозвіл — початок команди за словами)
+г
+ґ
+
+6: процес: «/bin/echo д» поза дозволеним (sh -c echo, echo, ls; дозвіл — початок команди за словами)
+crlf.txt
+r1.txt
+r2.txt
+r3.txt
+r4.txt
+r5.txt
+r6.txt
+r7.txt
+r8.txt
+r9.txt
+виписка.xml
+погане.txt
+погане.xml
+рахунок.json
+рахунок_поганий.json
+товари.json
+
+8 argv0: процес: «ls» завершився з кодом 2: ls: cannot access '/немає_такого': No such file or directory

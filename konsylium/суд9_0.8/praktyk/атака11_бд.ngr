@@ -1,0 +1,46 @@
+🜂 「бд.читати: типи, обмеження «лише читання», межі — звірка Атанора з еталоном」 【「бд.читати:дані」】
+← б 「дані/т.db」
+← з λq ☂ σ 🜔бд.читати б q 【】 λe ＋ 「✗ 」 e
+» з 「SELECT * FROM t」
+» з 「SELECT typeof(n), typeof(r), typeof(s), typeof(b), typeof(x) FROM t」
+» з 「SELECT n + 1 AS big FROM t WHERE id = 1」
+» з 「SELECT sum(r) AS s, avg(n) AS a, total(r) AS t FROM t」
+» з 「SELECT 1; DROP TABLE t」
+» з 「PRAGMA table_info(t)」
+» з 「PRAGMA user_version = 7」
+» з 「PRAGMA user_version」
+» з 「PRAGMA journal_mode = WAL」
+» з 「PRAGMA writable_schema = 1」
+» з 「PRAGMA query_only = 0」
+» з 「PRAGMA integrity_check」
+» з 「PRAGMA TABLE_INFO(t)」
+» з 「  pragma   table_info ( t ) 」
+» з 「PRAGMA main.table_info(t)」
+» з 「PRAGMA table_info(t); PRAGMA user_version = 9」
+» з 「WITH x AS (SELECT 1) INSERT INTO u VALUES (1)」
+» з 「SELECT * FROM v」
+» з 「ATTACH 'дані/т.db' AS z」
+» з 「SELECT load_extension('x')」
+» з 「VACUUM INTO 'звіти/копія.db'」
+» з 「SELECT sqlite_version() IS NOT NULL AS v」
+» з 「SELECT zeroblob(10) AS z」
+» з 「SELECT hex(randomblob(4)) IS NOT NULL AS r」
+» з 「SELECT length(printf('%.100000c', 'x')) AS l」
+» з 「WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM c) SELECT count(*) FROM (SELECT i FROM c LIMIT 200000)」
+» з 「SELECT 1 AS a, 2 AS a」
+» з 「SELECT 'x' AS ""」
+» з 「SELECT CAST('12.50' AS REAL) AS r, 12.50 AS d, 1e400 AS inf, -0.0 AS mz」
+» з 「SELECT char(55357) AS sur」
+» з 「SELECT x'ff' AS bl, CAST(x'ff' AS TEXT) AS t」
+» з 「SELECT * FROM nosuch」
+» з 「SELECT」
+» з 「」
+» з 「-- коментар\nSELECT 2 AS c」
+» з 「/* */ PRAGMA user_version=3」
+» з 「SELECT ?」
+» ☂ σ 🜔бд.читати б 「SELECT ? AS p, ? AS q」 【1】 λe ＋ 「✗ 」 e
+» ☂ σ 🜔бд.читати б 「SELECT ? AS p」 【【1】】 λe ＋ 「✗ 」 e
+» ☂ σ 🜔бд.читати б 「SELECT ? AS p」 【÷ 1 3】 λe ＋ 「✗ 」 e
+» ☂ σ 🜔бд.читати б 「SELECT :a AS p」 【1】 λe ＋ 「✗ 」 e
+» ☂ σ 🜔бд.читати 「дані/немає.db」 「SELECT 1」 【】 λe ＋ 「✗ 」 e
+» ☂ σ 🜔бд.читати 「дані/товари.json」 「SELECT 1」 【】 λe ＋ 「✗ 」 e

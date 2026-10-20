@@ -34,6 +34,6 @@ gemini() {
   [ -s "$K/gemini/звіт_раунд$R.md" ] && { echo "gemini: звіт уже є"; return; }
   ( cd "$K/gemini" && python3 -I gemini_member.py "$R" > "$K/protokol/лог_gemini_р$R.txt" 2>&1; echo "gemini exit $?" )
 }
-gemini & member skeptyk & wait
+if [ -n "$NO_GEMINI" ]; then member skeptyk; else gemini & member skeptyk & wait; fi
 for m in praktyk movoznavets audytor novachok orkestrator; do member $m; done
 echo "раунд $R завершено"
