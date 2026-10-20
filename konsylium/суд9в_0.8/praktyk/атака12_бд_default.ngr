@@ -1,0 +1,12 @@
+🜂 「атака12: журнал у SQLite зі стовпцем DEFAULT CURRENT_TIMESTAMP — годинник без права «час»?」 【「бд.писати:звіти」】
+← б 「звіти/а12_журнал.db」
+← з λq ☂ σ 🜔бд.писати б q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS журнал(подія TEXT, коли TEXT DEFAULT CURRENT_TIMESTAMP)」
+» з 「INSERT INTO журнал(подія) VALUES ('оплата')」
+» з 「CREATE TABLE IF NOT EXISTS ж2(подія TEXT, коли TEXT DEFAULT (datetime('now')))」
+» з 「INSERT INTO ж2(подія) VALUES ('оплата')」
+» з 「CREATE TABLE IF NOT EXISTS ж3(подія TEXT, коли TEXT GENERATED ALWAYS AS (random()) VIRTUAL)」
+» з 「INSERT INTO ж3(подія) VALUES ('оплата')」
+» з 「CREATE TABLE IF NOT EXISTS ж4(подія TEXT, коли TEXT)」
+» з 「CREATE TRIGGER IF NOT EXISTS т4 AFTER INSERT ON ж4 BEGIN UPDATE ж4 SET коли = julianday('now') WHERE rowid = new.rowid; END」
+» з 「INSERT INTO ж4(подія) VALUES ('оплата')」

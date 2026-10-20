@@ -1,0 +1,9 @@
+🜂 「атака13: варіант знахідки Скептика 9в — свій BEFORE-тригер робить UPDATE rowid = 2⁶³−1 (не вставку), далі SQLite бере rowid навмання — без «жереб»」 【「бд.писати:звіти」】
+← б 「звіти/а13_тр2.db」
+← з λq ☂ σ 🜔бд.писати б q 【】 λпом ＋ 「✗ 」 пом
+» з 「DROP TABLE IF EXISTS t」
+» з 「CREATE TABLE t(x)」
+» з 「INSERT INTO t(x) VALUES (0)」
+» з 「CREATE TRIGGER пастка2 BEFORE INSERT ON t WHEN NEW.x = 1 BEGIN UPDATE t SET rowid = 9223372036854775807 WHERE x = 0; END」
+» з 「INSERT INTO t(x) VALUES (1)」
+» ＋ 「біт з rowid SQLite: 」 з 「UPDATE t SET x = 2 WHERE x = 1 AND rowid % 2 = 0」

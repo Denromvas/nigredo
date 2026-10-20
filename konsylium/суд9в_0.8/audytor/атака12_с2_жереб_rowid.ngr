@@ -1,0 +1,19 @@
+🜂 「атака12_с2: випадковість SQLite без «жереб» — rowid, коли найбільший уже 2^63−1 (SQLite бере випадковий); і годинник у тригері」 【「бд.писати:звіти」】
+※ 1) випадковий rowid: SQLite сам вибирає випадкове число
+» ☂ 🜔бд.писати 「звіти/а12_жереб.db」 「CREATE TABLE IF NOT EXISTS r(x)」 【】 λe ＋ 「CREATE: 」 e
+» ☂ 🜔бд.писати 「звіти/а12_жереб.db」 「DELETE FROM r」 【】 λe ＋ 「DELETE: 」 e
+» ☂ 🜔бд.писати 「звіти/а12_жереб.db」 「INSERT INTO r(rowid, x) VALUES (9223372036854775807, 0)」 【】 λe ＋ 「INSERT max: 」 e
+» ☂ 🜔бд.писати 「звіти/а12_жереб.db」 「INSERT INTO r(x) VALUES (1)」 【】 λe ＋ 「INSERT: 」 e
+← біт ☂ 🜔бд.писати 「звіти/а12_жереб.db」 「UPDATE r SET x = 2 WHERE x = 1 AND rowid % 2 = 0」 【】 λe ＋ 「UPDATE: 」 e
+» 〔випадковий біт: {біт}〕
+※ 2) годинник у тілі тригера
+» ☂ 🜔бд.писати 「звіти/а12_жереб.db」 「CREATE TABLE IF NOT EXISTS l(ts)」 【】 λe ＋ 「CREATE l: 」 e
+» ☂ 🜔бд.писати 「звіти/а12_жереб.db」 「CREATE TRIGGER IF NOT EXISTS tr AFTER INSERT ON r BEGIN INSERT INTO l VALUES (datetime('now')); END」 【】 λe ＋ 「TRIGGER: 」 e
+» ☂ 🜔бд.писати 「звіти/а12_жереб.db」 「INSERT INTO r(x) VALUES (5)」 【】 λe ＋ 「INSERT з тригером: 」 e
+※ 3) годинник у VIEW
+» ☂ 🜔бд.писати 「звіти/а12_жереб.db」 「CREATE VIEW IF NOT EXISTS v AS SELECT CURRENT_TIMESTAMP AS ts」 【】 λe ＋ 「VIEW: 」 e
+» ☂ 🜔бд.писати 「звіти/а12_жереб.db」 「INSERT INTO l SELECT ts FROM v」 【】 λe ＋ 「INSERT з VIEW: 」 e
+※ 4) DEFAULT у таблиці, створеній через ALTER
+» ☂ 🜔бд.писати 「звіти/а12_жереб.db」 「CREATE TABLE IF NOT EXISTS q(x)」 【】 λe ＋ 「CREATE q: 」 e
+» ☂ 🜔бд.писати 「звіти/а12_жереб.db」 「ALTER TABLE q ADD COLUMN d TEXT DEFAULT CURRENT_DATE」 【】 λe ＋ 「ALTER: 」 e
+» 「кінець」
