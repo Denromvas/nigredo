@@ -45,17 +45,19 @@ Same tasks in both languages (`bench/`), models writing both from the same task 
 | | Nigredo | Python |
 |---|---|---|
 | Agent tasks solved (12) | 12/12 | 12/12 |
-| Program length, **with** the seal | 1.01× (author's); 0.88× (models' first-try programs) | 1× |
+| Program length, **with** the seal | 1.01× (author's); 0.89× (models' first-try programs) | 1× |
 | Real bugs caught before running (14) | 9 | 3 with pyflakes |
 | Models right on the first try, held-out tasks (3 runs × 10) | Sonnet 27/30, Haiku 21/30 | Sonnet 27/30, Haiku 23/30 |
-| Speed, 12 small agent tasks (median wall time) | **0.49×** | 1× |
-| Speed, 200k words / 200k-step loop / 25k-record JSON (CPU time) | **0.69× / 0.44× / 0.83×** | 1× |
-| Speed, the same loop through a named function / a `↻` loop with list state (CPU time) | **0.32× / 3.1×** | 1× |
+| Speed, 12 small agent tasks (median wall time) | **0.44×** | 1× |
+| Speed, 200k words / 200k-step loop / 25k-record JSON (CPU time) | **0.64× / 0.47× / 0.88×** | 1× |
+| Speed, the loop through a named function / with `¿` in it (CPU time) | **0.32× / 0.49×** | 1× |
+| Speed, exact decimals (Python: `Decimal`) / building strings / a `↻` loop with list state (CPU time) | 0.97× / 1.04× / **1.73×** | 1× |
 | The owner knows what a program may do and did | seal, signed trace, replay, dry run | — |
 
 Measured on a phone (Termux); Nigredo's numbers include its own trace and replay store. Small tasks are mostly
 interpreter start-up; the two tasks that use the network are handed to the reference and are slower than Python;
-the 200k-step loop is a shape Athanor has a fast path for, a `↻` loop that builds a new list every step is not.
+the 200k-step loop is a shape Athanor has a fast path for; exact decimals and string building are on par with Python,
+and a `↻` loop that builds a new list every step is 1.7× slower. On a phone the spread between runs is ~10–20 %.
 
 ## Try it
 
@@ -81,8 +83,10 @@ Every version is frozen and handed to a council of agent judges — separate Cla
 (Skeptic, Practitioner, Linguist, Security Auditor, Newcomer, Orchestrator) plus Gemini — who solve tasks and attack
 the boundary; every finding becomes a negative test. Athanor is checked against the reference interpreter on every
 program in the repo and on generated data (regex patterns, Unicode case, numbers, limits); the ninth court still
-found divergences (final sigma, `\N{…}` in a pattern from data, the trace-size limit, SQLite steps, stack depth) —
-all fixed with tests on both engines. History and protocols: [`konsylium/`](konsylium/).
+found divergences (final sigma, `\N{…}` in a pattern from data, the trace-size limit, SQLite steps, stack depth),
+and its re-review found a crash on deep `☂`/`¿` and an `(?i)` that was not Python's — all fixed with tests on both
+engines. The latest comparison report is [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols —
+[`konsylium/`](konsylium/).
 
 **Honest limits:** Nigredo is a transparency and audit tool, **not an OS sandbox** — an agent with shell access can
 bypass it entirely. Confidence is a conservative bound, not a probability. The language and both engines were written
@@ -144,17 +148,19 @@ by Claude (Anthropic) as an agent; the project owner is Denis Romaniuk. MIT lice
 | | Nigredo | Python |
 |---|---|---|
 | Розвʼязано задач агента (12) | 12/12 | 12/12 |
-| Довжина програм **з** печаткою | 1,01× (автора); 0,88× (програми моделей з першої спроби) | 1× |
+| Довжина програм **з** печаткою | 1,01× (автора); 0,89× (програми моделей з першої спроби) | 1× |
 | Справжніх помилок спіймано до запуску (14) | 9 | 3 з pyflakes |
 | Моделі правильно з першої спроби, відкладені задачі (3 прогони × 10) | Sonnet 27/30, Haiku 21/30 | Sonnet 27/30, Haiku 23/30 |
-| Швидкість, 12 малих задач агента (медіана реального часу) | **0,49×** | 1× |
-| Швидкість, 200 тис. слів / цикл на 200 тис. кроків / JSON на 25 тис. записів (процесорний час) | **0,69× / 0,44× / 0,83×** | 1× |
-| Швидкість, той самий цикл через іменовану функцію / цикл `↻` зі станом-списком (процесорний час) | **0,32× / 3,1×** | 1× |
+| Швидкість, 12 малих задач агента (медіана реального часу) | **0,44×** | 1× |
+| Швидкість, 200 тис. слів / цикл на 200 тис. кроків / JSON на 25 тис. записів (процесорний час) | **0,64× / 0,47× / 0,88×** | 1× |
+| Швидкість, той самий цикл через іменовану функцію / з `¿` у ній (процесорний час) | **0,32× / 0,49×** | 1× |
+| Швидкість, точні дроби (у Python — `Decimal`) / складання рядків / цикл `↻` зі станом-списком (процесорний час) | 0,97× / 1,04× / **1,73×** | 1× |
 | Власник знає, що програмі дозволено й що вона зробила | печатка, підписаний слід, повтор, сухий прогін | — |
 
 Виміряно на телефоні (Termux); у числах Nigredo — і її власні слід та сховище повтору. Малі задачі — здебільшого
 запуск інтерпретатора; дві задачі з мережею Атанор віддає еталону, і там він повільніший за Python; цикл на 200 тис.
-кроків — форма зі швидкою доріжкою Атанора, а `↻`, що щокроку будує новий список, — ні.
+кроків — форма зі швидкою доріжкою Атанора; точні дроби й рядки — нарівні з Python, а `↻`, що щокроку будує новий
+список, — у 1,7 раза повільніший. На телефоні розкид між прогонами — ~10–20 %.
 
 ## Запуск
 
@@ -180,8 +186,9 @@ claude mcp add nigredo -- python3 mcp/nigredo_mcp.py   # дати мову бу�
 Практик, Мовознавець, Аудитор безпеки, Новачок, Оркестратор) і Gemini: вони розвʼязують задачі й атакують межу;
 кожна знахідка стає негативним тестом. Атанор звіряють з еталонним інтерпретатором на всіх програмах репозиторію й
 на згенерованих даних (шаблони регулярок, регістр Unicode, числа, межі); девʼятий суд однаково знайшов розбіжності
-(кінцева сигма, `\N{…}` у шаблоні з даних, межа сліду, кроки SQLite, глибина стеку) — усе виправлено з тестами
-обома виконавцями. Історія й протоколи — [`konsylium/`](konsylium/).
+(кінцева сигма, `\N{…}` у шаблоні з даних, межа сліду, кроки SQLite, глибина стеку), а повторний огляд — аварію на
+глибоких `☂`/`¿` і `(?i)`, не такий, як у Python, — усе виправлено з тестами обома виконавцями. Останній звіт звірки —
+[`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); історія й протоколи — [`konsylium/`](konsylium/).
 
 **Чесно про межі:** Nigredo — інструмент прозорості й аудиту, **не пісочниця ОС**: агент із доступом до shell може
 обійти її взагалі. Впевненість — консервативна оцінка, а не ймовірність. `оракул` — імітація для демонстрацій.
