@@ -1,0 +1,35 @@
+🜂 「атака13: годинник SQLite з даних і без прав «час» — що відмовляє, що рахує дату з даних」 【「бд.читати:дані」】
+← б 「порожня.db」
+← nul δ 「"now\\u0000x"」
+← q Λs a ☂ 《 ← r 🜔бд.читати б s a ¦ ＋ 「дані: 」 Δ r 》 λe ⊏ ＋ 「відмова: 」 e 0 70
+» q 「SELECT date('NOW') AS v」 【】
+» q 「SELECT date(?) AS v」 【「nOw」】
+» q 「SELECT date(?) AS v」 【nul】
+» q 「SELECT date(' now') AS v」 【】
+» q 「SELECT date('now ') AS v」 【】
+» q 「SELECT date(x'4e6f57') AS v」 【】
+» q 「SELECT date(CAST(x'6e6f7700' AS TEXT)) AS v」 【】
+» q 「SELECT date(lower('N'||'OW')) AS v」 【】
+» q 「SELECT date((SELECT 'n'||'ow')) AS v」 【】
+» q 「SELECT datetime(?, 'subsec') AS v」 【「SubSec」】
+» q 「SELECT date() AS v」 【】
+» q 「SELECT julianday() AS v」 【】
+» q 「SELECT strftime('%s') AS v」 【】
+» q 「SELECT unixepoch() AS v」 【】
+» q 「SELECT timediff(?, '2026-01-01') AS v」 【「now」】
+» q 「SELECT date('2026-10-20', ?) AS v」 【「LocalTime」】
+» q 「SELECT date('2026-10-20', ?) AS v」 【「UTC」】
+» q 「SELECT date('2026-10-20', 'localtime' || char(0) || 'x') AS v」 【】
+» q 「SELECT CURRENT_DATE AS v」 【】
+» q 「SELECT "now" AS v」 【】
+» q 「SELECT date("now") AS v」 【】
+» q 「SELECT strftime('%Y-%m', '2026-10-20') AS v」 【】
+» q 「SELECT julianday('2026-10-20') - julianday('2026-01-01') AS v」 【】
+» q 「SELECT date('2026-10-20', '+1 month', 'start of month', 'weekday 1') AS v」 【】
+» q 「SELECT unixepoch('2026-10-20 10:00:00.123', 'subsec') AS v」 【】
+» q 「SELECT datetime(1792454400, 'unixepoch') AS v」 【】
+» q 「SELECT time('12:00', '+90 minutes') AS v」 【】
+» q 「SELECT date('2026-10-20', 'utc ') AS v」 【】
+» q 「SELECT date('2026-10-20', ' localtime') AS v」 【】
+» q 「SELECT DATE('NoW') AS v」 【】
+» q 「SELECT main.date('now') AS v」 【】

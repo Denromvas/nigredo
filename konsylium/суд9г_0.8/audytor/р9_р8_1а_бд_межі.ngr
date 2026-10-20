@@ -1,0 +1,24 @@
+🜂 「SQLite: вихід за теку й заборонені дії」 【「бд.читати:дані」 「бд.писати:звіти」】
+← w λq ☂ 〔ok {🜔бд.писати 「звіти/а.db」 q 【】}〕 λe e
+← r λq ☂ Δ 🜔бд.читати 「база.db」 q 【】 λe e
+» w 「CREATE TABLE IF NOT EXISTS t(x)」
+» w 「ATTACH DATABASE '/root/ai-agents/Nigredo/konsylium/суд9г_0.8/audytor/вкрадено.db' AS z」
+» w 「VACUUM INTO '/root/ai-agents/Nigredo/konsylium/суд9г_0.8/audytor/вкрадено2.db'」
+» w 「PRAGMA journal_mode=WAL」
+» w 「BEGIN」
+» w 「SELECT load_extension('/tmp/x.so')」
+» w 「INSERT INTO t VALUES(1) RETURNING x」
+» w 「CREATE VIEW v AS SELECT x FROM t」
+» w 「DROP VIEW v」
+» w 「CREATE TRIGGER tr AFTER INSERT ON t BEGIN INSERT INTO t VALUES(2); END」
+» w 「DROP TRIGGER tr」
+» w 「CREATE TEMP TABLE tt(x)」
+» r 「DELETE FROM sqlite_master」
+» r 「SELECT 1 AS a; DELETE FROM sqlite_master」
+» r 「SELECT * FROM pragma_table_info('sqlite_master')」
+» r 「SELECT * FROM pragma_journal_mode」
+» r 「WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM c LIMIT 3) SELECT i FROM c」
+» ☂ Δ 🜔бд.читати 「file:../звіти/а.db」 「SELECT 1 AS a」 【】 λe e
+» ☂ Δ 🜔бд.читати 「../звіти/а.db」 「SELECT 1 AS a」 【】 λe e
+» ☂ 〔{🜔бд.писати 「/tmp/х.db」 「CREATE TABLE t(x)」 【】}〕 λe e
+» ☂ 〔{🜔бд.писати 「../вийшов.db」 「CREATE TABLE t(x)」 【】}〕 λe e

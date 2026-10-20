@@ -1,0 +1,123 @@
+{
+ "дозволено": [
+  "оракул",
+  "жереб",
+  "час"
+ ],
+ "для_тек": {
+  "/root/ai-agents/Nigredo/konsylium/суд9г_0.8/skeptyk": [
+   "читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/skeptyk/дані",
+   "список:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/skeptyk/дані",
+   "писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/skeptyk/звіти",
+   "бд.читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/skeptyk/дані",
+   "бд.писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/skeptyk/звіти",
+   "взяти:127.0.0.1:28713",
+   "послати:127.0.0.1:28713",
+   "процес:echo",
+   "процес:ls",
+   "процес:sh -c echo"
+  ],
+  "/root/ai-agents/Nigredo/konsylium/суд9г_0.8/praktyk": [
+   "читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/praktyk/дані",
+   "список:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/praktyk/дані",
+   "писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/praktyk/звіти",
+   "бд.читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/praktyk/дані",
+   "бд.писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/praktyk/звіти",
+   "взяти:127.0.0.1:28713",
+   "послати:127.0.0.1:28713",
+   "процес:echo",
+   "процес:ls",
+   "процес:sh -c echo"
+  ],
+  "/root/ai-agents/Nigredo/konsylium/суд9г_0.8/movoznavets": [
+   "читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/movoznavets/дані",
+   "список:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/movoznavets/дані",
+   "писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/movoznavets/звіти",
+   "бд.читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/movoznavets/дані",
+   "бд.писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/movoznavets/звіти",
+   "взяти:127.0.0.1:28713",
+   "послати:127.0.0.1:28713",
+   "процес:echo",
+   "процес:ls",
+   "процес:sh -c echo"
+  ],
+  "/root/ai-agents/Nigredo/konsylium/суд9г_0.8/audytor": [
+   "читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/audytor/дані",
+   "список:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/audytor/дані",
+   "писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/audytor/звіти",
+   "бд.читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/audytor/дані",
+   "бд.писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/audytor/звіти",
+   "взяти:127.0.0.1:28713",
+   "послати:127.0.0.1:28713",
+   "процес:echo",
+   "процес:ls",
+   "процес:sh -c echo"
+  ],
+  "/root/ai-agents/Nigredo/konsylium/суд9г_0.8/novachok": [
+   "читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/novachok/дані",
+   "список:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/novachok/дані",
+   "писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/novachok/звіти",
+   "бд.читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/novachok/дані",
+   "бд.писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/novachok/звіти",
+   "взяти:127.0.0.1:28713",
+   "послати:127.0.0.1:28713",
+   "процес:echo",
+   "процес:ls",
+   "процес:sh -c echo"
+  ],
+  "/root/ai-agents/Nigredo/konsylium/суд9г_0.8/orkestrator": [
+   "читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/orkestrator/дані",
+   "список:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/orkestrator/дані",
+   "писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/orkestrator/звіти",
+   "бд.читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/orkestrator/дані",
+   "бд.писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/orkestrator/звіти",
+   "взяти:127.0.0.1:28713",
+   "послати:127.0.0.1:28713",
+   "процес:echo",
+   "процес:ls",
+   "процес:sh -c echo"
+  ],
+  "/root/ai-agents/Nigredo/konsylium/суд9г_0.8/gemini": [
+   "читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/gemini/дані",
+   "список:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/gemini/дані",
+   "писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/gemini/звіти",
+   "бд.читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/gemini/дані",
+   "бд.писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/gemini/звіти",
+   "взяти:127.0.0.1:28713",
+   "послати:127.0.0.1:28713",
+   "процес:echo",
+   "процес:ls",
+   "процес:sh -c echo"
+  ]
+ },
+ "для_програм": {
+  "36349050a717071cf6c3030f9421389c43466707340bd981ea159364c20f4df7": [
+   "читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/skeptyk/секрет",
+   "писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/skeptyk/схвалене"
+  ],
+  "f7035db8d095bd72ce83ed544e3eebcd0d45837417deb3b769cac0ada9ff1dcc": [
+   "читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/praktyk/секрет",
+   "писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/praktyk/схвалене"
+  ],
+  "0eb2086ccc568405b632262337b56e52cf26a43507aa851e07cbd5761a7f50c7": [
+   "читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/movoznavets/секрет",
+   "писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/movoznavets/схвалене"
+  ],
+  "b34a0c9f34d76b39fa1d570077b01ce0c236f12dccdb9518b65648bf51bdc597": [
+   "читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/audytor/секрет",
+   "писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/audytor/схвалене"
+  ],
+  "fc91ddddab3acf93f63f48918dfc68810f40bfd3a7f8f986f3a35c319a9c9353": [
+   "читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/novachok/секрет",
+   "писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/novachok/схвалене"
+  ],
+  "b55b6b67b7cdf158d5f9ac5b0c6bdc0602f68d3ce6c56d01661fbd3ba6f02f5a": [
+   "читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/orkestrator/секрет",
+   "писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/orkestrator/схвалене"
+  ],
+  "ba2d4fcee91b6c9e14c851065e54994d4319ab9d16dc95d29f182b71aa73165e": [
+   "читати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/gemini/секрет",
+   "писати:/root/ai-agents/Nigredo/konsylium/суд9г_0.8/gemini/схвалене"
+  ]
+ }
+}
