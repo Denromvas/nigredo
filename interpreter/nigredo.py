@@ -604,19 +604,23 @@ def skeleton(name):
 
 GLYPH_TWINS = {'ơ': 'σ',   # двійники гліфів, яких скелет UTS #39 не дає: ơ — o з ріжком (суд 9б; ll ≈ ‖ — уже число 11)
                'ɘ': '∋', 'ʆ': '∫', 'ʅ': '∫', 'ƪ': '∫', 'ʟ': '⌊', 'ბ': 'δ', 'ꝺ': 'δ', 'ҡ': 'κ', 'ҳ': 'χ',
-               'ⱱ': 'ν', 'ʖ': '¿', 'No': '№'}   # суд 9в (Новачок)
+               'ⱱ': 'ν', 'ʖ': '¿', 'No': '№',   # суд 9в (Новачок)
+               '乂': '×', 'メ': '×', 'ニ': '＝'}   # суд 9г: досі їх ловило лише правило «один ієрогліф», а 乂5 — два знаки
+DIGIT_TWINS = {'ȝ': '3', 'ვ': '3'}   # скелети, схожі на цифру, яких UTS #39 з цифрою не звʼязує: ȝ ʒ ӡ ჳ, ვ (суд 9г)
 
 
 def digit_skeleton():
-    """Скелети цифр 0–9 (UTS #39: 0 → O, 1 → l, решта — самі): імʼя лише з них виглядає як число (l0, IOO, б, З)."""
-    return ''.join(sorted({skeleton(d) for d in '0123456789'}))
+    """Скелети цифр 0–9 (UTS #39: 0 → O, 1 → l, решта — самі) і DIGIT_TWINS: імʼя лише з них виглядає як число (l0, IOO,
+    б, З, ȝ)."""
+    return ''.join(sorted({skeleton(d) for d in '0123456789'} | set(DIGIT_TWINS)))
 
 
 def looks_numeric(name):
     """Число, на яке імʼя схоже на вигляд (l0 → 10, б → 6, IOO → 100; суд 9в — замість латки з чотирьох літер), або
     None."""
     sk = skeleton(name)
-    return sk.translate({ord('O'): '0', ord('l'): '1'}) if sk and all(c in digit_skeleton() for c in sk) else None
+    digits = {ord('O'): '0', ord('l'): '1', **{ord(k): v for k, v in DIGIT_TWINS.items()}}
+    return sk.translate(digits) if sk and all(c in digit_skeleton() for c in sk) else None
 
 
 def glyph_twin_table():
@@ -626,17 +630,25 @@ def glyph_twin_table():
     return t
 
 
+def unit(s):
+    """Найкоротший шматок, повтором якого є рядок (xx → x, 乂乂 → 乂), або сам рядок."""
+    return next((s[:k] for k in range(1, len(s) // 2 + 1) if len(s) % k == 0 and s[:k] * (len(s) // k) == s), s)
+
+
 def glyph_twin(name):
-    """Гліф, на який схоже імʼя (х → ×, р → ρ, v → ν), — і з цифрами в кінці (x5 ≈ ×5, 十5 ≈ ＋5; суд 9в), або None."""
+    """Гліф, на який схоже імʼя (х → ×, р → ρ, v → ν), — і з цифрами в кінці (x5 ≈ ×5, 十5 ≈ ＋5; суд 9в), і повтором
+    (xx ≈ ××, 十十 ≈ ＋＋; суд 9г), або None."""
     sk = skeleton(name)
     if not hasattr(glyph_twin, 'table'):
         glyph_twin.table = glyph_twin_table()
-    if name in NAME_TWINS:
-        return NAME_TWINS[name]
+    t = glyph_twin.table
+    base = unit(name.rstrip('0123456789') or name)
+    if base in NAME_TWINS:
+        return NAME_TWINS[base]
     k, digits = len(sk), digit_skeleton()
-    while k > 1 and sk[k - 1] in digits and sk[:k] not in glyph_twin.table:
+    while k > 1 and sk[k - 1] in digits and sk[:k] not in t and unit(sk[:k]) not in t:
         k -= 1
-    return glyph_twin.table.get(sk[:k])
+    return t.get(sk[:k]) or t.get(unit(sk[:k]))
 
 
 CONST_TWINS = {'ᄋ': '○', 'ㅇ': '○', '〇': '○',   # кола-літери: як ○, хоч UTS #39 їх із ○ не звʼязує (суд 9)
@@ -646,7 +658,9 @@ NAME_TWINS = {'ƒ': '∫', 'ɜ': '∋'}   # за самим іменем: ске
 
 
 def const_twin(name):
-    """Стала (● ○ ∅), на яку схоже імʼя (Ø → ∅, ᄋ → ○), або None."""
+    """Стала (● ○ ∅), на яку схоже імʼя (Ø → ∅, ᄋ → ○), — і з цифрами в кінці (ø1 у списку — як «∅ 1»; суд 9г), або
+    None."""
+    name = name.rstrip('0123456789') or name
     sk = skeleton(name)
     return CONST_TWINS.get(name) or next((c for c in CONSTS if skeleton(c) == sk), None)
 
@@ -667,7 +681,8 @@ def check_twins(toks):
                               f'назвіть інакше', pos)
         twin = const_twin(val)
         if twin:
-            raise StaticError(f'імʼя «{val}» на вигляд — стала «{twin}»: «{val}» читається як «{twin}»; назвіть інакше', pos)
+            twin += val[len(val.rstrip('0123456789') or val):]      # ø1 — як «∅1» (суд 9г)
+            raise StaticError(f'імʼя «{val}» на вигляд — стала «{twin[0]}»: «{val}» читається як «{twin}»; назвіть інакше', pos)
         sk = skeleton(val)
         if sk in seen and seen[sk] != val:
             raise StaticError(f'імена «{seen[sk]}» і «{val}» однакові на вигляд — двійники заборонені', pos)
@@ -833,12 +848,15 @@ def lex(src):
             if any(is_jamo(ch) for ch in buf):          # ᄉ ≈ ∧, ᄃ ≈ ⊏, ᆼ ≈ ○ — латки таблицею не встигали (суд 9б)
                 raise StaticError(f'імʼя «{buf}»: окремі чамо хангилю (ᄉ ᄃ ᆼ …) схожі на гліфи мови — пишіть '
                                   f'складами (가–힣)', pos)
-            if len(buf) == 1 and scripts & {'CJK', 'HIRAGANA', 'KATAKANA'}:     # 米 ≈ ※, 乂 ≈ ×, ニ ≈ ＝ (суд 9б)
-                raise StaticError(f'імʼя «{buf}» з одного ієрогліфа чи знака кани: їх легко сплутати з гліфами мови '
-                                  f'(米 і ※, 乂 і ×, ニ і ＝) — візьміть щонайменше два знаки', pos)
-            if buf[0] == '米':                  # «米1 「…」» на початку рядка — як коментар «※1 …» (суд 9в)
-                raise StaticError(f'імʼя «{buf}» починається з 米: рядок з ним на вигляд — коментар ※; візьміть інше '
-                                  f'імʼя', pos)
+            base = buf.rstrip('0123456789')      # цифра — не другий знак: 乂5 ≈ ×5 (суд 9г)
+            if len(base) == 1 and scripts & {'CJK', 'HIRAGANA', 'KATAKANA'} and (base == buf or base not in '米氺'):
+                twin, more = glyph_twin(base), ' з цифрами' if base != buf else ''   # 米 ≈ ※, 乂 ≈ ×, ニ ≈ ＝ (суд 9б)
+                raise StaticError(f'імʼя «{buf}» з одного ієрогліфа чи знака кани{more}: ' + (
+                    f'«{base}» на вигляд — гліф «{twin}»' if twin else 'їх легко сплутати з гліфами мови (米 і ※, 乂 і ×, ニ і ＝)')
+                    + ' — візьміть щонайменше два знаки, крім цифр', pos)
+            if buf[0] in '米氺':                # «米1 「…」» на початку рядка — як коментар «※1 …» (суд 9в; 氺 — 9г)
+                raise StaticError(f'імʼя «{buf}» починається з {buf[0]}: рядок з ним на вигляд — коментар ※; візьміть '
+                                  f'інше імʼя', pos)
             toks.append(('name', buf, pos))
         elif ch in GLYPHS or ch in CONSTS:
             toks.append(('glyph', ch, pos))
@@ -1740,13 +1758,16 @@ def all_static_errors(src, base=None, path=None, limit=50):
     """--перевірити: не лише перша помилка розбору (суд 8б: «знайти ВСІ» давало одну). Після кожної — пропустити її
     дозвіл 「…」 (печатка) чи рядок інструкції з глибшими продовженнями й розбирати далі, до limit помилок. Пізніші
     позначено after_skip — можуть бути наслідком пропуску; про імена з пропущених рядків «←» — не повідомляти. Порядок —
-    за рядками (суд 9в: через MCP приходило до 5 помилок і не по порядку)."""
+    за рядками (суд 9в: через MCP приходило до 5 помилок і не по порядку). limit — помилок, а не проходів: кожен прохід
+    прибирає рядок чи дозвіл, а наслідки пропуску («невідоме імʼя») теж їли прохід — і з 40 двійників лишалося 29 (суд 9г)."""
     import re as _re
     lines, errors, gone = src.split('\n'), [], set()
 
     def keep(e):
         return not any(f'«{n}»' in e.msg for n in gone)
-    for _ in range(limit):
+    for _ in range(len(lines) + src.count('「') + 1):
+        if len(errors) >= limit:
+            break
         errs = []
         try:
             parse('\n'.join(lines), base, path, errs)
@@ -2129,7 +2150,9 @@ def _path_ok(it, tool, p, pos, write=False):
                 seen.append(safe(real))
             return real
     it.deny(агент=it.agent, назва=tool, шлях=safe(p), причина='поза дозволеною текою')
-    raise NgrError(f'{tool}: «{safe(p)}» поза дозволеним ({", ".join(safe(x) for x in it.caps[tool])})', pos)
+    file = write and any(os.path.realpath(os.path.join(it.cwd, b)) == first for b in it.caps[tool])   # суд 9г, Скептик
+    raise NgrError(f'{tool}: «{safe(p)}» поза дозволеним ({", ".join(safe(x) for x in it.caps[tool])})'
+                   + ('; для запису в печатці — тека, а не сам файл' if file else ''), pos)
 
 
 # ------------------------------------------------------------------ регулярні вирази без відкатів
@@ -3257,14 +3280,22 @@ def _db_rights(it):
 def _db_auth(write, it):
     """authorizer SQLite: лише дії з білого списку; кожну відмову — у why (за ним і «заборонено»). Годинник і
     випадковість — не тут (authorizer не бачить DEFAULT стовпця, а за назвою забороняв і дату з даних, суд 9б), а у
-    _db_guard: свої функції на зʼєднанні."""
+    _db_guard: свої функції на зʼєднанні. Без «жереб» — ні INSERT, ні зміни rowid у системних таблицях (sqlite_sequence,
+    sqlite_stat1): тригера на них SQLite не дає, а з rowid 2⁶³−1 наступний рядок — навмання (суд 9г, Оркестратор)."""
     import sqlite3
     acts, why = _db_acts()[1 if write else 0], []
+    _, rand_ok = _db_rights(it)
 
     def auth(action, a1, a2, db, view):
         f = (a2 or '').lower()
         if action == sqlite3.SQLITE_FUNCTION and f == 'load_extension':
             why.append(f'load_extension{f" у тригері чи VIEW «{view}»" if view else ""}')
+            return sqlite3.SQLITE_DENY
+        t = (a1 or '').lower()
+        if not rand_ok and t.startswith('sqlite_') and t not in DB_SCHEMA_TABLES and (
+                action == sqlite3.SQLITE_INSERT or (action == sqlite3.SQLITE_UPDATE and a2 == 'ROWID')):
+            why.append(f'випадковість SQLite (системна таблиця «{safe(a1)}»: INSERT і зміна rowid — лише з правом «жереб», '
+                       f'бо з rowid 2⁶³−1 наступний рядок SQLite бере навмання)')
             return sqlite3.SQLITE_DENY
         if action in acts or (action == sqlite3.SQLITE_PRAGMA and (a1 or '').lower() in DB_INFO_PRAGMAS):   # SQL — без регістру
             return sqlite3.SQLITE_OK
@@ -3276,16 +3307,47 @@ def _db_auth(write, it):
 
 
 DB_ROWID_MAX = 2 ** 63 - 1   # після нього SQLite бере rowid навмання
+DB_SCHEMA_TABLES = ('sqlite_master', 'sqlite_schema', 'sqlite_temp_master', 'sqlite_temp_schema')   # CREATE пише сюди
 DB_ROWID_WHY = ('дійшла до rowid 2⁶³−1 — далі SQLite бере його навмання',
                 'ховає rowid стовпцями rowid, _rowid_ і oid — запис у неї не перевірити',
                 '— рядок отримав би rowid 2⁶³−1, а після нього SQLite бере rowid навмання')
+
+
+def db_body(sql):
+    """Запит без того, що SQLite пропускає до першої інструкції: пропусків, коментарів і порожніх інструкцій «;»
+    («;INSERT …» SQLite виконує, а «EXPLAIN ;INSERT …» — синтаксична помилка; суд 9г)."""
+    i, n = 0, len(sql)
+    while i < n:
+        if sql[i] in ' \t\n\f\r;':
+            i += 1
+        elif sql.startswith('--', i):
+            j = sql.find('\n', i)
+            i = n if j < 0 else j + 1
+        elif sql.startswith('/*', i):
+            j = sql.find('*/', i + 2)
+            i = n if j < 0 else j + 2
+        else:
+            break
+    return sql[i:]
+
+
+def db_explain(sql):
+    """Запит для попереднього проходу: компілює ту саму інструкцію, але не виконує її (EXPLAIN EXPLAIN — помилка). Своє
+    EXPLAIN — як його читає SQLite: 7 літер ASCII будь-якого регістру, далі не символ імені."""
+    body = db_body(sql)
+    b = body[:8].encode('utf-8', 'surrogatepass')
+    own = b[:7].lower() == b'explain' and not (len(b) > 7 and (b[7] >= 0x80 or chr(b[7]).isalnum() or b[7] in b'_$'))
+    return body if own else 'EXPLAIN ' + body
 
 
 def _db_written(con, it, sql, args):
     """Таблиці main, у які запит може писати (INSERT, UPDATE) — і сам, і тригерами: authorizer бачить їхні тіла, ще
     коли SQLite компілює запит (EXPLAIN — без виконання). Рішення — того самого authorizer (без запису причин): дозвільний
     підключив би віртуальну таблицю, якої справжній не пустить, і FTS5 падав би SIGSEGV. Пише віртуальна таблиця — то й
-    тіньові (FTS5 бере rowid сам, своїми запитами)."""
+    тіньові (FTS5 бере rowid сам, своїми запитами). Запит не скомпілювався — то всі таблиці: захист закритий, доки не
+    доведено інше (суд 9г: «EXPLAIN ;INSERT» падав, помилку ковтали — і тригерів не було зовсім). Третє — системні
+    таблиці, у які рядок допише сам SQLite: sqlite_schema — на CREATE (authorizer бачить INSERT у sqlite_master),
+    sqlite_sequence — на INSERT у будь-яку таблицю (AUTOINCREMENT authorizer не показує)."""
     import sqlite3
     ins, upd = set(), set()
     _, check = _db_auth(True, it)
@@ -3296,18 +3358,26 @@ def _db_written(con, it, sql, args):
         return check(action, a1, a2, db, src)
     con.set_authorizer(rec)
     try:
-        con.execute('EXPLAIN ' + sql, args).fetchall()
+        con.execute(db_explain(sql), args).fetchall()
+        failed = False
     except (sqlite3.Error, ValueError, OverflowError):
-        pass                         # помилку запиту покаже його виконання
+        failed = True                # помилку запиту покаже його виконання, а захист стане на всі таблиці
     finally:
         con.set_authorizer(None)
-    kinds = dict(con.execute("SELECT name, type FROM pragma_table_list WHERE schema = 'main' AND wr = 0 "
-                             "AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'").fetchall())
-    if any(kinds.get(t) == 'virtual' for t in ins | upd):
+    rows = con.execute("SELECT name, type, name LIKE 'sqlite\\_%' ESCAPE '\\' FROM pragma_table_list "
+                       "WHERE schema = 'main' AND wr = 0").fetchall()
+    kinds = {t: k for t, k, system in rows if not system}
+    schema = failed or any(t.lower() in DB_SCHEMA_TABLES for t in ins)
+    seq = failed or any(t.lower() not in DB_SCHEMA_TABLES for t in ins)
+    system = sorted(t for t, k, sy in rows if sy and k == 'table' and (schema if t.lower() in DB_SCHEMA_TABLES else
+                                                                       seq and t.lower() == 'sqlite_sequence'))
+    if failed:
+        ins, upd = set(kinds), set(kinds)
+    elif any(kinds.get(t) == 'virtual' for t in ins | upd):
         shadow = {t for t, k in kinds.items() if k == 'shadow'}
         ins, upd = ins | shadow, upd | shadow
     ok = {t for t, k in kinds.items() if k in ('table', 'shadow')}
-    return ins & ok, upd & ok
+    return ins & ok, upd & ok, system
 
 
 def _db_guard(con, it, why, write, sql, args):
@@ -3363,7 +3433,11 @@ def _db_guard(con, it, why, write, sql, args):
             con.execute('PRAGMA temp_store = MEMORY')
             con.create_function('ngr_rowid', 2, lambda t, k: refuse(
                 f'випадковість SQLite (таблиця «{safe(t)}» {DB_ROWID_WHY[k]}) без права «жереб»'), deterministic=True)
-            ins, upd = _db_written(con, it, sql, args)
+            ins, upd, system = _db_written(con, it, sql, args)
+            for t in system:   # старий файл: системна таблиця вже на межі, а рядок у неї пише сам SQLite (AUTOINCREMENT, CREATE)
+                q = t.replace('"', '""')
+                if con.execute(f'SELECT max(rowid) = {DB_ROWID_MAX} FROM main."{q}"').fetchone()[0]:
+                    refuse(f'випадковість SQLite (системна таблиця «{safe(t)}» {DB_ROWID_WHY[0]}) без права «жереб»')
             for i, t in enumerate(sorted(ins | upd)):
                 q, lit = t.replace('"', '""'), t.replace("'", "''")
                 cols = {r[0].lower() for r in con.execute('SELECT name FROM pragma_table_xinfo(?)', (t,))}
@@ -3392,13 +3466,15 @@ def _db_static_ok(it, pos, tool, p, sql):
     if _re.search(r'\bload_extension\b', _re.sub(r"'(?:[^']|'')*'", "''", sql.v), _re.I):
         it.deny(агент=it.agent, назва=tool, шлях=safe(show(p)), запит=safe(sql.v)[:500], причина='load_extension')
         raise NgrError(f'{tool}: load_extension заборонено (і в тригерах та VIEW)', pos)
-    # VACUUM authorizer не питає (а VACUUM INTO пише файл деінде) — відмова за першим словом інструкції
-    if _re.match(r'(?:\s+|/\*.*?\*/|--[^\n]*(?:\n|$))*vacuum\b', sql.v, _re.I | _re.S):
+    # VACUUM authorizer бачить лише як ATTACH (а VACUUM INTO пише файл деінде) — відмова за першим словом інструкції,
+    # після того, що SQLite пропускає (суд 9г: «;VACUUM»)
+    body = db_body(sql.v)
+    if _re.match(r'(?:\s+|/\*.*?\*/|--[^\n]*(?:\n|$))*vacuum\b', body, _re.I | _re.S):
         it.deny(агент=it.agent, назва=tool, шлях=safe(show(p)), запит=safe(sql.v)[:500], причина='VACUUM')
         raise NgrError(f'{tool}: VACUUM заборонено (VACUUM INTO пише файл поза текою з печатки)', pos)
     # бд.читати — лише запити: REINDEX чи DROP TABLE IF EXISTS на відсутній authorizer не питають (суд 8в)
     gap = r'(?:\s+|/\*.*?\*/|--[^\n]*(?:\n|$))*'
-    m = _re.match(rf'(?:{gap}\()*{gap}(\w*){gap}(?:main{gap}\.{gap})?(\w*)', sql.v, _re.S | _re.I)
+    m = _re.match(rf'(?:{gap}\()*{gap}(\w*){gap}(?:main{gap}\.{gap})?(\w*)', body, _re.S | _re.I)
     first = m.group(1).lower()
     if tool == 'бд.читати' and first not in ('select', 'with', 'values') and not (   # довідкові PRAGMA — як обіцяє
             first == 'pragma' and m.group(2).lower() in DB_INFO_PRAGMAS):         # памʼятка (решту — authorizer)
@@ -3423,7 +3499,7 @@ def _db_ok(it, pos, tool, p, sql, write):
         con.setlimit(sqlite3.SQLITE_LIMIT_ATTACHED, 0)
         con.set_authorizer(auth)
         try:
-            con.execute('EXPLAIN ' + sql.v).fetchall()
+            con.execute(db_explain(sql.v)).fetchall()      # «;PRAGMA …» — та сама відмова, що й у запуску (суд 9г)
         except sqlite3.Error as e:
             if not write and 'may not be modified' in str(e):
                 why.append('запис через бд.читати')
@@ -3450,7 +3526,12 @@ SQL_ERRORS = [('Incorrect number of bindings', 'кількість «?» у за
               ('wrong number of arguments', 'хибна кількість аргументів функції'), ('integer overflow', 'переповнення цілого'),
               ('incomplete input', 'незавершений запит'), ('no such index', 'немає такого індексу'),
               ('misuse of aggregate', 'агрегатна функція не на своєму місці'),
-              ('sub-select returns', 'підзапит повертає не один стовпець'), ('too many terms', 'забагато частин у запиті')]
+              ('sub-select returns', 'підзапит повертає не один стовпець'), ('too many terms', 'забагато частин у запиті'),
+              ('has no column named', 'у таблиці немає стовпця з такою назвою'),     # суд 9г: найчастіші в роботі
+              ('values were supplied', 'кількість значень не дорівнює кількості стовпців таблиці'),
+              ('values for', 'кількість значень не дорівнює кількості стовпців'),
+              ('do not have the same number of result columns', 'частини UNION (INTERSECT, EXCEPT) мають різну кількість стовпців'),
+              ('missing datatype', 'у таблиці STRICT стовпець без типу')]
 
 # тексти помилок re і expat — словами, оригінал у дужках (суд 9в, Новачок); Атанор бере ті самі таблиці (gen_tables)
 RE_ERRORS = [('bad escape (end of pattern)', 'шаблон закінчується на «\\»'), ('bad escape', 'хибне екранування'),
@@ -3660,8 +3741,10 @@ TOOLS = {
     'бд.писати': (3, '🜔бд.писати шлях 「INSERT … ?」 【параметри】 → змінено рядків', 'зміна SQLite (INSERT UPDATE DELETE, '
                   'CREATE/DROP/ALTER; без ATTACH, VACUUM, PRAGMA); файл створюється, якщо нема; повертає лише кількість '
                   'змінених рядків — читати — бд.читати. Годинник і жереб — як у бд.читати; без 「жереб」 жоден рядок не '
-                  'отримає rowid 2⁶³−1 (і тригером; далі SQLite бере rowid навмання) — відмова; захист — лише на '
-                  'таблицях, у які пише запит', True, 'тека', t_db_write),
+                  'отримає rowid 2⁶³−1 (ні тригером, ні в sqlite_sequence, хоч що стоїть перед запитом; далі SQLite бере '
+                  'rowid навмання) — відмова; у таблицю, що вже на межі, явний rowid — можна, крім −1 (його не відрізнити '
+                  'від «rowid бере SQLite»); захист — на таблицях, у які пише запит; CREATE VIRTUAL TABLE — відмова',
+                  True, 'тека', t_db_write),
     'мережа.взяти': (1, '🜔взяти url → рядок', 'HTTP GET (до 1 МБ, 30 с; адреса — повністю в сліді: даними в адресі '
                      'теж можна поділитися з хостом, тож дозволяйте лише хости, яким довіряєте)', True, 'хост', t_fetch),
     'мережа.послати': (2, '🜔послати url тіло → рядок', 'HTTP POST: тіло-рядок — як текст, список чи словник — як JSON; '
@@ -5697,8 +5780,9 @@ def cheatsheet():
            '- Імена — слова будь-якою мовою, але **одним письмом** (`звiт` з латинською i — помилка). Грецькі літери — гліфи.',
            '  **Двійники** — два різні імена, однакові на вигляд за скелетом UTS #39 (`x`/`х`, `h`/`һ`, `I`/`l`), — помилка;',
            '  так само імʼя з символів сумісності (`ｘ`, `𝚡`), імʼя, що на вигляд — число (скелет лише з цифр: `l I O О б З`,',
-           '  `l0`, `IOO`), імʼя, що починається з `米` (≈ `※`), і **функція**, схожа на гліф, — і з цифрами (`х р v ф σ`, `x5`:',
-           '  `х 2 3` читалося б як `× 2 3`; змінна `x`, `x1` — можна). Письма імен: латиниця, кирилиця, CJK,',
+           '  `l0`, `IOO`, `ȝ`), стала з цифрами (`ø1` ≈ `∅1`), імʼя, що починається з `米` чи `氺` (≈ `※`), один ієрогліф чи',
+           '  знак кани — і з цифрами (`乂5` ≈ `×5`), і **функція**, схожа на гліф, — і з цифрами чи повтором (`х р v ф σ`,',
+           '  `x5`, `xx`: `х 2 3` читалося б як `× 2 3`; змінна `x`, `x1`, `xx` — можна). Письма імен: латиниця, кирилиця, CJK,',
            '  кана, хангиль, арабське, іврит, деванагарі, бенгальське, тамільське, тайське, грузинське; інші — помилка.',
            '- **Невидимого в тексті програми немає**: керівні, bidi, теги, ZWSP, U+034F, нестандартні пробіли, заповнювачі',
            '  (U+3164) — помилка всюди: в коді, рядках, коментарях, печатці. Такі дані беріть через `δ 「"\\u…"」`;',

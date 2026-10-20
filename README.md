@@ -87,8 +87,10 @@ the boundary; every finding becomes a negative test. Athanor is checked against 
 program in the repo and on generated data (regex patterns, Unicode case, numbers, limits); the ninth court still
 found divergences (final sigma, `\N{…}` in a pattern from data, the trace-size limit, SQLite steps, stack depth),
 and its re-reviews found that SQLite still gave a program the clock and randomness without the rights — through a
-column `DEFAULT`, and later through the program's own trigger setting rowid 2⁶³−1 — plus a crash on deep `☂`/`¿` and
-an `(?i)` that was not Python's — all fixed with tests on both engines. The latest comparison report is
+column `DEFAULT`, then through the program's own trigger setting rowid 2⁶³−1, then through a leading `;` (the guard's
+pre-compilation failed and the failure was ignored) and the `sqlite_sequence` table — plus a trace copy a program could
+corrupt from a database folder of its seal, a crash on deep `☂`/`¿` and an `(?i)` that was not Python's — all fixed
+with tests on both engines; the SQLite guard now fails closed. The latest comparison report is
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols — [`konsylium/`](konsylium/).
 
 **Honest limits:** Nigredo is a transparency and audit tool, **not an OS sandbox** — an agent with shell access can
@@ -192,9 +194,11 @@ claude mcp add nigredo -- python3 mcp/nigredo_mcp.py   # дати мову бу�
 кожна знахідка стає негативним тестом. Атанор звіряють з еталонним інтерпретатором на всіх програмах репозиторію й
 на згенерованих даних (шаблони регулярок, регістр Unicode, числа, межі); девʼятий суд однаково знайшов розбіжності
 (кінцева сигма, `\N{…}` у шаблоні з даних, межа сліду, кроки SQLite, глибина стеку), а повторні огляди — що SQLite
-досі давав програмі годинник і випадковість без прав (через `DEFAULT` стовпця, а потім через власний тригер програми,
-що ставить rowid 2⁶³−1), аварію на глибоких `☂`/`¿` і `(?i)`, не такий, як у Python, — усе виправлено з тестами
-обома виконавцями. Останній звіт звірки —
+досі давав програмі годинник і випадковість без прав (через `DEFAULT` стовпця, потім через власний тригер програми,
+що ставить rowid 2⁶³−1, далі через `;` на початку запиту — попередня компіляція захисту падала, і це ковтали, — і
+таблицю `sqlite_sequence`), копію сліду, яку програма могла зіпсувати з теки бази своєї печатки, аварію на глибоких
+`☂`/`¿` і `(?i)`, не такий, як у Python, — усе виправлено з тестами обома виконавцями; захист SQLite тепер закритий за
+замовчуванням. Останній звіт звірки —
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); історія й протоколи — [`konsylium/`](konsylium/).
 
 **Чесно про межі:** Nigredo — інструмент прозорості й аудиту, **не пісочниця ОС**: агент із доступом до shell може

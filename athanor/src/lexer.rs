@@ -323,11 +323,12 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Back> {
             if buf.chars().any(|c| matches!(c as u32, 0x1100..=0x11FF | 0xA960..=0xA97F | 0xD7B0..=0xD7FF)) {
                 return back("чамо хангилю в імені"); // ᄉ ≈ ∧ (суд 9б) — помилку пише еталон
             }
-            if buf.chars().count() == 1 && matches!(script, Some("CJK" | "HIRAGANA" | "KATAKANA")) {
-                return back("імʼя з одного ієрогліфа чи знака кани"); // 米 ≈ ※ (суд 9б)
+            if buf.starts_with('米') || buf.starts_with('氺') {
+                return back("імʼя починається з 米 чи 氺"); // «米1 「…」» — як коментар «※1 …» (суд 9в, 9г)
             }
-            if buf.starts_with('米') {
-                return back("імʼя починається з 米"); // «米1 「…」» — як коментар «※1 …» (суд 9в)
+            let base = buf.trim_end_matches(|c: char| c.is_ascii_digit()); // цифра — не другий знак: 乂5 ≈ ×5 (суд 9г)
+            if base.chars().count() == 1 && matches!(script, Some("CJK" | "HIRAGANA" | "KATAKANA")) {
+                return back("імʼя з одного ієрогліфа чи знака кани"); // 米 ≈ ※ (суд 9б)
             }
             toks.push(Token { t: Tok::Name(buf.into()), pos });
         } else if is_glyph(ch) {
@@ -366,8 +367,10 @@ pub fn check_twins(toks: &[Token]) -> Result<(), Back> {
             if uni::looks_numeric(&sk) {
                 return back("імʼя виглядає як число"); // скелет лише з цифр (суд 9в)
             }
-            // імʼя на вигляд — стала (Ø ≈ ∅, ᄋ ≈ ○): помилку пише еталон (суд 9)
-            if matches!(uni::glyph_twin(&sk), Some("●" | "○" | "∅")) || matches!(&**v, "ᄋ" | "ㅇ" | "〇" | "ه" | "ס" | "ᴓ") {
+            // імʼя на вигляд — стала (Ø ≈ ∅, ᄋ ≈ ○), і з цифрами (ø1; суд 9г): помилку пише еталон (суд 9)
+            let base = uni::digitless(v);
+            let skb = uni::skeleton(base).ok_or(Back("скелет".into()))?;
+            if matches!(uni::glyph_twin(&skb), Some("●" | "○" | "∅")) || matches!(base, "ᄋ" | "ㅇ" | "〇" | "ه" | "ס" | "ᴓ") {
                 return back("імʼя — двійник сталої");
             }
             match seen.get(&sk) {

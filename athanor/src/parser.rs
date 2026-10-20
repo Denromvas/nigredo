@@ -464,7 +464,7 @@ impl Parser {
                 };
                 if ar > 0 {
                     let sk = uni::skeleton(&v).ok_or(Back("скелет".into()))?;
-                    if uni::glyph_twin_name(&sk).is_some() || matches!(&*v, "ƒ" | "ɜ") {   // NAME_TWINS еталона
+                    if uni::glyph_twin_name(&sk).is_some() || uni::name_twin(&v) {
                         return back("функція на вигляд — гліф");
                     }
                     let mut args = Vec::new();

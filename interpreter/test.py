@@ -231,6 +231,14 @@ def main():
         info = {}
     check(got.returncode == 2 and info.get('гаразд') is False and len(info.get('помилки', [])) == 2
           and info['помилки'][0]['рядок'] == 3, '--перевірити --json: усі помилки до запуску з місцем', got.stdout + got.stderr)
+    # суд 9г (Новачок): межа 50 рахувала проходи, а не помилки — наслідки пропуску («невідоме імʼя») теж їли прохід, і з 40
+    # двійників --перевірити називав 29
+    many_ = '🜂\n' + ''.join(f'← {chr(0x3105 + i)} 1\n» {chr(0x3105 + i)}\n' for i in range(30)) + ''.join(
+        f'← {t_} λx x\n» {t_} 1\n' for t_ in 'ʆʅƪʟⱱ')
+    got = run(['--перевірити', '-e', many_], env)
+    check(got.returncode == 2 and got.stdout.count('✗') == 35 and got.stdout.count('на вигляд — гліф') == 5,
+          '--перевірити: 30 помилок письма й 5 функцій-двійників — усі 35, межа — помилок, а не проходів (суд 9г)',
+          got.stdout + got.stderr)
     # суд 6: --розбір шаблону ≠ рядка з {…}; підміна модуля після запуску; модуль із теки запису; зайвий аргумент
     r1 = run(['--розбір', '-e', '🜂 「т」 【「оракул」】\n» 〔А: {σ 🜔оракул 「п」}〕'], env).stdout.strip().splitlines()[-1]
     r2 = run(['--розбір', '-e', '🜂 「т」 【「оракул」】\n» 「А: {рядок(інструмент оракул(«п»))}」'], env).stdout.strip().splitlines()[-1]
@@ -1251,6 +1259,61 @@ def main():
     check(got.stdout == ref.stdout and got.returncode == ref.returncode == 0 and got.stdout.startswith('●\n')
           and 'вичерпано квоту' in got.stdout and got.stdout.count('з квотою «час≤N» — лише 🜔час') == 2,
           'SQLite: квота «час≤N» — годинник SQLite відмова, як для «жереб≤N» (суд 9в)', got.stdout + got.stderr + ref.stderr)
+    # суд 9г (Практик, Оркестратор): «;» на початку запиту валив попередній прохід EXPLAIN — тригерів не було, rowid
+    # навмання; sqlite_sequence (тригерів SQLite на ній не дає) і старий файл, де системна таблиця вже на межі
+    seq_, sch_, semi_ = (f'{DATA}/звіти/{n}' for n in ('послідовність9г.db', 'схема9г.db', 'крапка9г.db'))
+
+    def fresh9g():
+        for f_ in (seq_, sch_, semi_):
+            if os.path.exists(f_):
+                os.remove(f_)
+        with sqlite3.connect(seq_) as c_:
+            c_.execute('CREATE TABLE п(id INTEGER PRIMARY KEY AUTOINCREMENT, x)')
+            c_.execute("INSERT INTO sqlite_sequence(rowid, name, seq) VALUES (9223372036854775807, 'z', 0)")
+        c_ = sqlite3.connect(sch_, isolation_level=None)
+        c_.execute('CREATE TABLE а(x)')
+        c_.execute('PRAGMA writable_schema = ON')
+        c_.execute("UPDATE sqlite_schema SET rowid = 9223372036854775807 WHERE name = 'а'")
+        c_.close()
+    q9g_ = ('🜂 【「бд.писати:{0}/звіти」 「бд.читати:{0}/звіти」】\n'.format(DATA) + ''.join(
+        f'← {h_} λq ☂ σ 🜔бд.писати 「{f_}」 q 【】 λe e\n' for h_, f_ in (('крапка', semi_), ('посл', seq_), ('схема', sch_))) + ''.join(
+        f'» {h_} 「{s_}」\n' for h_, s_ in (
+            ('крапка', 'CREATE TABLE t(x)'), *(('крапка', p_ + 'INSERT INTO t(rowid, x) VALUES (9223372036854775807, 0)')
+                                              for p_ in (';', '  ;  ', ';;', '/* к */;', '-- к\n;')),
+            ('крапка', ';INSERT INTO t(x) VALUES (1)'), ('крапка', 'EXPLAIN INSERT INTO t(x) VALUES (2)'),
+            ('крапка', ';VACUUM'), ('крапка', 'CREATE TABLE q(id INTEGER PRIMARY KEY AUTOINCREMENT, x)'),
+            ('крапка', 'INSERT INTO q(x) VALUES (1)'), ('крапка', "INSERT INTO sqlite_sequence(name, seq) VALUES ('w', 1)"),
+            ('крапка', 'UPDATE sqlite_sequence SET rowid = 9223372036854775807'),
+            ('крапка', "UPDATE sqlite_sequence SET seq = 0 WHERE name = 'q'"),
+            ('посл', 'INSERT INTO п(x) VALUES (1)'), ('посл', 'DELETE FROM sqlite_sequence WHERE rowid = 9223372036854775807'),
+            ('посл', 'INSERT INTO п(x) VALUES (1)'), ('схема', 'CREATE TABLE б2(x)'), ('схема', 'INSERT INTO а(x) VALUES (1)')))
+        + f'» 🜔бд.читати 「{semi_}」 「;SELECT count(*) AS н FROM t」 【】')
+    res9g = []
+    for cmd_ in (NGR_CMD, [sys.executable, str(NGR)]):
+        fresh9g()
+        res9g.append(subprocess.run([*cmd_, '-e', q9g_], capture_output=True, text=True, env=envd))
+        with sqlite3.connect(semi_) as c_:
+            res9g.append([r[0] for r in c_.execute('SELECT rowid FROM t')] + [r[0] for r in c_.execute('SELECT rowid FROM sqlite_sequence')])
+    o_ = res9g[0].stdout
+    check(o_ == res9g[2].stdout and res9g[0].returncode == res9g[2].returncode == 0 and res9g[1] == res9g[3] == [1, 1]
+          and o_.count('рядок отримав би rowid 2⁶³−1') == 5 and o_.count('VACUUM заборонено') == 1
+          and o_.count('системна таблиця «sqlite_sequence»: INSERT і зміна rowid') == 2
+          and o_.count('системна таблиця «sqlite_sequence» дійшла до rowid 2⁶³−1') == 1
+          and o_.count('системна таблиця «sqlite_schema» дійшла до rowid 2⁶³−1') == 1 and o_.endswith('【『「н」 1』】\n'),
+          'SQLite: «;», «;;», коментар перед «;» — та сама відмова rowid 2⁶³−1; sqlite_sequence без «жереб» — ні INSERT, ні '
+          'rowid; старий файл, де системна таблиця на межі, — відмова (суд 9г)',
+          o_ + res9g[0].stderr + '\n---\n' + res9g[2].stdout + res9g[2].stderr + str(res9g[1::2]))
+    got, ref = both(['--сухо', '-e', f'🜂 【「бд.писати:{DATA}/звіти」】\n» 🜔бд.писати 「{semi_}」 「;PRAGMA writable_schema = 1」 【】'],
+                    envd)
+    pre_ = subprocess.run([sys.executable, '-c', 'import sys, sqlite3; sys.path.insert(0, sys.argv[1]); import nigredo as n\n'
+                           'c = sqlite3.connect(":memory:"); c.execute("CREATE TABLE а(x)"); c.execute("CREATE TABLE б(x)")\n'
+                           'it = n.Interp.__new__(n.Interp); it.caps, it.quota_stack = set(), []\n'
+                           'print(sorted(n._db_written(c, it, "SELECT 1; SELECT 2", [])[0]))', str(ROOT / 'interpreter')],
+                          capture_output=True, text=True)
+    check(got.stdout == ref.stdout and got.returncode == ref.returncode != 0 and 'PRAGMA' in got.stdout + got.stderr
+          and pre_.stdout == "['а', 'б']\n",
+          '--сухо: «;PRAGMA …» — та сама відмова, що й у запуску; попередній прохід не вдався — захист на всіх таблицях (суд 9г)',
+          got.stdout + got.stderr + ref.stdout + ref.stderr + pre_.stdout + pre_.stderr)
     # суд 9в (Аудитор): межа сліду між «виклик» і результатом — --перевірити-слід каже про виклик без результату
     lim_prog, lim_tr = '🜂 【「жереб」】\n» 🜔жереб 6\n» 🜔жереб 6\n» 🜔жереб 6', tmp / 'межа9в.jsonl'
     subprocess.run([*NGR_CMD, '--слід', str(lim_tr), '-e', lim_prog], capture_output=True, env=env)

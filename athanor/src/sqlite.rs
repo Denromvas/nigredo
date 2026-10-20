@@ -330,11 +330,12 @@ fn fetch_row(l: &Lib, st: *mut c_void) -> Result<Vec<Cell>, PyErr> {
 
 struct AuthCtx {
     write: bool,
+    rand: bool, // «жереб» без квоти: лише з ним — INSERT і зміна rowid у системних таблицях (суд 9г)
     why: Vec<String>,
 }
 
-fn auth_ctx(_it: &Interp, write: bool) -> AuthCtx {
-    AuthCtx { write, why: Vec::new() }
+fn auth_ctx(it: &Interp, write: bool) -> AuthCtx {
+    AuthCtx { write, rand: db_rights(it).1, why: Vec::new() }
 }
 
 /// (годинник, жереб) SQLite: «час» і «жереб» без квоти (її не порахувати), як 🜔час і 🜔жереб (суд 9; «час≤N» — суд 9в).
@@ -347,6 +348,7 @@ const DB_CLOCK: [&str; 7] = ["date", "time", "datetime", "julianday", "unixepoch
 const DB_NOW: [&str; 3] = ["current_date", "current_time", "current_timestamp"];
 const UDF_ERR: &[u8] = b"user-defined function raised exception\0";
 const ROWID_MAX: i64 = i64::MAX; // після нього SQLite бере rowid навмання
+const SCHEMA_TABLES: [&str; 4] = ["sqlite_master", "sqlite_schema", "sqlite_temp_master", "sqlite_temp_schema"]; // CREATE пише сюди
 const ROWID_WHY: [&str; 3] = [
     "дійшла до rowid 2⁶³−1 — далі SQLite бере його навмання",
     "ховає rowid стовпцями rowid, _rowid_ і oid — запис у неї не перевірити",
@@ -551,17 +553,57 @@ extern "C" fn on_record(ud: *mut c_void, action: c_int, a1: *const c_char, a2: *
     on_auth(&mut w.auth as *mut AuthCtx as *mut c_void, action, a1, a2, db, src)
 }
 
+/// db_body: запит без того, що SQLite пропускає до першої інструкції — пропусків, коментарів і порожніх інструкцій «;»
+/// («;INSERT …» SQLite виконує, а «EXPLAIN ;INSERT …» — синтаксична помилка; суд 9г).
+fn db_body(sql: &str) -> &str {
+    let b = sql.as_bytes();
+    let (mut i, n) = (0, b.len());
+    while i < n {
+        if b" \t\n\x0c\r;".contains(&b[i]) {
+            i += 1;
+        } else if b[i..].starts_with(b"--") {
+            i = b[i..].iter().position(|&c| c == b'\n').map_or(n, |j| i + j + 1);
+        } else if b[i..].starts_with(b"/*") {
+            i = b[i + 2..].windows(2).position(|w| w == b"*/").map_or(n, |j| i + 2 + j + 2);
+        } else {
+            break;
+        }
+    }
+    &sql[i..]
+}
+
+/// db_explain: запит попереднього проходу — та сама інструкція без виконання (своє EXPLAIN — як його читає SQLite).
+fn db_explain(sql: &str) -> String {
+    let body = db_body(sql);
+    let b = body.as_bytes();
+    let own = b.len() >= 7 && b[..7].eq_ignore_ascii_case(b"explain")
+        && !b.get(7).map_or(false, |&c| c >= 0x80 || c.is_ascii_alphanumeric() || c == b'_' || c == b'$');
+    if own { body.to_string() } else { format!("EXPLAIN {}", body) }
+}
+
 /// _db_written: таблиці main, у які запит може писати — і сам, і тригерами (EXPLAIN — без виконання); пише віртуальна
-/// таблиця — то й тіньові (FTS5 бере rowid сам, своїми запитами).
-fn written(l: &Lib, db: *mut c_void, sql: &str, args: &[Arg]) -> Result<(Vec<String>, Vec<String>), PyErr> {
-    let mut w = Written { ins: Vec::new(), upd: Vec::new(), auth: AuthCtx { write: true, why: Vec::new() } };
+/// таблиця — то й тіньові (FTS5 бере rowid сам, своїми запитами). Не скомпілювався — то всі таблиці (суд 9г: захист
+/// закритий, доки не доведено інше). Третє — системні таблиці, у які рядок допише сам SQLite: sqlite_schema — на CREATE,
+/// sqlite_sequence — на INSERT у будь-яку таблицю (AUTOINCREMENT authorizer не показує).
+fn written(l: &Lib, db: *mut c_void, sql: &str, args: &[Arg]) -> Result<(Vec<String>, Vec<String>, Vec<String>), PyErr> {
+    let mut w = Written { ins: Vec::new(), upd: Vec::new(), auth: AuthCtx { write: true, rand: false, why: Vec::new() } };
     (l.set_authorizer)(db, Some(on_record), &mut w as *mut Written as *mut c_void);
-    let _ = exec(l, db, &format!("EXPLAIN {}", sql), args); // помилку запиту покаже його виконання
+    // помилку запиту покаже його виконання, а захист стане на всі таблиці
+    let failed = exec(l, db, &db_explain(sql), args).is_err();
     (l.set_authorizer)(db, None, std::ptr::null_mut());
     let names = exec(l, db, r"SELECT name FROM pragma_table_list WHERE schema = 'main' AND wr = 0 AND name NOT LIKE 'sqlite\_%' ESCAPE '\' ORDER BY name", &[])?;
     let types = exec(l, db, r"SELECT type FROM pragma_table_list WHERE schema = 'main' AND wr = 0 AND name NOT LIKE 'sqlite\_%' ESCAPE '\' ORDER BY name", &[])?;
+    let sys = exec(l, db, r"SELECT name FROM pragma_table_list WHERE schema = 'main' AND wr = 0 AND type = 'table' AND name LIKE 'sqlite\_%' ESCAPE '\' ORDER BY name", &[])?;
+    let schema_t = |t: &str| SCHEMA_TABLES.contains(&uni::lower(t).as_str());
+    let schema = failed || w.ins.iter().any(|t| schema_t(t));
+    let seq = failed || w.ins.iter().any(|t| !schema_t(t));
+    let system: Vec<String> = sys.into_iter()
+        .filter(|t| if schema_t(t) { schema } else { seq && uni::lower(t) == "sqlite_sequence" }).collect();
     let kind = |t: &str| names.iter().position(|n| n == t).map(|i| types[i].as_str());
-    if w.ins.iter().chain(w.upd.iter()).any(|t| kind(t) == Some("virtual")) {
+    if failed {
+        w.ins = names.clone();
+        w.upd = names.clone();
+    } else if w.ins.iter().chain(w.upd.iter()).any(|t| kind(t) == Some("virtual")) {
         for (n, k) in names.iter().zip(types.iter()) {
             if k == "shadow" {
                 for v in [&mut w.ins, &mut w.upd] {
@@ -573,7 +615,7 @@ fn written(l: &Lib, db: *mut c_void, sql: &str, args: &[Arg]) -> Result<(Vec<Str
         }
     }
     let ok = |t: &String| matches!(kind(t), Some("table") | Some("shadow"));
-    Ok((w.ins.into_iter().filter(ok).collect(), w.upd.into_iter().filter(ok).collect()))
+    Ok((w.ins.into_iter().filter(ok).collect(), w.upd.into_iter().filter(ok).collect(), system))
 }
 
 /// _db_guard: без «час» — свої функції дат (дата з даних — як у SQLite; 'now', без часу, localtime/utc, CURRENT_* —
@@ -608,7 +650,15 @@ fn guard(l: &Lib, db: *mut c_void, it: &Interp, g: &mut Guard, write: bool, sql:
         if write {
             exec(l, db, "PRAGMA temp_store = MEMORY", &[])?;
             add("ngr_rowid", 2, 3, g)?;
-            let (ins, upd) = written(l, db, sql, args)?;
+            let (ins, upd, system) = written(l, db, sql, args)?;
+            for t in &system {
+                // старий файл: системна таблиця вже на межі, а рядок у неї пише сам SQLite (AUTOINCREMENT, CREATE)
+                if pragma(l, db, &format!("SELECT max(rowid) = {} FROM main.\"{}\"", ROWID_MAX, t.replace('"', "\"\"")))? == Some(1) {
+                    let msg = format!("випадковість SQLite (системна таблиця «{}» {}) без права «жереб»", uni::safe(t), ROWID_WHY[0]);
+                    unsafe { (*g.auth).why.push(msg.clone()) };
+                    return Err(PyErr::Sql(msg));
+                }
+            }
             let mut all: Vec<&String> = ins.iter().chain(upd.iter()).collect();
             all.sort();
             all.dedup();
@@ -666,6 +716,14 @@ extern "C" fn on_auth(ud: *mut c_void, action: c_int, a1: *const c_char, a2: *co
     let f = uni::lower(a2.as_deref().unwrap_or(""));
     if action == 31 && f == "load_extension" {
         cx.why.push(format!("load_extension{}", view.map(|v| format!(" у тригері чи VIEW «{}»", v)).unwrap_or_default()));
+        return 1;
+    }
+    let t = uni::lower(a1.as_deref().unwrap_or(""));
+    if !cx.rand && t.starts_with("sqlite_") && !SCHEMA_TABLES.contains(&t.as_str())
+        && (action == 18 || (action == 23 && a2.as_deref() == Some("ROWID")))
+    {
+        cx.why.push(format!("випадковість SQLite (системна таблиця «{}»: INSERT і зміна rowid — лише з правом «жереб», бо з rowid 2⁶³−1 наступний рядок SQLite бере навмання)",
+                            uni::safe(a1.as_deref().unwrap_or(""))));
         return 1;
     }
     let read = [20, 21, 31, 33];
@@ -752,12 +810,13 @@ fn static_ok(it: &mut Interp, pos: Pos, tool: &str, path: &str, sql: &str) -> R<
         return ngr(format!("{}: load_extension заборонено (і в тригерах та VIEW)", tool), pos);
     }
     let gap = r"(?:\s+|/\*.*?\*/|--[^\n]*(?:\n|$))*";
-    if re_search(&format!(r"(?is)\A(?:{})vacuum\b", gap), sql) {
+    let body = db_body(sql); // після того, що SQLite пропускає («;VACUUM»; суд 9г)
+    if re_search(&format!(r"(?is)\A(?:{})vacuum\b", gap), body) {
         deny(it, tool, path, sql, "VACUUM")?;
         return ngr(format!("{}: VACUUM заборонено (VACUUM INTO пише файл поза текою з печатки)", tool), pos);
     }
     let r = Rx::new(&format!(r"(?is)\A(?:{g}\()*{g}(\w*){g}(?:main{g}\.{g})?(\w*)", g = gap)).ok().unwrap();
-    let t: Vec<char> = sql.chars().collect();
+    let t: Vec<char> = body.chars().collect();
     let m = r.search(&t, 0, &mut noop, None).ok().flatten().unwrap();
     let gs = r.groups(&t, &m);
     let first = uni::lower(gs[1].as_deref().unwrap_or(""));
@@ -1018,7 +1077,7 @@ pub fn rights(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) ->
     };
     (l.limit)(db, 7, 0);
     (l.set_authorizer)(db, Some(on_auth), &mut auth as *mut AuthCtx as *mut c_void);
-    match execute(l, db, &format!("EXPLAIN {}", sql), &[]) {
+    match execute(l, db, &db_explain(&sql), &[]) { // «;PRAGMA …» — та сама відмова, що й у запуску (суд 9г)
         Ok(st) => {
             let mut rc = st.rc;
             while rc == SQLITE_ROW {
