@@ -1,0 +1,4 @@
+🜂 「SQLite: як збережено числа, ●, NUL — лічильник UPDATE як зонд」 【「бд.писати:звіти」】
+← б ＋ 「звіти/т_」 ＋ § ⌂ 0 「.db」
+← умови 【「typeof(а)='real'」 「typeof(а)='integer'」 「typeof(а)='text'」 「typeof(б)='real'」 「typeof(б)='integer'」 「typeof(б)='text'」 「typeof(б)='null'」 「а=0.1 AND typeof(а)='real'」 「а='0.1'」 「б='12345678901234567890'」 「typeof(б)='real' AND б>1e19」 「а='0.33333333333333333333333333333'」 「typeof(а)='real' AND а<0.34 AND а>0.33」 「а='9223372036854775808'」 「typeof(а)='real' AND а>9.2e18」 「а=9223372036854775807 AND typeof(а)='integer'」 「б=-9223372036854775808 AND typeof(б)='integer'」 「б='-9223372036854775809'」 「а=1 AND typeof(а)='integer'」 「а='a'||char(0)||'b'」 「length(а)=3 AND typeof(а)='text' AND substr(а,1,1)='a'」 「а='a'」 「б=0 AND typeof(б)='integer'」 「б=0 AND typeof(б)='real'」 「а='другий' AND б='перший'」】
+∀ умови λу » 〔{у} → {☂ σ 🜔бд.писати б ＋ 「UPDATE т SET а=а WHERE 」 у 【】 λп ＋ 「ВІДМОВА: 」 п}〕

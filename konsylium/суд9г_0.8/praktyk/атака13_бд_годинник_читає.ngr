@@ -1,0 +1,38 @@
+🜂 「атака13: годинник SQLite без «час» — усі шляхи, якими «зараз» може прийти в функцію дат (запит, дані, параметр, BLOB, NUL)」 【「бд.читати:дані」】
+← б 「дані/а13_док.db」
+← з λq ☂ σ 🜔бд.читати б q 【】 λпом ＋ 「✗ 」 пом
+← зп Λq п ☂ σ 🜔бд.читати б q п λпом ＋ 「✗ 」 пом
+» з 「SELECT date(char(110, 111, 119)) AS р」
+» з 「SELECT date('no' || 'w') AS р」
+» з 「SELECT date(x'6e6f77') AS р」
+» з 「SELECT date(x'6e6f7700') AS р」
+» з 「SELECT date('now' || char(0) || 'x') AS р」
+» з 「SELECT date(CAST(x'4e4f57' AS TEXT)) AS р」
+» з 「SELECT date('now ') AS р」
+» з 「SELECT date(' now') AS р」
+» з 「SELECT date('ｎｏｗ') AS р」
+» з 「SELECT time() AS р」
+» з 「SELECT datetime() AS р」
+» з 「SELECT julianday() AS р」
+» з 「SELECT unixepoch() AS р」
+» з 「SELECT timediff('now', '2020-01-01') AS р」
+» з 「SELECT timediff('2020-01-01', 'NOW') AS р」
+» з 「SELECT date('subsec') AS р」
+» з 「SELECT unixepoch('subsecond') AS р」
+» з 「SELECT date('2026-01-01', 'LocalTime') AS р」
+» з 「SELECT date('2026-01-01', 'utc') AS р」
+» з 「SELECT date('2026-01-01', ' localtime') AS р」
+» з 「SELECT CURRENT_DATE AS р」
+» з 「SELECT CURRENT_TIME AS р」
+» з 「SELECT (SELECT current_timestamp) AS р」
+» з 「SELECT strftime('%s', 'now', '+0 days') AS р」
+» з 「SELECT printf('%s', date('2026-01-01', '+1 day')) AS р」
+» з 「WITH RECURSIVE т(і, д) AS (SELECT 1, '2026-01-01' UNION ALL SELECT і + 1, CASE WHEN і = 3 THEN 'now' ELSE д END FROM т WHERE і < 5) SELECT і, date(д) AS р FROM т」
+» з 「SELECT date(дата) AS р FROM док WHERE н = 1」
+» зп 「SELECT date(?) AS р」 【「now」】
+» зп 「SELECT date(?, ?) AS р」 【「2026-01-01」 「localtime」】
+» зп 「SELECT strftime(?, ?) AS р」 【「%Y」 「2026-05-05」】
+» з 「SELECT random() AS р」
+» з 「SELECT hex(randomblob(4)) AS р」
+» з 「SELECT н FROM док ORDER BY random() LIMIT 1」
+» з 「SELECT count(*) AS к FROM док WHERE date(дата) IS NULL」

@@ -1,0 +1,4 @@
+🜂 「SQLite: годинник і випадковість через DEFAULT без права час і жереб」 【「бд.писати:звіти」】
+» ☂ 🜔бд.писати 「звіти/а12_б1.db」 「CREATE TABLE IF NOT EXISTS t(x DEFAULT CURRENT_TIMESTAMP, y DEFAULT (random()), z DEFAULT (strftime('%s','now')))」 【】 λe e
+» ☂ 🜔бд.писати 「звіти/а12_б1.db」 「INSERT INTO t DEFAULT VALUES」 【】 λe e
+» ☂ 🜔бд.писати 「звіти/а12_б1.db」 「INSERT INTO t(x) VALUES (1)」 【】 λe e
