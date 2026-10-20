@@ -980,11 +980,38 @@ fn parse_pattern(pat: &[char]) -> PR<(Vec<Op>, u32, usize, Vec<(String, usize)>)
 
 // ---------------------------------------------------------------- компіляція (як nigredo.Rx)
 
+/// Предикат одного символу — як скомпільований re CPython 3.13 (_compiler._compile, _optimize_charset).
 #[derive(Clone)]
 enum Pred {
-    Lit { cs: Vec<String>, icase: bool, neg: bool },
+    Eq { c: char, neg: bool },                           // символ як є (без (?i) чи без регістру)
+    Fold { cs: Vec<char>, alow: bool, neg: bool },       // (?i): мала літера символу — у cs (з _EXTRA_CASES)
     Any { dotall: bool },
-    In { neg: bool, parts: Vec<SetItem>, icase: bool, ascii: bool },
+    In { neg: bool, members: std::collections::HashSet<char>, tail: Vec<Tail>, fold: Option<bool>, ascii: bool },
+}
+
+#[derive(Clone)]
+enum Tail {
+    Range(u32, u32),
+    RangeUni(u32, u32), // поза BMP з (?i): мала літера чи її велика — у межах (RANGE_UNI_IGNORE)
+    Cat(Cat),
+}
+
+/// _sre.unicode_iscased.
+fn cased(c: char) -> bool {
+    uni::lower1(c) != c || uni::upper1(c) != c
+}
+
+/// _sre.ascii_tolower: (?a) — регістр лише в ASCII.
+fn alow(c: char) -> char {
+    c.to_ascii_lowercase()
+}
+
+/// Малі літери, рівні c під (?i) (re._casefix._EXTRA_CASES).
+fn fixes(c: char) -> &'static [u32] {
+    match crate::lang::RX_EXTRA_CASES.binary_search_by_key(&(c as u32), |x| x.0) {
+        Ok(i) => crate::lang::RX_EXTRA_CASES[i].1,
+        Err(_) => &[],
+    }
 }
 
 #[derive(Clone)]
@@ -1048,24 +1075,66 @@ impl Gen {
     }
 
     fn pred(&mut self, op: &Op, icase: bool, dotall: bool) -> Result<usize, String> {
+        let ascii = self.ascii;
+        let low = |c: char| if ascii { alow(c) } else { uni::lower1(c) };
+        let iscased = |c: char| if ascii { c.is_ascii_alphabetic() } else { cased(c) };
+        let fx = |c: char| if icase && !ascii { fixes(c) } else { &[] };
         let p = match op {
             Op::Literal(v) | Op::NotLiteral(v) => {
                 let c = char::from_u32(*v).unwrap_or('\u{FFFD}');
-                let mut cs = vec![c.to_string()];
-                if icase {
-                    for x in [low1(c), up1(c)] {
-                        if !cs.contains(&x) {
-                            cs.push(x);
-                        }
-                    }
+                let neg = matches!(op, Op::NotLiteral(_));
+                if !icase || !iscased(c) {
+                    Pred::Eq { c, neg }
+                } else {
+                    let lo = low(c);
+                    let mut cs = vec![lo];
+                    cs.extend(fx(lo).iter().filter_map(|&x| char::from_u32(x)));
+                    Pred::Fold { cs, alow: ascii, neg }
                 }
-                Pred::Lit { cs, icase, neg: matches!(op, Op::NotLiteral(_)) }
             }
             Op::Any => Pred::Any { dotall },
             Op::In(items) => {
-                let neg = items.iter().any(|x| *x == SetItem::Negate);
-                let parts = items.iter().filter(|x| **x != SetItem::Negate).cloned().collect();
-                Pred::In { neg, parts, icase, ascii: self.ascii }
+                let mut neg = false;
+                let mut members = std::collections::HashSet::new();
+                let mut tail = Vec::new();
+                let mut hascased = false;
+                for it in items {
+                    match it {
+                        SetItem::Negate => neg = true,
+                        SetItem::Literal(v) => {
+                            let c = char::from_u32(*v).unwrap_or('\u{FFFD}');
+                            if icase {
+                                let lo = low(c);
+                                members.insert(lo);
+                                members.extend(fx(lo).iter().filter_map(|&x| char::from_u32(x)));
+                                hascased = hascased || iscased(lo);
+                            } else {
+                                members.insert(c);
+                            }
+                        }
+                        SetItem::Range(a, b) => {
+                            if !icase {
+                                tail.push(Tail::Range(*a, *b));
+                                continue;
+                            }
+                            for i in *a..=(*b).min(0xFFFF) {
+                                if let Some(c) = char::from_u32(i) { // сурогатів у тексті Nigredo не буває
+                                    let lo = low(c);
+                                    members.insert(lo);
+                                    members.extend(fx(lo).iter().filter_map(|&x| char::from_u32(x)));
+                                }
+                            }
+                            if *b > 0xFFFF {
+                                tail.push(if ascii { Tail::Range(*a, *b) } else { Tail::RangeUni(*a, *b) });
+                                hascased = true;
+                            } else if !hascased {
+                                hascased = (*a..=*b).any(|i| char::from_u32(i).map_or(false, iscased));
+                            }
+                        }
+                        SetItem::Category(c) => tail.push(Tail::Cat(*c)),
+                    }
+                }
+                Pred::In { neg, members, tail, fold: if icase && hascased { Some(ascii) } else { None }, ascii }
             }
             _ => unreachable!(),
         };
@@ -1160,21 +1229,6 @@ impl Gen {
     }
 }
 
-/// Проста мала літера (як у re): «İ» → «i», а не «i̇» з двох символів (суд 9: [a-z] з (?i) на «İ» — код 4).
-fn low1(c: char) -> String {
-    let lo = uni::lower_char(c);
-    match lo.chars().nth(1) {
-        None => lo,
-        Some(_) => lo.chars().next().unwrap().to_string(),
-    }
-}
-
-/// Проста велика літера: «ß» лишається «ß» (повна — «SS»).
-fn up1(c: char) -> String {
-    let up = uni::upper_char(c);
-    if up.chars().nth(1).is_none() { up } else { c.to_string() }
-}
-
 /// Символ чи рядок (ch.lower() може бути довшим за символ).
 fn cat_hit(cat: Cat, ch: &str, ascii: bool) -> bool {
     let hit = if ascii && !ch.is_ascii() {
@@ -1195,61 +1249,49 @@ fn cat_hit(cat: Cat, ch: &str, ascii: bool) -> bool {
     if matches!(cat, Cat::NotDigit | Cat::NotSpace | Cat::NotWord) { !hit } else { hit }
 }
 
-/// one(ch) у класі: Err — ord() від рядка довшого за символ (після low1/up1 не буває).
-fn one(parts: &[SetItem], ch: &str, ascii: bool) -> Result<bool, String> {
-    for p in parts {
-        match p {
-            SetItem::Literal(v) => {
-                let mut it = ch.chars();
-                if let (Some(c), None) = (it.next(), it.next()) {
-                    if c as u32 == *v {
-                        return Ok(true);
-                    }
-                }
-            }
-            SetItem::Range(a, b) => {
-                let n = ch.chars().count();
-                if n != 1 {
-                    return Err(format!("TypeError: ord() expected a character, but string of length {} found", n));
-                }
-                let o = ch.chars().next().unwrap() as u32;
-                if *a <= o && o <= *b {
-                    return Ok(true);
-                }
-            }
-            SetItem::Category(c) => {
-                if cat_hit(*c, ch, ascii) {
-                    return Ok(true);
-                }
-            }
-            SetItem::Negate => {}
-        }
-    }
-    Ok(false)
-}
-
 impl Pred {
     fn test(&self, c: char) -> Result<bool, String> {
-        match self {
-            Pred::Any { dotall } => Ok(*dotall || c != '\n'),
-            Pred::Lit { cs, icase, neg } => {
-                let s = c.to_string();
-                let hit = cs.contains(&s) || (*icase && cs.contains(&low1(c)));
-                Ok(hit != *neg)
-            }
-            Pred::In { neg, parts, icase, ascii } => {
-                let s = c.to_string();
-                let mut hit = one(parts, &s, *ascii)?;
-                if !hit && *icase {
-                    hit = one(parts, &low1(c), *ascii)? || one(parts, &up1(c), *ascii)?;
+        Ok(match self {
+            Pred::Any { dotall } => *dotall || c != '\n',
+            Pred::Eq { c: x, neg } => (c == *x) != *neg,
+            Pred::Fold { cs, alow: a, neg } => cs.contains(&if *a { alow(c) } else { uni::lower1(c) }) != *neg,
+            Pred::In { neg, members, tail, fold, ascii } => {
+                let ch = match fold {
+                    Some(true) => alow(c),
+                    Some(false) => uni::lower1(c),
+                    None => c,
+                };
+                let mut hit = members.contains(&ch);
+                if !hit {
+                    let o = ch as u32;
+                    let mut buf = [0u8; 4];
+                    for t in tail {
+                        hit = match t {
+                            Tail::Range(a, b) => *a <= o && o <= *b,
+                            Tail::RangeUni(a, b) => (*a <= o && o <= *b) || {
+                                let u = uni::upper1(ch) as u32;
+                                *a <= u && u <= *b
+                            },
+                            Tail::Cat(k) => cat_hit(*k, ch.encode_utf8(&mut buf), *ascii),
+                        };
+                        if hit {
+                            break;
+                        }
+                    }
                 }
-                Ok(hit != *neg)
+                hit != *neg
             }
-        }
+        })
     }
 }
 
 pub type Slots = Vec<Option<usize>>;
+
+/// Частина розібраного шаблону заміни.
+pub enum Piece {
+    Lit(String),
+    Group(usize),
+}
 
 impl Rx {
     pub fn new(pat: &str) -> Result<Rx, RxErr> {
@@ -1409,66 +1451,104 @@ impl Rx {
             .collect()
     }
 
-    /// Шаблон заміни: \1…\99, \g<n>, \g<імʼя>, \n \t \\…; Err(true, …) — RxError, Err(false, …) — вада еталона.
-    pub fn expand(&self, tmpl: &[char], gs: &[Option<String>]) -> Result<String, (bool, String)> {
-        let mut out = String::new();
+    /// Шаблон заміни — як re._parser.parse_template (CPython 3.13, nigredo.Rx.template): рядки й номери груп;
+    /// хибний — помилка одразу, навіть без збігу.
+    pub fn template(&self, tmpl: &[char]) -> Result<Vec<Piece>, String> {
+        let (mut out, mut lit) = (Vec::new(), String::new());
+        let groups = self.ngroups as u64 - 1;
         let n = tmpl.len();
         let mut i = 0;
+        let group = |k: u64, shown: String, lit: &mut String, out: &mut Vec<Piece>| -> Result<(), String> {
+            if k > groups {
+                return Err(format!("у заміні немає групи {}", shown));
+            }
+            out.push(Piece::Lit(std::mem::take(lit)));
+            out.push(Piece::Group(k as usize));
+            Ok(())
+        };
+        let oct = |c: char| ('0'..='7').contains(&c);
         while i < n {
             let c = tmpl[i];
+            i += 1;
             if c != '\\' {
-                out.push(c);
-                i += 1;
+                lit.push(c);
                 continue;
             }
-            if i + 1 >= n {
-                return Err((true, "заміна закінчується на «\\»".into()));
+            if i >= n {
+                return Err("заміна закінчується на «\\»".into());
             }
-            let d = tmpl[i + 1];
-            if d.is_ascii_digit() {                   // лише 0–9, як у re («\²» — не група; суд 9: було код 4)
-                let mut j = i + 1;
-                while j < n && j < i + 3 && tmpl[j].is_ascii_digit() {
+            let d = tmpl[i];
+            i += 1;
+            if d == 'g' {
+                if i >= n || tmpl[i] != '<' {
+                    return Err("у заміні \\g без <…>".into());
+                }
+                let j = match tmpl[i + 1..].iter().position(|&x| x == '>') {
+                    Some(p) => i + 1 + p,
+                    None => return Err("у заміні незакрите \\g<".into()),
+                };
+                let name: String = tmpl[i + 1..j].iter().collect();
+                i = j + 1;
+                if !name.is_empty() && name.chars().all(|x| x.is_ascii_digit()) {
+                    let t = name.trim_start_matches('0');
+                    let shown = if t.is_empty() { "0".to_string() } else { t.to_string() };
+                    let k = if shown.len() > 18 { u64::MAX } else { shown.parse::<u64>().unwrap() };
+                    group(k, shown, &mut lit, &mut out)?;
+                } else if name.is_empty() {
+                    return Err("у заміні порожнє \\g<>".into());
+                } else {
+                    match self.names.iter().find(|(nm, _)| *nm == name) {
+                        Some((_, g)) if uni::is_identifier(&name) => group(*g as u64, g.to_string(), &mut lit, &mut out)?,
+                        _ => return Err(format!("у заміні немає групи «{}»", name)),
+                    }
+                }
+            } else if d == '0' {
+                let mut v = 0u32;
+                let mut j = i;
+                while j < n && j < i + 2 && oct(tmpl[j]) {
+                    v = v * 8 + tmpl[j] as u32 - '0' as u32;
                     j += 1;
                 }
-                let s: String = tmpl[i + 1..j].iter().collect();
-                let k = py_int(&s).map_err(|e| (false, e))?;
-                if !(0 < k && k < self.ngroups as i64) {
-                    return Err((true, format!("у заміні немає групи {}", k)));
-                }
-                out.push_str(gs[k as usize].as_deref().unwrap_or(""));
+                lit.push(char::from_u32(v & 0xff).unwrap());
                 i = j;
-            } else if d == 'g' && i + 2 < n && tmpl[i + 2] == '<' {
-                let j = match tmpl[i + 3..].iter().position(|&x| x == '>') {
-                    Some(p) => i + 3 + p,
-                    None => return Err((true, "у заміні незакрите \\g<".into())),
-                };
-                let r: String = tmpl[i + 3..j].iter().collect();
-                let k: Option<i64> = if !r.is_empty() && r.chars().all(|c| c.is_ascii_digit()) {
-                    Some(py_int(&r).map_err(|e| (false, e))?)
+            } else if ('1'..='9').contains(&d) {
+                let k;
+                if i < n && tmpl[i].is_ascii_digit() {
+                    if oct(d) && oct(tmpl[i]) && i + 1 < n && oct(tmpl[i + 1]) {
+                        let v = (d as u32 - 48) * 64 + (tmpl[i] as u32 - 48) * 8 + (tmpl[i + 1] as u32 - 48);
+                        if v > 0o377 {
+                            return Err(format!("у заміні вісімкове \\{}{}{} понад \\377", d, tmpl[i], tmpl[i + 1]));
+                        }
+                        lit.push(char::from_u32(v).unwrap());
+                        i += 2;
+                        continue;
+                    }
+                    k = (d as u64 - 48) * 10 + (tmpl[i] as u64 - 48);
+                    i += 1;
                 } else {
-                    self.names.iter().find(|(nm, _)| *nm == r).map(|(_, g)| *g as i64)
-                };
-                match k {
-                    Some(k) if 0 <= k && k < self.ngroups as i64 => out.push_str(gs[k as usize].as_deref().unwrap_or("")),
-                    _ => return Err((true, format!("у заміні немає групи «{}»", r))),
+                    k = d as u64 - 48;
                 }
-                i = j + 1;
+                group(k, k.to_string(), &mut lit, &mut out)?;
             } else {
                 let e = match d {
-                    'n' => '\n',
-                    't' => '\t',
-                    'r' => '\r',
-                    '\\' => '\\',
-                    'f' => '\u{c}',
-                    'v' => '\u{b}',
                     'a' => '\u{7}',
                     'b' => '\u{8}',
-                    _ => return Err((true, format!("у заміні невідоме екранування \\{}", d))),
+                    'f' => '\u{c}',
+                    'n' => '\n',
+                    'r' => '\r',
+                    't' => '\t',
+                    'v' => '\u{b}',
+                    '\\' => '\\',
+                    x if x.is_ascii_alphabetic() => return Err(format!("у заміні невідоме екранування \\{}", x)),
+                    x => {
+                        lit.push('\\');
+                        x
+                    }
                 };
-                out.push(e);
-                i += 2;
+                lit.push(e);
             }
         }
+        out.push(Piece::Lit(lit));
         Ok(out)
     }
 }

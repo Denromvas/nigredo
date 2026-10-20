@@ -223,6 +223,9 @@ def lang():
                  'VALUE_MAX_DEPTH', 'WALK_MAX_DEPTH', 'DEC_EXP'):
         out.append(f'pub const {name}: u64 = {getattr(N, name)};')
     out.append(f'pub const UA_ORDER: &str = {rs("абвгґдеєжзиіїйклмнопрстуфхцчшщьюя")};')
+    xc = sorted(N.RX_EXTRA_CASES.items())      # (?i): малі літери, рівні між собою (re._casefix)
+    out.append(f'pub static RX_EXTRA_CASES: [(u32, &[u32]); {len(xc)}] = [' +
+               ', '.join(f"(0x{k:x}, &[{', '.join(f'0x{x:x}' for x in v)}])" for k, v in xc) + '];')
     # типи до запуску: TYPE_REQ — гліф → альтернативи (рядок назв через кому), TYPE_RES, TOOL_TYPES
     req = sorted(N.TYPE_REQ.items())
     out.append(f'pub static TYPE_REQ: [(char, &[&str]); {len(req)}] = [' +

@@ -2102,53 +2102,103 @@ def _cat(code, ch, ascii_):
     return (not hit) if 'NOT' in name else hit
 
 
+RX_EXTRA_CASES = {   # re._casefix._EXTRA_CASES (CPython 3.13, Unicode 15.1): малі літери, рівні під (?i) (суд 9б)
+    0x69: (0x131,), 0x73: (0x17f,), 0xb5: (0x3bc,), 0x131: (0x69,), 0x17f: (0x73,), 0x345: (0x3b9, 0x1fbe),
+    0x390: (0x1fd3,), 0x3b0: (0x1fe3,), 0x3b2: (0x3d0,), 0x3b5: (0x3f5,), 0x3b8: (0x3d1,), 0x3b9: (0x345, 0x1fbe),
+    0x3ba: (0x3f0,), 0x3bc: (0xb5,), 0x3c0: (0x3d6,), 0x3c1: (0x3f1,), 0x3c2: (0x3c3,), 0x3c3: (0x3c2,),
+    0x3c6: (0x3d5,), 0x3d0: (0x3b2,), 0x3d1: (0x3b8,), 0x3d5: (0x3c6,), 0x3d6: (0x3c0,), 0x3f0: (0x3ba,),
+    0x3f1: (0x3c1,), 0x3f5: (0x3b5,), 0x432: (0x1c80,), 0x434: (0x1c81,), 0x43e: (0x1c82,), 0x441: (0x1c83,),
+    0x442: (0x1c84, 0x1c85), 0x44a: (0x1c86,), 0x463: (0x1c87,), 0x1c80: (0x432,), 0x1c81: (0x434,),
+    0x1c82: (0x43e,), 0x1c83: (0x441,), 0x1c84: (0x442, 0x1c85), 0x1c85: (0x442, 0x1c84), 0x1c86: (0x44a,),
+    0x1c87: (0x463,), 0x1c88: (0xa64b,), 0x1e61: (0x1e9b,), 0x1e9b: (0x1e61,), 0x1fbe: (0x345, 0x3b9),
+    0x1fd3: (0x390,), 0x1fe3: (0x3b0,), 0xa64b: (0x1c88,), 0xfb05: (0xfb06,), 0xfb06: (0xfb05,)}
+
+
 def _low1(ch):
-    """Проста мала літера (як у re): «İ» → «i», а не «i̇» з двох символів (суд 9: [a-z] з (?i) на «İ» — код 4)."""
+    """Проста мала літера (як _sre.unicode_tolower): «İ» → «i», а не «i̇» з двох символів."""
     lo = ch.lower()
     return lo if len(lo) == 1 else lo[0]
 
 
-def _up1(ch):
-    """Проста велика літера: «ß» лишається «ß» (повна — «SS»)."""
-    up = ch.upper()
-    return up if len(up) == 1 else ch
+def _upf(ch):
+    """Проста велика літера (як _sre.unicode_toupper): перший символ повної («ß» → «S»)."""
+    return ch.upper()[0]
+
+
+def _cased(ch):
+    """_sre.unicode_iscased: символ має інший регістр."""
+    return _low1(ch) != ch or _upf(ch) != ch
+
+
+def _alow(ch):
+    """_sre.ascii_tolower: (?a) — регістр лише в ASCII."""
+    return chr(ord(ch) + 32) if 'A' <= ch <= 'Z' else ch
 
 
 def _pred(op, av, icase, dotall, ascii_):
-    """Предикат одного символу."""
+    """Предикат одного символу — як скомпільований re (_compiler._compile, _optimize_charset) у CPython 3.13: з (?i)
+    символ порівнюється малою літерою (і таблицею _EXTRA_CASES: σ/ς, µ/μ, i/ı, s/ſ…), клас — малими літерами своїх
+    членів (суд 9б: «(?i)» тут не був «як у Python»)."""
+    low = (_alow if ascii_ else _low1) if icase else None
+    iscased = (lambda c: c.isascii() and c.isalpha()) if ascii_ else _cased
+    fixes = RX_EXTRA_CASES if icase and not ascii_ else {}
     if op == C.LITERAL or op == C.NOT_LITERAL:
         c = chr(av)
-        cs = {c, _low1(c), _up1(c)} if icase else {c}
-        return (lambda ch: ch in cs or (icase and _low1(ch) in cs)) if op == C.LITERAL else \
-               (lambda ch: not (ch in cs or (icase and _low1(ch) in cs)))
+        if not icase or not iscased(c):
+            test = c.__eq__
+        else:
+            lo = low(c)
+            cs = {lo, *map(chr, fixes.get(ord(lo), ()))}
+            test = lambda ch: low(ch) in cs        # noqa: E731
+        return test if op == C.LITERAL else (lambda ch: not test(ch))
     if op == C.ANY:
         return (lambda ch: True) if dotall else (lambda ch: ch != '\n')
     if op == C.IN:
-        neg, parts = False, []
+        neg, members, tail, hascased = False, set(), [], False
         for o2, a2 in av:
             if o2 == C.NEGATE:
                 neg = True
             elif o2 == C.LITERAL:
-                parts.append(('l', chr(a2)))
+                if icase:
+                    lo = low(chr(a2))
+                    members.add(lo)
+                    members.update(map(chr, fixes.get(ord(lo), ())))
+                    hascased = hascased or iscased(lo)
+                else:
+                    members.add(chr(a2))
             elif o2 == C.RANGE:
-                parts.append(('r', a2))
+                a, b = a2
+                if not icase:
+                    tail.append(('r', a2))
+                    continue
+                for i in range(a, min(b, 0xFFFF) + 1):          # BMP — малими літерами (як charmap у re)
+                    lo = low(chr(i))
+                    members.add(lo)
+                    members.update(map(chr, fixes.get(ord(lo), ())))
+                if b > 0xFFFF:                                    # поза BMP — RANGE_UNI_IGNORE (чи RANGE з (?a))
+                    tail.append(('ru' if fixes else 'r', a2))
+                    hascased = True
+                elif not hascased:
+                    hascased = any(iscased(chr(i)) for i in range(a, b + 1))
             elif o2 == C.CATEGORY:
-                parts.append(('c', a2))
+                tail.append(('c', a2))
             else:
                 raise RxError(f'у класі символів {o2} не підтримано')
-
-        def one(ch):
-            for kind, a in parts:
-                if kind == 'l' and ch == a:
-                    return True
-                if kind == 'r' and a[0] <= ord(ch) <= a[1]:
-                    return True
-                if kind == 'c' and _cat(a, ch, ascii_):
-                    return True
-            return False
+        fold = icase and hascased                   # IN_UNI_IGNORE: символ — малою літерою; інакше — як є
 
         def pred(ch):
-            hit = one(ch) or (icase and (one(_low1(ch)) or one(_up1(ch))))
+            if fold:
+                ch = low(ch)
+            hit = ch in members
+            if not hit:
+                for kind, a in tail:
+                    if kind == 'c':
+                        hit = _cat(a, ch, ascii_)
+                    else:
+                        o = ord(ch)
+                        hit = a[0] <= o <= a[1] or (kind == 'ru' and a[0] <= ord(_upf(ch)) <= a[1])
+                    if hit:
+                        break
             return hit != neg
         return pred
     raise RxError(f'{op} не підтримано')
@@ -2341,50 +2391,78 @@ class Rx:
     def groups(self, text, m):
         return [None if m[2 * g] is None else text[m[2 * g]:m[2 * g + 1]] for g in range(self.ngroups)]
 
-    def expand(self, tmpl, gs):
-        """Шаблон заміни як у re.sub: \\1…\\99, \\g<n>, \\g<імʼя>, \\n \\t \\\\; решта \\x — помилка."""
-        out, i, n = [], 0, len(tmpl)
+    def template(self, tmpl):
+        """Шаблон заміни — як re._parser.parse_template (CPython 3.13): рядки й номери груп; хибний — помилка одразу,
+        навіть без збігу. \\0, \\0o, \\0oo і три вісімкові цифри — символ (\\012 — «\\n», а не група 1 і «2»);
+        \\ з не-ASCII-літерою лишається як є (суд 9б)."""
+        out, lit, i, n, groups = [], [], 0, len(tmpl), self.ngroups - 1
+
+        def group(k):
+            if k > groups:
+                raise RxError(f'у заміні немає групи {k}')
+            out.append(''.join(lit))
+            lit.clear()
+            out.append(k)
         while i < n:
             c = tmpl[i]
+            i += 1
             if c != '\\':
-                out.append(c)
-                i += 1
+                lit.append(c)
                 continue
-            if i + 1 >= n:
+            if i >= n:
                 raise RxError('заміна закінчується на «\\»')
-            d = tmpl[i + 1]
-            if d in '0123456789':                      # лише ASCII-цифри, як у re («\\²» — не група; суд 9: було код 4)
-                j = i + 1
-                while j < n and j < i + 3 and tmpl[j] in '0123456789':
-                    j += 1
-                k = int(tmpl[i + 1:j])
-                if not 0 < k < self.ngroups:
-                    raise RxError(f'у заміні немає групи {k}')
-                out.append(gs[k] or '')
-                i = j
-            elif d == 'g' and i + 2 < n and tmpl[i + 2] == '<':
-                j = tmpl.find('>', i + 3)
+            d = tmpl[i]
+            i += 1
+            if d == 'g':
+                if i >= n or tmpl[i] != '<':
+                    raise RxError('у заміні \\g без <…>')
+                j = tmpl.find('>', i + 1)
                 if j < 0:
                     raise RxError('у заміні незакрите \\g<')
-                ref = tmpl[i + 3:j]
-                k = int(ref) if ref.isascii() and ref.isdigit() else self.names.get(ref)
-                if k is None or not 0 <= k < self.ngroups:
-                    raise RxError(f'у заміні немає групи «{ref}»')
-                out.append(gs[k] or '')
-                i = j + 1
+                name, i = tmpl[i + 1:j], j + 1
+                if name.isdecimal() and name.isascii():
+                    group(int(name))
+                elif not name:
+                    raise RxError('у заміні порожнє \\g<>')
+                elif not name.isidentifier() or name not in self.names:
+                    raise RxError(f'у заміні немає групи «{name}»')
+                else:
+                    group(self.names[name])
+            elif d == '0':
+                j = i
+                while j < n and j < i + 2 and tmpl[j] in '01234567':
+                    j += 1
+                lit.append(chr(int('0' + tmpl[i:j], 8) & 0xff))
+                i = j
+            elif d in '123456789':                     # лише ASCII-цифри, як у re
+                if i < n and tmpl[i] in '0123456789':
+                    if d in '01234567' and tmpl[i] in '01234567' and i + 1 < n and tmpl[i + 1] in '01234567':
+                        v = int(d + tmpl[i:i + 2], 8)
+                        if v > 0o377:
+                            raise RxError(f'у заміні вісімкове \\{d}{tmpl[i:i + 2]} понад \\377')
+                        lit.append(chr(v))
+                        i += 2
+                        continue
+                    k = int(d + tmpl[i])
+                    i += 1
+                else:
+                    k = int(d)
+                group(k)
+            elif d in RX_TMPL_ESC:
+                lit.append(RX_TMPL_ESC[d])
+            elif d.isascii() and d.isalpha():
+                raise RxError(f'у заміні невідоме екранування \\{d}')
             else:
-                esc = {'n': '\n', 't': '\t', 'r': '\r', '\\': '\\', 'f': '\f', 'v': '\v', 'a': '\a', 'b': '\b'}
-                if d not in esc:
-                    raise RxError(f'у заміні невідоме екранування \\{d}')
-                out.append(esc[d])
-                i += 2
-        return ''.join(out)
+                lit.append('\\' + d)
+        out.append(''.join(lit))
+        return out
 
     def sub(self, tmpl, text, pay, size_limit):
+        parts = self.template(tmpl)
         out, last, total = [], 0, 0
         for m in self.finditer(text, pay):
             gs = self.groups(text, m)
-            piece = text[last:m[0]] + self.expand(tmpl, gs)
+            piece = text[last:m[0]] + ''.join(p if isinstance(p, str) else gs[p] or '' for p in parts)
             total += len(piece)
             if total > size_limit:
                 raise OverflowError
@@ -2392,6 +2470,9 @@ class Rx:
             last = m[1]
         out.append(text[last:])
         return ''.join(out)
+
+
+RX_TMPL_ESC = {'a': '\a', 'b': '\b', 'f': '\f', 'n': '\n', 'r': '\r', 't': '\t', 'v': '\v', '\\': '\\'}
 
 
 def _nullable(items):
@@ -5515,10 +5596,13 @@ def cheatsheet():
             '- SQLite рахує дроби у float: `SUM(сума)` дає `0.30000000000000004`; гроші — сумуйте в Nigredo (`∫`) або',
             '  зберігайте копійками (INTEGER). Дробовий параметр `?` іде **текстом** (точне десяткове): `? > 1000000`',
             '  з `12.50` — порівняння тексту з числом; пишіть `CAST(? AS REAL)` або порівнюйте в Nigredo. Кроки SQLite —',
-            '  ~10 на 1000 інструкцій (детерміновано; у `‖` — ще й за часом).',
+            '  ~10 на 1000 інструкцій (детерміновано; у `‖` — ще й за часом), тож важка інструкція коштує як легка:',
+            '  один запит — до 30 с, хоч би які `--кроки`.',
             '- Регулярки — синтаксис і семантика Python `re`: `$` збігається й перед кінцевим `\\n`, `\\w` не бере',
             '  апостроф (`п\'ять` — два слова), `[а-я]` — без і ї є ґ (пишіть `[а-яіїєґ]`), `\\N{…}` — помилка (пишіть сам',
-            '  символ). Без відкатів: зворотні посилання й заглядання — помилка до запуску.',
+            '  символ). `(?i)` — як у `re`: `σ` = `ς`, `µ` = `μ`, `i` = `ı`, `s` = `ſ`. Заміна `≋` — як `re.sub`: `\\012` —',
+            '  вісімковий символ, а не група; хибний шаблон заміни — помилка й без збігу. Без відкатів: зворотні',
+            '  посилання й заглядання — помилка до запуску.',
             '- `1e3` у коді — це число `1` й імʼя `e3`: порядок — лише в даних (`ν 「1e3」`). У `「」` діють `\\n \\t \\\\ \\」`,',
             '  а `\\u` — ні: невидимі й керівні символи — лише з даних (`δ 「"\\u200b"」`).',
             '- Після виклику функції з сумнівним аргументом чи гілки за сумнівною умовою, що могли зупинити програму,',
