@@ -49,8 +49,8 @@ Same tasks in both languages (`bench/`), models writing both from the same task 
 | Real bugs caught before running (14) | 9 | 3 with pyflakes |
 | Models right on the first try, held-out tasks (3 runs × 10) | Sonnet 27/30, Haiku 21/30 | Sonnet 27/30, Haiku 23/30 |
 | Speed, 12 small agent tasks (median wall time) | **0.49×** | 1× |
-| Speed, 200k words / 200k-step loop / 25k-record JSON (CPU time) | **0.73× / 0.57× / 0.86×** | 1× |
-| Speed, the same loop through a named function / a `↻` loop with list state (CPU time) | **0.5× / 2.7×** | 1× |
+| Speed, 200k words / 200k-step loop / 25k-record JSON (CPU time) | **0.69× / 0.44× / 0.83×** | 1× |
+| Speed, the same loop through a named function / a `↻` loop with list state (CPU time) | **0.32× / 3.1×** | 1× |
 | The owner knows what a program may do and did | seal, signed trace, replay, dry run | — |
 
 Measured on a phone (Termux); Nigredo's numbers include its own trace and replay store. Small tasks are mostly
@@ -148,8 +148,8 @@ by Claude (Anthropic) as an agent; the project owner is Denis Romaniuk. MIT lice
 | Справжніх помилок спіймано до запуску (14) | 9 | 3 з pyflakes |
 | Моделі правильно з першої спроби, відкладені задачі (3 прогони × 10) | Sonnet 27/30, Haiku 21/30 | Sonnet 27/30, Haiku 23/30 |
 | Швидкість, 12 малих задач агента (медіана реального часу) | **0,49×** | 1× |
-| Швидкість, 200 тис. слів / цикл на 200 тис. кроків / JSON на 25 тис. записів (процесорний час) | **0,73× / 0,57× / 0,86×** | 1× |
-| Швидкість, той самий цикл через іменовану функцію / цикл `↻` зі станом-списком (процесорний час) | **0,5× / 2,7×** | 1× |
+| Швидкість, 200 тис. слів / цикл на 200 тис. кроків / JSON на 25 тис. записів (процесорний час) | **0,69× / 0,44× / 0,83×** | 1× |
+| Швидкість, той самий цикл через іменовану функцію / цикл `↻` зі станом-списком (процесорний час) | **0,32× / 3,1×** | 1× |
 | Власник знає, що програмі дозволено й що вона зробила | печатка, підписаний слід, повтор, сухий прогін | — |
 
 Виміряно на телефоні (Termux); у числах Nigredo — і її власні слід та сховище повтору. Малі задачі — здебільшого
