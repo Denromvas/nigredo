@@ -1741,7 +1741,7 @@ pub fn to_dec(x: &Val) -> Dec {
 }
 
 pub fn dec_err<T>(g: char, s: u32, pos: Pos) -> R<T> {
-    ngr(format!("{}: десяткове число поза межами ({})", g, dec::signal_name(s)), pos)
+    ngr(format!("{}: {}", g, dec::why(s)), pos)
 }
 
 /// Елементи циклу: справжній список або ряд цілих `…` (на льоту).

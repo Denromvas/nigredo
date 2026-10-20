@@ -3601,6 +3601,42 @@ def read_allowlist(path, cwd=None, prog=None, approval=None):
 JSON_DUP = 'ключ в обʼєкті повторюється (яке значення брати — неоднозначно)'
 
 
+JSON_UK = (('Expecting value', 'очікувалося значення'), ('Extra data', 'зайві дані після значення'),
+           ('Expecting property name enclosed in double quotes', 'очікувалася назва поля в подвійних лапках'),
+           ("Expecting ':' delimiter", 'очікувалася «:»'), ("Expecting ',' delimiter", 'очікувалася «,»'),
+           ('Unterminated string starting at', 'незакритий рядок, що почався'),
+           ('Invalid control character at', 'керівний символ у рядку'), ('Invalid \\uXXXX escape', 'хибне \\uXXXX'),
+           ('Invalid \\escape', 'хибне екранування'),
+           ('Illegal trailing comma before end of object', 'зайва кома перед кінцем обʼєкта'),
+           ('Illegal trailing comma before end of array', 'зайва кома перед кінцем масиву'))
+
+
+def json_uk(m):
+    """Помилка JSON словами, а не текстом модуля json (суд 9б); як prims::json_uk Атанора."""
+    for en, uk in JSON_UK:
+        if m.startswith(en):
+            m = uk + m[len(en):]
+            break
+    i = m.rfind('line ')
+    if i >= 0:
+        mt = re.fullmatch(r'line ([0-9]+) column ([0-9]+) \(char ([0-9]+)\)', m[i:])
+        if mt:
+            m = f'{m[:i]}рядок {mt[1]}, стовпець {mt[2]} (символ {mt[3]})'
+    return m
+
+
+def dec_why(e):
+    """Чому впала десяткова операція — словами, а не назвою класу decimal (суд 9б: «(Inexact)»); як dec::why Атанора."""
+    for cls, why in ((decimal.Overflow, 'порядок числа завеликий'), (decimal.Underflow, 'порядок числа замалий'),
+                     (decimal.Subnormal, 'порядок числа замалий'),
+                     (decimal.Inexact, 'точний результат довший за 60 значущих цифр — округліть (≅)'),
+                     (decimal.Rounded, 'точний результат довший за 60 значущих цифр — округліть (≅)'),
+                     (decimal.DivisionByZero, 'ділення на нуль'), (decimal.InvalidOperation, 'недопустима операція з числом')):
+        if isinstance(e, cls):
+            return why
+    return 'порядок числа поза межами'
+
+
 def per_programs(data):
     """«для_програм» з дозволів власника: відбиток (малими літерами) → список дозволів."""
     per_prog = data.get('для_програм', {})
@@ -4681,7 +4717,7 @@ class Interp:
         except RecursionError:
             raise NgrError(f'{g}: значення вкладене надто глибоко', pos, min(self.cpc, amin))
         except decimal.DecimalException as e:
-            raise NgrError(f'{g}: десяткове число поза межами ({type(e).__name__})', pos, min(self.cpc, amin))
+            raise NgrError(f'{g}: {dec_why(e)}', pos, min(self.cpc, amin))
         if amin < 1 and g not in NEVER_FAILS and not (g == '§' and isinstance(args[0].v, dict)):
             self.halt_risk(amin, ('op', pos, '☠', []))   # могло впасти — і не впало
         if g in 'ρκ§⌂⚗🜃' and self.cpc < res.c:   # свою впевненість задають, але й вони — не певніші за контекст
@@ -4870,7 +4906,7 @@ class Interp:
             except (RecursionError, TooDeep):
                 raise NgrError(f'δ: JSON вкладений надто глибоко (не глибше за {VALUE_MAX_DEPTH} рівнів)', pos)
             except ValueError as e:
-                raise NgrError(f'δ: не JSON: {e}', pos)
+                raise NgrError(f'δ: не JSON: {json_uk(str(e))}', pos)
         if g == 'Δ':
             if a[0].n > self.max_size:
                 raise Fatal(f'{g}: значення завелике (> --розмір {self.max_size})', pos)
@@ -5288,7 +5324,8 @@ def approval_report(prog, approval, allowed, source, cwd, dir_extra, prog_extra,
         out.append('⚠ програма бере аргументи запуску (⌂): що читати, куди писати чи що слати, вирішує той, хто запускає, '
                    '— відбиток аргументів не охоплює')
     if risky:
-        out.append(f'⚠ широкі права: {", ".join(safe(p) for p in risky)} — схвалюйте, лише якщо справді треба')
+        out.append(f'⚠ широкі права: {", ".join(safe(p) for p in risky)} — схвалюйте, лише якщо справді треба'
+                   + (' (теку власника й так не відкриє жоден дозвіл, навіть «/»)' if any(p.endswith(':/') for p in risky) else ''))
     if owner_dir:
         out.append(f'✗ права на теку власника не схвалюються (такий запис не подіє): {", ".join(safe(p) for p in owner_dir)}')
     if have:
