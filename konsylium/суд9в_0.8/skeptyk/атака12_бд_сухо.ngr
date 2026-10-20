@@ -1,0 +1,9 @@
+🜂 「атака12: рішення за годинником SQLite з DEFAULT — що каже --сухо」 【「бд.писати:звіти」 「писати:звіти」】
+← б 「звіти/default2.db」
+🜔бд.писати б 「CREATE TABLE IF NOT EXISTS t(x, ts DEFAULT CURRENT_TIMESTAMP)」 【】
+🜔бд.писати б 「DELETE FROM t」 【】
+🜔бд.писати б 「INSERT INTO t(x) VALUES (1)」 【】
+← парна 🜔бд.писати б 「UPDATE t SET x = 2 WHERE CAST(substr(ts,18,2) AS INTEGER) % 2 = 0」 【】
+¿ ＝ парна 1
+  🜔писати 「звіти/парна.txt」 「секунда парна」
+  » 「непарна: нічого не пишу」

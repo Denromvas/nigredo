@@ -1,0 +1,16 @@
+🜂 「атака13: rowid 2⁶³−1 у віртуальній таблиці (FTS5, FTS4, R*Tree) — тимчасові тригери їх не бачать (type = 'table')?」 【「бд.писати:звіти」】
+← б 「звіти/а13_fts.db」
+← з λq ☂ σ 🜔бд.писати б q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE VIRTUAL TABLE IF NOT EXISTS ф5 USING fts5(x)」
+» з 「DELETE FROM ф5」
+» з 「INSERT INTO ф5(rowid, x) VALUES (9223372036854775807, 'макс')」
+» з 「INSERT INTO ф5(x) VALUES ('наступний')」
+» з 「INSERT INTO ф5(x) VALUES ('ще')」
+» з 「CREATE VIRTUAL TABLE IF NOT EXISTS ф4 USING fts4(x)」
+» з 「INSERT INTO ф4(docid, x) VALUES (9223372036854775807, 'макс')」
+» з 「INSERT INTO ф4(x) VALUES ('наступний')」
+» з 「CREATE VIRTUAL TABLE IF NOT EXISTS р USING rtree(id, a, b)」
+» з 「INSERT INTO р VALUES (9223372036854775807, 1, 2)」
+» з 「INSERT INTO р(a, b) VALUES (3, 4)」
+» з 「CREATE TABLE IF NOT EXISTS з(x)」
+» з 「INSERT INTO з SELECT rowid % 2 FROM ф5 WHERE x <> 'макс'」

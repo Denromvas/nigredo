@@ -1,0 +1,33 @@
+🜂 「SQLite: типи параметрів і результатів, версія, функції」 【「бд.писати:звіти」】
+← б ＋ 「звіти/т_」 ＋ § ⌂ 0 「.db」
+← з Λ назва sql » 〔{назва} → {☂ Δ 🜔бд.писати б sql 【】 λп ＋ 「ВІДМОВА: 」 п}〕
+← п Λ назва пара » 〔{назва} → {☂ Δ 🜔бд.писати б § пара 0 § пара 1 λп ＋ 「ВІДМОВА: 」 п}〕
+▶ ∘з 「створити」 「CREATE TABLE IF NOT EXISTS т (а, б)」
+▶ ∘п 「вставити типи」 【「INSERT INTO т VALUES (?, ?)」 【0.1 12345678901234567890】】
+▶ ∘п 「вставити ● ∅」 【「INSERT INTO т VALUES (?, ?)」 【● ∅】】
+▶ ∘п 「вставити дріб 60 цифр」 【「INSERT INTO т VALUES (?, ?)」 【÷ 1 3 ¯0.0】】
+▶ ∘п 「вставити 2^63」 【「INSERT INTO т VALUES (?, ?)」 【9223372036854775808 ¯9223372036854775809】】
+▶ ∘п 「вставити 2^63-1」 【「INSERT INTO т VALUES (?, ?)」 【9223372036854775807 ¯9223372036854775808】】
+▶ ∘п 「вставити список」 【「INSERT INTO т VALUES (?, ?)」 【【1】 『「a」 1』】】
+▶ ∘п 「забагато параметрів」 【「INSERT INTO т VALUES (?, ?)」 【1 2 3】】
+▶ ∘п 「замало параметрів」 【「INSERT INTO т VALUES (?, ?)」 【1】】
+▶ ∘п 「NUL у рядку」 【「INSERT INTO т VALUES (?, ?)」 【δ 「"a\u0000b"」 「x」】】
+▶ ∘п 「іменовані」 【「INSERT INTO т VALUES (:x, :y)」 【1 2】】
+▶ ∘п 「нумеровані ?2 ?1」 【「INSERT INTO т VALUES (?2, ?1)」 【「перший」 「другий」】】
+▶ ∘з 「прочитати як SELECT у бд.писати」 「SELECT а, typeof(а), б, typeof(б) FROM т」
+▶ ∘з 「версія」 「SELECT sqlite_version() AS v, sqlite_source_id() AS s」
+▶ ∘з 「опції」 「SELECT sqlite_compileoption_get(0) AS a, sqlite_compileoption_get(1) AS b, sqlite_compileoption_get(2) AS c, sqlite_compileoption_get(3) AS d, sqlite_compileoption_get(4) AS e, sqlite_compileoption_get(5) AS f」
+▶ ∘з 「функції»」 「SELECT json_object('a', 1) AS j, unixepoch('2026-01-01') AS u」
+▶ ∘з 「математика」 「SELECT sin(1) AS s, pi() AS p」
+▶ ∘з 「дійсні」 「SELECT 0.1+0.2 AS a, 1e300 AS b, 1.0/3 AS c, 2.5e-10 AS d, 9007199254740993.0 AS e, -0.0 AS f, 1e16 AS g, 123456789012345678 AS h」
+▶ ∘з 「нескінченність」 「SELECT 1e308*10 AS a」
+▶ ∘з 「переповнення цілого」 「SELECT 9223372036854775807+1 AS a」
+▶ ∘з 「BLOB」 「SELECT x'ff00' AS a」
+▶ ∘з 「поганий UTF-8」 「SELECT CAST(x'ff41' AS TEXT) AS a」
+▶ ∘з 「однакові стовпці」 「SELECT 1 AS a, 2 AS a」
+▶ ∘з 「порожня назва」 「SELECT 1 AS ""」
+▶ ∘з 「без назви」 「SELECT 1, 1+1, 'x'」
+▶ ∘з 「сурогат-рядок」 「SELECT char(55296) AS a」
+▶ ∘з 「char 0」 「SELECT char(0) AS a, length(char(0)) AS b」
+▶ ∘з 「час без дозволу」 「SELECT length(datetime('now')) AS a」
+▶ ∘з 「жереб без дозволу」 「SELECT typeof(random()) AS a」

@@ -1,0 +1,5 @@
+🜂 「Скептик: тригер із load_extension — приймається при створенні?」 【「бд.писати:звіти」】
+← б 「міна_Е.db」
+» ☂ 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS t(x)」 【】 λe ＋ 「створення: 」 e
+» ☂ 🜔бд.писати б 「CREATE TRIGGER міна AFTER INSERT ON t BEGIN SELECT load_extension('x'); END」 【】 λe ＋ 「тригер: 」 e
+» ☂ 🜔бд.писати б 「INSERT INTO t VALUES (1)」 【】 λe ＋ 「вставка: 」 e

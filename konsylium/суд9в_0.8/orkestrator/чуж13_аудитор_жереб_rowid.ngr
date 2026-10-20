@@ -1,0 +1,9 @@
+🜂 「атака12_с3 Аудитора: випадковість SQLite без «жереб» — 8 вставок після rowid 2^63−1 (SQLite бере випадкові rowid)」 【「бд.писати:звіти」】
+← б 「звіти/ч13_жереб3.db」
+» ☂ 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS r(x)」 【】 λe ＋ 「CREATE: 」 e
+» ☂ 🜔бд.писати б 「DELETE FROM r」 【】 λe ＋ 「DELETE: 」 e
+» ☂ 🜔бд.писати б 「INSERT INTO r(rowid, x) VALUES (9223372036854775807, 0)」 【】 λe ＋ 「INSERT max: 」 e
+∀ … 1 8 λi 🜔бд.писати б 「INSERT INTO r(x) VALUES (1)」 【】
+← парних ☂ 🜔бд.писати б 「UPDATE r SET x = 2 WHERE x = 1 AND rowid % 2 = 0」 【】 λe ＋ 「UPDATE: 」 e
+» 〔з 8 випадкових rowid парних: {парних}〕
+» 「кінець」

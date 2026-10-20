@@ -1,0 +1,20 @@
+🜂 【「читати:дані」】
+← д χ 🜔читати 「виписка.xml」
+← спр Λn шл » 〔{n}: {☂ σ ρ ↘ д шл λe ＋ 「ПОМИЛКА 」 e}〕
+※ усього Ntry — 5, CRDT — 4, DBIT — 1
+спр 「1 CRDT」 「//Ntry[CdtDbtInd='CRDT']」
+спр 「2 != (XPath: 1)」 「//Ntry[CdtDbtInd!='CRDT']」
+спр 「3 >= (XPath: ?)」 「//Ntry[Amt>='100']」
+спр 「4 text()」 「//CdtDbtInd[text()='CRDT']」
+спр 「5 крапка」 「//CdtDbtInd[.='CRDT']」
+спр 「6 незакрита [」 「//Ntry[」
+спр 「7 незакрита умова」 「//Ntry[CdtDbtInd='DBIT'」
+спр 「8 contains」 「//Ntry[contains(Nm,'Ром')]」
+спр 「9 or」 「//Ntry[CdtDbtInd='DBIT' or Nm='x']」
+спр 「10 сміття」 「//Ntry and 1=1」
+спр 「11 [1] (XPath: 5 — перший у кожного батька)」 「//Amt[1]」
+спр 「12 //Ntry[1] (XPath: 1)」 「//Ntry[1]」
+спр 「13 //*//* дублікати (XPath: 15)」 「//*//*」
+спр 「14 ..」 「//Nm/..」
+спр 「15 @ у середині」 「//@Ccy」
+спр 「16 last()」 「//Ntry[last()]」

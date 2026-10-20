@@ -1,0 +1,8 @@
+🜂 「перевірка знахідки Скептика 9в (Н-1): свій BEFORE-тригер ставить rowid 2⁶³−1 уже після перевірки Nigredo — біт навмання без «жереб»」 【「бд.писати:звіти」】
+← б 「звіти/а13_тр.db」
+← з λq ☂ σ 🜔бд.писати б q 【】 λпом ＋ 「✗ 」 пом
+» з 「DROP TABLE IF EXISTS t」
+» з 「CREATE TABLE t(x)」
+» з 「CREATE TRIGGER пастка BEFORE INSERT ON t WHEN NEW.x = 1 BEGIN INSERT OR IGNORE INTO t(rowid, x) VALUES (9223372036854775807, 0); END」
+» з 「INSERT INTO t(x) VALUES (1)」
+» ＋ 「біт з rowid SQLite: 」 з 「UPDATE t SET x = 2 WHERE x = 1 AND rowid % 2 = 0」
