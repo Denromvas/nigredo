@@ -127,12 +127,19 @@ pub struct Interp {
 }
 
 impl Interp {
-    pub fn prof_add(&mut self, k: &str, t: std::time::Instant) {
-        if let Some(p) = self.prof.as_mut() {
+    pub fn prof_add(&mut self, k: &str, t: Option<std::time::Instant>) {
+        if let (Some(p), Some(t)) = (self.prof.as_mut(), t) {
             let e = p.entry(k.to_string()).or_insert((0, std::time::Duration::ZERO));
             e.0 += 1;
             e.1 += t.elapsed();
         }
+    }
+
+    /// Мітка часу — лише під ATHANOR_PROFILE: під proot годинник — системний виклик, і `¿` у циклі витрачав на нього
+    /// більше, ніж на саму роботу (суд 9б: 0,9 с системного часу на 2 млн кроків).
+    #[inline]
+    pub fn clock(&self) -> Option<std::time::Instant> {
+        if self.prof.is_some() { Some(std::time::Instant::now()) } else { None }
     }
 }
 
@@ -174,7 +181,7 @@ impl Interp {
     }
 
     pub fn rec(&mut self, event: &str, data: Vec<(String, J)>) -> R<()> {
-        let t = std::time::Instant::now();
+        let t = self.clock();
         let r = self.trace.rec(event, data).map_err(terr);
         self.prof_add("слід", t);
         r
@@ -611,7 +618,7 @@ impl Interp {
                 Ok(V::none())
             }
             K::Op(g, args) => {
-                let t = std::time::Instant::now();
+                let t = self.clock();
                 let r = self.lazy_op(*g, args, env, pos);
                 if self.prof.is_some() {
                     self.prof_add(&format!("лінивий {}", g), t);
@@ -1246,7 +1253,7 @@ impl Interp {
 
     fn strict(&mut self, g: char, args: &[V], pos: Pos) -> R<V> {
         if self.prof.is_some() {
-            let t = std::time::Instant::now();
+            let t = self.clock();
             let r = self.strict_(g, args, pos);
             self.prof_add(&g.to_string(), t);
             return r;
@@ -1466,7 +1473,7 @@ impl Interp {
         }
         self.paths_seen = Some(Vec::new());
         self.denied = false;
-        let t = std::time::Instant::now();
+        let t = self.clock();
         let r = crate::tools::run(self, job.name, &job.args, job.pos);
         self.prof_add(job.name, t);
         let paths = self.paths_seen.take().unwrap_or_default();
@@ -1524,12 +1531,12 @@ impl Interp {
         if dry && name == "бд.читати" && (self.caps.has("час") || self.caps.has("жереб")) {
             c = 0.0; // date('now'), random() у сухому прогоні — не ті, що будуть у справжньому (суд 9)
         }
-        let t = std::time::Instant::now();
+        let t = self.clock();
         let stored = self.trace.keep(&res).map_err(terr)?;
         self.prof_add("сховище", t);
         let res = if c < 1.0 { capc(&res, c) } else { res };
         self.taint(c);
-        let t = std::time::Instant::now();
+        let t = self.clock();
         let tv = trace_val(&res, false)?;
         self.prof_add("trace_val", t);
         let mut d = data!["агент" => J::Str(job.agent.clone()), "назва" => J::s(name), "аргументи" => J::Arr(job.targs.clone()),
@@ -1546,7 +1553,7 @@ impl Interp {
 
     /// _path_ok: права на шлях (теки з печатки, не тека власника й не слід).
     pub fn path_ok(&mut self, tool: &str, p: &Val, pos: Pos, write: bool) -> R<String> {
-        let t = std::time::Instant::now();
+        let t = self.clock();
         let r = self.path_ok_(tool, p, pos, write);
         self.prof_add("path_ok", t);
         r
