@@ -1744,6 +1744,7 @@ class Trace:
         self.outs, self.key, self.prev, self.n = outs, key, '0' * 16, 0
         self.stores, self.kept = list(stores), set()   # СЛІД.дані: точні результати інструментів для --повторити
         self.depth, self.bytes, self.limit = 0, 0, limit
+        self.stop = None                # --повторити сліду, зупиненого межею: (№ запису, текст) — зупинитися там само
         self.tl = threading.local()     # ‖: записи з потоку дії — у його буфер, потім у порядку елементів
 
     def _check_strings(self, data):
@@ -1758,6 +1759,8 @@ class Trace:
         self._check_strings(data)
         if self.bytes > self.limit and event not in ('помилка', 'кінець', 'відмова'):
             raise Fatal(f'слід перевищив {self.limit} байтів (--слід-розмір) — програму зупинено')
+        if self.stop and self.n + 1 >= self.stop[0] and event not in ('помилка', 'кінець', 'відмова'):
+            raise Fatal(self.stop[1])
         self.n += 1
         rec = {'№': self.n, 'подія': event, 'глибина': self.depth, **data, 'попередній': self.prev}
         h = sign(self.key, rec)
@@ -3848,6 +3851,10 @@ class Interp:
         recs, store = self.replay
         i = job.get('№', self.ends)
         if i >= len(recs):
+            if i == len(recs) and self.trace.stop:
+                # оригінал зупинила межа сліду саме на результаті цього виклику (суд 9б): далі слід не писався —
+                # повтор зупиняється там само й тим самим текстом, а не «розійшовся»
+                raise Fatal(self.trace.stop[1])
             raise Fatal(f'повтор розійшовся зі слідом: виклик №{i + 1} ({job["назва"]}) — у сліді їх лише {len(recs)}')
         r = recs[i]
         if r.get('назва') != job['назва'] or r.get('аргументи') != job['слід']:
@@ -5877,9 +5884,15 @@ def replay_report(replay, new_trace, ends):
               (' — слід записав Атанор, а повторює еталон: якщо програма та сама, це розбіжність виконавців, тобто '
                'вада мови, а не програми' if engine.startswith('атанор:') else ''), file=sys.stderr)
         return 5
-    if replay['початок'].get('інтерпретатор') != INTERP_SHA:
-        print('  (слід записано іншою версією інтерпретатора — повтор перевіряє й те, що поведінка не змінилася)',
+    if str(replay['початок'].get('інтерпретатор', '')).startswith('атанор:'):
+        print('  (слід записав Атанор, повторює еталон — повтор перевіряє й те, що виконавці поводяться однаково)',
               file=sys.stderr)
+    elif replay['початок'].get('інтерпретатор') != INTERP_SHA:
+        print('  (слід записано іншою версією еталона — повтор перевіряє й те, що поведінка не змінилася)',
+              file=sys.stderr)
+    if str(end_new.get('повідомлення', '')).startswith('✗ слід перевищив'):
+        print(f'  (запуск зупинила межа сліду: повтор дійшов до того самого місця; що сталося після, слід не каже — '
+              f'останній виклик, якщо є, міг відбутися, але його результату в сліді немає)', file=sys.stderr)
     print(f'✓ повтор збігся зі слідом: {used} викликів інструментів (без дій у світі), {len(out)} записів виводу, '
           f'завершення «{end_new.get("подія")}»; слід повтору: {new_trace}', file=sys.stderr)
     return 0
@@ -5945,6 +5958,10 @@ def _main(argv, opts, it, value):
             return 0
         if a == '--тести':
             rest = list(it)
+            if opts.get('dry') or '--сухо' in rest:      # тести діють по-справжньому: мовчазне «сухо» було б неправдою
+                print('✗ --сухо не поєднується з --тести: тести діють по-справжньому (у межах своїх печаток); '
+                      'сухий прогін — для однієї програми: ngr --сухо ФАЙЛ', file=sys.stderr)
+                return 2
             if '--печатка' in rest:
                 return test_seals([r for r in rest if r not in ('--json', '--печатка')], '--json' in rest)
             return run_tests([r for r in rest if r != '--json'], '--json' in argv)
@@ -6027,6 +6044,10 @@ def _main(argv, opts, it, value):
         prog_args = list(head.get('аргументи') or [])
         opts.update(seed=lim.get('зерно', 0), steps=lim.get('кроки', DEFAULT_STEPS), size=lim.get('розмір', MAX_SIZE),
                     tsize=lim.get('слід', MAX_TRACE))
+    if opts['mode'] == 'repl' and opts.get('dry'):   # суд 9б: сеанс мовчки діяв по-справжньому
+        print('✗ --сухо не поєднується з --repl: частини сеансу діють по-справжньому; сухий прогін — для програми '
+              'цілком: ngr --сухо ФАЙЛ (чи -e)', file=sys.stderr)
+        return 2
     if opts['mode'] == 'repl':
         if src is not None:
             print('✗ --repl бере код зі stdin (рядки JSON), а не з файлу чи -e', file=sys.stderr)
@@ -6149,6 +6170,11 @@ def _main(argv, opts, it, value):
         print(f'✗ не вдалося створити сховище значень сліду: {e}', file=sys.stderr)
         return 3
     trace = Trace(outs, key, opts['tsize'], stores)
+    end = replay['кінець'] if replay else {}
+    if end.get('подія') == 'помилка' and str(end.get('повідомлення', '')).startswith('✗ слід перевищив'):
+        # слід повтору не байт у байт той самий (без шляхів справжніх дій), тож межу в байтах не перенести:
+        # повтор зупиняється на тому самому записі, що й оригінал, і тим самим текстом (суд 9б)
+        trace.limit, trace.stop = float('inf'), (end.get('№', 0), str(end['повідомлення'])[2:])
     code = 0
     shown_args = [a.encode('utf-8', 'surrogateescape').decode('utf-8', 'backslashreplace') for a in prog_args]
     try:

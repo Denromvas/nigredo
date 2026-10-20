@@ -1212,6 +1212,25 @@ def main():
     evs = [json.loads(x)['подія'] for x in (tmp / 'повінь2.jsonl').read_text(encoding='utf-8').splitlines()]
     check(got.returncode == 1 and len(evs) == 14 and evs[-1] == 'помилка' and got.stdout.split() == [str(i) for i in range(1, 12)],
           '--слід-розмір: «початок» не рахується — зупинка рівно після 12-го запису', f'{evs}\n{got.stderr}')
+    # суд 9б: --повторити сліду, який зупинила межа сліду (і на результаті дії), — «✓ … там само», а не «вада мови»
+    rprog = (f'🜂 【「писати:{DATA}/звіти」 「читати:{DATA}/звіти」】\n∀ …1 6 λi 《 🜔писати ＋ 「{DATA}/звіти/пм_」 ＋ σ i '
+             f'「.txt」 ＋ 「номер 」 σ i ¦ » ρ 🜔читати ＋ 「{DATA}/звіти/пм_」 ＋ σ i 「.txt」 》')
+    bad_ = []
+    for lim_ in range(1500, 4200, 97):
+        for k_, cmd_ in enumerate((NGR_CMD, [sys.executable, str(NGR)])):
+            tp_ = tmp / f'межа_повтор_{lim_}_{k_}.jsonl'
+            subprocess.run([*cmd_, '--слід', str(tp_), '--слід-розмір', str(lim_), '-e', rprog], capture_output=True, env=env)
+            rp_ = run(['--повторити', str(tp_)], env)
+            if rp_.returncode != 0 or 'вада' in rp_.stderr or 'межа сліду' not in rp_.stderr:
+                bad_.append(f'{lim_}/{k_}: {rp_.stderr.strip()[-200:]}')
+    check(not bad_, '--повторити сліду, зупиненого --слід-розмір (слід Атанора й еталона), — ✓ там само, без «вада мови»',
+          '\n'.join(bad_[:3]))
+    for args_ in (['--repl', '--сухо'], ['--сухо', '--repl'], ['--сухо', '--тести', str(ROOT / 'examples' / 'тести')],
+                  ['--тести', str(ROOT / 'examples' / 'тести'), '--сухо']):
+        got = subprocess.run([*NGR_CMD, *args_], input='{"код": "🜂\\n» 1"}\n', capture_output=True, text=True, env=env)
+        check(got.returncode == 2 and 'не поєднується' in got.stderr and got.stdout == '',
+              f'{" ".join(a for a in args_ if a.startswith("--"))}: помилка до запуску, а не справжні дії (суд 9б)',
+              got.stdout + got.stderr)
     for bad in (['--слід-розмір', 'abc'], ['--кроки', '-5'], ['--зерно', '+-5'], ['--кроки']):
         got = run([*bad, '-e', '» 1'] if len(bad) == 2 else bad, env)
         check(got.returncode == 2 and 'Traceback' not in got.stderr and bad[0] in got.stderr,
