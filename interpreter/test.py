@@ -1055,6 +1055,46 @@ def main():
     check(got.stdout == ref.stdout and got.stdout.count('заборонено:') == 2 and 'без права «час»' in got.stdout
           and 'з квотою «жереб≤N»' in got.stdout, 'SQLite: годинник без «час» і random() під квотою жеребу — відмова (суд 9)',
           got.stdout + got.stderr)
+    # суд 9б: годинник і жереб через схему (DEFAULT, rowid після 2⁶³−1) — відмова; дата з даних — без прав і без тривоги
+    sch = f'{DATA}/звіти/схема9б.db'
+    for f_ in (sch, sch + '-journal'):
+        if os.path.exists(f_):
+            os.remove(f_)
+    sch_prog = (f'🜂 【「бд.писати:{DATA}/звіти」 「бд.читати:{DATA}/звіти」】\n← б 「{sch}」\n← з λq ☂ 🜔бд.писати б q 【】 λe e\n'
+                '» з 「CREATE TABLE IF NOT EXISTS т(x, ч DEFAULT CURRENT_TIMESTAMP, в DEFAULT (random()), '
+                's DEFAULT (strftime(\'%s\', \'NOW\')), b DEFAULT (date(x\'6e6f77\')))」\n'
+                '» з 「INSERT INTO т(x, в, s, b) VALUES (1, 0, 0, 0)」\n» з 「INSERT INTO т(x, ч, s, b) VALUES (1, 0, 0, 0)」\n'
+                '» з 「INSERT INTO т(x, ч, в, b) VALUES (1, 0, 0, 0)」\n» з 「INSERT INTO т(x, ч, в, s) VALUES (1, 0, 0, 0)」\n'
+                '» з 「INSERT INTO т(rowid, x, ч, в, s, b) VALUES (9223372036854775807, 2, 0, 0, 0, 0)」\n'
+                '» з 「INSERT INTO т(x, ч, в, s, b) VALUES (3, 0, 0, 0, 0)」\n'
+                '» § 🜔бд.читати б 「SELECT date(\'2026-01-31\', \'+1 month\') AS м, strftime(\'%Y-%m\', ?) AS р, '
+                'julianday(\'2026-03-15\') - julianday(\'2026-03-01\') AS д, count(*) AS н FROM т」 【「2026-03-15」】 0\n'
+                '» ☂ 🜔бд.читати б 「SELECT date(\'2026-01-01\', \'localtime\') AS л」 【】 λe e')
+    trs_ = []
+    outs_ = []
+    for k_, cmd_ in enumerate((NGR_CMD, [sys.executable, str(NGR)])):
+        for f_ in (sch, sch + '-journal'):
+            if os.path.exists(f_):
+                os.remove(f_)
+        tp_ = tmp / f'схема9б_{k_}.jsonl'
+        outs_.append(subprocess.run([*cmd_, '--слід', str(tp_), '-e', sch_prog], capture_output=True, text=True, env=envd))
+        trs_.append(tp_)
+    o_ = outs_[0].stdout
+    check(outs_[0].stdout == outs_[1].stdout and outs_[0].returncode == outs_[1].returncode == 0
+          and o_.count('годинник SQLite (current_timestamp)') == 1 and o_.count('випадковість SQLite (random)') == 1
+          and o_.count('годинник SQLite (strftime') == 1 and o_.count('годинник SQLite (date') == 2
+          and o_.count('дійшла до rowid 2⁶³−1') == 1 and "『「м」 「2026-03-03」 「р」 「2026-03」 「д」 14 「н」 1』" in o_
+          and 'заборонено: годинник SQLite (date — поточний час чи часовий пояс)' in o_.splitlines()[-1],
+          'SQLite: DEFAULT CURRENT_TIMESTAMP / (random()) / (strftime NOW) / BLOB «now», rowid після 2⁶³−1 — відмова '
+          'в обох; дати з даних — без «час» (суд 9б)', outs_[0].stdout + outs_[0].stderr + '\n---\n' + outs_[1].stdout)
+    got = run(['-e', f'🜂 【「бд.читати:{DATA}/звіти」】\n» 🜔бд.читати 「{sch}」 「SELECT strftime(\'%Y-%m\', ?) AS м」 【「2026-03-15」】'],
+              envd)
+    gtr = tmp / 'дати9б.jsonl'
+    run(['--слід', str(gtr), '-e', f'🜂 【「бд.читати:{DATA}/звіти」】\n» 🜔бд.читати 「{sch}」 「SELECT julianday(?) - julianday(?) AS д」 '
+         '【「2026-03-15」 「2026-03-01」】'], envd)
+    ver = run(['--перевірити-слід', str(gtr)], envd)
+    check(got.stdout == '【『「м」 「2026-03」』】\n' and ver.returncode == 0 and 'заборонено' not in ver.stdout,
+          'SQLite: арифметика дат з даних без «час» — не «заборонено», слід без тривоги (суд 9б)', got.stderr + ver.stdout)
     got = run(['--тести', str(ROOT / 'examples' / 'тести')], env)
     check(got.returncode == 0 and 'тестів пройшли' in got.stdout, 'ngr --тести: тести мовою (examples/тести) — усі пройшли',
           got.stdout + got.stderr)
