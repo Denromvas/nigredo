@@ -622,6 +622,19 @@ impl Interp {
         }
     }
 
+    /// Швидкий шлях call для λ з одним параметром у вже створеному середовищі (↻): ті самі глибина й межа.
+    fn call_in(&mut self, func: &Rc<Func>, env: &Rc<Env>, arg: V, pos: Pos) -> R<V> {
+        self.depth += 1;
+        if self.depth > lang::MAX_DEPTH {
+            self.depth -= 1;
+            return fatal("надто глибока рекурсія", Some(pos));
+        }
+        env.vars.borrow_mut()[0] = arg;
+        let r = self.eval(&func.lam.body, env);
+        self.depth -= 1;
+        r
+    }
+
     pub fn call(&mut self, f: &V, args: Vec<V>, pos: Pos) -> R<V> {
         let func = match &f.v {
             Val::Fn(func) => func.clone(),
@@ -1156,16 +1169,30 @@ impl Interp {
                 }
                 let saved = self.pc;
                 let mut cc = 1.0f64;
+                // λ без замикань і модуля, певна, з одним параметром — одне середовище на весь цикл (як у ∀ ∫):
+                // те саме, що швидкий шлях call, без нового Env щокроку
+                let reuse = |f: &V| match &f.v {
+                    Val::Fn(func) if f.c >= 1.0 && func.lam.simple && func.module.is_none() && !func.lam.escapes
+                        && func.lam.params.len() == 1 => Some((func.clone(), Env::child(vec![V::none()], &func.env))),
+                    _ => None,
+                };
+                let (rc, rs) = (reuse(&cond), reuse(&stepf));
                 let r = (|| -> R<V> {
                     loop {
-                        let r = self.call(&cond, vec![s.clone()], pos)?;
+                        let r = match &rc {
+                            Some((func, e)) => self.call_in(func, e, s.clone(), pos)?,
+                            None => self.call(&cond, vec![s.clone()], pos)?,
+                        };
                         cc = cc.min(r.c);
                         self.taint(r.c);
                         if !self.boolean(&r, g, pos)? {
                             break;
                         }
                         self.pc = saved.min(cc);
-                        s = self.call(&stepf, vec![s.clone()], pos)?;
+                        s = match &rs {
+                            Some((func, e)) => self.call_in(func, e, s.clone(), pos)?,
+                            None => self.call(&stepf, vec![s.clone()], pos)?,
+                        };
                     }
                     Ok(s.clone())
                 })();
@@ -1222,6 +1249,17 @@ impl Interp {
     }
 
     fn strict_(&mut self, g: char, args: &[V], pos: Pos) -> R<V> {
+        if g == '§' && args.len() == 2 {
+            // § список ціле, усе певне (і контекст): елемент як є — те саме, що дає загальний шлях нижче, без нього
+            if let (Val::List(l), Val::Int(Int::S(i))) = (&args[0].v, &args[1].v) {
+                let len = l.len() as i64;
+                if -len <= *i && *i < len && args[0].c >= 1.0 && args[0].s >= 1.0 && args[1].c >= 1.0 && args[1].s >= 1.0
+                    && self.cpc() >= 1.0
+                {
+                    return Ok(l[if *i < 0 { (*i + len) as usize } else { *i as usize }].clone());
+                }
+            }
+        }
         let amin = args.iter().fold(1.0f64, |a, x| a.min(x.c));
         self.taint(amin);
         if lang::is_heavy(g) {
