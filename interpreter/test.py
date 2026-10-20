@@ -1046,6 +1046,12 @@ def main():
     got, ref = both(['-e', f'🜂 【「бд.писати:{DATA}/звіти」 「жереб≤2」】\n'
                      f'» ☂ 🜔бд.писати 「{DATA}/звіти/кроки.db」 「SELECT strftime(?, ?) AS t」 【「%s」 「now」】 λe e\n'
                      f'» ☂ 🜔бд.писати 「{DATA}/звіти/кроки.db」 「SELECT random() AS r」 【】 λe e'], envd)
+    dry_db = (f'🜂 【「бд.читати:{DATA}/звіти」 「бд.писати:{DATA}/звіти」 「жереб」】\n← с § § 🜔бд.читати '
+              f'「{DATA}/звіти/кроки.db」 「SELECT abs(random()) % 2 AS p」 【】 0 「p」\n'
+              f'¿ ＝ с 0 🜔бд.писати 「{DATA}/звіти/кроки.db」 「INSERT INTO т VALUES (1)」 【】 ∅\n» 「кінець」')
+    dry_both = both(['--сухо', '-e', dry_db], envd)
+    check(all(x.returncode == 0 and '⚠' in x.stderr for x in dry_both),
+          '--сухо: рішення за запитом SQLite з random() (дано «жереб») — з ⚠ (суд 9)', dry_both[0].stderr + dry_both[1].stderr)
     check(got.stdout == ref.stdout and got.stdout.count('заборонено:') == 2 and 'без права «час»' in got.stdout
           and 'з квотою «жереб≤N»' in got.stdout, 'SQLite: годинник без «час» і random() під квотою жеребу — відмова (суд 9)',
           got.stdout + got.stderr)
@@ -1356,8 +1362,9 @@ def main():
           '--repl: модуль із теки запису — відмова, як у файлі (суд 9)', str(ans))
     rc, ans, tr_ = repl([b'\xff\xfe', j('🜂 【「читати:/」】')])
     evs = [json.loads(x)['подія'] for x in tr_.read_text(encoding='utf-8').splitlines()]
+    vr3 = run(['--перевірити-слід', str(tr_)], env)
     check(rc == 3 and 'не UTF-8' in ans[0]['помилка'] and evs == ['початок', 'код', 'код', 'відмова']
-          and run(['--перевірити-слід', str(tr_)], env).returncode == 0,
+          and vr3.returncode == 0 and 'відкинуто: ✗ рядок входу — не UTF-8' in vr3.stdout,
           '--repl: поганий UTF-8 і печатка поза власником — у сліді («відмова»), без коду 4', f'{ans} {evs}')
     rc, ans, tr_ = repl([j('🜂 「довіра」\n← p ≈ ● 0.41'), j('🜄 「k」 「до」\n¿ p ☠ 「стоп」 ∅\n🜄 「k」 「після」'),
                          j('» ± 🜃 「k」')])
