@@ -1,0 +1,7 @@
+🜂 「бд.писати ≤3: тригер RAISE(FAIL, 'not authorized') — рядки записано, а слід каже «заборонено» й квоту повертає」 【「бд.писати:звіти≤3」】
+← б 「звіти/квота.db」
+» 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS x(a)」 【】
+» 🜔бд.писати б 「CREATE TRIGGER IF NOT EXISTS t AFTER INSERT ON x WHEN NEW.a = 3 BEGIN SELECT RAISE(FAIL, 'not authorized'); END」 【】
+∀ …1 10 λі » ☂ 🜔бд.писати б 「INSERT INTO x SELECT column1 FROM (VALUES (1), (2), (3))」 【】 λп ＋ 「ВІДМОВА: 」 п
+» 〔рядків у таблиці (останній, 3-й виклик квоти): {🜔бд.писати б 「UPDATE x SET a = a」 【】}〕
+» ☂ 🜔бд.писати б 「UPDATE x SET a = a」 【】 λп ＋ 「4-й виклик: 」 п
