@@ -972,7 +972,13 @@ def main():
     # суд 9: шаблон із даних — звичайна помилка мови (☂ ловить), а не код 4; \N{…} — однаково в обох виконавцях
     rx_cases = [('⌕ 「İstanbul」 「(?i)[a-z]+」', '【「İstanbul」】'), ('⌕ 「İi」 「(?i)i」', '【「İ」 「i」】'),
                 ('⌕ 「ẞß」 「(?i)ß」', '【「ẞ」 「ß」】'), ('⌕ 「İ」 「(?i)[^a-z]」', '【】'),
-                ('≋ 「ab」 「(a)」 「\\²」', '≋: у заміні невідоме екранування \\²'),
+                ('≋ 「ab」 「(a)」 「\\²」', '\\²b'),
+                ('⌕ 「Ο Οδυσσεύς」 「(?i)ΟΔΥΣΣΕΎΣ」', '【「Οδυσσεύς」】'), ('⌕ 「5 µg」 「(?i)μg」', '【「µg」】'),
+                ('⌕ 「KIRIK kırık」 「(?i)kirik」', '【「KIRIK」 「kırık」】'), ('⌕ 「Straſse」 「(?i)strasse」', '【「Straſse」】'),
+                ('⌕ 「k K」 「(?i)[K-K]」', '【「k」 「K」】'), ('⌕ 「\u212a k」 「(?ai)k」', '【「k」】'), ('⌕ 「\u212a k」 「(?i)k」', '【「\u212a」 「k」】'),
+                ('ρ ≋ 「a」 「a」 「\\012」', '1'), ('≋ 「ab」 「(a)」 「\\1\\.」', 'a\\.b'),
+                ('≋ 「x」 「y」 「\\9」', '≋: у заміні немає групи 9'),
+                ('≋ 「a」 「a」 「\\400」', '≋: у заміні вісімкове \\400 понад \\377'),
                 ('≋ 「ab」 「(a)」 「\\g<١>」', '≋: у заміні немає групи «١»'),
                 ('⌕ 「a」 ＋ 「a{4294967296」 「}」', '⌕: хибний шаблон: the repetition number is too large'),
                 ('⌕ 「a」 ＋ 「a{4294967295」 「}」', '⌕: хибний шаблон: the repetition number is too large'),
@@ -985,9 +991,28 @@ def main():
                 ('⌕ 「a\\\\Nb」 「\\\\\\\\N」', '【「\\\\N」】')]
     got = run(['-e', '🜂\n' + ''.join(f'» ☂ {c} λe e\n' for c, _ in rx_cases)], env)
     want = [w for _, w in rx_cases]
-    check(got.returncode == 0 and got.stdout.split('\n')[:-1] == want, '⌕ ≋ з даних (суд 9): İ, \\², a{2³²}, (?a)(?u), \\N{…} — '
-          'помилки мови під ☂, без коду 4', '\n'.join(f'{a!r} ≠ {b!r}' for a, b in zip(got.stdout.split('\n'), want) if a != b)
+    check(got.returncode == 0 and got.stdout.split('\n')[:-1] == want, '⌕ ≋ з даних (суд 9, 9б): İ, \\², a{2³²}, (?a)(?u), \\N{…} — '
+          'помилки мови під ☂, без коду 4; (?i) і заміна — як у Python re (_casefix, \\012, \\.)', '\n'.join(f'{a!r} ≠ {b!r}' for a, b in zip(got.stdout.split('\n'), want) if a != b)
           + got.stderr)
+    # суд 9б: (?i) — як у Python re, включно з таблицею еквівалентностей (_casefix) і діапазонами: кількість збігів
+    try:
+        import re._casefix as casefix_
+        extra_ = casefix_._EXTRA_CASES
+    except ImportError:            # Python 3.10 — без таблиці: перевірка лише там, де вона є
+        extra_ = {}
+    pairs_ = []
+    for k_, v_ in sorted(extra_.items()):
+        text_ = ''.join([chr(k_), *map(chr, v_), chr(k_).upper(), *(chr(x).upper() for x in v_), 'x'])
+        c_ = chr(k_)
+        for p_ in (f'(?i){c_}', f'(?i)[{c_}]', f'(?i)[^{c_}]', f'(?i)[{c_}-{c_}]', f'(?ai){c_}'):
+            pairs_.append((p_, text_, len(re.findall(p_, text_))))
+    pairs_ += [(p_, 'kKK', len(re.findall(p_, 'kKK'))) for p_ in ('(?i)[K-K]', '(?i)[K]', '(?ai)[K]', '(?i)[J-L]', '(?ai)[J-L]')]
+    if pairs_:
+        got = run(['-e', '🜂\n' + ''.join(f'» ρ ⌕ 「{t_}」 「{p_}」\n' for p_, t_, _ in pairs_)], env)
+        diff_ = [f'{p_} на {t_!r}: re {n_}, ми {g_}' for (p_, t_, n_), g_ in zip(pairs_, got.stdout.split('\n'))
+                 if str(n_) != g_]
+        check(got.returncode == 0 and not diff_, f'(?i) як у Python re: {len(pairs_)} шаблонів на парах _casefix (σ/ς, µ/μ, '
+              f'i/ı, s/ſ, в/ᲀ…), діапазони, (?a) (суд 9б)', '\n'.join(diff_[:5]) + got.stderr[-300:])
     for mode in (['--перевірити'], ['--печатка', '--json'], ['--розбір'], []):
         got = run([*mode, '-e', '🜂\n» ⌕ 「a」 「a{4294967296}」'], env)
         check(got.returncode == 2 and 'Traceback' not in got.stderr + got.stdout

@@ -806,23 +806,23 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             };
             if g == '≋' {
                 let tmpl: Vec<char> = need_str(&a[2], "≋", pos)?.s.chars().collect();
+                let pieces = match r.template(&tmpl) {
+                    Ok(p) => p,
+                    Err(m) => return ngr(format!("≋: {}", m), pos),
+                };
                 let mut out = String::new();
                 let mut last = 0usize;
                 let mut total = 0u64;
                 let mut fail: Option<Box<E>> = None;
                 let res = r.finditer(&text, &mut pay, &mut |m| {
                     let groups = r.groups(&text, m);
-                    let rep = match r.expand(&tmpl, &groups) {
-                        Ok(s) => s,
-                        Err((true, msg)) => {
-                            fail = Some(ngr::<()>(format!("≋: {}", msg), pos).unwrap_err());
-                            return Err("x".into());
+                    let mut rep = String::new();
+                    for p in &pieces {
+                        match p {
+                            crate::rx::Piece::Lit(s) => rep.push_str(s),
+                            crate::rx::Piece::Group(k) => rep.push_str(groups[*k].as_deref().unwrap_or("")),
                         }
-                        Err((false, msg)) => {
-                            fail = Some(internal::<()>(msg).unwrap_err());
-                            return Err("x".into());
-                        }
-                    };
+                    }
                     let s0 = m[0].unwrap();
                     let piece_len = (s0 - last.min(s0)) as u64 + rep.chars().count() as u64;
                     total += piece_len;

@@ -178,6 +178,22 @@ pub fn lower_char(c: char) -> String {
     }
 }
 
+/// Проста мала літера (_sre.unicode_tolower): перший символ повної.
+pub fn lower1(c: char) -> char {
+    match map_str(&LOWER, c as u32) {
+        Some(t) => t.chars().next().unwrap_or(c),
+        None => c,
+    }
+}
+
+/// Проста велика літера (_sre.unicode_toupper): перший символ повної («ß» → «S»).
+pub fn upper1(c: char) -> char {
+    match map_str(&UPPER, c as u32) {
+        Some(t) => t.chars().next().unwrap_or(c),
+        None => c,
+    }
+}
+
 pub fn upper_char(c: char) -> String {
     match map_str(&UPPER, c as u32) {
         Some(t) => t.to_string(),
