@@ -413,7 +413,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             if s.s.starts_with('\u{feff}') {
                 return ngr("δ: не JSON: на початку — BOM (U+FEFF); приберіть його: ⊢ рядок", pos);
             }
-            match json::loads(&s.s) {
+            match json::loads_unique(&s.s) {     // повтор ключа — помилка (суд 9б), як у еталона
                 Ok(p) => match wrap(&p, a[0].c, 0) {
                     Ok(v) => Ok(v),
                     Err(WrapErr::Deep) => ngr(format!("δ: JSON вкладений надто глибоко (не глибше за {} рівнів)", lang::VALUE_MAX_DEPTH), pos),

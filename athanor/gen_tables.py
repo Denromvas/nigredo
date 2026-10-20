@@ -118,7 +118,7 @@ def main():
             skel.append((cp, s))
     out.append(f'pub static SKELETON: [(u32, &str); {len(skel)}] = [' +
                ', '.join(f'({a}, {rs(b)})' for a, b in skel) + '];')
-    twins = sorted({N.skeleton(g): g for g in [*N.GLYPHS, *N.CONSTS] if len(g) == 1}.items())
+    twins = sorted(N.glyph_twin_table().items())
     out.append(f'pub static GLYPH_TWIN: [(&str, &str); {len(twins)}] = [' +
                ', '.join(f'({rs(a)}, {rs(b)})' for a, b in twins) + '];')
 

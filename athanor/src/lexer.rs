@@ -320,6 +320,12 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Back> {
             if buf.chars().any(|c| uni::category(c) == "Nd" && !c.is_ascii_digit()) {
                 return back("цифри іншого письма в імені");
             }
+            if buf.chars().any(|c| matches!(c as u32, 0x1100..=0x11FF | 0xA960..=0xA97F | 0xD7B0..=0xD7FF)) {
+                return back("чамо хангилю в імені"); // ᄉ ≈ ∧ (суд 9б) — помилку пише еталон
+            }
+            if buf.chars().count() == 1 && matches!(script, Some("CJK" | "HIRAGANA" | "KATAKANA")) {
+                return back("імʼя з одного ієрогліфа чи знака кани"); // 米 ≈ ※ (суд 9б)
+            }
             toks.push(Token { t: Tok::Name(buf.into()), pos });
         } else if is_glyph(ch) {
             toks.push(Token { t: Tok::Glyph(ch), pos });

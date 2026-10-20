@@ -545,6 +545,12 @@ def is_name_char(ch):
             or unicodedata.category(ch) in ('Mn', 'Mc') and script_of(ch) in NAME_SCRIPTS)
 
 
+def is_jamo(ch):
+    """Окремі чамо хангилю (не склади 가–힣): U+1100–11FF, A960–A97F, D7B0–D7FF."""
+    o = ord(ch)
+    return 0x1100 <= o <= 0x11FF or 0xA960 <= o <= 0xA97F or 0xD7B0 <= o <= 0xD7FF
+
+
 def digit(ch):
     return unicodedata.decimal(ch, None)
 
@@ -597,11 +603,21 @@ def skeleton(name):
     return unicodedata.normalize('NFD', ''.join(_proto(c, t) for c in unicodedata.normalize('NFD', name)))
 
 
+GLYPH_TWINS = {'ơ': 'σ', 'll': '‖'}   # двійники гліфів, яких скелет UTS #39 не дає: ơ — o з ріжком (суд 9б)
+
+
+def glyph_twin_table():
+    """Скелет → гліф (і стала), на який схоже імʼя з таким скелетом; Атанор бере ту саму таблицю (gen_tables)."""
+    t = {skeleton(g): g for g in [*GLYPHS, *CONSTS] if len(g) == 1}
+    t.update({skeleton(n): g for n, g in GLYPH_TWINS.items()})
+    return t
+
+
 def glyph_twin(name):
     """Гліф, на який схоже імʼя (х → ×, р → ρ, v → ν), або None."""
     sk = skeleton(name)
     if not hasattr(glyph_twin, 'table'):
-        glyph_twin.table = {skeleton(g): g for g in [*GLYPHS, *CONSTS] if len(g) == 1}
+        glyph_twin.table = glyph_twin_table()
     return glyph_twin.table.get(sk)
 
 
@@ -791,6 +807,12 @@ def lex(src):
                                   f'додайте звичайну літеру', pos)
             if any(unicodedata.category(ch) == 'Nd' and not '0' <= ch <= '9' for ch in buf):
                 raise StaticError(f'в імені «{buf}» — лише цифри 0–9 (інші письма цифр плутаються з ними)', pos)
+            if any(is_jamo(ch) for ch in buf):          # ᄉ ≈ ∧, ᄃ ≈ ⊏, ᆼ ≈ ○ — латки таблицею не встигали (суд 9б)
+                raise StaticError(f'імʼя «{buf}»: окремі чамо хангилю (ᄉ ᄃ ᆼ …) схожі на гліфи мови — пишіть '
+                                  f'складами (가–힣)', pos)
+            if len(buf) == 1 and scripts & {'CJK', 'HIRAGANA', 'KATAKANA'}:     # 米 ≈ ※, 乂 ≈ ×, ニ ≈ ＝ (суд 9б)
+                raise StaticError(f'імʼя «{buf}» з одного ієрогліфа чи знака кани: їх легко сплутати з гліфами мови '
+                                  f'(米 і ※, 乂 і ×, ニ і ＝) — візьміть щонайменше два знаки', pos)
             toks.append(('name', buf, pos))
         elif ch in GLYPHS or ch in CONSTS:
             toks.append(('glyph', ch, pos))
@@ -1882,7 +1904,7 @@ def _verify(path, program=None):
     перехоплені помилки, підсумовані (не повністю записані) значення, теку й аргументи запуску."""
     key, prev, n, last, head = owner_key(), '0' * 16, 0, None, None
     denied, caught, summed, modules, dry, raised, quota_hits = [], 0, 0, [], False, 0, []
-    chunks, events, rejected = {'виконується': 0, 'відкинуто': 0, 'помилка частини': 0}, [], []
+    chunks, events, rejected, running = {'виконується': 0, 'відкинуто': 0, 'помилка частини': 0}, [], [], False
     info = {}
     try:
         st = os.stat(path)
@@ -1926,10 +1948,15 @@ def _verify(path, program=None):
             chunks[rec['стан']] += 1
             if rec['стан'] == 'відкинуто':
                 rejected.append(safe(str(rec.get('помилка', '')))[:120])
+            running = rec['стан'] == 'виконується'
+        if rec.get('подія') in ('значення', 'помилка частини'):
+            running = False
         chunks['помилка частини'] += rec.get('подія') == 'помилка частини'
         events.append(rec.get('подія'))
         summed += _summarized(rec)
         prev, n, last = h, n + 1, rec.get('подія')
+    if running and last == 'помилка':       # частину зупинила межа сеансу (кроки, слід): вона теж упала (суд 9б)
+        chunks['помилка частини'] += 1
     refused = last == 'відмова' and (n == 2 or bool(head and head.get('repl')) and set(events[1:-1]) <= {'код'})
     if not (last in ('кінець', 'помилка') or refused):
         return f'✗ слід обірвано: {n} записів, останній — «{last}», а не кінець/помилка/відмова на старті', info
@@ -1974,7 +2001,8 @@ def _verify(path, program=None):
     info['виконавець'], info['схвалено_власником'] = engine, approved
     if head.get('repl'):
         notes.append(f'частин сеансу: виконано {chunks["виконується"]} (з них упало {chunks["помилка частини"]}), '
-                     f'відкинуто до виконання {chunks["відкинуто"]}; печатка — одна, з першої виконаної частини')
+                     f'відкинуто до виконання {chunks["відкинуто"]}; ' + ('печатка — одна, з першої виконаної частини'
+                     if chunks['виконується'] else 'жодної частини не виконано'))
         if rejected:                   # спроби поза печаткою й інші відкинуті частини — власникові видно (суд 9)
             notes.append('відкинуто: ' + '; '.join(rejected[:5]) + (' …' if len(rejected) > 5 else ''))
         info['частини'], info['відкинуто'] = chunks, rejected
@@ -1985,7 +2013,8 @@ def _verify(path, program=None):
                      + '; '.join(quota_hits[:5]) + (' …' if len(quota_hits) > 5 else ''))
     if modules:
         notes.append('модулі: ' + ', '.join(f'{safe(str(r))} (sha256 {str(h)[:16]}…)' for r, _, h in modules)
-                     + ('' if program is not None else ' — щоб звірити з файлами, перевірте слід разом із програмою'))
+                     + ('' if program is not None else ' — модуль, змінений посеред сеансу, сеанс відхиляє сам'
+                        if head.get('repl') else ' — щоб звірити з файлами, перевірте слід разом із програмою'))
     if caught:
         notes.append(f'перехоплено помилок (☂): {caught}')
     if raised:
@@ -3569,6 +3598,9 @@ def read_allowlist(path, cwd=None, prog=None, approval=None):
         raise Refused(f'не вдалося прочитати дозволи {path}: {e}')
 
 
+JSON_DUP = 'ключ в обʼєкті повторюється (яке значення брати — неоднозначно)'
+
+
 def per_programs(data):
     """«для_програм» з дозволів власника: відбиток (малими літерами) → список дозволів."""
     per_prog = data.get('для_програм', {})
@@ -3577,7 +3609,10 @@ def per_programs(data):
     for h, extra in per_prog.items():
         if not isinstance(extra, list):
             raise ValueError(f'«для_програм» → «{h}»: потрібен список')
-    return {h.strip().lower(): extra for h, extra in per_prog.items()}
+    out = {h.strip().lower(): extra for h, extra in per_prog.items()}
+    if len(out) != len(per_prog):          # «AB…» і «ab…» — той самий відбиток: мовчки перемагав би останній (суд 9б)
+        raise ValueError('у «для_програм» той самий відбиток двічі (регістр і пробіли по краях не важать)')
+    return out
 
 
 def approval_of(raw, prog):
@@ -4821,8 +4856,17 @@ class Interp:
             try:
                 def bad_const(c):
                     raise ValueError(f'«{c}» — не число JSON')
-                return wrap(json.loads(self.need(a[0], 'рядок', g, pos), parse_constant=bad_const,
-                                       parse_float=lambda t: dec_ok(dec_of(t, 'δ', pos), 'δ', pos)), a[0].c)
+                dups = []
+
+                def pairs(kv):                   # повтор ключа — помилка, а не «останній перемагає» (суд 9б)
+                    if len({k for k, _ in kv}) != len(kv):
+                        dups.append(1)
+                    return dict(kv)
+                p = json.loads(self.need(a[0], 'рядок', g, pos), parse_constant=bad_const, object_pairs_hook=pairs,
+                               parse_float=lambda t: dec_ok(dec_of(t, 'δ', pos), 'δ', pos))
+                if dups:
+                    raise NgrError(f'δ: не JSON: {JSON_DUP}', pos)
+                return wrap(p, a[0].c)
             except (RecursionError, TooDeep):
                 raise NgrError(f'δ: JSON вкладений надто глибоко (не глибше за {VALUE_MAX_DEPTH} рівнів)', pos)
             except ValueError as e:
@@ -5256,7 +5300,9 @@ def approval_report(prog, approval, allowed, source, cwd, dir_extra, prog_extra,
     else:
         existing = per_programs(json.load(open(path, encoding='utf-8'))) if os.path.exists(path) else {}
         entry = json.dumps({'для_програм': {**existing, approval: perms}}, ensure_ascii=False)
-        if existing:
+        if sorted(existing.get(approval) or []) == sorted(perms):       # суд 9б: радило «замініть» без потреби
+            out.append(f'Ця програма вже схвалена саме цими правами в {path} — додавати нічого.')
+        elif existing:
             out.append(f'У {path} уже є розділ «для_програм» — замініть його ЦІЛИМ (ключ у JSON не повторюють, а '
                        f'повтор ngr відкине): {entry[1:-1]}' + (' (ця програма вже схвалена — права оновляться)'
                                                                    if approval in existing else ''))
@@ -5673,7 +5719,10 @@ def cheatsheet():
             '- `ngr --repl [--тека Т]` — сеанс частинами для агента (права теки — лише з `--тека`): рядки JSON `{"код": "…"}`',
             '  на вхід, відповідь — рядок JSON;',
             '  перша частина — з печаткою (вона на весь сеанс), кожна частина перевіряється, як програма, і кожен рядок',
-            '  входу — у сліді; частина, що впала, не приймається, а решта сеансу не впевненіша за її провал.',
+            '  входу — у сліді; рядок — рівно одне поле (`код` чи `кінець`). Частина, що впала, не приймається (імена',
+            '  з неї невидимі), але покладене нею в `🜄` лишається; решта сеансу не впевненіша за її провал — і літерали,',
+            '  і `≈` (суворіше за `☂`). Впевненість показаного значення агента не переживає: впишете його літералом —',
+            '  це ваше слово з ±1. `--сухо` з `--repl` — помилка (частини діють по-справжньому).',
             '- `ngr --формат файл.ngr` — канонічний текст (ті самі токени й дерево розбору); форматуйте **до** схвалення.',
             '']
     return '\n'.join(out)
@@ -5709,8 +5758,9 @@ def cheatsheet_short():
               'Впевненість: усе з даних і під сумнівними умовами не впевненіше за джерело; змінити — лише ≈ (у слід).',
               'Канал завершення: якщо гілка під сумнівною умовою могла зупинити програму (☠ 🜍 ÷0 § виклик…) або операція',
               'могла впасти на сумнівному аргументі, то й решта запуску не впевненіша. Ліміти — єдиний невідстежений залишок.',
-              'Двійники імен (x/х, h/һ, I/l за UTS #39), імена-«числа» (О O З Б), функція, схожа на гліф (х р v ф ~ × ρ ν φ),',
-              'письма імен поза поширеними (коптське, вірменське…), і будь-що',
+              'Двійники імен (x/х, h/һ, I/l за UTS #39), імена-«числа» (О O З Б), функція чи стала, схожа на гліф',
+              '(х р v ф к ʃ ʌ Э ll × ρ ν φ ∫ ∧ ∋ ‖ …, Ø ø ≈ ∅), імʼя з одного ієрогліфа чи знака кани (米 ≈ ※), окремі чамо',
+              'хангилю (ᄉ ≈ ∧), письма імен поза поширеними (коптське, вірменське…), і будь-що',
               'невидиме в тексті програми (керівні, bidi, теги, ZWSP, U+3164) — помилки. Числа — лише 0–9 або ０–９.',
               'Слід веде інтерпретатор (підписаний). Nigredo — прозорість і аудит, не пісочниця ОС.',
               'Намір, імена і вивід — слова автора (у печатці вони в 「」). Печатка необхідна, але не досить: перевіряй',
@@ -6367,19 +6417,34 @@ def repl_main(opts):
             return 3
     outs, stores = [], []
     try:
-        for tp in paths:
-            outs.append(open(tp, 'x', encoding='utf-8'))
-            stores.append(open(tp + '.дані', 'x', encoding='utf-8'))
+        outs.append(open(paths[0], 'x', encoding='utf-8'))
+        stores.append(open(paths[0] + '.дані', 'x', encoding='utf-8'))
+        if len(paths) > 1:            # копія за --слід — у файл, лише коли відомо, що він не в теці з печатки (суд 9б)
+            for f_ in (paths[1], paths[1] + '.дані'):
+                if os.path.lexists(f_):
+                    raise FileExistsError(17, 'File exists', f_)
+            outs.append(_Deferred())
+            stores.append(_Deferred())
     except OSError as e:
         reply(гаразд=False, помилка=f'✗ не вдалося створити слід: {e}' + (' — слід не перезаписується'
               if isinstance(e, FileExistsError) else ''), кінець=True)
         for o in outs + stores:
             o.close()
         return 3
+
+    def own_copy(make):
+        """Копія сліду за --слід: створити файл (make) чи відмовитися від нього."""
+        if len(paths) > 1 and outs[1].pending:
+            if make:
+                outs[1].open(paths[1])
+                stores[1].open(paths[1] + '.дані')
+            else:
+                outs[1].drop()
+                stores[1].drop()
     trace = Trace(outs + ([sys.stderr] if opts['trace'] == '-' else []), key, opts['tsize'], stores)
 
     # місця в повідомленнях — у рядках усього сеансу (прийняті частини підряд); «рядок» відповіді — де почалася ця частина
-    accepted, done, interp, top = None, 0, None, None
+    accepted, done, interp, top, first = None, 0, None, None, None
     mod_sha = {}                                # справжній шлях модуля → sha256, з яким його виконано
     try:
         trace('початок', версія=VERSION, інтерпретатор=INTERP_SHA, програма='<repl>', аргументи=[],
@@ -6401,15 +6466,19 @@ def repl_main(opts):
             if not line.strip():
                 continue
             try:
-                req = json.loads(line)
-                if not isinstance(req, dict):
+                req = json.loads(line, object_pairs_hook=_Pairs)    # повтор ключа — не «останній перемагає»
+                if not isinstance(req, _Pairs) or len(req) != 1 or req[0][0] not in ('код', 'кінець'):
                     raise ValueError
-            except ValueError:
-                reject(line.rstrip('\n'), '✗ очікувався рядок JSON: {"код": "…"} або {"кінець": true}')
+            except ValueError:   # рядок — рівно одне поле: {"код": …} або {"кінець": true} (суд 9б: «код» разом із
+                reject(line.rstrip('\n'),   # «кінець», дубль «код» чи зайве поле мовчки губилися)
+                       '✗ очікувався рядок JSON з одним полем: {"код": "…"} або {"кінець": true}')
                 continue
-            if req.get('кінець') is True:
-                break
-            chunk = req.get('код')
+            field, chunk = req[0]
+            if field == 'кінець':
+                if chunk is True:
+                    break
+                reject(line.rstrip('\n'), '✗ «кінець» — лише true')
+                continue
             if not isinstance(chunk, str) or _bad_str(chunk):
                 reject(chunk if isinstance(chunk, str) else line.rstrip('\n'), '✗ «код» має бути рядком (UTF-8)')
                 continue
@@ -6422,10 +6491,13 @@ def repl_main(opts):
                 continue
             # перевірка програми — на КОЖНУ частину (суд 9): модулі з тек запису, субагенти за справжніми шляхами
             missing = check_program(prog, allowed, cwd)
-            if interp is None and opts['trace'] and opts['trace'] != '-':
+            if interp is None and len(paths) > 1:
                 seal = prog[2][0][3]
                 if any(inside(paths[1], os.path.join(cwd, w)) for t, ws in seal.items() if t.startswith('файл.') for w in ws):
                     missing.append(f'слід «{safe(paths[1])}» лежить у теці з печатки програми')
+                    own_copy(False)        # файл так і не створено (суд 9б: створювався до відмови)
+                else:
+                    own_copy(True)
             if missing and interp is None:      # печатка сеансу — ширша за власника: сеанс відхилено
                 trace('код', текст=visible(chunk), стан='відкинуто', помилка='печатка просить більше, ніж дозволив власник')
                 trace('відмова', бракує=missing)
@@ -6480,7 +6552,7 @@ def repl_main(opts):
         return 0
     except Fatal as e:                           # межі сеансу (кроки, розмір, слід) — сеанс завершено
         trace('помилка', повідомлення=safe(str(e)))
-        reply(гаразд=False, помилка=safe(str(e)), кінець=True)
+        reply(гаразд=False, **({'рядок': first} if first is not None else {}), помилка=safe(str(e)), кінець=True)
         return 1
     except BrokenPipeError:                      # читач закрив вивід — тихо, без «вади мови»
         os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
@@ -6492,8 +6564,43 @@ def repl_main(opts):
               кінець=True)
         return 4
     finally:
+        own_copy(True)                           # сеанс без жодної частини — копія сліду все одно потрібна
         for o in outs + stores:
             o.close()
+
+
+class _Pairs(list):
+    """Обʼєкт JSON як список пар (ключі — як були, з повторами)."""
+
+
+class _Deferred:
+    """Файл сліду, створений не одразу: рядки — у памʼять, доки не відомо, чи можна його створити."""
+
+    def __init__(self):
+        self.lines, self.f, self.pending = [], None, True
+
+    def write(self, s):
+        if self.f is not None:
+            self.f.write(s)
+        elif self.pending:
+            self.lines.append(s)
+
+    def flush(self):
+        if self.f is not None:
+            self.f.flush()
+
+    def open(self, path):
+        self.f, self.pending = open(path, 'x', encoding='utf-8'), False
+        self.f.write(''.join(self.lines))
+        self.f.flush()
+        self.lines = []
+
+    def drop(self):
+        self.pending, self.lines = False, []
+
+    def close(self):
+        if self.f is not None:
+            self.f.close()
 
 
 def walk_imports(n):
