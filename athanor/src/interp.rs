@@ -1619,7 +1619,9 @@ impl Interp {
         self.deny(data!["агент" => J::Str(agent), "назва" => J::s(tool), "шлях" => J::Str(uni::safe(&p)),
                         "причина" => J::s("поза дозволеною текою")])?;
         let allowed_list: Vec<String> = scopes.iter().map(|x| uni::safe(x)).collect();
-        ngr(format!("{}: «{}» поза дозволеним ({})", tool, uni::safe(&p), allowed_list.join(", ")), pos)
+        let file = write && scopes.iter().any(|b| pathx::realpath(&pathx::join(&self.cwd, b)) == first); // суд 9г, Скептик
+        ngr(format!("{}: «{}» поза дозволеним ({}){}", tool, uni::safe(&p), allowed_list.join(", "),
+                    if file { "; для запису в печатці — тека, а не сам файл" } else { "" }), pos)
     }
 
     // ---------------------------------------------------------------- субагенти

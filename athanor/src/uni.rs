@@ -76,15 +76,35 @@ pub fn glyph_twin(skel: &str) -> Option<&'static str> {
     GLYPH_TWIN.binary_search_by(|&(a, _)| a.cmp(skel)).ok().map(|i| GLYPH_TWIN[i].1)
 }
 
-/// Гліф, на який схоже імʼя функції, — і з цифрами в кінці (x5 ≈ ×5, 十5 ≈ ＋5; суд 9в), як nigredo.glyph_twin.
+/// Найкоротший шматок, повтором якого є рядок (xx → x, 乂乂 → 乂), або сам рядок (як nigredo.unit).
+fn unit(cs: &[char]) -> &[char] {
+    let n = cs.len();
+    (1..=n / 2).find(|&k| n % k == 0 && cs.chunks(k).all(|c| c == &cs[..k])).map_or(cs, |k| &cs[..k])
+}
+
+/// Гліф, на який схоже імʼя функції, — і з цифрами в кінці (x5 ≈ ×5, 十5 ≈ ＋5; суд 9в), і повтором (xx ≈ ××; суд 9г),
+/// як nigredo.glyph_twin.
 pub fn glyph_twin_name(skel: &str) -> Option<&'static str> {
     let cs: Vec<char> = skel.chars().collect();
+    let s = |c: &[char]| c.iter().collect::<String>();
+    let hit = |c: &[char]| glyph_twin(&s(c)).or_else(|| glyph_twin(&s(unit(c))));
     let mut k = cs.len();
-    let head = |k: usize| cs[..k].iter().collect::<String>();
-    while k > 1 && DIGIT_SKELETON.contains(cs[k - 1]) && glyph_twin(&head(k)).is_none() {
+    while k > 1 && DIGIT_SKELETON.contains(cs[k - 1]) && hit(&cs[..k]).is_none() {
         k -= 1;
     }
-    glyph_twin(&head(k))
+    hit(&cs[..k])
+}
+
+/// Імʼя без хвоста з цифр 0–9 (乂5 → 乂, ø1 → ø; лише цифри — саме імʼя).
+pub fn digitless(v: &str) -> &str {
+    let t = v.trim_end_matches(|c: char| c.is_ascii_digit());
+    if t.is_empty() { v } else { t }
+}
+
+/// NAME_TWINS еталона (за самим іменем, без цифр і повтору): ƒ ≈ ∫, ɜ ≈ ∋.
+pub fn name_twin(v: &str) -> bool {
+    let cs: Vec<char> = digitless(v).chars().collect();
+    matches!(unit(&cs).iter().collect::<String>().as_str(), "ƒ" | "ɜ")
 }
 
 /// in_words: текст помилки бібліотеки — словами (оригінал у дужках), за першим збігом з таблиці (як nigredo.in_words).
