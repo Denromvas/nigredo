@@ -146,6 +146,10 @@ def tools():
                         'збігся вивід і завершення. Для налагодження й аудиту чужого запуску. path — слід із теки '
                         'слідів власника (як у nigredo_vykonaty).',
          'inputSchema': {'type': 'object', 'properties': {'path': {'type': 'string'}}, 'required': ['path']}},
+        {'name': 'nigredo_vidbytok',
+         'description': 'Хто виконує: sha256 самого виконавця (бінарника Атанора чи nigredo.py еталона) і поле '
+                        '«інтерпретатор», яке він пише в слід, — щоб звірити з тим, що назвав власник (суд 9б).',
+         'inputSchema': {'type': 'object', 'properties': {}}},
         {'name': 'nigredo_pereviryty_slid',
          'description': 'Перевірити підписаний слід виконання: цілість, підписи, чи не обрізано, спроби поза '
                         'правами («заборонено»), перехоплені помилки, аргументи й тека; з code — чи слід саме від '
@@ -159,6 +163,9 @@ def call(name, a):
     """Результат — список окремих текстових блоків (слова програми не зливаються зі словами сервера) і чи помилка."""
     if name == 'nigredo_pamyatka':
         return [sheet()], False
+    if name == 'nigredo_vidbytok':
+        rc, out, err = ngr('--відбиток')
+        return [clean((out or err).strip())], rc != 0
     texts = [str(a.get(k, '')) for k in ('code', 'path', 'url', 'search', 'lang')] + [str(x) for x in a.get('args', [])]
     if bad_text(*texts):
         return ['✗ у запиті неповний символ (сурогат) — це не UTF-8; нічого не виконано'], True

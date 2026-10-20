@@ -36,7 +36,15 @@ fn get<'a, 'b>(kv: &'a [(std::borrow::Cow<'b, str>, bool, P<'b>)], k: &str) -> O
 fn per_programs(kv: &[(std::borrow::Cow<'_, str>, bool, P<'_>)]) -> Result<Vec<(String, Vec<String>)>, Back> {
     match get(kv, "для_програм") {
         None => Ok(Vec::new()),
-        Some(P::Obj(d)) => d.iter().map(|(k, _, v)| Ok((k.trim_matches(py_ws).to_lowercase(), strs(v)?))).collect(),
+        Some(P::Obj(d)) => {
+            let out: Vec<(String, Vec<String>)> =
+                d.iter().map(|(k, _, v)| Ok((k.trim_matches(py_ws).to_lowercase(), strs(v)?))).collect::<Result<_, Back>>()?;
+            let uniq: std::collections::HashSet<&String> = out.iter().map(|(k, _)| k).collect();
+            if uniq.len() != out.len() {
+                return back("для_програм — той самий відбиток двічі"); // помилку пише еталон (суд 9б)
+            }
+            Ok(out)
+        }
         Some(_) => back("для_програм — не словник"),
     }
 }

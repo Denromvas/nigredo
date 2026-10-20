@@ -250,7 +250,7 @@ fn load_with(s: &str, unique: bool) -> Result<P<'_>, LoadErr> {
         return Err(fmt(PErr { msg: "Extra data".into(), pos: p.i }));
     }
     if unique && p.dup {
-        return Err(LoadErr::Syntax("ключ повторюється".into()));
+        return Err(LoadErr::Syntax("ключ в обʼєкті повторюється (яке значення брати — неоднозначно)".into()));
     }
     Ok(v)
 }

@@ -868,6 +868,19 @@ def main():
           and 'ключ «дозволено» повторюється' in got5.stderr,
           '--схвалити: злитий «для_програм», попередження про ⌂; повтор ключа в дозволах — відмова',
           appr2.stdout[-700:] + got5.stderr)
+    # суд 9б: відбитки, різні лише регістром, — той самий (мовчки перемагав останній); уже схвалена — «додавати нічого»
+    (sx / 'вл' / 'дозволи.json').write_text(json.dumps({'дозволено': ['оракул'], 'для_програм': {
+        'AB' * 32: ['оракул'], 'ab' * 32: ['жереб']}}), encoding='utf-8')
+    got6 = run(['-e', '🜂\n» 1'], envx)
+    (sx / 'вл' / 'дозволи.json').write_text(json.dumps({'дозволено': ['оракул']}), encoding='utf-8')
+    a1_ = run(['--схвалити', str(sx / 'арг.ngr')], envx)
+    m_ = re.search(r'"для_програм": (\{.*?\]\})', a1_.stdout)
+    (sx / 'вл' / 'дозволи.json').write_text(json.dumps({'дозволено': ['оракул'], 'для_програм': json.loads(m_.group(1))},
+                                                      ensure_ascii=False), encoding='utf-8')
+    a2_ = run(['--схвалити', str(sx / 'арг.ngr')], envx)
+    check(got6.returncode == 3 and 'той самий відбиток двічі' in got6.stderr and 'вже схвалена саме цими правами' in a2_.stdout
+          and 'замініть' not in a2_.stdout, '«для_програм»: AB… і ab… — помилка; --схвалити схваленої — «додавати нічого» '
+          '(суд 9б)', got6.stderr + a2_.stdout[-400:])
     got = run(['-e', f'🜂 【「взяти:127.0.0.1:{port}」】\n» ☂ 🜔взяти 「http://@127.0.0.1:{port}/」 λe e'], env)
     check('поза дозволеним' in got.stdout, 'взяти (суд 8в): порожній логін «http://@хост/» — відмова за правами',
           got.stdout + got.stderr)
@@ -1039,6 +1052,9 @@ def main():
                      '← нам 1\n← นาม 2\n← नाम 3\n» ＋ ＋ нам นาม नाम'])
     check(got.stdout == ref.stdout == '🜄: значення вкладене надто глибоко\n∅\n6\n',
           '🜄 надто глибокого — помилка ДО запису в памʼять; імена зі знаками голосних (суд 9)', got.stdout + got.stderr)
+    got, ref = both(['-e', '🜂\n» ☂ δ 「{"a":1,"a":2}」 λe e\n» ☂ δ 「[{"b":{"c":1,"c":1}}]」 λe e\n» δ 「{"a":1,"b":2}」'])
+    check(got.stdout == ref.stdout and got.stdout.count('ключ в обʼєкті повторюється') == 2 and '『「a」 1 「b」 2』' in got.stdout,
+          'δ: повтор ключа в обʼєкті JSON — помилка в обох, а не «останній перемагає» (суд 9б)', got.stdout + ref.stdout)
     got, ref = both(['-e', '🜂\n» ☂ ◷ 「2026-02-29」 1 λe e\n» ☂ ◷ 「2026-2-1」 1 λe e\n» ☂ ▦ δ 「"a,b\\\\rc,d"」 λe e\n'
                      '» ☂ δ δ 「"\\\\ufeff[1]"」 λe e'])
     check(got.stdout == ref.stdout and 'такої дати чи часу немає' in got.stdout and 'не дата ISO' in got.stdout
@@ -1272,6 +1288,11 @@ def main():
     mcp = ROOT / 'mcp' / 'nigredo_mcp.py'
     work = tmp / 'робоча'
     work.mkdir()
+    vb = subprocess.run([sys.executable, str(mcp)], input=json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+                        'params': {'name': 'nigredo_vidbytok', 'arguments': {}}}) + '\n', capture_output=True, text=True,
+                        env=dict(env, NIGREDO_WORKDIR=str(work)))
+    vbt = json.loads(vb.stdout.splitlines()[0])['result']['content'][0]['text'] if vb.stdout else ''
+    check('sha256' in vbt, 'MCP nigredo_vidbytok — sha256 виконавця, як ngr --відбиток (суд 9б)', vb.stdout[-300:] + vb.stderr[-300:])
     reqs = [{'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'},
             {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/call', 'params': {'name': 'nigredo_vykonaty', 'arguments': {
                 'code': '🜂 「теги」 【】\n» ＋ 「звіт ок」 δ 「"\\udb40\\udc49\\u2028"」'}}},
@@ -1481,6 +1502,21 @@ def main():
     check(rc == 0 and [r_['подія'] for r_ in recs][-3:] == ['вивід', 'значення', 'кінець']
           and vr2.returncode == 1 and 'СЕАНС REPL' in vr2.stdout,
           '--repl --слід ФАЙЛ — копія сліду; --перевірити-слід СЛІД ПРОГРАМА для сеансу — ✗', vr2.stdout + str(recs[-3:]))
+    # суд 9б: рядок входу — рівно одне поле; дубль «код», «код»+«кінець», зайве поле, масив — відкинуто й у сліді
+    rc, ans, tr_ = repl([j('🜂 「а」'), '{"код": "» 1", "код": "» 2"}'.encode(), '{"код": "» 3", "кінець": true}'.encode(),
+                         '{"код": "» 4", "x": 1}'.encode(), '[["код", "» 5"]]'.encode(), j('» 6')])
+    recs = [json.loads(x) for x in tr_.read_text(encoding='utf-8').splitlines()]
+    bad_lines = [r_['текст'] for r_ in recs if r_.get('подія') == 'код' and r_.get('стан') == 'відкинуто']
+    check(rc == 0 and [a_['гаразд'] for a_ in ans] == [True, False, False, False, False, True] and ans[-1]['вивід'] == '6\n'
+          and len(bad_lines) == 4 and '» 2' in bad_lines[0] and 'кінець' in bad_lines[1],
+          '--repl: дубль «код», «код» з «кінець», зайве поле, масив — відкинуто, сирий рядок у сліді (суд 9б)', str(ans))
+    in_seal = DATA / 'звіти' / 'repl_у_печатці.jsonl'
+    rc, ans, tr_ = repl([j('🜂 【「писати:звіти」】\n» 1')], '--слід', str(in_seal))
+    rc2, ans2, tr2_ = repl([j('🜂\n∀ …1 100000 λi ＋ i 1')], '--кроки', '1000')
+    vr4 = run(['--перевірити-слід', str(tr2_)], env)
+    check(rc == 3 and not in_seal.exists() and rc2 == 1 and ans2[0].get('рядок') == 1 and 'упало 1' in vr4.stdout,
+          '--repl: --слід у теці з печатки — файл не створено; межа кроків — відповідь з «рядок», у підсумку «упало 1» '
+          '(суд 9б)', str(ans) + str(ans2) + vr4.stdout)
 
     sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',
