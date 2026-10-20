@@ -3310,7 +3310,9 @@ DB_ROWID_MAX = 2 ** 63 - 1   # після нього SQLite бере rowid на�
 DB_SCHEMA_TABLES = ('sqlite_master', 'sqlite_schema', 'sqlite_temp_master', 'sqlite_temp_schema')   # CREATE пише сюди
 DB_ROWID_WHY = ('дійшла до rowid 2⁶³−1 — далі SQLite бере його навмання',
                 'ховає rowid стовпцями rowid, _rowid_ і oid — запис у неї не перевірити',
-                '— рядок отримав би rowid 2⁶³−1, а після нього SQLite бере rowid навмання')
+                '— рядок отримав би rowid 2⁶³−1, а після нього SQLite бере rowid навмання',
+                'підійшла до rowid 2⁶³−1 — рядки, які допише сюди сам SQLite, дійдуть до межі, а далі rowid навмання')
+DB_ROWID_NEAR = DB_ROWID_MAX - 2 ** 32   # системна таблиця: за одну інструкцію SQLite допише рядків менше, ніж стільки
 
 
 def db_body(sql):
@@ -3434,10 +3436,11 @@ def _db_guard(con, it, why, write, sql, args):
             con.create_function('ngr_rowid', 2, lambda t, k: refuse(
                 f'випадковість SQLite (таблиця «{safe(t)}» {DB_ROWID_WHY[k]}) без права «жереб»'), deterministic=True)
             ins, upd, system = _db_written(con, it, sql, args)
-            for t in system:   # старий файл: системна таблиця вже на межі, а рядок у неї пише сам SQLite (AUTOINCREMENT, CREATE)
-                q = t.replace('"', '""')
-                if con.execute(f'SELECT max(rowid) = {DB_ROWID_MAX} FROM main."{q}"').fetchone()[0]:
-                    refuse(f'випадковість SQLite (системна таблиця «{safe(t)}» {DB_ROWID_WHY[0]}) без права «жереб»')
+            for t in system:   # старий файл: системна таблиця біля межі, а рядки в неї пише сам SQLite (AUTOINCREMENT,
+                q = t.replace('"', '""')   # CREATE) — тригера на ній немає, тож і «майже на межі»: два нові рядки за одну
+                # інструкцію (тригер, автоіндекси) — і другий навмання (суд 9г, перевірка виправлення)
+                if con.execute(f'SELECT max(rowid) > {DB_ROWID_NEAR} FROM main."{q}"').fetchone()[0]:
+                    refuse(f'випадковість SQLite (системна таблиця «{safe(t)}» {DB_ROWID_WHY[3]}) без права «жереб»')
             for i, t in enumerate(sorted(ins | upd)):
                 q, lit = t.replace('"', '""'), t.replace("'", "''")
                 cols = {r[0].lower() for r in con.execute('SELECT name FROM pragma_table_xinfo(?)', (t,))}

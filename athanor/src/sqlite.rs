@@ -349,11 +349,13 @@ const DB_NOW: [&str; 3] = ["current_date", "current_time", "current_timestamp"];
 const UDF_ERR: &[u8] = b"user-defined function raised exception\0";
 const ROWID_MAX: i64 = i64::MAX; // після нього SQLite бере rowid навмання
 const SCHEMA_TABLES: [&str; 4] = ["sqlite_master", "sqlite_schema", "sqlite_temp_master", "sqlite_temp_schema"]; // CREATE пише сюди
-const ROWID_WHY: [&str; 3] = [
+const ROWID_WHY: [&str; 4] = [
     "дійшла до rowid 2⁶³−1 — далі SQLite бере його навмання",
     "ховає rowid стовпцями rowid, _rowid_ і oid — запис у неї не перевірити",
     "— рядок отримав би rowid 2⁶³−1, а після нього SQLite бере rowid навмання",
+    "підійшла до rowid 2⁶³−1 — рядки, які допише сюди сам SQLite, дійдуть до межі, а далі rowid навмання",
 ];
+const ROWID_NEAR: i64 = ROWID_MAX - (1 << 32); // системна таблиця: за одну інструкцію SQLite допише рядків менше
 
 /// Значення аргументу чи результату функції SQLite — як його бачить модуль sqlite3 Python.
 enum SqlV {
@@ -652,9 +654,10 @@ fn guard(l: &Lib, db: *mut c_void, it: &Interp, g: &mut Guard, write: bool, sql:
             add("ngr_rowid", 2, 3, g)?;
             let (ins, upd, system) = written(l, db, sql, args)?;
             for t in &system {
-                // старий файл: системна таблиця вже на межі, а рядок у неї пише сам SQLite (AUTOINCREMENT, CREATE)
-                if pragma(l, db, &format!("SELECT max(rowid) = {} FROM main.\"{}\"", ROWID_MAX, t.replace('"', "\"\"")))? == Some(1) {
-                    let msg = format!("випадковість SQLite (системна таблиця «{}» {}) без права «жереб»", uni::safe(t), ROWID_WHY[0]);
+                // старий файл: системна таблиця біля межі, а рядки в неї пише сам SQLite (AUTOINCREMENT, CREATE) — і
+                // кілька за одну інструкцію (суд 9г, перевірка виправлення)
+                if pragma(l, db, &format!("SELECT max(rowid) > {} FROM main.\"{}\"", ROWID_NEAR, t.replace('"', "\"\"")))? == Some(1) {
+                    let msg = format!("випадковість SQLite (системна таблиця «{}» {}) без права «жереб»", uni::safe(t), ROWID_WHY[3]);
                     unsafe { (*g.auth).why.push(msg.clone()) };
                     return Err(PyErr::Sql(msg));
                 }
