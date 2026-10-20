@@ -57,7 +57,9 @@ Same tasks in both languages (`bench/`), models writing both from the same task 
 Measured on a phone (Termux); Nigredo's numbers include its own trace and replay store. Small tasks are mostly
 interpreter start-up; the two tasks that use the network are handed to the reference and are slower than Python;
 the 200k-step loop is a shape Athanor has a fast path for; exact decimals and string building are on par with Python,
-and a `↻` loop that builds a new list every step is 1.7× slower. On a phone the spread between runs is ~10–20 %.
+and a `↻` loop that builds a new list every step is 1.7× slower. On a quiet phone the spread between runs is ~10–20 %;
+on a loaded one (judges measured while other judges ran) absolute times were 1.4–2.8× higher for Athanor and
+1.4–1.7× for the reference — the ratios above are from a quiet run.
 
 ## Try it
 
@@ -84,9 +86,10 @@ Every version is frozen and handed to a council of agent judges — separate Cla
 the boundary; every finding becomes a negative test. Athanor is checked against the reference interpreter on every
 program in the repo and on generated data (regex patterns, Unicode case, numbers, limits); the ninth court still
 found divergences (final sigma, `\N{…}` in a pattern from data, the trace-size limit, SQLite steps, stack depth),
-and its re-review found a crash on deep `☂`/`¿` and an `(?i)` that was not Python's — all fixed with tests on both
-engines. The latest comparison report is [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols —
-[`konsylium/`](konsylium/).
+and its re-reviews found that SQLite still gave a program the clock and randomness without the rights — through a
+column `DEFAULT`, and later through the program's own trigger setting rowid 2⁶³−1 — plus a crash on deep `☂`/`¿` and
+an `(?i)` that was not Python's — all fixed with tests on both engines. The latest comparison report is
+[`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols — [`konsylium/`](konsylium/).
 
 **Honest limits:** Nigredo is a transparency and audit tool, **not an OS sandbox** — an agent with shell access can
 bypass it entirely. Confidence is a conservative bound, not a probability. The language and both engines were written
@@ -160,7 +163,9 @@ by Claude (Anthropic) as an agent; the project owner is Denis Romaniuk. MIT lice
 Виміряно на телефоні (Termux); у числах Nigredo — і її власні слід та сховище повтору. Малі задачі — здебільшого
 запуск інтерпретатора; дві задачі з мережею Атанор віддає еталону, і там він повільніший за Python; цикл на 200 тис.
 кроків — форма зі швидкою доріжкою Атанора; точні дроби й рядки — нарівні з Python, а `↻`, що щокроку будує новий
-список, — у 1,7 раза повільніший. На телефоні розкид між прогонами — ~10–20 %.
+список, — у 1,7 раза повільніший. На спокійному телефоні розкид між прогонами — ~10–20 %; на навантаженому (судді
+міряли, поки працювали інші) абсолютний час Атанора був у 1,4–2,8 раза більший, еталона — у 1,4–1,7: відношення
+вище — зі спокійного прогону.
 
 ## Запуск
 
@@ -186,8 +191,10 @@ claude mcp add nigredo -- python3 mcp/nigredo_mcp.py   # дати мову бу�
 Практик, Мовознавець, Аудитор безпеки, Новачок, Оркестратор) і Gemini: вони розвʼязують задачі й атакують межу;
 кожна знахідка стає негативним тестом. Атанор звіряють з еталонним інтерпретатором на всіх програмах репозиторію й
 на згенерованих даних (шаблони регулярок, регістр Unicode, числа, межі); девʼятий суд однаково знайшов розбіжності
-(кінцева сигма, `\N{…}` у шаблоні з даних, межа сліду, кроки SQLite, глибина стеку), а повторний огляд — аварію на
-глибоких `☂`/`¿` і `(?i)`, не такий, як у Python, — усе виправлено з тестами обома виконавцями. Останній звіт звірки —
+(кінцева сигма, `\N{…}` у шаблоні з даних, межа сліду, кроки SQLite, глибина стеку), а повторні огляди — що SQLite
+досі давав програмі годинник і випадковість без прав (через `DEFAULT` стовпця, а потім через власний тригер програми,
+що ставить rowid 2⁶³−1), аварію на глибоких `☂`/`¿` і `(?i)`, не такий, як у Python, — усе виправлено з тестами
+обома виконавцями. Останній звіт звірки —
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); історія й протоколи — [`konsylium/`](konsylium/).
 
 **Чесно про межі:** Nigredo — інструмент прозорості й аудиту, **не пісочниця ОС**: агент із доступом до shell може

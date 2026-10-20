@@ -337,15 +337,21 @@ fn auth_ctx(_it: &Interp, write: bool) -> AuthCtx {
     AuthCtx { write, why: Vec::new() }
 }
 
-/// (годинник, жереб) SQLite: «час» і «жереб» без квоти (її не порахувати), як 🜔час і 🜔жереб (суд 9).
+/// (годинник, жереб) SQLite: «час» і «жереб» без квоти (її не порахувати), як 🜔час і 🜔жереб (суд 9; «час≤N» — суд 9в).
 fn db_rights(it: &Interp) -> (bool, bool) {
-    let rand_ok = it.caps.has("жереб") && !it.quota_stack.iter().any(|q| q.quotas.iter().any(|((t, _), _)| t == "жереб"));
-    (it.caps.has("час"), rand_ok)
+    let free = |cap: &str| it.caps.has(cap) && !it.quota_stack.iter().any(|q| q.quotas.iter().any(|((t, _), _)| t == cap));
+    (free("час"), free("жереб"))
 }
 
 const DB_CLOCK: [&str; 7] = ["date", "time", "datetime", "julianday", "unixepoch", "strftime", "timediff"];
 const DB_NOW: [&str; 3] = ["current_date", "current_time", "current_timestamp"];
 const UDF_ERR: &[u8] = b"user-defined function raised exception\0";
+const ROWID_MAX: i64 = i64::MAX; // після нього SQLite бере rowid навмання
+const ROWID_WHY: [&str; 3] = [
+    "дійшла до rowid 2⁶³−1 — далі SQLite бере його навмання",
+    "ховає rowid стовпцями rowid, _rowid_ і oid — запис у неї не перевірити",
+    "— рядок отримав би rowid 2⁶³−1, а після нього SQLite бере rowid навмання",
+];
 
 /// Значення аргументу чи результату функції SQLite — як його бачить модуль sqlite3 Python.
 enum SqlV {
@@ -413,21 +419,20 @@ fn refusal(f: &FnCtx, a: &[SqlV]) -> Option<String> {
             let now = (times.is_empty() && name != "timediff")
                 || times.iter().any(|x| is(x, &[b"now", b"subsec", b"subsecond"]))
                 || mods.iter().any(|x| is(x, &[b"localtime", b"utc"]));
-            now.then(|| format!("годинник SQLite ({} — поточний час чи часовий пояс) без права «час» — дати з даних рахуються, «зараз» — лише з «час» у печатці", name))
+            now.then(|| format!("годинник SQLite ({} — поточний час чи часовий пояс) без права «час» (з квотою «час≤N» — лише 🜔час) — дати з даних рахуються, «зараз» — лише з «час» у печатці", name))
         }
-        1 => Some(format!("годинник SQLite ({}) без права «час» — дати рахуйте в Nigredo (◷) чи дайте «час» у печатці", name)),
+        1 => Some(format!("годинник SQLite ({}) без права «час» (з квотою «час≤N» — лише 🜔час) — дати рахуйте в Nigredo (◷) чи дайте «час» у печатці", name)),
         2 => Some(format!("випадковість SQLite ({}) без права «жереб» (з квотою «жереб≤N» — лише 🜔жереб)", name)),
         _ => {
             let t = match a.first() {
                 Some(SqlV::Text(t)) => uni::safe(t),
                 _ => String::new(),
             };
-            let hidden = matches!(a.get(1), Some(SqlV::Int(h)) if *h != 0);
-            Some(format!(
-                "випадковість SQLite (таблиця «{}» {}) без права «жереб»",
-                t,
-                if hidden { "ховає rowid стовпцями rowid, _rowid_ і oid — запис у неї не перевірити" } else { "дійшла до rowid 2⁶³−1 — далі SQLite бере його навмання" }
-            ))
+            let k = match a.get(1) {
+                Some(SqlV::Int(k)) => (*k).clamp(0, 2) as usize,
+                _ => 0,
+            };
+            Some(format!("випадковість SQLite (таблиця «{}» {}) без права «жереб»", t, ROWID_WHY[k]))
         }
     }
 }
@@ -525,9 +530,56 @@ fn exec(l: &Lib, db: *mut c_void, sql: &str, args: &[Arg]) -> Result<Vec<String>
     Ok(out)
 }
 
+/// Таблиці (INSERT, UPDATE), які authorizer бачить, поки SQLite компілює запит (і тіла тригерів); рішення — того самого
+/// authorizer, без запису причин (дозвільний підключив би віртуальну таблицю, якої справжній не пустить).
+struct Written {
+    ins: Vec<String>,
+    upd: Vec<String>,
+    auth: AuthCtx,
+}
+
+extern "C" fn on_record(ud: *mut c_void, action: c_int, a1: *const c_char, a2: *const c_char, db: *const c_char,
+                        src: *const c_char) -> c_int {
+    let w = unsafe { &mut *(ud as *mut Written) };
+    if (action == 18 || action == 23) && !a1.is_null() && !db.is_null() && unsafe { cs(db) } == "main" {
+        let t = unsafe { cs(a1) };
+        let v = if action == 18 { &mut w.ins } else { &mut w.upd };
+        if !v.contains(&t) {
+            v.push(t);
+        }
+    }
+    on_auth(&mut w.auth as *mut AuthCtx as *mut c_void, action, a1, a2, db, src)
+}
+
+/// _db_written: таблиці main, у які запит може писати — і сам, і тригерами (EXPLAIN — без виконання); пише віртуальна
+/// таблиця — то й тіньові (FTS5 бере rowid сам, своїми запитами).
+fn written(l: &Lib, db: *mut c_void, sql: &str, args: &[Arg]) -> Result<(Vec<String>, Vec<String>), PyErr> {
+    let mut w = Written { ins: Vec::new(), upd: Vec::new(), auth: AuthCtx { write: true, why: Vec::new() } };
+    (l.set_authorizer)(db, Some(on_record), &mut w as *mut Written as *mut c_void);
+    let _ = exec(l, db, &format!("EXPLAIN {}", sql), args); // помилку запиту покаже його виконання
+    (l.set_authorizer)(db, None, std::ptr::null_mut());
+    let names = exec(l, db, r"SELECT name FROM pragma_table_list WHERE schema = 'main' AND wr = 0 AND name NOT LIKE 'sqlite\_%' ESCAPE '\' ORDER BY name", &[])?;
+    let types = exec(l, db, r"SELECT type FROM pragma_table_list WHERE schema = 'main' AND wr = 0 AND name NOT LIKE 'sqlite\_%' ESCAPE '\' ORDER BY name", &[])?;
+    let kind = |t: &str| names.iter().position(|n| n == t).map(|i| types[i].as_str());
+    if w.ins.iter().chain(w.upd.iter()).any(|t| kind(t) == Some("virtual")) {
+        for (n, k) in names.iter().zip(types.iter()) {
+            if k == "shadow" {
+                for v in [&mut w.ins, &mut w.upd] {
+                    if !v.contains(n) {
+                        v.push(n.clone());
+                    }
+                }
+            }
+        }
+    }
+    let ok = |t: &String| matches!(kind(t), Some("table") | Some("shadow"));
+    Ok((w.ins.into_iter().filter(ok).collect(), w.upd.into_iter().filter(ok).collect()))
+}
+
 /// _db_guard: без «час» — свої функції дат (дата з даних — як у SQLite; 'now', без часу, localtime/utc, CURRENT_* —
-/// відмова), без «жереб» — random/randomblob і запис у таблицю з rowid 2⁶³−1 (тимчасові тригери в памʼяті) — відмова.
-fn guard(l: &Lib, db: *mut c_void, it: &Interp, g: &mut Guard, write: bool) -> Result<(), PyErr> {
+/// відмова), без «жереб» — random/randomblob, і жоден рядок не доходить до rowid 2⁶³−1 (тимчасові тригери в памʼяті,
+/// лише на таблицях, у які запит пише; суд 9в) — відмова.
+fn guard(l: &Lib, db: *mut c_void, it: &Interp, g: &mut Guard, write: bool, sql: &str, args: &[Arg]) -> Result<(), PyErr> {
     let (clock_ok, rand_ok) = db_rights(it);
     let gp = g as *mut Guard;
     let add = |name: &'static str, n: c_int, kind: u8, g: &mut Guard| -> Result<(), PyErr> {
@@ -556,19 +608,34 @@ fn guard(l: &Lib, db: *mut c_void, it: &Interp, g: &mut Guard, write: bool) -> R
         if write {
             exec(l, db, "PRAGMA temp_store = MEMORY", &[])?;
             add("ngr_rowid", 2, 3, g)?;
-            let tables = exec(l, db, r"SELECT name FROM pragma_table_list WHERE schema = 'main' AND type = 'table' AND wr = 0 AND name NOT LIKE 'sqlite\_%' ESCAPE '\' ORDER BY name", &[])?;
-            for (i, t) in tables.iter().enumerate() {
-                let q = t.replace('"', "\"\"");
+            let (ins, upd) = written(l, db, sql, args)?;
+            let mut all: Vec<&String> = ins.iter().chain(upd.iter()).collect();
+            all.sort();
+            all.dedup();
+            for (i, t) in all.into_iter().enumerate() {
+                let (q, lit) = (t.replace('"', "\"\""), t.replace('\'', "''"));
                 let cols: Vec<String> = exec(l, db, "SELECT name FROM pragma_table_xinfo(?)", &[Arg::Text(t.clone())])?
                     .iter().map(|c| c.to_ascii_lowercase()).collect();
                 let alias = ["rowid", "_rowid_", "oid"].into_iter().find(|a| !cols.iter().any(|c| c == a));
-                let when = match alias {
-                    Some(a) => format!("(SELECT max({}) FROM main.\"{}\") = 9223372036854775807", a, q),
-                    None => "1".into(),
-                };
-                let lit = t.replace('\'', "''");
-                exec(l, db, &format!("CREATE TEMP TRIGGER \"ngr_rowid_{}\" BEFORE INSERT ON main.\"{}\" WHEN {} BEGIN SELECT ngr_rowid('{}', {}); END",
-                                     i, q, when, lit, if alias.is_some() { 0 } else { 1 }), &[])?;
+                let mut trig: Vec<(&str, String, u8)> = Vec::new();
+                match (ins.contains(t), alias) {
+                    (true, None) => trig.push(("BEFORE INSERT", "1".into(), 1)),
+                    (true, Some(a)) => {
+                        // таблиця вже на межі (старий файл), а rowid бере SQLite (NEW — −1); явний — можна
+                        if pragma(l, db, &format!("SELECT max({}) = {} FROM main.\"{}\"", a, ROWID_MAX, q))? == Some(1) {
+                            trig.push(("BEFORE INSERT", format!("NEW.{a} = -1 OR NEW.{a} IS NULL", a = a), 0));
+                        }
+                        trig.push(("AFTER INSERT", format!("NEW.{} = {}", a, ROWID_MAX), 2));
+                    }
+                    _ => {}
+                }
+                if let (true, Some(a)) = (upd.contains(t), alias) {
+                    trig.push(("AFTER UPDATE", format!("NEW.{a} = {m} AND OLD.{a} IS NOT {m}", a = a, m = ROWID_MAX), 2));
+                }
+                for (j, (when, cond, k)) in trig.iter().enumerate() {
+                    exec(l, db, &format!("CREATE TEMP TRIGGER \"ngr_rowid_{}_{}\" {} ON main.\"{}\" WHEN {} BEGIN SELECT ngr_rowid('{}', {}); END",
+                                         i, j, when, q, cond, lit, k), &[])?;
+                }
             }
         }
     }
@@ -709,12 +776,7 @@ fn static_ok(it: &mut Interp, pos: Pos, tool: &str, path: &str, sql: &str) -> R<
 }
 
 fn sql_err(m: &str) -> String {
-    for (en, uk) in crate::lang::SQL_ERRORS {
-        if m.contains(en) {
-            return format!("{} ({})", uk, m);
-        }
-    }
-    m.to_string()
+    crate::uni::in_words(&crate::lang::SQL_ERRORS, m)
 }
 
 fn open(l: &Lib, uri: &str) -> Result<*mut c_void, PyErr> {
@@ -809,7 +871,7 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
                 let page = pragma(l, db, "PRAGMA page_size").map_err(Ok)?.unwrap_or(4096);
                 pragma(l, db, &format!("PRAGMA max_page_count = {}", 64 * 1024 * 1024 / page)).map_err(Ok)?;
             }
-            guard(l, db, it, &mut grd, write).map_err(Ok)?; // до authorizer і лічби кроків: це не запит програми
+            guard(l, db, it, &mut grd, write, &sql, &bound).map_err(Ok)?; // до authorizer і лічби кроків: не запит програми
             (l.set_authorizer)(db, Some(on_auth), &mut auth as *mut AuthCtx as *mut c_void);
             (l.progress)(db, 1000, Some(on_progress), &mut prog as *mut ProgCtx as *mut c_void);
             let before = (l.total_changes)(db);

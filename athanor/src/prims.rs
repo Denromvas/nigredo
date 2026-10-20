@@ -790,7 +790,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             let r = match crate::rx::Rx::new(&pat.s) {
                 Ok(r) => r,
                 Err(crate::rx::RxErr::Re(e)) => {
-                    return ngr(format!("{}: хибний шаблон: {}", g, crate::rx::re_error_text(&e, &pat.s)), pos)
+                    return ngr(format!("{}: хибний шаблон: {}", g, crate::uni::in_words(&crate::lang::RE_ERRORS, &crate::rx::re_error_text(&e, &pat.s))), pos)
                 }
                 Err(crate::rx::RxErr::Rx(m)) => return ngr(format!("{}: {}", g, m), pos),
             };
@@ -946,7 +946,7 @@ fn exact_op(op: char, x: &Val, y: &Val, g: char, pos: Pos) -> R<Val> {
     match r {
         Ok(d) => Ok(Val::Dec(Rc::new(d))),
         Err(s) if s == dec::INEXACT || s == dec::OVERFLOW || s == dec::UNDERFLOW => {
-            ngr(format!("{}: точний результат довший за 60 значущих цифр — округліть (≅) або ділить (÷)", g), pos)
+            ngr(format!("{}: точний результат довший за 60 значущих цифр — округліть (≅) або діліть (÷)", g), pos)
         }
         Err(s) => dec_err(g, s, pos),
     }

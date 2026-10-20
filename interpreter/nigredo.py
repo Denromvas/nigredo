@@ -563,7 +563,6 @@ def script_of(ch):
     return name.split(' ')[0]
 
 
-DIGIT_LIKE = str.maketrans('ОOЗБ', '0036')
 NAME_SCRIPTS = {'LATIN', 'CYRILLIC', 'CJK', 'HIRAGANA', 'KATAKANA', 'HANGUL', 'ARABIC', 'HEBREW', 'DEVANAGARI',
                 'BENGALI', 'TAMIL', 'THAI', 'GEORGIAN'}     # мала o — звичне імʼя змінної, лишаємо (мірило)
 _CONFUSABLES = {}
@@ -603,7 +602,21 @@ def skeleton(name):
     return unicodedata.normalize('NFD', ''.join(_proto(c, t) for c in unicodedata.normalize('NFD', name)))
 
 
-GLYPH_TWINS = {'ơ': 'σ', 'll': '‖'}   # двійники гліфів, яких скелет UTS #39 не дає: ơ — o з ріжком (суд 9б)
+GLYPH_TWINS = {'ơ': 'σ',   # двійники гліфів, яких скелет UTS #39 не дає: ơ — o з ріжком (суд 9б; ll ≈ ‖ — уже число 11)
+               'ɘ': '∋', 'ʆ': '∫', 'ʅ': '∫', 'ƪ': '∫', 'ʟ': '⌊', 'ბ': 'δ', 'ꝺ': 'δ', 'ҡ': 'κ', 'ҳ': 'χ',
+               'ⱱ': 'ν', 'ʖ': '¿', 'No': '№'}   # суд 9в (Новачок)
+
+
+def digit_skeleton():
+    """Скелети цифр 0–9 (UTS #39: 0 → O, 1 → l, решта — самі): імʼя лише з них виглядає як число (l0, IOO, б, З)."""
+    return ''.join(sorted({skeleton(d) for d in '0123456789'}))
+
+
+def looks_numeric(name):
+    """Число, на яке імʼя схоже на вигляд (l0 → 10, б → 6, IOO → 100; суд 9в — замість латки з чотирьох літер), або
+    None."""
+    sk = skeleton(name)
+    return sk.translate({ord('O'): '0', ord('l'): '1'}) if sk and all(c in digit_skeleton() for c in sk) else None
 
 
 def glyph_twin_table():
@@ -614,14 +627,22 @@ def glyph_twin_table():
 
 
 def glyph_twin(name):
-    """Гліф, на який схоже імʼя (х → ×, р → ρ, v → ν), або None."""
+    """Гліф, на який схоже імʼя (х → ×, р → ρ, v → ν), — і з цифрами в кінці (x5 ≈ ×5, 十5 ≈ ＋5; суд 9в), або None."""
     sk = skeleton(name)
     if not hasattr(glyph_twin, 'table'):
         glyph_twin.table = glyph_twin_table()
-    return glyph_twin.table.get(sk)
+    if name in NAME_TWINS:
+        return NAME_TWINS[name]
+    k, digits = len(sk), digit_skeleton()
+    while k > 1 and sk[k - 1] in digits and sk[:k] not in glyph_twin.table:
+        k -= 1
+    return glyph_twin.table.get(sk[:k])
 
 
-CONST_TWINS = {'ᄋ': '○', 'ㅇ': '○', '〇': '○'}   # кола-літери: як ○, хоч UTS #39 їх із ○ не звʼязує (суд 9)
+CONST_TWINS = {'ᄋ': '○', 'ㅇ': '○', '〇': '○',   # кола-літери: як ○, хоч UTS #39 їх із ○ не звʼязує (суд 9)
+               'ه': '○', 'ס': '○', 'ᴓ': '∅'}       # і ще три (суд 9в, Мовознавець)
+NAME_TWINS = {'ƒ': '∫', 'ɜ': '∋'}   # за самим іменем: скелет ƒ — f, а скелет ɜ — той самий, що в кириличної з (через
+                                    # скелет заборонили б функції f і з, а вони на ∫ і ∋ не схожі; суд 9в)
 
 
 def const_twin(name):
@@ -640,8 +661,10 @@ def check_twins(toks):
             continue
         if unicodedata.normalize('NFKC', val) != val:
             raise StaticError(f'імʼя «{val}» містить символи сумісності (повноширинні, математичні, лігатури)', pos)
-        if val.translate(DIGIT_LIKE).isdigit():
-            raise StaticError(f'імʼя «{val}» виглядає як число', pos)
+        num = looks_numeric(val)
+        if num:
+            raise StaticError(f'імʼя «{val}» виглядає як число {num} (на вигляд l і I — 1, O і О — 0, б — 6, З — 3); '
+                              f'назвіть інакше', pos)
         twin = const_twin(val)
         if twin:
             raise StaticError(f'імʼя «{val}» на вигляд — стала «{twin}»: «{val}» читається як «{twin}»; назвіть інакше', pos)
@@ -813,6 +836,9 @@ def lex(src):
             if len(buf) == 1 and scripts & {'CJK', 'HIRAGANA', 'KATAKANA'}:     # 米 ≈ ※, 乂 ≈ ×, ニ ≈ ＝ (суд 9б)
                 raise StaticError(f'імʼя «{buf}» з одного ієрогліфа чи знака кани: їх легко сплутати з гліфами мови '
                                   f'(米 і ※, 乂 і ×, ニ і ＝) — візьміть щонайменше два знаки', pos)
+            if buf[0] == '米':                  # «米1 「…」» на початку рядка — як коментар «※1 …» (суд 9в)
+                raise StaticError(f'імʼя «{buf}» починається з 米: рядок з ним на вигляд — коментар ※; візьміть інше '
+                                  f'імʼя', pos)
             toks.append(('name', buf, pos))
         elif ch in GLYPHS or ch in CONSTS:
             toks.append(('glyph', ch, pos))
@@ -1710,10 +1736,11 @@ def parse(src, base=None, path=None, all_errors=None):
 
 
 
-def all_static_errors(src, base=None, path=None, limit=10):
+def all_static_errors(src, base=None, path=None, limit=50):
     """--перевірити: не лише перша помилка розбору (суд 8б: «знайти ВСІ» давало одну). Після кожної — пропустити її
     дозвіл 「…」 (печатка) чи рядок інструкції з глибшими продовженнями й розбирати далі, до limit помилок. Пізніші
-    позначено after_skip — можуть бути наслідком пропуску; про імена з пропущених рядків «←» — не повідомляти."""
+    позначено after_skip — можуть бути наслідком пропуску; про імена з пропущених рядків «←» — не повідомляти. Порядок —
+    за рядками (суд 9в: через MCP приходило до 5 помилок і не по порядку)."""
     import re as _re
     lines, errors, gone = src.split('\n'), [], set()
 
@@ -1752,7 +1779,7 @@ def all_static_errors(src, base=None, path=None, limit=10):
             x.after_skip = bool(errors)
         errors += [x for x in errs if keep(x)]
         break
-    return errors[:limit]
+    return sorted(errors[:limit], key=lambda e: e.pos or (0, 0))
 
 
 # ------------------------------------------------------------------ слід
@@ -2022,6 +2049,10 @@ def _verify(path, program=None):
     info['піднято_впевненість'] = raised
     if summed:
         notes.append(f'⚠ значень записано лише підсумком (довжина, sha256, початок): {summed}')
+    if last == 'помилка' and events[-2:-1] == ['виклик'] and '✗ слід перевищив' in lines[-1]:
+        notes.insert(0, '⚠ останній виклик інструмента — без результату: межа сліду влучила між викликом і його '
+                        'результатом (дію, найімовірніше, виконано; суд 9в, Аудитор)')
+        info['виклик_без_результату'] = True
     if last == 'помилка' and lines and '"внутрішня": true' in lines[-1]:
         notes.insert(0, '⚠ ВНУТРІШНЯ ПОМИЛКА інтерпретатора (код 4): вада мови, а не програми; останній виклик інструмента '
                         '(якщо був) — у записі «помилка»')
@@ -2252,7 +2283,7 @@ class Rx:
                 warnings.simplefilter('ignore')
                 tree = P.parse(pat)
         except (re.error, OverflowError, ValueError) as e:   # OverflowError: a{4294967295}; ValueError: (?a)(?u) — суд 9
-            raise RxError(f'хибний шаблон: {e}')
+            raise RxError(f'хибний шаблон: {in_words(RE_ERRORS, str(e))}')
         flags = tree.state.flags
         self.ngroups = tree.state.groups              # з нульовою (увесь збіг)
         self.names = dict(tree.state.groupdict)
@@ -2751,9 +2782,10 @@ def xml_parse(text, pos, max_size, charge):
     try:
         p.Parse(text.removeprefix('\ufeff'), True)
     except expat.ExpatError as e:
-        raise NgrError(f'χ: не XML ({expat.errors.messages[e.code]}: рядок {e.lineno}, стовпець {e.offset})', pos)
+        raise NgrError(f'χ: не XML — {in_words(XML_ERRORS, expat.errors.messages[e.code])}, рядок {e.lineno}, '
+                       f'стовпець {e.offset}', pos)
     if len(top) != 1:
-        raise NgrError('χ: не XML (немає кореневого елемента)', pos)
+        raise NgrError('χ: не XML — немає кореневого елемента', pos)
     res = top[0]
     if res.n > max_size:
         raise NgrError(f'χ: документ завеликий (понад --розмір {max_size})', pos)
@@ -3139,7 +3171,7 @@ def _db(it, pos, tool, p, sql, params, write):
             if write:                    # база не росте без меж (zeroblob заповнив би диск телефона); page_size уже
                 page = con.execute('PRAGMA page_size').fetchone()[0]   # читає схему: файл — не база чи схема
                 con.execute(f'PRAGMA max_page_count = {DB_MAX_BYTES // page}')   # пошкоджена — помилка програми (9б)
-            helper = _db_guard(con, it, why, write)     # до authorizer і лічби кроків: це не запит програми
+            helper = _db_guard(con, it, why, write, sql.v, args)   # до authorizer і лічби кроків: не запит програми
             con.set_authorizer(auth)
             con.set_progress_handler(progress, 1000)
             before = con.total_changes
@@ -3215,9 +3247,11 @@ DB_UDF_ERR = 'user-defined function raised exception'   # текст SQLite, к�
 
 
 def _db_rights(it):
-    """(годинник, жереб) SQLite: «час» і «жереб» без квоти (її не порахувати), як 🜔час і 🜔жереб (суд 9)."""
-    return 'час' in it.caps, 'жереб' in it.caps and not any(t == 'жереб' for _, table, _ in it.quota_stack
-                                                             for t, _ in table.quotas)
+    """(годинник, жереб) SQLite: «час» і «жереб» без квоти (її не порахувати), як 🜔час і 🜔жереб (суд 9; «час≤N» —
+    суд 9в)."""
+    def free(cap):
+        return cap in it.caps and not any(t == cap for _, table, _ in it.quota_stack for t, _ in table.quotas)
+    return free('час'), free('жереб')
 
 
 def _db_auth(write, it):
@@ -3241,11 +3275,48 @@ def _db_auth(write, it):
     return why, auth
 
 
-def _db_guard(con, it, why, write):
+DB_ROWID_MAX = 2 ** 63 - 1   # після нього SQLite бере rowid навмання
+DB_ROWID_WHY = ('дійшла до rowid 2⁶³−1 — далі SQLite бере його навмання',
+                'ховає rowid стовпцями rowid, _rowid_ і oid — запис у неї не перевірити',
+                '— рядок отримав би rowid 2⁶³−1, а після нього SQLite бере rowid навмання')
+
+
+def _db_written(con, it, sql, args):
+    """Таблиці main, у які запит може писати (INSERT, UPDATE) — і сам, і тригерами: authorizer бачить їхні тіла, ще
+    коли SQLite компілює запит (EXPLAIN — без виконання). Рішення — того самого authorizer (без запису причин): дозвільний
+    підключив би віртуальну таблицю, якої справжній не пустить, і FTS5 падав би SIGSEGV. Пише віртуальна таблиця — то й
+    тіньові (FTS5 бере rowid сам, своїми запитами)."""
+    import sqlite3
+    ins, upd = set(), set()
+    _, check = _db_auth(True, it)
+
+    def rec(action, a1, a2, db, src):
+        if db == 'main' and action in (sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE):
+            (ins if action == sqlite3.SQLITE_INSERT else upd).add(a1)
+        return check(action, a1, a2, db, src)
+    con.set_authorizer(rec)
+    try:
+        con.execute('EXPLAIN ' + sql, args).fetchall()
+    except (sqlite3.Error, ValueError, OverflowError):
+        pass                         # помилку запиту покаже його виконання
+    finally:
+        con.set_authorizer(None)
+    kinds = dict(con.execute("SELECT name, type FROM pragma_table_list WHERE schema = 'main' AND wr = 0 "
+                             "AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'").fetchall())
+    if any(kinds.get(t) == 'virtual' for t in ins | upd):
+        shadow = {t for t, k in kinds.items() if k == 'shadow'}
+        ins, upd = ins | shadow, upd | shadow
+    ok = {t for t, k in kinds.items() if k in ('table', 'shadow')}
+    return ins & ok, upd & ok
+
+
+def _db_guard(con, it, why, write, sql, args):
     """Годинник і випадковість SQLite — лише з правами (суд 9б): без «час» функції дат — свої, на цьому зʼєднанні (їх
     бачить і DEFAULT, і тригер, і VIEW): дата з даних — як у SQLite, а 'now', виклик без часу, localtime/utc і
-    CURRENT_* — відмова; без «жереб» так само random/randomblob, а запис у таблицю з rowid 2⁶³−1 — відмова (далі SQLite
-    бере rowid навмання). Тимчасові тригери — у памʼяті, у файл бази не потрапляють."""
+    CURRENT_* — відмова; без «жереб» так само random/randomblob, а жоден рядок не доходить до rowid 2⁶³−1 (після нього
+    SQLite бере rowid навмання; суд 9в: свій BEFORE-тригер програми ставив його вже після перевірки). Тимчасові
+    тригери — лише на таблицях, у які запит пише (на кожній таблиці бази — ~1 мс кожен бд.писати, суд 9в), у памʼяті,
+    у файл бази не потрапляють."""
     import sqlite3
     clock_ok, rand_ok = _db_rights(it)
     helper = []
@@ -3268,13 +3339,13 @@ def _db_guard(con, it, why, write):
             now = (not times and name != 'timediff') or any(db_word(x) in DB_NOW_TIMES for x in times) \
                 or any(db_word(x) in DB_NOW_MODS for x in mods)
             if now:
-                refuse(f'годинник SQLite ({name} — поточний час чи часовий пояс) без права «час» — '
+                refuse(f'годинник SQLite ({name} — поточний час чи часовий пояс) без права «час» (з квотою «час≤N» — лише 🜔час) — '
                        'дати з даних рахуються, «зараз» — лише з «час» у печатці')
             return builtin(name, a)
         return f
 
     def now(name):
-        return lambda: refuse(f'годинник SQLite ({name}) без права «час» — дати рахуйте в Nigredo (◷) чи дайте «час» у печатці')
+        return lambda: refuse(f'годинник SQLite ({name}) без права «час» (з квотою «час≤N» — лише 🜔час) — дати рахуйте в Nigredo (◷) чи дайте «час» у печатці')
 
     def rand(name):
         return lambda *a: refuse(f'випадковість SQLite ({name}) без права «жереб» (з квотою «жереб≤N» — лише 🜔жереб)')
@@ -3290,21 +3361,25 @@ def _db_guard(con, it, why, write):
         con.create_function('randomblob', 1, rand('randomblob'))
         if write:
             con.execute('PRAGMA temp_store = MEMORY')
-            con.create_function('ngr_rowid', 2, lambda t, hidden: refuse(
-                f'випадковість SQLite (таблиця «{safe(t)}» ' + ('ховає rowid стовпцями rowid, _rowid_ і oid — запис у '
-                'неї не перевірити' if hidden else 'дійшла до rowid 2⁶³−1 — далі SQLite бере його навмання') +
-                ') без права «жереб»'), deterministic=True)
-            tables = [r[0] for r in con.execute("SELECT name FROM pragma_table_list WHERE schema = 'main' "
-                                                "AND type = 'table' AND wr = 0 AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' "
-                                                "ORDER BY name")]
-            for i, t in enumerate(tables):
-                q = t.replace('"', '""')
+            con.create_function('ngr_rowid', 2, lambda t, k: refuse(
+                f'випадковість SQLite (таблиця «{safe(t)}» {DB_ROWID_WHY[k]}) без права «жереб»'), deterministic=True)
+            ins, upd = _db_written(con, it, sql, args)
+            for i, t in enumerate(sorted(ins | upd)):
+                q, lit = t.replace('"', '""'), t.replace("'", "''")
                 cols = {r[0].lower() for r in con.execute('SELECT name FROM pragma_table_xinfo(?)', (t,))}
-                alias = next((a for a in ('rowid', '_rowid_', 'oid') if a not in cols), None)
-                when = f'(SELECT max({alias}) FROM main."{q}") = 9223372036854775807' if alias else '1'
-                lit = t.replace("'", "''")
-                con.execute(f'CREATE TEMP TRIGGER "ngr_rowid_{i}" BEFORE INSERT ON main."{q}" WHEN {when} '
-                            f"BEGIN SELECT ngr_rowid('{lit}', {0 if alias else 1}); END")
+                a = next((a for a in ('rowid', '_rowid_', 'oid') if a not in cols), None)
+                trig = []
+                if t in ins and a is None:
+                    trig.append(('BEFORE INSERT', '1', 1))
+                elif t in ins:   # таблиця вже на межі (старий файл), а rowid бере SQLite (NEW — −1); явний — можна
+                    if con.execute(f'SELECT max({a}) = {DB_ROWID_MAX} FROM main."{q}"').fetchone()[0]:
+                        trig.append(('BEFORE INSERT', f'NEW.{a} = -1 OR NEW.{a} IS NULL', 0))
+                    trig.append(('AFTER INSERT', f'NEW.{a} = {DB_ROWID_MAX}', 2))
+                if t in upd and a is not None:
+                    trig.append(('AFTER UPDATE', f'NEW.{a} = {DB_ROWID_MAX} AND OLD.{a} IS NOT {DB_ROWID_MAX}', 2))
+                for j, (when, cond, k) in enumerate(trig):
+                    con.execute(f'CREATE TEMP TRIGGER "ngr_rowid_{i}_{j}" {when} ON main."{q}" WHEN {cond} '
+                                f"BEGIN SELECT ngr_rowid('{lit}', {k}); END")
     return helper
 
 
@@ -3367,14 +3442,56 @@ SQL_ERRORS = [('Incorrect number of bindings', 'кількість «?» у за
               ('NOT NULL constraint failed', 'порожнє значення там, де заборонено'), ('database is locked', 'база зайнята'),
               ('database or disk is full', 'база досягла межі розміру'), ('string or blob too big', 'значення більше за --розмір'), ('unable to open', 'не вдалося відкрити базу'),
               ('file is not a database', 'файл — не база SQLite'), ('malformed database schema', 'схема бази пошкоджена'),
-              ('non-deterministic functions prohibited', 'недетермінована функція (random(), CURRENT_* тощо) у згенерованому стовпці чи індексі')]
+              ('non-deterministic functions prohibited', 'недетермінована функція (random(), CURRENT_* тощо) у згенерованому стовпці чи індексі'),
+              ('duplicate column name', 'стовпець з такою назвою вже є'), ('bad JSON path', 'хибний шлях JSON'),
+              ('malformed JSON', 'хибний JSON'), ('already exists', 'таблиця, індекс чи тригер з такою назвою вже є'), ('no such function', 'немає такої функції'),
+              ('datatype mismatch', 'невідповідність типу'), ('CHECK constraint failed', 'порушено умову CHECK'),
+              ('ambiguous column name', 'неоднозначна назва стовпця (додайте таблицю: т.стовпець)'),
+              ('wrong number of arguments', 'хибна кількість аргументів функції'), ('integer overflow', 'переповнення цілого'),
+              ('incomplete input', 'незавершений запит'), ('no such index', 'немає такого індексу'),
+              ('misuse of aggregate', 'агрегатна функція не на своєму місці'),
+              ('sub-select returns', 'підзапит повертає не один стовпець'), ('too many terms', 'забагато частин у запиті')]
+
+# тексти помилок re і expat — словами, оригінал у дужках (суд 9в, Новачок); Атанор бере ті самі таблиці (gen_tables)
+RE_ERRORS = [('bad escape (end of pattern)', 'шаблон закінчується на «\\»'), ('bad escape', 'хибне екранування'),
+             ('bad character range', 'хибний діапазон символів'), ('bad inline flags', 'хибні вбудовані прапорці'),
+             ('invalid group reference', 'посилання на групу, якої немає'),
+             ('the repetition number is too large', 'завелике число повторень'),
+             ('min repeat greater than max repeat', 'нижня межа повторень більша за верхню'),
+             ('multiple repeat', 'повторення двічі поспіль'), ('nothing to repeat', 'нічого повторювати'),
+             ('missing ), unterminated subpattern', 'незакрита дужка'), ('unbalanced parenthesis', 'зайва закривна дужка'),
+             ('unterminated character set', 'незакритий клас символів'), ('missing group name', 'бракує назви групи'),
+             ('missing >, unterminated name', 'незакрита назва групи'), ('bad character in group name', 'хибний символ у назві групи'),
+             ('unknown group name', 'невідома назва групи'), ('redefinition of group name', 'назва групи повторюється'),
+             ('cannot refer to an open group', 'посилання на ще не закриту групу'), ('unknown extension', 'невідоме розширення (?…)'),
+             ('missing ), unterminated comment', 'незакритий коментар (?#…)'), ('unknown flag', 'невідомий прапорець'),
+             ('missing -, : or )', 'бракує «-», «:» чи «)»'), ('missing flag', 'бракує прапорця'), ('missing :', 'бракує «:»'),
+             ('look-behind requires fixed-width pattern', 'погляд назад — лише фіксованої довжини'),
+             ('incomplete escape', 'неповне екранування'), ('octal escape value', 'вісімкове екранування понад \\377'),
+             ('global flags not at the start', 'глобальні прапорці — не на початку шаблону'),
+             ('ASCII and UNICODE flags are incompatible', 'прапорці ASCII і UNICODE несумісні'),
+             ('conditional backref with more than two branches', 'умовне посилання з понад двома гілками')]
+XML_ERRORS = [('XML declaration not well-formed', 'хибне оголошення XML'), ('text declaration not well-formed', 'хибне оголошення'),
+              ('not well-formed', 'хибна розмітка'), ('syntax error', 'синтаксична помилка'),
+              ('no element found', 'документ порожній чи обірваний'), ('unclosed token', 'незакритий елемент розмітки'),
+              ('partial character', 'неповний символ'), ('mismatched tag', 'закривний тег не збігається з відкривним'),
+              ('duplicate attribute', 'атрибут повторюється'), ('junk after document element', 'зайве після кореневого елемента'),
+              ('undefined entity', 'невідома сутність (&…;)'), ('reference to invalid character number', 'посилання на недопустимий символ'),
+              ('unclosed CDATA section', 'незакритий розділ CDATA'), ('unbound prefix', 'префікс простору імен без оголошення'),
+              ('not at start of entity', 'оголошення XML — не на початку'), ('unknown encoding', 'невідоме кодування'),
+              ('encoding specified in XML declaration is incorrect', 'кодування в оголошенні XML — хибне')]
 
 
-def sql_err(msg):
-    for en, uk in SQL_ERRORS:
+def in_words(table, msg):
+    """Текст помилки бібліотеки — словами (оригінал у дужках), за першим збігом з таблиці."""
+    for en, uk in table:
         if en in msg:
             return f'{uk} ({msg})'
     return msg
+
+
+def sql_err(msg):
+    return in_words(SQL_ERRORS, msg)
 
 
 def t_db_read(it, pos, p, sql, params):
@@ -3538,12 +3655,13 @@ TOOLS = {
     'бд.читати': (3, '🜔бд.читати шлях 「SELECT … ?」 【параметри】 → список словників', 'запит SQLite лише на читання '
                   '(лише SELECT і довідкові PRAGMA table_info, index_list…; файл відкрито лише на читання). Дати з даних '
                   'SQLite рахує й без прав; «зараз» (date(\'now\'), CURRENT_TIMESTAMP, \'localtime\'…) — лише з 「час」, '
-                  'random() — лише з 「жереб」 без квоти — і в DEFAULT, тригерах, VIEW. Дробовий параметр іде текстом '
+                  'random() — лише з 「жереб」, обидва без квоти (≤N — лише 🜔час, 🜔жереб) — і в DEFAULT, тригерах, VIEW. Дробовий параметр іде текстом '
                   '(точність): порівнюйте з CAST(? AS REAL). Запит — до 30 с, хоч би які --кроки', True, 'тека', t_db_read),
     'бд.писати': (3, '🜔бд.писати шлях 「INSERT … ?」 【параметри】 → змінено рядків', 'зміна SQLite (INSERT UPDATE DELETE, '
                   'CREATE/DROP/ALTER; без ATTACH, VACUUM, PRAGMA); файл створюється, якщо нема; повертає лише кількість '
-                  'змінених рядків — читати — бд.читати. Годинник і жереб — як у бд.читати; без 「жереб」 запис у '
-                  'таблицю з rowid 2⁶³−1 — відмова (далі SQLite бере rowid навмання)', True, 'тека', t_db_write),
+                  'змінених рядків — читати — бд.читати. Годинник і жереб — як у бд.читати; без 「жереб」 жоден рядок не '
+                  'отримає rowid 2⁶³−1 (і тригером; далі SQLite бере rowid навмання) — відмова; захист — лише на '
+                  'таблицях, у які пише запит', True, 'тека', t_db_write),
     'мережа.взяти': (1, '🜔взяти url → рядок', 'HTTP GET (до 1 МБ, 30 с; адреса — повністю в сліді: даними в адресі '
                      'теж можна поділитися з хостом, тож дозволяйте лише хости, яким довіряєте)', True, 'хост', t_fetch),
     'мережа.послати': (2, '🜔послати url тіло → рядок', 'HTTP POST: тіло-рядок — як текст, список чи словник — як JSON; '
@@ -3732,6 +3850,18 @@ def canon_perm(entry):
     name, sep, scope = entry.partition(':')
     full = TOOL_ALIASES.get(name.strip())
     return f'{full}{sep}{scope}' if full else entry
+
+
+def perm_key(entry):
+    """Дозвіл для порівняння: повна назва, без пробілів по краях, тека — справжнім шляхом («читати: /x/секрет» і
+    «файл.читати:/x/секрет» — те саме право; суд 9в)."""
+    if not isinstance(entry, str):
+        return repr(entry)
+    name, sep, scope = canon_perm(entry).partition(':')
+    name, (path, q, n) = name.strip(), scope.strip().partition('≤')
+    if name in TOOLS and TOOLS[name][4] == 'тека' and os.path.isabs(path.strip()):
+        path = os.path.realpath(path.strip())
+    return f'{name}{sep}{path.strip()}{q}{n.strip()}'
 
 
 def parse_caps(entry):
@@ -4282,7 +4412,7 @@ class Interp:
             try:
                 return f(Decimal(x), Decimal(y))
             except decimal.Inexact:
-                raise NgrError(f'{g}: точний результат довший за 60 значущих цифр — округліть (≅) або ділить (÷)', pos)
+                raise NgrError(f'{g}: точний результат довший за 60 значущих цифр — округліть (≅) або діліть (÷)', pos)
 
     def num(self, x, g, pos):
         t = type(x.v)
@@ -5105,6 +5235,8 @@ def explain(node, ind=0):
         v = node[2]
         if isinstance(v, str):
             return quote(v)
+        if v is True or v is False or v is None:      # ● ○ ∅ — словами, як і гліфи (суд 9в, Аудитор)
+            return 'так' if v is True else 'ні' if v is False else 'ніщо'
         return show(V(v))
     if k == 'var':
         return node[2]
@@ -5341,7 +5473,8 @@ def approval_report(prog, approval, allowed, source, cwd, dir_extra, prog_extra,
     else:
         existing = per_programs(json.load(open(path, encoding='utf-8'))) if os.path.exists(path) else {}
         entry = json.dumps({'для_програм': {**existing, approval: perms}}, ensure_ascii=False)
-        if sorted(existing.get(approval) or []) == sorted(perms):       # суд 9б: радило «замініть» без потреби
+        if sorted(map(perm_key, existing.get(approval) or [])) == sorted(map(perm_key, perms)):   # «замініть» без
+            # потреби радило й на короткі назви права (суд 9б, 9в)
             out.append(f'Ця програма вже схвалена саме цими правами в {path} — додавати нічого.')
         elif existing:
             out.append(f'У {path} уже є розділ «для_програм» — замініть його ЦІЛИМ (ключ у JSON не повторюють, а '
@@ -5563,8 +5696,9 @@ def cheatsheet():
            '  (усередині виразу — блок `《 ← … 》`). Цикли — `∀ μ φ Σ ↻`.',
            '- Імена — слова будь-якою мовою, але **одним письмом** (`звiт` з латинською i — помилка). Грецькі літери — гліфи.',
            '  **Двійники** — два різні імена, однакові на вигляд за скелетом UTS #39 (`x`/`х`, `h`/`һ`, `I`/`l`), — помилка;',
-           '  так само імʼя з символів сумісності (`ｘ`, `𝚡`), імʼя, схоже на число (великі `О O З Б`), і **функція**, схожа на',
-           '  гліф (`х р v ф σ` — `х 2 3` читалося б як `× 2 3`; змінна `x` — можна). Письма імен: латиниця, кирилиця, CJK,',
+           '  так само імʼя з символів сумісності (`ｘ`, `𝚡`), імʼя, що на вигляд — число (скелет лише з цифр: `l I O О б З`,',
+           '  `l0`, `IOO`), імʼя, що починається з `米` (≈ `※`), і **функція**, схожа на гліф, — і з цифрами (`х р v ф σ`, `x5`:',
+           '  `х 2 3` читалося б як `× 2 3`; змінна `x`, `x1` — можна). Письма імен: латиниця, кирилиця, CJK,',
            '  кана, хангиль, арабське, іврит, деванагарі, бенгальське, тамільське, тайське, грузинське; інші — помилка.',
            '- **Невидимого в тексті програми немає**: керівні, bidi, теги, ZWSP, U+034F, нестандартні пробіли, заповнювачі',
            '  (U+3164) — помилка всюди: в коді, рядках, коментарях, печатці. Такі дані беріть через `δ 「"\\u…"」`;',
@@ -5654,7 +5788,7 @@ def cheatsheet():
             '```', '🜂 「найдорожчий товар у кожній категорії」',
             '← т 【『「назва」 「кава」 「кат」 「напої」 「ціна」 120』 『「назва」 「сир」 「кат」 「їжа」 「ціна」 310』 '
             '『「назва」 「чай」 「кат」 「напої」 「ціна」 90』】',
-            '∀ ⇅ ε⊞ т λp §p 「кат」 λ【k l】 k λ【k l】 《 ← н §⇅ l λp －0 §p 「ціна」 0 ¦ » 〔{k}: {§н 「назва」} ({§н 「ціна」})〕 》',
+            '∀ ⇅ ε⊞ т λp §p 「кат」 λ【k сп】 k λ【k сп】 《 ← н §⇅ сп λp －0 §p 「ціна」 0 ¦ » 〔{k}: {§н 「назва」} ({§н 「ціна」})〕 》',
             '```', '',
             '```', '🜂 「дати й заміна регулярними виразами」 【】',
             '← т 「Звіт 2026-10-15, оплата 2026-11-01. ДЕДЛАЙН!」',
@@ -5694,7 +5828,7 @@ def cheatsheet():
             '  а `\\u` — ні: невидимі й керівні символи — лише з даних (`δ 「"\\u200b"」`).',
             '- Після виклику функції з сумнівним аргументом чи гілки за сумнівною умовою, що могли зупинити програму,',
             '  решта запуску не впевненіша за них (канал завершення) — це не помилка, а правда про залежність.',
-            '- Імена, схожі на гліфи чи сталі, — помилка: `т` ≈ `τ`, `十` ≈ `＋`, `Ø` ≈ `∅`, `ᄋ` ≈ `○`; імʼя з самих',
+            '- Функції, схожі на гліфи, і імена, схожі на сталі, — помилка: `т` ≈ `τ`, `十5` ≈ `＋5`, `Ø` ≈ `∅`, `ᄋ` ≈ `○`; імʼя з самих',
             '  літер-модифікаторів (`ˉ5` ≈ `¯5`) — теж.',
             '- `＋` зʼєднує рядки лише з рядками: `＋「№」 σn`; коротше — шаблон `〔№{n}〕`.',
             '- Функцію, названу `←`, викликають просто: `факт 10`; передати як значення — `∘факт`, у **кожному** місці, де',
@@ -5799,8 +5933,9 @@ def cheatsheet_short():
               'Впевненість: усе з даних і під сумнівними умовами не впевненіше за джерело; змінити — лише ≈ (у слід).',
               'Канал завершення: якщо гілка під сумнівною умовою могла зупинити програму (☠ 🜍 ÷0 § виклик…) або операція',
               'могла впасти на сумнівному аргументі, то й решта запуску не впевненіша. Ліміти — єдиний невідстежений залишок.',
-              'Двійники імен (x/х, h/һ, I/l за UTS #39), імена-«числа» (О O З Б), функція чи стала, схожа на гліф',
-              '(х р v ф к ʃ ʌ Э ll × ρ ν φ ∫ ∧ ∋ ‖ …, Ø ø ≈ ∅), імʼя з одного ієрогліфа чи знака кани (米 ≈ ※), окремі чамо',
+              'Двійники імен (x/х, h/һ, I/l за UTS #39), імена-«числа» (скелет лише з цифр: l I O О б З l0 IOO), функція чи',
+              'стала, схожа на гліф (х р v ф к ʃ ʌ Э x5 十5 × ρ ν φ ∫ ∧ ∋ ‖ …, Ø ø ≈ ∅), імʼя з одного ієрогліфа чи знака кани',
+              'і з 米 на початку (米 ≈ ※), окремі чамо',
               'хангилю (ᄉ ≈ ∧), письма імен поза поширеними (коптське, вірменське…), і будь-що',
               'невидиме в тексті програми (керівні, bidi, теги, ZWSP, U+3164) — помилки. Числа — лише 0–9 або ０–９.',
               'Слід веде інтерпретатор (підписаний). Nigredo — прозорість і аудит, не пісочниця ОС.',
@@ -6321,10 +6456,11 @@ def _main(argv, opts, it, value):
     if opts['trace'] and not extra_stderr:
         paths.append(os.path.realpath(opts['trace']))
     seal_caps = prog[2][0][3] if prog else {}
-    scopes = [os.path.realpath(os.path.join(cwd, w)) for t, ws in seal_caps.items() if t.startswith('файл.') for w in ws]
+    # теки всіх інструментів зі шляхом — і бд.*: інакше програма відкрила б сховище копії СЛІД.дані як базу (суд 9в)
+    scopes = [os.path.realpath(os.path.join(cwd, w)) for t, ws in seal_caps.items() if TOOLS[t][4] == 'тека' for w in ws]
     for tp in paths[1:]:
         if inside(tp, OWNER_HOME) or any(inside(tp, w) for w in scopes):
-            print(f'✗ слід «{safe(tp)}» лежить у теці власника чи в теці з печатки програми (читати, писати, список) — '
+            print(f'✗ слід «{safe(tp)}» лежить у теці власника чи в теці з печатки програми (читати, писати, список, бд) — '
                   f'оберіть інше місце', file=sys.stderr)
             return 3
     outs = []
@@ -6372,8 +6508,8 @@ def _main(argv, opts, it, value):
             print(f'✗ печатка просить більше, ніж дозволив власник: {", ".join(missing)}\n'
                   f'  дозволи власника: {source}', file=sys.stderr)
             return 3
-        interp = Interp(trace, seed=opts['seed'], steps=opts['steps'], cwd=cwd, argv=prog_args, protected=paths,
-                        max_size=opts['size'])
+        interp = Interp(trace, seed=opts['seed'], steps=opts['steps'], cwd=cwd, argv=prog_args,
+                        protected=paths + [tp + '.дані' for tp in paths], max_size=opts['size'])
         owner_q = Caps()
         for t, sc, q in owner_quotas(allowed):      # кілька квот на те саме — діє менша (суд 8)
             owner_q.quotas[(t, sc)] = min(q, owner_q.quotas.get((t, sc), q))
@@ -6534,11 +6670,15 @@ def repl_main(opts):
             missing = check_program(prog, allowed, cwd)
             if interp is None and len(paths) > 1:
                 seal = prog[2][0][3]
-                if any(inside(paths[1], os.path.join(cwd, w)) for t, ws in seal.items() if t.startswith('файл.') for w in ws):
-                    missing.append(f'слід «{safe(paths[1])}» лежить у теці з печатки програми')
+                if any(inside(paths[1], os.path.join(cwd, w)) for t, ws in seal.items() if TOOLS[t][4] == 'тека' for w in ws):
                     own_copy(False)        # файл так і не створено (суд 9б: створювався до відмови)
-                else:
-                    own_copy(True)
+                    why_ = (f'✗ слід «{safe(paths[1])}» лежить у теці з печатки програми (читати, писати, список, бд) — '
+                            f'оберіть інше місце')      # окремо від «печатка просить більше» (суд 9в, Скептик)
+                    trace('код', текст=visible(chunk), стан='відкинуто', помилка=why_)
+                    trace('відмова', причина=why_[2:])
+                    reply(гаразд=False, помилка=why_, кінець=True)
+                    return 3
+                own_copy(True)
             if missing and interp is None:      # печатка сеансу — ширша за власника: сеанс відхилено
                 trace('код', текст=visible(chunk), стан='відкинуто', помилка='печатка просить більше, ніж дозволив власник')
                 trace('відмова', бракує=missing)
@@ -6554,8 +6694,8 @@ def repl_main(opts):
                               f'почніть новий сеанс', рядок=first)
                 continue
             if interp is None:                  # перша частина: печатка діє на весь сеанс
-                interp = Interp(trace, seed=opts['seed'], steps=opts['steps'], cwd=cwd, argv=[], protected=paths,
-                                max_size=opts['size'])
+                interp = Interp(trace, seed=opts['seed'], steps=opts['steps'], cwd=cwd, argv=[],
+                                protected=paths + [tp + '.дані' for tp in paths], max_size=opts['size'])
                 owner_q = Caps()
                 for t, sc, q in owner_quotas(allowed):
                     owner_q.quotas[(t, sc)] = min(q, owner_q.quotas.get((t, sc), q))

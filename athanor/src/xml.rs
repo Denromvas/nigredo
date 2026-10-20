@@ -232,9 +232,9 @@ pub fn parse(it: &mut Interp, text: &str, pos: Pos) -> R<V> {
         let code = (ex.code)(p);
         let msg = unsafe { cstr((ex.msg)(code)) };
         let (l, c) = ((ex.line)(p), (ex.col)(p));
-        ngr(format!("χ: не XML ({}: рядок {}, стовпець {})", msg, l, c), pos)
+        ngr(format!("χ: не XML — {}, рядок {}, стовпець {}", crate::uni::in_words(&crate::lang::XML_ERRORS, &msg), l, c), pos)
     } else if cx.top.len() != 1 {
-        ngr("χ: не XML (немає кореневого елемента)", pos)
+        ngr("χ: не XML — немає кореневого елемента", pos)
     } else {
         let res = cx.top.pop().unwrap();
         if res.n > max {

@@ -119,6 +119,7 @@ def main():
     out.append(f'pub static SKELETON: [(u32, &str); {len(skel)}] = [' +
                ', '.join(f'({a}, {rs(b)})' for a, b in skel) + '];')
     twins = sorted(N.glyph_twin_table().items())
+    out.append(f'pub static DIGIT_SKELETON: &str = {rs(N.digit_skeleton())};')
     out.append(f'pub static GLYPH_TWIN: [(&str, &str); {len(twins)}] = [' +
                ', '.join(f'({rs(a)}, {rs(b)})' for a, b in twins) + '];')
 
@@ -207,8 +208,9 @@ def lang():
     out.append(f'pub static TOOLS: [(&str, u8, bool, &str); {len(tools)}] = [' +
                ', '.join(f'({rs(k)}, {v[0]}, {str(v[3]).lower()}, {rs(v[4])})' for k, v in tools) + '];')
     al = list(N.TOOL_ALIASES.items())
-    out.append(f'pub static SQL_ERRORS: [(&str, &str); {len(N.SQL_ERRORS)}] = [' +
-               ', '.join(f'({rs(a)}, {rs(b)})' for a, b in N.SQL_ERRORS) + '];')
+    for name in ('SQL_ERRORS', 'RE_ERRORS', 'XML_ERRORS'):
+        t = getattr(N, name)
+        out.append(f'pub static {name}: [(&str, &str); {len(t)}] = [' + ', '.join(f'({rs(a)}, {rs(b)})' for a, b in t) + '];')
     out.append(f'pub static TOOL_ALIASES: [(&str, &str); {len(al)}] = [' + ', '.join(f'({rs(a)}, {rs(b)})' for a, b in al) + '];')
     for name in ('HEAVY', 'LAZY_GLYPHS', 'OWN_CONF', 'NEVER_FAILS', 'PURE_GLYPHS'):
         out.append(f'pub const {name}: &str = {rs("".join(sorted(getattr(N, name))))};')
