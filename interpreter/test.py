@@ -1019,6 +1019,12 @@ def main():
     check(got.stdout == ref.stdout and 'такої дати чи часу немає' in got.stdout and 'не дата ISO' in got.stdout
           and 'newline' not in got.stdout and 'utf-8-sig' not in got.stdout and 'BOM (U+FEFF)' in got.stdout,
           '◷ 2026-02-29 — «такої дати немає»; CSV і BOM — без порад Python (суд 9)', got.stdout + got.stderr)
+    dry_prog = (f'🜂 【「писати:{DATA}/звіти」 「оракул」】\n← p 🜔оракул 「так?」\n'
+                f'🜔писати 「{DATA}/звіти/сухо_обидва.txt」 σ p\n¿ ¬ p 《 🜔писати 「{DATA}/звіти/сухо2.txt」 「b」 》 ∅\n» 「кінець」')
+    got, ref = both(['--сухо', '-e', dry_prog])
+    check(got.returncode == ref.returncode == 0 and got.stdout == ref.stdout and got.stderr == ref.stderr
+          and '2 дій не виконано' in got.stderr and '⚠' in got.stderr and not (DATA / 'звіти' / 'сухо_обидва.txt').exists(),
+          '--сухо: Атанор сам — той самий вивід і звіт, що в еталона (суд 9)', got.stderr + '\n---\n' + ref.stderr)
     deep = '🜂 「стек」\n← f λn ¿ ≤ n 0 0 ' + '＋ 1 ' * 60 + 'f － n 1\n» f 1900'
     got, ref = both(['-e', deep])
     check(got.returncode == ref.returncode == 0 and got.stdout == ref.stdout == '114000\n',
