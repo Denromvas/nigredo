@@ -1477,6 +1477,9 @@ impl Interp {
         if dry && matches!(name, "час" | "оракул") {
             c = 0.0;
         }
+        if dry && name == "бд.читати" && (self.caps.has("час") || self.caps.has("жереб")) {
+            c = 0.0; // date('now'), random() у сухому прогоні — не ті, що будуть у справжньому (суд 9)
+        }
         let t = std::time::Instant::now();
         let stored = self.trace.keep(&res).map_err(terr)?;
         self.prof_add("сховище", t);

@@ -1864,7 +1864,7 @@ def _verify(path, program=None):
     перехоплені помилки, підсумовані (не повністю записані) значення, теку й аргументи запуску."""
     key, prev, n, last, head = owner_key(), '0' * 16, 0, None, None
     denied, caught, summed, modules, dry, raised, quota_hits = [], 0, 0, [], False, 0, []
-    chunks, events = {'виконується': 0, 'відкинуто': 0, 'помилка частини': 0}, []
+    chunks, events, rejected = {'виконується': 0, 'відкинуто': 0, 'помилка частини': 0}, [], []
     info = {}
     try:
         st = os.stat(path)
@@ -1906,6 +1906,8 @@ def _verify(path, program=None):
             modules.append((rec.get('шлях'), rec.get('файл'), rec.get('sha256')))
         if rec.get('подія') == 'код' and rec.get('стан') in chunks:
             chunks[rec['стан']] += 1
+            if rec['стан'] == 'відкинуто':
+                rejected.append(safe(str(rec.get('помилка', '')))[:120])
         chunks['помилка частини'] += rec.get('подія') == 'помилка частини'
         events.append(rec.get('подія'))
         summed += _summarized(rec)
@@ -1954,8 +1956,10 @@ def _verify(path, program=None):
     info['виконавець'], info['схвалено_власником'] = engine, approved
     if head.get('repl'):
         notes.append(f'частин сеансу: виконано {chunks["виконується"]} (з них упало {chunks["помилка частини"]}), '
-                     f'відкинуто до виконання {chunks["відкинуто"]}')
-        info['частини'] = chunks
+                     f'відкинуто до виконання {chunks["відкинуто"]}; печатка — одна, з першої виконаної частини')
+        if rejected:                   # спроби поза печаткою й інші відкинуті частини — власникові видно (суд 9)
+            notes.append('відкинуто: ' + '; '.join(rejected[:5]) + (' …' if len(rejected) > 5 else ''))
+        info['частини'], info['відкинуто'] = chunks, rejected
     notes.append(f'⚠ спроб поза правами («заборонено»): {len(denied)} — ' + '; '.join(denied[:5])
                  + (' …' if len(denied) > 5 else '') if denied else 'спроб поза правами немає')
     if quota_hits:                     # не порушення прав: оголошена межа (печатка, модуль, субагент, власник)
@@ -3782,7 +3786,11 @@ class Interp:
                 + ([self.decided_c] if name == 'час' else [])
                 # сухий прогін не знає, котра година буде в справжньому запуску (і що скаже оракул) — і до першої
                 # придушеної дії: рішення за ними інакше виглядало б певним (суд 8б)
-                + ([0.0] if self.dry is not None and name in ('час', 'оракул') else []))
+                + ([0.0] if self.dry is not None and name in ('час', 'оракул') else [])
+                # і запит SQLite, коли програмі дано годинник чи жереб: date('now'), random() у сухому прогоні — не ті,
+                # що будуть у справжньому (суд 9: рішення за ними — без ⚠)
+                + ([0.0] if self.dry is not None and name == 'бд.читати' and ('час' in self.caps or 'жереб' in self.caps)
+                   else []))
         keep = getattr(self.trace, 'keep', None)
         stored = {'значення': keep(res)} if keep else {}     # сирий результат — для --повторити
         res = capc(res, c) if c < 1 else res
@@ -6244,7 +6252,7 @@ def repl_main(opts):
                 tc = min(interp.try_stack.pop(), e.c)
                 interp.taint_effects(tuple(stmts), tc)    # що встигла змінити частина — не певніше за її провал
                 interp.halt_c = min(interp.halt_c, tc)    # сеанс знає, що частина впала: решта — не впевненіша
-                trace('помилка частини', повідомлення=safe(str(e)), впевненість=tc)
+                trace('помилка частини', повідомлення=safe(str(e)), впевненість=tc, прийнято=False)
                 if accepted is None:            # частина з печаткою впала — печатку не змінити, сеанс завершено
                     trace('кінець', кроків=opts['steps'] - interp.steps_left)
                     reply(гаразд=False, рядок=first, вивід=buf.getvalue(), помилка=safe(str(e)) +
