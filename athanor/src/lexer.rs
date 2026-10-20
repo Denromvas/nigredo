@@ -314,6 +314,9 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Back> {
             if buf.chars().any(|c| "ㅤᅟᅠﾠ⠀".contains(c)) {
                 return back("заповнювач в імені");
             }
+            if script.is_none() && buf.chars().any(|c| uni::category(c) == "Lm") {
+                return back("імʼя лише з літер-модифікаторів");      // ˉ5 ≈ ¯5 (суд 9) — помилку пише еталон
+            }
             if buf.chars().any(|c| uni::category(c) == "Nd" && !c.is_ascii_digit()) {
                 return back("цифри іншого письма в імені");
             }
@@ -354,6 +357,10 @@ pub fn check_twins(toks: &[Token]) -> Result<(), Back> {
                 Some(sk) => sk,
                 None => return back("скелет імені"),
             };
+            // імʼя на вигляд — стала (Ø ≈ ∅, ᄋ ≈ ○): помилку пише еталон (суд 9)
+            if matches!(uni::glyph_twin(&sk), Some("●" | "○" | "∅")) || matches!(&**v, "ᄋ" | "ㅇ" | "〇") {
+                return back("імʼя — двійник сталої");
+            }
             match seen.get(&sk) {
                 Some(prev) if **prev != **v => return back("двійники"),
                 Some(_) => {}

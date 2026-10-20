@@ -44,7 +44,7 @@ fn per_programs(kv: &[(std::borrow::Cow<'_, str>, bool, P<'_>)]) -> Result<Vec<(
 /// read_allowlist(path, cwd, prog, approval).
 fn read_allowlist(path: &str, cwd: Option<&str>, prog: Option<&str>, approval: Option<&str>) -> Result<Vec<String>, Back> {
     let text = std::fs::read_to_string(path).map_err(|_| Back("дозволи не прочитати".into()))?;
-    let data = json::loads(&text).map_err(|_| Back("дозволи — не JSON".into()))?;
+    let data = json::loads_unique(&text).map_err(|_| Back("дозволи — не JSON чи ключ повторюється".into()))?;
     let kv = match &data {
         P::Obj(kv) => kv,
         _ => return back("дозволи — не словник"),

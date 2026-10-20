@@ -74,9 +74,22 @@ fn exec_reference(why: &str) -> ! {
     }
     let py = reference_path();
     let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
-    let err = std::process::Command::new("python3").arg(&py).args(&args).exec();
+    let mut cmd = std::process::Command::new("python3");
+    if let Some(me) = own_path() {
+        cmd.env("NIGREDO_ENGINE", me); // --тести запускає тести тим самим ngr, що й справжній запуск (суд 9)
+    }
+    let err = cmd.arg(&py).args(&args).exec();
     eprintln!("✗ атанор: не вдалося запустити еталон python3 {}: {}", py, err);
     std::process::exit(4);
+}
+
+/// Шлях до самого Атанора (як його запущено: ngr з PATH чи шлях), щоб еталон міг запускати ним дочірні програми.
+fn own_path() -> Option<String> {
+    let a0 = std::env::args().next()?;
+    if a0.contains('/') {
+        return Some(pathx::realpath(&a0));
+    }
+    std::env::var("PATH").ok()?.split(':').map(|d| pathx::join(d, &a0)).find(|p| pathx::exists(p)).map(|p| pathx::realpath(&p))
 }
 
 fn reference_path() -> String {
@@ -104,6 +117,7 @@ struct Opts {
     raw: Option<Vec<u8>>,
     path: Option<String>,
     args: Vec<String>,
+    dry: bool,
 }
 
 fn parse_args() -> Result<Opts, String> {
@@ -118,6 +132,7 @@ fn parse_args() -> Result<Opts, String> {
         raw: None,
         path: None,
         args: Vec::new(),
+        dry: false,
     };
     let mut raw: Vec<String> = Vec::new();
     for a in std::env::args_os().skip(1) {
@@ -130,8 +145,10 @@ fn parse_args() -> Result<Opts, String> {
     let int_arg = |v: Option<String>| -> Result<String, String> {
         let v = v.ok_or("бракує значення")?;
         let t = v.trim();
-        let ok = !t.is_empty() && t.trim_start_matches(['-', '+']).bytes().all(|c| c.is_ascii_digit()) && t.len() < 18;
-        if ok { Ok(t.to_string()) } else { Err("не ціле".into()) }
+        let digits = t.strip_prefix(['-', '+']).unwrap_or(t);     // один знак, як у int() еталона
+        let ok = !digits.is_empty() && digits.bytes().all(|c| c.is_ascii_digit()) && t.len() < 18;
+        // нормалізоване число («007» → «7», «+5» → «5»): у сліді має бути правильний JSON, як в еталона
+        if ok { Ok(t.parse::<i64>().map_err(|_| "не ціле")?.to_string()) } else { Err("не ціле".into()) }
     };
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -140,8 +157,14 @@ fn parse_args() -> Result<Opts, String> {
                 break;
             }
             "--слід" => o.trace = Some(it.next().ok_or("бракує значення")?),
+            "--сухо" => o.dry = true, // суд 9: --сухо тим самим виконавцем, що й справжній запуск
             "--зерно" => o.seed = int_arg(it.next())?,
-            "--кроки" => o.steps = int_arg(it.next())?.parse().map_err(|_| "кроки")?,
+            "--кроки" => {
+                o.steps = int_arg(it.next())?.parse().map_err(|_| "кроки")?;
+                if o.steps < 0 {
+                    return Err("кроки".into());     // помилку друкує еталон
+                }
+            }
             "--розмір" => {
                 let v: i64 = int_arg(it.next())?.parse().map_err(|_| "розмір")?;
                 if v < 0 {
@@ -202,6 +225,16 @@ fn owner_key(home: &str) -> std::io::Result<Vec<u8>> {
 
 fn run() -> i32 {
     GLOBAL.claim();
+    if std::env::args().nth(1).as_deref() == Some("--відбиток") {
+        // ідентичність збірки для власника й судді: sha256 самого бінарника (у слід іде відбиток джерел — суд 9)
+        let me = own_path().unwrap_or_default();
+        match std::fs::read(&me) {
+            Ok(b) => println!("атанор {}\n  sha256 бінарника {}\n  sha256 джерел (поле «інтерпретатор» сліду) {}",
+                              me, sha::sha256_hex(&b), SOURCE_SHA),
+            Err(e) => println!("атанор: бінарник не прочитати ({}): {}\n  sha256 джерел {}", me, e, SOURCE_SHA),
+        }
+        return 0;
+    }
     let o = match parse_args() {
         Ok(o) => o,
         Err(why) => hand_over(&why),
@@ -375,6 +408,7 @@ fn execute(
         last_call: None,
         modules: Default::default(),
         prof: if std::env::var_os("ATHANOR_PROFILE").is_some() { Some(Default::default()) } else { None },
+        dry: None,
     };
     let mut head = vec![
         ("версія".to_string(), J::s(lang::VERSION)),
@@ -414,6 +448,12 @@ fn execute(
     if !oq.is_empty() {
         it.quota_stack.push(Rc::new(interp::QuotaTable { who: "власник".into(), quotas: oq, tok: "власник".into() }));
     }
+    if o.dry {
+        it.dry = Some(Vec::new());
+        if it.rec("сухо", vec![("причина".into(), J::s("--сухо: записи, надсилання, процеси й агенти не виконуються"))]).is_err() {
+            return 4;
+        }
+    }
     let root = value::Env::new(0, None);
     let t_all = std::time::Instant::now();
     let result = it.eval(prog, &root);
@@ -431,6 +471,7 @@ fn execute(
             if it.rec("кінець", vec![("кроків".into(), J::Int(steps))]).is_err() {
                 return 4;
             }
+            dry_report(&mut it);
             0
         }
         Err(e) if e.internal => {
@@ -457,6 +498,7 @@ fn execute(
             1
         }
         Err(e) => {
+            dry_report(&mut it);
             let text = uni::safe(&e.text());
             let _ = it.rec("помилка", vec![("повідомлення".into(), J::Str(text.clone()))]);
             eprintln!("{}", text);
@@ -467,6 +509,54 @@ fn execute(
     std::mem::forget(it);
     std::mem::forget(root);
     code
+}
+
+/// dry_report еталона: перелік придушених дій (--сухо) і попередження про невідоме — у stderr, після виводу.
+fn dry_report(it: &mut interp::Interp) {
+    let done = match it.dry.take() {
+        Some(d) => d,
+        None => return,
+    };
+    let _ = it.out.flush();
+    let decided = it.decided_c.min(it.halt_c).min(it.pc);
+    let mut err = String::new();
+    err.push_str(&format!("── --сухо: {} дій не виконано{}\n", done.len(), if done.is_empty() { " (жодної дії назовні)" } else { ":" }));
+    let mut done = done;
+    done.sort_by_key(|d| d.0);
+    let mut unsure = 0;
+    for (_, name, args, ac) in &done {
+        let shown: Vec<String> = args
+            .iter()
+            .map(|a| match a {
+                J::Str(s) => s.clone(),
+                J::Obj(kv) => format!("‹{} символів›", kv.iter().find(|(k, _)| k == "довжина").map_or("None".into(), |(_, v)| crate::json::dumps(v, false))),
+                other => crate::json::dumps(other, false),
+            })
+            .collect();
+        let shown: String = uni::safe(&shown.join(" ")).chars().take(300).collect();
+        let mut mark = String::new();
+        if *ac < 1.0 {
+            mark = format!("  ⚠ залежить від невідомого (впевненість {}) — справжній запуск може зробити інше", pyf::fmt_g2(*ac));
+            unsure += 1;
+        }
+        err.push_str(&format!("  {} {}{}\n", name, shown, mark));
+    }
+    if decided < 1.0 {
+        err.push_str(&format!(
+            "  ⚠ рішення програми залежали від невідомих у сухому прогоні значень (впевненість {}): справжній запуск може піти \
+             іншим шляхом і зробити дії, яких тут немає\n",
+            pyf::fmt_g2(decided)
+        ));
+    }
+    if unsure > 0 {
+        err.push_str(&format!(
+            "  ⚠ {} з {} дій обрано чи складено за значеннями, яких сухий прогін не знає (зокрема за результатами \
+             придушених дій): перелік — не обіцянка того, що зробить справжній запуск\n",
+            unsure,
+            done.len()
+        ));
+    }
+    eprint!("{}", err);
 }
 
 /// Проба для звірки з Python: рядок «операція аргументи…» → результат (athanor/проба.py).
@@ -603,7 +693,9 @@ fn main() {
     if sample.is_some() {
         sampler::start();
     }
-    let h = std::thread::Builder::new().stack_size(1 << 29).spawn(run).expect("потік");
+    // межі мови — 2000 викликів × 1000 рівнів коду (~2 млн рівнів обчислення); 512 МБ стеку бракувало (SIGABRT, суд 9).
+    // Стек — лише віртуальна памʼять: справді зайнято стільки, скільки програма заглибилась
+    let h = std::thread::Builder::new().stack_size(1 << 32).spawn(run).expect("потік");
     let code = match h.join() {
         Ok(c) => c,
         Err(p) => match p.downcast::<HandOver>() {

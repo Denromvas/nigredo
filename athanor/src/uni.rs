@@ -292,9 +292,11 @@ pub fn visible(text: &str, allow: &str, bracket: bool) -> String {
     if bad.is_empty() {
         return text.to_string();
     }
+    bad.sort_unstable(); // множина, як set() еталона: k невидимих — не k порівнянь на кожен символ (суд 9: O(n·k))
+    bad.dedup();
     let mut out = String::with_capacity(text.len() + 16);
     for c in text.chars() {
-        if bad.contains(&c) {
+        if bad.binary_search(&c).is_ok() {
             out.push_str(&ucode(c));
         } else {
             out.push(c);
@@ -305,13 +307,15 @@ pub fn visible(text: &str, allow: &str, bracket: bool) -> String {
 
 /// safe(s): новий рядок і табуляція — ↵ ⇥, решта невидимого — ⟨U+XXXX⟩.
 pub fn safe(s: &str) -> String {
-    let bad = hidden(s, "");
+    let mut bad = hidden(s, "");
     if bad.is_empty() {
         return s.to_string();
     }
+    bad.sort_unstable();
+    bad.dedup();
     let mut out = String::with_capacity(s.len() + 16);
     for c in s.chars() {
-        if bad.contains(&c) {
+        if bad.binary_search(&c).is_ok() {
             match c {
                 '\n' => out.push('↵'),
                 '\t' => out.push('⇥'),

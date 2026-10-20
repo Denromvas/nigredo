@@ -205,11 +205,21 @@ struct Parser<'a> {
     b: &'a [u8],
     i: usize, // у байтах (помилки переводяться в символи лише при виведенні)
     depth: usize,
+    dup: bool, // у якомусь словнику ключ повторився
 }
 
 const C_RECURSION: usize = 9_990; // межа рекурсії C-сканера Python (перевищення — RecursionError)
 
 pub fn loads(s: &str) -> Result<P<'_>, LoadErr> {
+    load_with(s, false)
+}
+
+/// Як loads, але повтор ключа — помилка (дозволи власника: «останній перемагає» мовчки стирав би схвалення; суд 9).
+pub fn loads_unique(s: &str) -> Result<P<'_>, LoadErr> {
+    load_with(s, true)
+}
+
+fn load_with(s: &str, unique: bool) -> Result<P<'_>, LoadErr> {
     // позиція помилки — у символах, як у Python: байтова позиція завжди на межі символу
     let fmt = |e: PErr| -> LoadErr {
         let pre: Vec<char> = s[..e.pos.min(s.len())].chars().collect();
@@ -224,7 +234,7 @@ pub fn loads(s: &str) -> Result<P<'_>, LoadErr> {
     if s.starts_with('\u{feff}') {
         return Err(fmt(PErr { msg: "Unexpected UTF-8 BOM (decode using utf-8-sig)".into(), pos: 0 }));
     }
-    let mut p = Parser { s, b: s.as_bytes(), i: 0, depth: 0 };
+    let mut p = Parser { s, b: s.as_bytes(), i: 0, depth: 0, dup: false };
     p.ws();
     let start = p.i;
     let v = match p.value() {
@@ -238,6 +248,9 @@ pub fn loads(s: &str) -> Result<P<'_>, LoadErr> {
     p.ws();
     if p.i != p.b.len() {
         return Err(fmt(PErr { msg: "Extra data".into(), pos: p.i }));
+    }
+    if unique && p.dup {
+        return Err(LoadErr::Syntax("ключ повторюється".into()));
     }
     Ok(v)
 }
@@ -496,7 +509,10 @@ impl<'a> Parser<'a> {
                 None => kv.iter().position(|(k, s, _)| *k == key && *s == ksur),
             };
             match found {
-                Some(p) => kv[p].2 = v,
+                Some(p) => {
+                    self.dup = true;
+                    kv[p].2 = v
+                }
                 None => {
                     if let Some(m) = &mut index {
                         m.insert((key.to_string(), ksur), kv.len());

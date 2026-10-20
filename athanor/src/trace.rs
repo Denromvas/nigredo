@@ -108,7 +108,9 @@ impl Trace {
         }
         self.prev = h;
         let line = line_of(&rec) + "\n";
-        self.bytes += line.len() as u64;
+        if event != "початок" {        // «початок» не рахуємо: у ньому поле «інтерпретатор», різне у виконавців
+            self.bytes += line.len() as u64;
+        }
         for o in self.outs.iter_mut() {
             o.write_all(line.as_bytes()).map_err(|e| TraceErr::Io(e.to_string()))?;
             o.flush().map_err(|e| TraceErr::Io(e.to_string()))?;
