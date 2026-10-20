@@ -1,0 +1,24 @@
+ВІДБИТОК 2af3667b15aaf78c15cb9f2a713c72013afd5172f024386c2ed0b1ab3c2ab190 (sha256 програми — той самий, що в сліді)
+
+ПЕЧАТКА
+  намір (слова автора): 「атака12_схв: частину прав тека вже має (дані, звіти), частини бракує (секрет); шлях — з аргументу ⌂」
+  дозволи:
+    файл.читати → 「/root/ai-agents/Nigredo/konsylium/суд9б_0.8/audytor/дані」, 「/root/ai-agents/Nigredo/konsylium/суд9б_0.8/audytor/секрет」   (прочитати текстовий файл (UTF-8; \r\n і \r стають \n); довший за --розмір символів — помилка, а не обрізаний)
+    файл.писати → 「/root/ai-agents/Nigredo/konsylium/суд9б_0.8/audytor/звіти」   (записати (перезаписати) текстовий файл)
+  дозволи власника: /root/ai-agents/Nigredo/konsylium/суд9б_0.8/власник/дозволи.json (sha256 a98832caf4f42c3a)
+  права теки /root/ai-agents/Nigredo/konsylium/суд9б_0.8/audytor: файл.читати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/audytor/дані, файл.список:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/audytor/дані, файл.писати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/audytor/звіти, бд.читати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/audytor/дані, бд.писати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/audytor/звіти, мережа.взяти:127.0.0.1:28711, мережа.послати:127.0.0.1:28711, процес:echo, процес:ls, процес:sh -c echo
+  ✗ бракує дозволу власника: файл.читати:секрет
+  (права перевіряються й під час виконання: кожен інструмент і кожен субагент — лише в межах агента, що його викликає. Цього необхідно, але не досить: намір, імена й вивід — слова автора програми)
+
+ПЕРЕКЛАД
+ПЕЧАТКА — намір: «атака12_схв: частину прав тека вже має (дані, звіти), частини бракує (секрет); шлях — з аргументу ⌂»; дозволи: файл.читати [дані, секрет]; файл.писати [звіти]
+(шляхи файл.писати: від теки програми; якщо там такого шляху немає — від єдиної теки з печатки; справжній шлях — у сліді, поле «шлях»)
+що ← (аргументи програми)[0]
+т ← інструмент файл.читати((«секрет/» + що))
+інструмент файл.писати(«звіти/а12_схв.txt», рядок(довжина(т)))
+надрукувати «готово»
+
+⚠ програма бере аргументи запуску (⌂): що читати, куди писати чи що слати, вирішує той, хто запускає, — відбиток аргументів не охоплює
+уже дозволено без схвалення (у запис не входить; заберете — програма це втратить): файл.читати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/audytor/дані, файл.писати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/audytor/звіти
+У /root/ai-agents/Nigredo/konsylium/суд9б_0.8/власник/дозволи.json уже є розділ «для_програм» — замініть його ЦІЛИМ (ключ у JSON не повторюють, а повтор ngr відкине): "для_програм": {"36349050a717071cf6c3030f9421389c43466707340bd981ea159364c20f4df7": ["читати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/skeptyk/секрет", "писати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/skeptyk/схвалене"], "f7035db8d095bd72ce83ed544e3eebcd0d45837417deb3b769cac0ada9ff1dcc": ["читати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/praktyk/секрет", "писати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/praktyk/схвалене"], "0eb2086ccc568405b632262337b56e52cf26a43507aa851e07cbd5761a7f50c7": ["читати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/movoznavets/секрет", "писати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/movoznavets/схвалене"], "b34a0c9f34d76b39fa1d570077b01ce0c236f12dccdb9518b65648bf51bdc597": ["читати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/audytor/секрет", "писати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/audytor/схвалене"], "fc91ddddab3acf93f63f48918dfc68810f40bfd3a7f8f986f3a35c319a9c9353": ["читати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/novachok/секрет", "писати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/novachok/схвалене"], "b55b6b67b7cdf158d5f9ac5b0c6bdc0602f68d3ce6c56d01661fbd3ba6f02f5a": ["читати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/orkestrator/секрет", "писати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/orkestrator/схвалене"], "ba2d4fcee91b6c9e14c851065e54994d4319ab9d16dc95d29f182b71aa73165e": ["читати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/gemini/секрет", "писати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/gemini/схвалене"], "2af3667b15aaf78c15cb9f2a713c72013afd5172f024386c2ed0b1ab3c2ab190": ["файл.читати:/root/ai-agents/Nigredo/konsylium/суд9б_0.8/audytor/секрет"]}
+Схвалення — для ТЕКСТУ: будь-яка байт-у-байт копія (в іншій теці, через -e чи MCP) отримає ці права; змінений байт програми чи її модуля — інший відбиток, і схвалення не діє. Агенти цей файл не пишуть.
