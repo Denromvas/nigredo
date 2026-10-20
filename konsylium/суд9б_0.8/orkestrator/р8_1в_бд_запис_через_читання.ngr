@@ -1,0 +1,13 @@
+🜂 「SQLite: зміни через бд.читати, ATTACH, VACUUM INTO, PRAGMA-функції, RETURNING, рекурсія」 【「бд.читати:дані」 「бд.писати:звіти」】
+» ☂ 🜔бд.читати 「база.db」 「DELETE FROM замовлення RETURNING *」 【】 λe e
+» ☂ 🜔бд.читати 「база.db」 「SELECT * FROM pragma_journal_mode('wal')」 【】 λe e
+» ☂ 🜔бд.читати 「база.db」 「SELECT * FROM pragma_table_info('замовлення')」 【】 λe e
+» ☂ 🜔бд.писати 「т.db」 「ATTACH 'звіти/х.db' AS х」 【】 λe e
+» ☂ 🜔бд.писати 「т.db」 「VACUUM INTO '/root/ai-agents/Nigredo/konsylium/суд9б_0.8/orkestrator/втеча.db'」 【】 λe e
+» ☂ 🜔бд.писати 「т.db」 「PRAGMA journal_mode=WAL」 【】 λe e
+» ☂ 🜔бд.писати 「т.db」 「SELECT * FROM pragma_journal_mode('wal')」 【】 λe e
+» ☂ 🜔бд.писати 「т.db」 「CREATE TABLE IF NOT EXISTS т(a)」 【】 λe e
+» ☂ 🜔бд.писати 「т.db」 「CREATE TEMP TABLE тт(a)」 【】 λe e
+» ☂ 🜔бд.писати 「т.db」 「INSERT INTO т SELECT load_extension('x')」 【】 λe e
+» ☂ 🜔бд.писати 「т.db」 「INSERT INTO т VALUES (1); DROP TABLE т」 【】 λe e
+» ☂ 🜔бд.читати 「база.db」 「WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM r) SELECT count(*) AS c FROM r」 【】 λe e

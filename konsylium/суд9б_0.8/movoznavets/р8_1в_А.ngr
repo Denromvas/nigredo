@@ -1,0 +1,20 @@
+🜂 「SQLite: білий список бд.писати, RETURNING, тригер (з атак 8_1в, 8_1г, р2_6, р2_6б)」 【「бд.писати:звіти」】
+← б 「р8А.db」
+» ☂ 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS t(x)」 【】 λe ＋ 「п0: 」 e
+» ☂ 🜔бд.писати б 「ATTACH 'інша.db' AS i」 【】 λe ＋ 「п1: 」 e
+» ☂ 🜔бд.писати б 「VACUUM INTO 'копія.db'」 【】 λe ＋ 「п2: 」 e
+» ☂ 🜔бд.писати б 「PRAGMA journal_mode=WAL」 【】 λe ＋ 「п3: 」 e
+» ☂ 🜔бд.писати б 「CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END」 【】 λe ＋ 「п4: 」 e
+» ☂ 🜔бд.писати б 「INSERT INTO t VALUES (1) RETURNING x」 【】 λe ＋ 「п5 INSERT RETURNING (1 рядок): 」 σ e
+» ☂ 🜔бд.писати б 「CREATE VIEW v AS SELECT * FROM t」 【】 λe ＋ 「п6: 」 e
+» ☂ 🜔бд.писати б 「BEGIN」 【】 λe ＋ 「п7: 」 e
+» ☂ 🜔бд.писати б 「UPDATE t SET x = x + 10 RETURNING x」 【】 λe ＋ 「п8 UPDATE RETURNING: 」 e
+» ☂ 🜔бд.писати б 「CREATE TABLE важливе(a)」 【】 λe ＋ 「т0: 」 e
+» ☂ 🜔бд.писати б 「INSERT INTO важливе VALUES (1),(2),(3)」 【】 λe ＋ 「т1: 」 e
+» ☂ 🜔бд.писати б 「CREATE TABLE журнал(x)」 【】 λe ＋ 「т2: 」 e
+» ☂ 🜔бд.писати б 「CREATE TRIGGER т AFTER INSERT ON журнал BEGIN DELETE FROM важливе; END」 【】 λe ＋ 「т3: 」 e
+» 〔т4 INSERT у журнал (тригер стирає 3): {🜔бд.писати б 「INSERT INTO журнал VALUES (1)」 【】}〕
+» ☂ 🜔бд.писати б 「DROP TRIGGER т」 【】 λe ＋ 「DROP TRIGGER: 」 e
+» ☂ 🜔бд.писати б 「DROP VIEW v」 【】 λe ＋ 「DROP VIEW: 」 e
+» ☂ 🜔бд.писати б 「CREATE INDEX і ON журнал(x)」 【】 λe ＋ 「CREATE INDEX: 」 e
+» ☂ 🜔бд.писати б 「DROP TABLE журнал」 【】 λe ＋ 「DROP TABLE: 」 e
