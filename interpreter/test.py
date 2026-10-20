@@ -574,7 +574,7 @@ def main():
           '∧ ∨: сумнівна ліва частина — результат не впевненіший; пропущений правий бік, що міг упасти, — канал завершення; '
           'τ сумнівного — сумнівний', got.stdout + got.stderr)
     got = run(['-e', '🜂 【「оракул」】\n← п 🜔оракул 「x」\n» ∧ ¬ п ＝ ∅ 🜄 「k」 1\n» ± 🜃 「k」'], env)
-    got2 = run(['-e', '🜂\n← l μ 【1】 λx ≈ x 0.5\n» 〔{± l} {± τ l} {± ρ l}〕'], env)
+    got2 = run(['-e', '🜂\n← сп μ 【1】 λx ≈ x 0.5\n» 〔{± сп} {± τ сп} {± ρ сп}〕'], env)
     check(got2.stdout == '0.5 1 1\n', 'τ — впевненість будови (як ρ), а не вмісту', got2.stdout + got2.stderr)
     check(got.stdout == '○\n0.6\n', '∧: памʼять, яку правий бік міг змінити залежно від сумнівного, — сумнівна',
           got.stdout + got.stderr)
@@ -878,9 +878,16 @@ def main():
     (sx / 'вл' / 'дозволи.json').write_text(json.dumps({'дозволено': ['оракул'], 'для_програм': json.loads(m_.group(1))},
                                                       ensure_ascii=False), encoding='utf-8')
     a2_ = run(['--схвалити', str(sx / 'арг.ngr')], envx)
+    # суд 9в (Практик): власник записав схвалення короткими назвами — те саме право, теж «додавати нічого»
+    short_ = {h: [re.sub(r'^(файл|мережа)\.([^:]*):', r'\2: ', p) for p in v] for h, v in json.loads(m_.group(1)).items()}
+    (sx / 'вл' / 'дозволи.json').write_text(json.dumps({'дозволено': ['оракул'], 'для_програм': short_},
+                                                      ensure_ascii=False), encoding='utf-8')
+    a3_ = run(['--схвалити', str(sx / 'арг.ngr')], envx)
     check(got6.returncode == 3 and 'той самий відбиток двічі' in got6.stderr and 'вже схвалена саме цими правами' in a2_.stdout
-          and 'замініть' not in a2_.stdout, '«для_програм»: AB… і ab… — помилка; --схвалити схваленої — «додавати нічого» '
-          '(суд 9б)', got6.stderr + a2_.stdout[-400:])
+          and 'замініть' not in a2_.stdout and 'вже схвалена саме цими правами' in a3_.stdout
+          and any(': ' in p for v in short_.values() for p in v),
+          '«для_програм»: AB… і ab… — помилка; --схвалити схваленої — «додавати нічого» (суд 9б), і з короткими назвами '
+          'прав (суд 9в)', got6.stderr + a2_.stdout[-400:] + a3_.stdout[-400:] + str(short_))
     got = run(['-e', f'🜂 【「взяти:127.0.0.1:{port}」】\n» ☂ 🜔взяти 「http://@127.0.0.1:{port}/」 λe e'], env)
     check('поза дозволеним' in got.stdout, 'взяти (суд 8в): порожній логін «http://@хост/» — відмова за правами',
           got.stdout + got.stderr)
@@ -993,12 +1000,12 @@ def main():
                 ('≋ 「x」 「y」 「\\9」', '≋: у заміні немає групи 9'),
                 ('≋ 「a」 「a」 「\\400」', '≋: у заміні вісімкове \\400 понад \\377'),
                 ('≋ 「ab」 「(a)」 「\\g<١>」', '≋: у заміні немає групи «١»'),
-                ('⌕ 「a」 ＋ 「a{4294967296」 「}」', '⌕: хибний шаблон: the repetition number is too large'),
-                ('⌕ 「a」 ＋ 「a{4294967295」 「}」', '⌕: хибний шаблон: the repetition number is too large'),
-                ('⌕ 「a」 ＋ 「a{1,4294967296」 「}」', '⌕: хибний шаблон: the repetition number is too large'),
+                ('⌕ 「a」 ＋ 「a{4294967296」 「}」', '⌕: хибний шаблон: завелике число повторень (the repetition number is too large)'),
+                ('⌕ 「a」 ＋ 「a{4294967295」 「}」', '⌕: хибний шаблон: завелике число повторень (the repetition number is too large)'),
+                ('⌕ 「a」 ＋ 「a{1,4294967296」 「}」', '⌕: хибний шаблон: завелике число повторень (the repetition number is too large)'),
                 ('⌕ 「a」 ＋ 「a{4294967294」 「}」', '⌕: шаблон розгортається понад 20000 інструкцій (зменште {m,n})'),
                 ('⌕ 「a」 ＋ 「a{1073741823」 「}」', '⌕: шаблон розгортається понад 20000 інструкцій (зменште {m,n})'),
-                ('⌕ 「a」 ＋ 「(?a)(?u)」 「a」', '⌕: хибний шаблон: ASCII and UNICODE flags are incompatible'),
+                ('⌕ 「a」 ＋ 「(?a)(?u)」 「a」', '⌕: хибний шаблон: прапорці ASCII і UNICODE несумісні (ASCII and UNICODE flags are incompatible)'),
                 ('⌕ 「ab」 ＋ 「\\N{LATIN SMALL LETTER B」 「}」',
                  '⌕: \\N{…} (назва символу) у шаблоні не підтримано — напишіть сам символ'),
                 ('⌕ 「a\\\\Nb」 「\\\\\\\\N」', '【「\\\\N」】')]
@@ -1122,16 +1129,16 @@ def main():
     for f_ in (sch, sch + '-journal'):
         if os.path.exists(f_):
             os.remove(f_)
-    sch_prog = (f'🜂 【「бд.писати:{DATA}/звіти」 「бд.читати:{DATA}/звіти」】\n← б 「{sch}」\n← з λq ☂ 🜔бд.писати б q 【】 λe e\n'
-                '» з 「CREATE TABLE IF NOT EXISTS т(x, ч DEFAULT CURRENT_TIMESTAMP, в DEFAULT (random()), '
+    sch_prog = (f'🜂 【「бд.писати:{DATA}/звіти」 「бд.читати:{DATA}/звіти」】\n← бд 「{sch}」\n← зап λq ☂ 🜔бд.писати бд q 【】 λe e\n'
+                '» зап 「CREATE TABLE IF NOT EXISTS т(x, ч DEFAULT CURRENT_TIMESTAMP, в DEFAULT (random()), '
                 's DEFAULT (strftime(\'%s\', \'NOW\')), b DEFAULT (date(x\'6e6f77\')))」\n'
-                '» з 「INSERT INTO т(x, в, s, b) VALUES (1, 0, 0, 0)」\n» з 「INSERT INTO т(x, ч, s, b) VALUES (1, 0, 0, 0)」\n'
-                '» з 「INSERT INTO т(x, ч, в, b) VALUES (1, 0, 0, 0)」\n» з 「INSERT INTO т(x, ч, в, s) VALUES (1, 0, 0, 0)」\n'
-                '» з 「INSERT INTO т(rowid, x, ч, в, s, b) VALUES (9223372036854775807, 2, 0, 0, 0, 0)」\n'
-                '» з 「INSERT INTO т(x, ч, в, s, b) VALUES (3, 0, 0, 0, 0)」\n'
-                '» § 🜔бд.читати б 「SELECT date(\'2026-01-31\', \'+1 month\') AS м, strftime(\'%Y-%m\', ?) AS р, '
+                '» зап 「INSERT INTO т(x, в, s, b) VALUES (1, 0, 0, 0)」\n» зап 「INSERT INTO т(x, ч, s, b) VALUES (1, 0, 0, 0)」\n'
+                '» зап 「INSERT INTO т(x, ч, в, b) VALUES (1, 0, 0, 0)」\n» зап 「INSERT INTO т(x, ч, в, s) VALUES (1, 0, 0, 0)」\n'
+                '» зап 「INSERT INTO т(rowid, x, ч, в, s, b) VALUES (9223372036854775807, 2, 0, 0, 0, 0)」\n'
+                '» зап 「INSERT INTO т(x, ч, в, s, b) VALUES (3, 0, 0, 0, 0)」\n'
+                '» § 🜔бд.читати бд 「SELECT date(\'2026-01-31\', \'+1 month\') AS м, strftime(\'%Y-%m\', ?) AS р, '
                 'julianday(\'2026-03-15\') - julianday(\'2026-03-01\') AS д, count(*) AS н FROM т」 【「2026-03-15」】 0\n'
-                '» ☂ 🜔бд.читати б 「SELECT date(\'2026-01-01\', \'localtime\') AS л」 【】 λe e')
+                '» ☂ 🜔бд.читати бд 「SELECT date(\'2026-01-01\', \'localtime\') AS л」 【】 λe e')
     trs_ = []
     outs_ = []
     for k_, cmd_ in enumerate((NGR_CMD, [sys.executable, str(NGR)])):
@@ -1145,7 +1152,7 @@ def main():
     check(outs_[0].stdout == outs_[1].stdout and outs_[0].returncode == outs_[1].returncode == 0
           and o_.count('годинник SQLite (current_timestamp)') == 1 and o_.count('випадковість SQLite (random)') == 1
           and o_.count('годинник SQLite (strftime') == 1 and o_.count('годинник SQLite (date') == 2
-          and o_.count('дійшла до rowid 2⁶³−1') == 1 and "『「м」 「2026-03-03」 「р」 「2026-03」 「д」 14 「н」 1』" in o_
+          and o_.count('рядок отримав би rowid 2⁶³−1') == 1 and "『「м」 「2026-03-03」 「р」 「2026-03」 「д」 14 「н」 1』" in o_
           and 'заборонено: годинник SQLite (date — поточний час чи часовий пояс)' in o_.splitlines()[-1],
           'SQLite: DEFAULT CURRENT_TIMESTAMP / (random()) / (strftime NOW) / BLOB «now», rowid після 2⁶³−1 — відмова '
           'в обох; дати з даних — без «час» (суд 9б)', outs_[0].stdout + outs_[0].stderr + '\n---\n' + outs_[1].stdout)
@@ -1186,6 +1193,83 @@ def main():
           and names_ == ['к', 'і'],
           'SQLite: файл — не база / пошкоджена схема — помилка програми, не код 4; random() і CURRENT_* у GENERATED та '
           'індексі — відмова самого SQLite, у CHECK — як у SQLite; схема лишається читною (суд 9б)', got.stdout + got.stderr + ref.stderr)
+    # суд 9в: свій BEFORE-тригер програми (вставка чи UPDATE rowid = 2⁶³−1) ставив межу вже після перевірки — rowid брав
+    # SQLite навмання; явний rowid у таблицю на межі — хибна відмова; FTS5 (віртуальна таблиця) — відмова, без SIGSEGV
+    tr_, old_, fts_ = (f'{DATA}/звіти/{n}' for n in ('тригер9в.db', 'межа9в.db', 'фтс9в.db'))
+
+    def fresh9v():
+        for f_ in (tr_, old_, fts_):
+            if os.path.exists(f_):
+                os.remove(f_)
+        c_ = sqlite3.connect(old_)
+        c_.execute('CREATE TABLE м(x)')
+        c_.execute('INSERT INTO м(rowid, x) VALUES (9223372036854775807, 0)')
+        c_.commit()
+        c_.close()
+        c_ = sqlite3.connect(fts_)
+        c_.execute('CREATE VIRTUAL TABLE ф USING fts5(x)')
+        c_.close()
+    q9_ = ('🜂 【「бд.писати:{0}/звіти」】\n'.format(DATA) + ''.join(
+        f'← {h_} λq ☂ σ 🜔бд.писати 「{f_}」 q 【】 λe e\n' for h_, f_ in (('тригер', tr_), ('межа', old_), ('фтс', fts_))) + ''.join(
+        f'» {h_} 「{s_}」\n' for h_, s_ in (
+            ('тригер', 'CREATE TABLE t(x)'),
+            ('тригер', 'CREATE TRIGGER пастка BEFORE INSERT ON t WHEN NEW.x = 1 BEGIN INSERT OR IGNORE INTO t(rowid, x) '
+                  'VALUES (9223372036854775807, 0); END'),
+            ('тригер', 'INSERT INTO t(x) VALUES (1)'), ('тригер', 'INSERT INTO t(x) VALUES (0)'),
+            ('тригер', 'CREATE TRIGGER пастка2 BEFORE INSERT ON t WHEN NEW.x = 2 BEGIN UPDATE t SET rowid = 9223372036854775807 '
+                  'WHERE x = 0; END'),
+            ('тригер', 'INSERT INTO t(x) VALUES (2)'), ('тригер', 'UPDATE t SET rowid = 9223372036854775807'),
+            ('межа', 'INSERT INTO м(rowid, x) VALUES (5, 1)'), ('межа', 'INSERT INTO м(x) VALUES (2)'),
+            ('межа', 'UPDATE м SET x = 3 WHERE rowid = 5'), ('фтс', "INSERT INTO ф(x) VALUES ('а')"))))
+    res9v = []
+    for cmd_ in (NGR_CMD, [sys.executable, str(NGR)]):
+        fresh9v()
+        res9v.append(subprocess.run([*cmd_, '-e', q9_], capture_output=True, text=True, env=envd))
+        try:                           # програма не розібралася — таблиць немає: провал перевірки, а не traceback
+            with sqlite3.connect(tr_) as c_:
+                rows_ = [r[0] for r in c_.execute('SELECT rowid FROM t')]
+            with sqlite3.connect(old_) as c_:
+                rows_.append(sorted(r[0] for r in c_.execute('SELECT rowid FROM м')))
+        except sqlite3.Error as e_:
+            rows_ = str(e_)
+        res9v.append(rows_)
+    o_ = res9v[0].stdout
+    check(o_ == res9v[2].stdout and res9v[0].returncode == res9v[2].returncode == 0 and res9v[1] == res9v[3] == [1, [5, 2 ** 63 - 1]]
+          and o_.count('рядок отримав би rowid 2⁶³−1') == 3 and o_.count('дійшла до rowid 2⁶³−1') == 1
+          and o_.count('дія поза дозволеним') == 1 and o_.count('\n1\n') == 3,
+          'SQLite: без «жереб» жоден рядок не отримає rowid 2⁶³−1 — і своїм BEFORE-тригером (вставка, UPDATE), і UPDATE; '
+          'явний rowid у таблицю на межі — можна; FTS5 — відмова, без SIGSEGV (суд 9в)',
+          o_ + res9v[0].stderr + '\n---\n' + res9v[2].stdout + res9v[2].stderr + str(res9v[1::2]))
+    # суд 9в: квота «час≤N» — як «жереб≤N»: годинник SQLite з квотою — відмова (його не порахувати), 🜔час — за квотою
+    (tmp / 'бд_час').mkdir()
+    (tmp / 'бд_час' / 'дозволи.json').write_text(json.dumps({'дозволено': [f'бд.читати:{DATA}/звіти', 'час']},
+                                                         ensure_ascii=False), encoding='utf-8')
+    got, ref = both(['-e', f'🜂 【「бд.читати:{DATA}/звіти」 「час≤1」】\n» ≠ 0 ρ 🜔час\n» ☂ 🜔час λe e\n'
+                     f'» ☂ σ 🜔бд.читати 「{old_}」 「SELECT strftime(\'%Y\', \'now\') AS р」 【】 λe e\n'
+                     f'» ☂ σ 🜔бд.читати 「{old_}」 「SELECT CURRENT_DATE AS д」 【】 λe e'],
+                    dict(env, NIGREDO_HOME=str(tmp / 'бд_час')))
+    check(got.stdout == ref.stdout and got.returncode == ref.returncode == 0 and got.stdout.startswith('●\n')
+          and 'вичерпано квоту' in got.stdout and got.stdout.count('з квотою «час≤N» — лише 🜔час') == 2,
+          'SQLite: квота «час≤N» — годинник SQLite відмова, як для «жереб≤N» (суд 9в)', got.stdout + got.stderr + ref.stderr)
+    # суд 9в (Аудитор): межа сліду між «виклик» і результатом — --перевірити-слід каже про виклик без результату
+    lim_prog, lim_tr = '🜂 【「жереб」】\n» 🜔жереб 6\n» 🜔жереб 6\n» 🜔жереб 6', tmp / 'межа9в.jsonl'
+    subprocess.run([*NGR_CMD, '--слід', str(lim_tr), '-e', lim_prog], capture_output=True, env=env)
+    raw_ = lim_tr.read_bytes()         # межа рахує байти після «початок» і сховище .дані
+    full_ = len(raw_) - len(raw_.split(b'\n')[0]) - 1 + pathlib.Path(str(lim_tr) + '.дані').stat().st_size
+    lim_note = None
+    for size_ in range(full_ - 1, full_ - 900, -9):
+        for f_ in (lim_tr, pathlib.Path(str(lim_tr) + '.дані')):
+            f_.unlink(missing_ok=True)
+        subprocess.run([*NGR_CMD, '--слід', str(lim_tr), '--слід-розмір', str(size_), '-e', lim_prog], capture_output=True, env=env)
+        evs_ = [json.loads(x)['подія'] for x in lim_tr.read_text(encoding='utf-8').splitlines()]
+        if evs_[-2:] == ['виклик', 'помилка']:
+            lim_note = run(['--перевірити-слід', str(lim_tr)], env).stdout
+            break
+    check(lim_note is not None and '✓' in lim_note and 'останній виклик інструмента — без результату' in lim_note,
+          '--перевірити-слід: межа сліду між викликом і результатом — «⚠ останній виклик без результату» (суд 9в)', str(lim_note))
+    got = run(['--розбір', '-e', '🜂\n← а ●\n» ¿ а ○ ∅'], env)
+    check('а ← так' in got.stdout and 'якщо а то ні інакше ніщо' in got.stdout and '●' not in got.stdout.split('ПЕРЕКЛАД')[-1],
+          '--розбір: ● ○ ∅ — словами (так, ні, ніщо), як і гліфи (суд 9в, Аудитор)', got.stdout)
     got = run(['--тести', str(ROOT / 'examples' / 'тести')], env)
     check(got.returncode == 0 and 'тестів пройшли' in got.stdout, 'ngr --тести: тести мовою (examples/тести) — усі пройшли',
           got.stdout + got.stderr)
@@ -1550,6 +1634,16 @@ def main():
     check(rc == 3 and not in_seal.exists() and rc2 == 1 and ans2[0].get('рядок') == 1 and 'упало 1' in vr4.stdout,
           '--repl: --слід у теці з печатки — файл не створено; межа кроків — відповідь з «рядок», у підсумку «упало 1» '
           '(суд 9б)', str(ans) + str(ans2) + vr4.stdout)
+    # суд 9в (Аудитор): копія сліду в теці бд.* з печатки — програма відкривала її СЛІД.дані як базу й тихо псувала
+    in_db = DATA / 'звіти' / 'слід_у_бд9в.jsonl'
+    rc, ans, tr_ = repl([j(f'🜂 【「бд.писати:{DATA}/звіти」】\n» 1')], '--слід', str(in_db))
+    outs9 = [subprocess.run([*cmd_, '--слід', str(in_db), '-e', f'🜂 【「бд.писати:{DATA}/звіти」】\n» 1'], capture_output=True,
+                            text=True, env=envd) for cmd_ in (NGR_CMD, [sys.executable, str(NGR)])]
+    check(rc == 3 and 'лежить у теці з печатки' in ans[0].get('помилка', '') and not in_db.exists()
+          and not pathlib.Path(str(in_db) + '.дані').exists()
+          and all(o9.returncode == 3 and 'лежить у теці' in o9.stderr and o9.stdout == '' for o9 in outs9),
+          '--слід у теці бд.* з печатки — відмова до запуску (і в REPL), файлів сліду немає (суд 9в)',
+          str(ans) + outs9[0].stderr + outs9[1].stderr)
 
     sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',

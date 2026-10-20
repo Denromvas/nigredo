@@ -76,6 +76,32 @@ pub fn glyph_twin(skel: &str) -> Option<&'static str> {
     GLYPH_TWIN.binary_search_by(|&(a, _)| a.cmp(skel)).ok().map(|i| GLYPH_TWIN[i].1)
 }
 
+/// Гліф, на який схоже імʼя функції, — і з цифрами в кінці (x5 ≈ ×5, 十5 ≈ ＋5; суд 9в), як nigredo.glyph_twin.
+pub fn glyph_twin_name(skel: &str) -> Option<&'static str> {
+    let cs: Vec<char> = skel.chars().collect();
+    let mut k = cs.len();
+    let head = |k: usize| cs[..k].iter().collect::<String>();
+    while k > 1 && DIGIT_SKELETON.contains(cs[k - 1]) && glyph_twin(&head(k)).is_none() {
+        k -= 1;
+    }
+    glyph_twin(&head(k))
+}
+
+/// in_words: текст помилки бібліотеки — словами (оригінал у дужках), за першим збігом з таблиці (як nigredo.in_words).
+pub fn in_words(table: &[(&str, &str)], m: &str) -> String {
+    for (en, uk) in table {
+        if m.contains(en) {
+            return format!("{} ({})", uk, m);
+        }
+    }
+    m.to_string()
+}
+
+/// Імʼя лише зі скелетів цифр (l0 ≈ 10, б ≈ 6, IOO ≈ 100; суд 9в) — виглядає як число.
+pub fn looks_numeric(skel: &str) -> bool {
+    !skel.is_empty() && skel.chars().all(|c| DIGIT_SKELETON.contains(c))
+}
+
 #[inline]
 fn bit(t: &[u64; 1024], cp: u32) -> bool {
     t[(cp >> 6) as usize] >> (cp & 63) & 1 == 1

@@ -1245,7 +1245,7 @@ impl Interp {
         match r {
             Ok(d) => Ok(Val::Dec(Rc::new(d))),
             Err(s) if s == dec::INEXACT || s == dec::OVERFLOW || s == dec::UNDERFLOW => {
-                ngr(format!("{}: точний результат довший за 60 значущих цифр — округліть (≅) або ділить (÷)", g), pos)
+                ngr(format!("{}: точний результат довший за 60 значущих цифр — округліть (≅) або діліть (÷)", g), pos)
             }
             Err(s) => dec_err(g, s, pos),
         }

@@ -287,7 +287,8 @@ fn run() -> i32 {
             let tp = pathx::realpath(t);
             let mut scopes = Vec::new();
             for (tool, ws) in &seal_caps.tools {
-                if tool.starts_with("файл.") {
+                // теки всіх інструментів зі шляхом — і бд.*: програма відкрила б СЛІД.дані копії як базу (суд 9в)
+                if crate::parser::tool_info(tool).map_or(false, |x| x.2 == "тека") {
                     for w in ws {
                         scopes.push(pathx::realpath(&pathx::join(&cwd, w)));
                     }
@@ -380,7 +381,7 @@ fn execute(
         trace: tr,
         rng: rng::Mt::seed(&seed),
         argv: o.args.clone(),
-        protected: paths.to_vec(),
+        protected: paths.iter().cloned().chain(paths.iter().map(|p| format!("{}.дані", p))).collect(),
         max_size: o.size,
         alloc: 0,
         steps_left: o.steps,

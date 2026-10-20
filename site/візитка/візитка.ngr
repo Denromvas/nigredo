@@ -12,7 +12,7 @@
 ※ розділи сторінки
 ← цифра λc впиши 「<div class="stat"><b>{число}</b><span>{підпис}</span></div>」 c
 ← послуга λp впиши 「<article class="card"><div class="ico">{іконка}</div><h3>{назва}</h3><p>{опис}</p><code>КВЕД {квед}</code></article>」 p
-← теги λl ⁀ μl λt ＋「<span class="tag">」 ＋t 「</span>」 「」
+← теги λсп ⁀ μсп λt ＋「<span class="tag">」 ＋t 「</span>」 「」
 ← лінк λp ¿ ∋ p 「посилання」
     ＋「<a class="go" href="」 ＋§p「посилання」 「" target="_blank" rel="noopener"></a><span class="arrow">↗</span>」
     「」

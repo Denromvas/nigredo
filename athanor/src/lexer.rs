@@ -326,6 +326,9 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Back> {
             if buf.chars().count() == 1 && matches!(script, Some("CJK" | "HIRAGANA" | "KATAKANA")) {
                 return back("імʼя з одного ієрогліфа чи знака кани"); // 米 ≈ ※ (суд 9б)
             }
+            if buf.starts_with('米') {
+                return back("імʼя починається з 米"); // «米1 「…」» — як коментар «※1 …» (суд 9в)
+            }
             toks.push(Token { t: Tok::Name(buf.into()), pos });
         } else if is_glyph(ch) {
             toks.push(Token { t: Tok::Glyph(ch), pos });
@@ -356,15 +359,15 @@ pub fn check_twins(toks: &[Token]) -> Result<(), Back> {
     for t in toks {
         if let Tok::Name(v) = &t.t {
             // NFKC ≠ імʼя можливе лише з небезпечними символами — їх лексер уже віддав еталону
-            if v.chars().all(|c| matches!(c, 'О' | 'O' | 'З' | 'Б') || uni::isdigit(c)) {
-                return back("імʼя виглядає як число");
-            }
             let sk = match uni::skeleton(v) {
                 Some(sk) => sk,
                 None => return back("скелет імені"),
             };
+            if uni::looks_numeric(&sk) {
+                return back("імʼя виглядає як число"); // скелет лише з цифр (суд 9в)
+            }
             // імʼя на вигляд — стала (Ø ≈ ∅, ᄋ ≈ ○): помилку пише еталон (суд 9)
-            if matches!(uni::glyph_twin(&sk), Some("●" | "○" | "∅")) || matches!(&**v, "ᄋ" | "ㅇ" | "〇") {
+            if matches!(uni::glyph_twin(&sk), Some("●" | "○" | "∅")) || matches!(&**v, "ᄋ" | "ㅇ" | "〇" | "ه" | "ס" | "ᴓ") {
                 return back("імʼя — двійник сталої");
             }
             match seen.get(&sk) {
