@@ -410,6 +410,9 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
         }
         'δ' => {
             let s = need_str(&a[0], "δ", pos)?;
+            if s.s.starts_with('\u{feff}') {
+                return ngr("δ: не JSON: на початку — BOM (U+FEFF); приберіть його: ⊢ рядок", pos);
+            }
             match json::loads(&s.s) {
                 Ok(p) => match wrap(&p, a[0].c, 0) {
                     Ok(v) => Ok(v),
@@ -497,6 +500,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             let kc = a[0].c.min(it.cpc());
             it.mem_c = it.mem_c.min(kc);
             let val = if kc < a[1].c { capc(&a[1], kc) } else { a[1].clone() };
+            let shown = trace_val(&val, false)?; // спершу — чи можна записати в слід (суд 9: помилка ПІСЛЯ запису в памʼять)
             it.memory.insert(key.s.to_string(), val.clone());
             let agent = it.agent.clone();
             it.rec(
@@ -505,7 +509,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                     ("агент".into(), crate::json::J::Str(agent)),
                     ("дія".into(), crate::json::J::s("запамʼятати")),
                     ("ключ".into(), crate::json::J::s(&key.s)),
-                    ("значення".into(), trace_val(&val, false)?),
+                    ("значення".into(), shown),
                     ("впевненість".into(), crate::json::J::Float(val.c)),
                 ],
             )?;
@@ -705,7 +709,11 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                         Some(d) => Ok(d),
                         None => {
                             let t: String = uni::safe(&s.s).chars().take(40).collect();
-                            ngr(format!("◷: «{}» — не дата ISO (2026-10-15 або 2026-10-15T09:30:00)", t), pos)
+                            if crate::dates::iso_syntax(&s.s) {
+                                ngr(format!("◷: «{}» — запис ISO, але такої дати чи часу немає", t), pos)
+                            } else {
+                                ngr(format!("◷: «{}» — не дата ISO (2026-10-15 або 2026-10-15T09:30:00)", t), pos)
+                            }
                         }
                     },
                     other => ngr(format!("◷: дата — рядок ISO (2026-10-15 або 2026-10-15T09:30:00), а не {}", tname(other)), pos),
@@ -785,7 +793,6 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                     return ngr(format!("{}: хибний шаблон: {}", g, crate::rx::re_error_text(&e, &pat.s)), pos)
                 }
                 Err(crate::rx::RxErr::Rx(m)) => return ngr(format!("{}: {}", g, m), pos),
-                Err(crate::rx::RxErr::Internal(m)) => return internal(m),
             };
             let text: Vec<char> = x.s.chars().collect();
             let max = it.max_size;

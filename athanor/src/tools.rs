@@ -61,7 +61,11 @@ pub fn iso_now() -> String {
 
 /// Текст файлу як open(encoding='utf-8').read(n): строгий UTF-8, універсальні переноси (\r\n і \r → \n).
 fn read_text(path: &str, limit: usize) -> Result<Result<String, ()>, std::io::Error> {
-    let bytes = std::fs::read(path)?;
+    // TextIOWrapper.read(n) бере не більше ~8n байтів (n символів по ≤ 4 байти й один шматок понад них) — решту файлу
+    // не читаємо (суд 9: файл на 500 МБ читався цілим)
+    let cap = limit.saturating_mul(8).saturating_add(65536);
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut std::io::Read::take(std::fs::File::open(path)?, cap as u64), &mut bytes)?;
     let s = match String::from_utf8(bytes) {
         Ok(s) => s,
         Err(e) => return Ok(read_chunked(e.as_bytes(), limit)),
@@ -149,7 +153,12 @@ pub fn run(it: &mut Interp, name: &str, args: &[V], pos: Pos) -> R<V> {
         "файл.читати" => {
             let real = it.path_ok(name, &args[0].v, pos, false)?;
             let p = path_text(&args[0]);
-            match read_text(&real, 2_000_000) {
+            let max = it.max_size as usize;
+            match read_text(&real, max.saturating_add(1)) {
+                // довший за --розмір — помилка, а не тихе обрізання (суд 9)
+                Ok(Ok(s)) if s.chars().nth(max).is_some() => {
+                    ngr(format!("файл.читати: у файлі понад {} символів (--розмір) — частину не читаю мовчки: {}", max, p), pos)
+                }
                 Ok(Ok(s)) => Ok(V::str(s)),
                 Ok(Err(())) => ngr(format!("файл.читати: не UTF-8: {}", p), pos),
                 Err(e) => ngr(os_err("файл.читати", &e, &p), pos),

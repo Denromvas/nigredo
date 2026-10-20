@@ -56,6 +56,24 @@ pub fn round(x: f64, n: i64) -> f64 {
     if r == 0.0 && x < 0.0 { -0.0 } else { r }
 }
 
+/// format(f, '.2g') Python (для впевненості у звітах): дві значущі цифри, без хвостових нулів; 1e-05 для малих.
+pub fn fmt_g2(f: f64) -> String {
+    if f == 0.0 {
+        return "0".into();
+    }
+    let e = format!("{:.1e}", f); // «4.1e-1»: округлення, як у Python, — точне
+    let (mant, exp) = e.split_once('e').unwrap();
+    let exp: i32 = exp.parse().unwrap();
+    let trim = |s: String| -> String {
+        if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s }
+    };
+    if (-4..2).contains(&exp) {
+        trim(format!("{:.*}", (1 - exp) as usize, f))
+    } else {
+        format!("{}e{}{:02}", trim(mant.to_string()), if exp < 0 { '-' } else { '+' }, exp.abs())
+    }
+}
+
 /// fmt_num для float: ціле до 1e15 — без «.0».
 pub fn show(f: f64) -> String {
     if f.is_finite() && f.fract() == 0.0 && f.abs() < 1e15 {

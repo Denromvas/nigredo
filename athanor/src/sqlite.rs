@@ -294,7 +294,17 @@ fn fetch_row(l: &Lib, st: *mut c_void) -> Result<Vec<Cell>, PyErr> {
 
 struct AuthCtx {
     write: bool,
+    clock_ok: bool, // годинник SQLite — лише з правом «час»
+    rand_ok: bool,  // random()/randomblob() — лише з «жереб» без квоти (суд 9)
     why: Vec<String>,
+}
+
+const DB_CLOCK: [&str; 10] =
+    ["date", "time", "datetime", "julianday", "unixepoch", "strftime", "timediff", "current_date", "current_time", "current_timestamp"];
+
+fn auth_ctx(it: &Interp, write: bool) -> AuthCtx {
+    let rand_ok = it.caps.has("жереб") && !it.quota_stack.iter().any(|q| q.quotas.iter().any(|((t, _), _)| t == "жереб"));
+    AuthCtx { write, clock_ok: it.caps.has("час"), rand_ok, why: Vec::new() }
 }
 
 const INFO_PRAGMAS: [&str; 7] = ["table_info", "table_xinfo", "table_list", "index_list", "index_info", "index_xinfo", "foreign_key_list"];
@@ -318,8 +328,17 @@ extern "C" fn on_auth(ud: *mut c_void, action: c_int, a1: *const c_char, a2: *co
     let cx = unsafe { &mut *(ud as *mut AuthCtx) };
     let s = |p: *const c_char| -> Option<String> { if p.is_null() { None } else { Some(unsafe { cs(p) }) } };
     let (a1, a2, view) = (s(a1), s(a2), s(view));
-    if action == 31 && uni::lower(a2.as_deref().unwrap_or("")) == "load_extension" {
+    let f = uni::lower(a2.as_deref().unwrap_or(""));
+    if action == 31 && f == "load_extension" {
         cx.why.push(format!("load_extension{}", view.map(|v| format!(" у тригері чи VIEW «{}»", v)).unwrap_or_default()));
+        return 1;
+    }
+    if action == 31 && DB_CLOCK.contains(&f.as_str()) && !cx.clock_ok {
+        cx.why.push(format!("годинник SQLite ({}) без права «час» — дати рахуйте в Nigredo (◷) чи дайте «час» у печатці", f));
+        return 1;
+    }
+    if action == 31 && (f == "random" || f == "randomblob") && !cx.rand_ok {
+        cx.why.push(format!("випадковість SQLite ({}) без права «жереб» (з квотою «жереб≤N» — лише 🜔жереб)", f));
         return 1;
     }
     let read = [20, 21, 31, 33];
@@ -335,16 +354,14 @@ extern "C" fn on_auth(ud: *mut c_void, action: c_int, a1: *const c_char, a2: *co
 
 struct ProgCtx {
     it: *mut Interp,
-    last: std::time::Instant,
     deadline: std::time::Instant,
 }
 
 extern "C" fn on_progress(ud: *mut c_void) -> c_int {
     let cx = unsafe { &mut *(ud as *mut ProgCtx) };
     let it = unsafe { &mut *cx.it };
-    let now = std::time::Instant::now();
-    it.steps_left -= 10 + ((now - cx.last).as_secs_f64() * 1_000_000.0) as i64;
-    cx.last = now;
+    // ~1000 інструкцій SQLite ≈ 10 кроків — детерміновано, як в еталона поза ‖ (‖ Атанор віддає еталону; суд 9)
+    it.steps_left -= 10;
     (it.steps_left < 0 || std::time::Instant::now() > cx.deadline) as c_int
 }
 
@@ -495,7 +512,7 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
         bound.push(match &x.v {
             Val::Bool(b) => Arg::Int(Int::S(*b as i64)),
             Val::Int(i) => match i.to_i64() {
-                Some(x) if x != i64::MIN => Arg::Int(i.clone()),
+                Some(_) => Arg::Int(i.clone()), // і −2⁶³ — INTEGER (суд 9: було текстом)
                 _ => Arg::Text(i.to_string()), // поза INTEGER SQLite — текстом (як у еталона)
             },
             Val::None => Arg::Null,
@@ -504,7 +521,7 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
                 let d = to_dec(&x.v);
                 let t = d.trunc();
                 let lim = Int::from_dec(false, "9223372036854775808");
-                let small = t.cmp(&lim) == std::cmp::Ordering::Less && t.cmp(&lim.neg()) == std::cmp::Ordering::Greater;
+                let small = t.cmp(&lim) == std::cmp::Ordering::Less && t.cmp(&lim.neg()) != std::cmp::Ordering::Less;
                 if d.is_integral() && small {
                     Arg::Int(t)
                 } else {
@@ -529,8 +546,8 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
         Err(PyErr::Memory) => return internal("MemoryError"),
         Err(PyErr::Other(m)) => return internal(m),
     };
-    let mut auth = AuthCtx { write, why: Vec::new() };
-    let mut prog = ProgCtx { it: it as *mut Interp, last: std::time::Instant::now(), deadline };
+    let mut auth = auth_ctx(it, write);
+    let mut prog = ProgCtx { it: it as *mut Interp, deadline };
     let result = (|| -> R<V> {
         (l.limit)(db, 7, 0);
         (l.limit)(db, 0, (4 * it.max_size).min(i32::MAX as u64) as c_int);
@@ -550,7 +567,6 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
             });
         }
         (l.set_authorizer)(db, Some(on_auth), &mut auth as *mut AuthCtx as *mut c_void);
-        prog.last = std::time::Instant::now();
         (l.progress)(db, 1000, Some(on_progress), &mut prog as *mut ProgCtx as *mut c_void);
         let before = (l.total_changes)(db);
         let r = (|| -> Result<V, Result<PyErr, Box<E>>> {
@@ -652,7 +668,7 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
                     deny(it, tool, &pv, &sql, "дія SQLite поза дозволеним")?;
                 }
                 let msg = if denied {
-                    if auth.why.first().map_or(false, |w| w.starts_with("load_")) {
+                    if auth.why.first().map_or(false, |w| ["load_", "годинник", "випадковість"].iter().any(|p| w.starts_with(p))) {
                         format!("заборонено: {}", auth.why[0])
                     } else {
                         format!(
@@ -686,7 +702,7 @@ pub fn rights(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) ->
         _ => return ngr(format!("{}: запит має бути рядком", tool), pos),
     };
     static_ok(it, pos, tool, &pv, &sql)?;
-    let mut auth = AuthCtx { write, why: Vec::new() };
+    let mut auth = auth_ctx(it, write);
     let uri = if pathx::isfile(&real) { format!("file:{}?mode=ro", quote(&real)) } else { ":memory:".into() };
     let db = match open(l, &uri) {
         Ok(db) => db,

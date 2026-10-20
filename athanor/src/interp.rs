@@ -122,6 +122,7 @@ pub struct Interp {
     pub last_call: Option<(String, Vec<J>)>,
     pub modules: HashMap<String, Rc<Env>>,
     pub prof: Option<HashMap<String, (u64, std::time::Duration)>>,
+    pub dry: Option<Vec<(u64, &'static str, Vec<J>, f64)>>, // --сухо: придушені дії (№, назва, аргументи, впевненість)
 }
 
 impl Interp {
@@ -1396,6 +1397,29 @@ impl Interp {
     }
 
     fn tool_do(&mut self, job: &Job) -> (Option<V>, Option<Box<E>>, Vec<String>) {
+        if self.dry.is_some() && matches!(job.name, "файл.писати" | "бд.писати") {
+            // --сухо (нативно, суд 9): дія не відбувається, результат невідомий; права — як завжди: поза ними
+            // «заборонено», а не «дій не виконано»; інша помилка (таблиці ще немає) — не судимо
+            self.denied = false;
+            let r = if job.name == "файл.писати" {
+                let a0 = job.args[0].v.clone();
+                self.path_ok(job.name, &a0, job.pos, true).map(|_| ())
+            } else {
+                let a = job.args.clone();
+                crate::sqlite::rights(self, job.name, &a, job.pos, true)
+            };
+            if let Err(e) = r {
+                if self.denied {
+                    let q = job.quota.clone();
+                    self.quota_refund(&q);
+                    return (None, Some(e), Vec::new());
+                }
+            }
+            let n = self.ends;
+            self.dry.as_mut().unwrap().push((n, job.name, job.targs.clone(), job.ac));
+            let v = if job.name == "файл.писати" { Val::None } else { Val::Int(Int::S(0)) };
+            return (Some(V::new(v, 0.0)), None, Vec::new());
+        }
         self.paths_seen = Some(Vec::new());
         self.denied = false;
         let t = std::time::Instant::now();
@@ -1420,7 +1444,13 @@ impl Interp {
         job.paths = paths;
         self.ends += 1;
         let name = job.name;
-        let reads = lang::WORLD_READERS.contains(&name);
+        let dry = self.dry.is_some();
+        let suppressed = dry && err.is_none() && matches!(name, "файл.писати" | "бд.писати");
+        if suppressed {
+            self.world_c = 0.0; // дію придушено: стан світу тепер не той, що був би (читання після — сумнівні)
+        }
+        // у сухому прогоні придушені дії не забирали часу й не змінювали світу: час і оракул — теж невідомі
+        let reads = lang::WORLD_READERS.contains(&name) || (dry && matches!(name, "час" | "оракул"));
         if let Some(mut e) = err {
             if e.fatal {
                 return Err(e);
@@ -1444,6 +1474,9 @@ impl Interp {
         if name == "час" {
             c = c.min(self.decided_c);
         }
+        if dry && matches!(name, "час" | "оракул") {
+            c = 0.0;
+        }
         let t = std::time::Instant::now();
         let stored = self.trace.keep(&res).map_err(terr)?;
         self.prof_add("сховище", t);
@@ -1454,6 +1487,9 @@ impl Interp {
         self.prof_add("trace_val", t);
         let mut d = data!["агент" => J::Str(job.agent.clone()), "назва" => J::s(name), "аргументи" => J::Arr(job.targs.clone()),
                           "результат" => tv, "впевненість" => fj(c), "значення" => J::Str(stored)];
+        if suppressed {
+            d.push(("сухо".into(), J::s("не виконано")));
+        }
         if !job.paths.is_empty() {
             d.push(("шлях".into(), J::Arr(job.paths.iter().map(|p| J::s(p)).collect())));
         }

@@ -105,7 +105,7 @@ impl P {
                     } else if c == EOL {
                         self.st = St::StartRecord;
                     } else {
-                        return Err("new-line character seen in unquoted field - do you need to open the file with newline=''?".into());
+                        return Err("символ нового рядка посеред поля без лапок (рядки, розділені самим \\r?) — рядки CSV діліть \\n чи \\r\\n".into());
                     }
                     return Ok(());
                 }

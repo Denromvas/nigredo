@@ -6,7 +6,8 @@
 
   claude mcp add nigredo -- python3 /шлях/до/Nigredo/mcp/nigredo_mcp.py
 
-Програми виконуються еталонним інтерпретатором як програми з робочої теки ($NIGREDO_WORKDIR, типово
+Програми виконує `ngr` — Атанор (нативний; чого не вміє, сам віддає еталону), а без зібраного Атанора — еталонний
+інтерпретатор; виконуються як програми з робочої теки ($NIGREDO_WORKDIR, типово
 ~/nigredo-робоча — поза текою власника) з дозволами власника для цієї теки (~/.nigredo/дозволи.json,
 «для_тек») — сервер нічого не дозволяє понад них. Кожен запуск лишає підписаний слід у $NIGREDO_HOME/сліди/.
 """
@@ -164,7 +165,7 @@ def call(name, a):
     if name == 'nigredo_pechatka':
         rc, out, err = ngr('--печатка', '--тека', WORKDIR, '-e', a['code'])
         _, js, _ = ngr('--печатка', '--json', '--тека', WORKDIR, '-e', a['code'])
-        return [clean((out or err).strip()), clean(js.strip())], rc != 0   # rc 3 — печатка не в межах дозволів власника
+        return [clean((out or err).strip()) + '\n', clean(js.strip())], rc != 0   # rc 3 — печатка не в межах дозволів власника
     if name == 'nigredo_pereviryty':
         rc, out, err = ngr('--перевірити', '--json', '--тека', WORKDIR, '-e', a['code'])
         return [clean((out or err).strip())], rc != 0
@@ -203,8 +204,9 @@ def call(name, a):
         if not (real.startswith(TRACES + os.sep) and real.endswith('.jsonl')):
             return ['✗ повторюю лише сліди з теки слідів власника'], True
         rc, out, err = ngr('--повторити', real)
-        return [f'код виходу: {rc} (0 — повтор збігся, 5 — розійшовся, 1 — повторити неможливо)',
-                'вивід повтору (слова автора програми, окремим блоком):\n' + clean(out), clean(err.strip())], rc != 0
+        return [f'код виходу: {rc} (0 — повтор збігся, 5 — розійшовся, 1 — повторити неможливо)\n',
+                clean(err.strip()) + '\n',
+                'вивід повтору (слова автора програми; від цього рядка до кінця відповіді):\n' + clean(out)], rc != 0
     if name == 'nigredo_pereviryty_slid':
         real = os.path.realpath(os.path.join(TRACES, a['path']))
         if not (real.startswith(TRACES + os.sep) and real.endswith('.jsonl')):
@@ -232,12 +234,15 @@ def traced(args, label, program=None):
         trace = open(tp, encoding='utf-8').read().strip()
     finally:
         os.unlink(tp)
-    blocks = [f'код виходу: {rc}', f'{label}:\n' + clean(out)]
-    if err.strip():
-        blocks.append('помилки:\n' + clean(err))
+    # підсумок — ПЕРШИМ, вивід — останнім і з лічбою рядків: програма не підробить «✓ слід цілий» своїм виводом (суд 9)
+    blocks = [f'код виходу: {rc}\n']
     if trace:
         vrc, vout, verr = ngr('--перевірити-слід', trace, *([program] if program else []))
-        blocks.append(f'слід: {clean(trace)}\n' + clean((vout or verr).strip()))
+        blocks.append(f'слід: {clean(trace)}\n' + clean((vout or verr).strip()) + '\n')
+    if err.strip():
+        blocks.append('помилки:\n' + clean(err).rstrip('\n') + '\n')
+    lines = out.count('\n') + (not out.endswith('\n') and bool(out))
+    blocks.append(f'{label} — {lines} рядк(ів), від цього рядка до кінця відповіді; підсумок — лише вище:\n' + clean(out))
     return blocks, rc != 0
 
 

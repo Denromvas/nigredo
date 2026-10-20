@@ -42,6 +42,43 @@ fn num(b: &[u8]) -> i64 {
     b.iter().fold(0i64, |a, &c| a * 10 + (c - b'0') as i64)
 }
 
+/// Чи це запис ISO (як регулярка _iso еталона), хай і з неможливою датою — для тексту помилки.
+pub fn iso_syntax(s: &str) -> bool {
+    let b = s.as_bytes();
+    let dig = |i: usize| i < b.len() && b[i].is_ascii_digit();
+    let digs = |i: usize, n: usize| (i..i + n).all(dig);
+    if !(digs(0, 4) && b.get(4) == Some(&b'-') && digs(5, 2) && b.get(7) == Some(&b'-') && digs(8, 2)) {
+        return false;
+    }
+    let mut i = 10;
+    if i == b.len() {
+        return true;
+    }
+    if !(b.get(10) == Some(&b'T') && digs(11, 2) && b.get(13) == Some(&b':') && digs(14, 2)) {
+        return false;
+    }
+    i = 16;
+    if b.get(i) == Some(&b':') && digs(i + 1, 2) {
+        i += 3;
+        if b.get(i) == Some(&b'.') && dig(i + 1) {
+            let mut j = i + 1;
+            while dig(j) {
+                j += 1;
+            }
+            if j - i - 1 > 6 {
+                return false;
+            }
+            i = j;
+        }
+    }
+    if b.get(i) == Some(&b'Z') {
+        i += 1;
+    } else if matches!(b.get(i), Some(b'+') | Some(b'-')) && digs(i + 1, 2) && b.get(i + 3) == Some(&b':') && digs(i + 4, 2) {
+        i += 6;
+    }
+    i == b.len()
+}
+
 /// _iso: Some — дата; None — «не дата ISO».
 pub fn iso(s: &str) -> Option<Dt> {
     let b = s.as_bytes();

@@ -855,6 +855,19 @@ def main():
           and '«для_програм» має бути словником' in got4.stderr,
           '«для_програм»: його теки запису — теки запису для «чужий код не модуль»; не словник — відмова',
           got3.stdout + got3.stderr + got4.stderr)
+    # суд 9: розділ «для_програм» уже є — --схвалити друкує злитий (ключ у JSON не повторюють); ⌂ — попередження;
+    # повтор ключа в дозволах власника — відмова, а не мовчки «останній перемагає»
+    (sx / 'вл' / 'дозволи.json').write_text(json.dumps({'дозволено': ['оракул'], 'для_програм': {'aa' * 32: ['оракул']}}),
+                                           encoding='utf-8')
+    (sx / 'арг.ngr').write_text('🜂 【「писати:вихід」】\n🜔писати § ⌂ 0 「x」\n', encoding='utf-8')
+    appr2 = run(['--схвалити', str(sx / 'арг.ngr')], envx)
+    (sx / 'вл' / 'дозволи.json').write_text('{"дозволено": ["оракул"], "дозволено": ["жереб"]}', encoding='utf-8')
+    got5 = run(['-e', '🜂\n» 1'], envx)
+    check(appr2.returncode == 0 and 'замініть його ЦІЛИМ' in appr2.stdout and 'aa' * 32 in appr2.stdout
+          and 'бере аргументи запуску (⌂)' in appr2.stdout and got5.returncode == 3
+          and 'ключ «дозволено» повторюється' in got5.stderr,
+          '--схвалити: злитий «для_програм», попередження про ⌂; повтор ключа в дозволах — відмова',
+          appr2.stdout[-700:] + got5.stderr)
     got = run(['-e', f'🜂 【「взяти:127.0.0.1:{port}」】\n» ☂ 🜔взяти 「http://@127.0.0.1:{port}/」 λe e'], env)
     check('поза дозволеним' in got.stdout, 'взяти (суд 8в): порожній логін «http://@хост/» — відмова за правами',
           got.stdout + got.stderr)
@@ -956,6 +969,80 @@ def main():
           '--печатка --json (суд 8б): квоти власника', str(sl))
     got = run(['-e', '🜂\n» ⌕ 「a=1 b=2」 「(\\w)=」\n» ⌕ 「a=1」 「\\w=」'], env)
     check(got.stdout == '【【「a」】 【「b」】】\n【「a=」】\n', '⌕: з однією групою — теж список груп (як обіцяє памʼятка)', got.stdout)
+    # суд 9: шаблон із даних — звичайна помилка мови (☂ ловить), а не код 4; \N{…} — однаково в обох виконавцях
+    rx_cases = [('⌕ 「İstanbul」 「(?i)[a-z]+」', '【「İstanbul」】'), ('⌕ 「İi」 「(?i)i」', '【「İ」 「i」】'),
+                ('⌕ 「ẞß」 「(?i)ß」', '【「ẞ」 「ß」】'), ('⌕ 「İ」 「(?i)[^a-z]」', '【】'),
+                ('≋ 「ab」 「(a)」 「\\²」', '≋: у заміні невідоме екранування \\²'),
+                ('≋ 「ab」 「(a)」 「\\g<١>」', '≋: у заміні немає групи «١»'),
+                ('⌕ 「a」 ＋ 「a{4294967296」 「}」', '⌕: хибний шаблон: the repetition number is too large'),
+                ('⌕ 「a」 ＋ 「a{4294967295」 「}」', '⌕: хибний шаблон: the repetition number is too large'),
+                ('⌕ 「a」 ＋ 「a{1,4294967296」 「}」', '⌕: хибний шаблон: the repetition number is too large'),
+                ('⌕ 「a」 ＋ 「a{4294967294」 「}」', '⌕: шаблон розгортається понад 20000 інструкцій (зменште {m,n})'),
+                ('⌕ 「a」 ＋ 「a{1073741823」 「}」', '⌕: шаблон розгортається понад 20000 інструкцій (зменште {m,n})'),
+                ('⌕ 「a」 ＋ 「(?a)(?u)」 「a」', '⌕: хибний шаблон: ASCII and UNICODE flags are incompatible'),
+                ('⌕ 「ab」 ＋ 「\\N{LATIN SMALL LETTER B」 「}」',
+                 '⌕: \\N{…} (назва символу) у шаблоні не підтримано — напишіть сам символ'),
+                ('⌕ 「a\\\\Nb」 「\\\\\\\\N」', '【「\\\\N」】')]
+    got = run(['-e', '🜂\n' + ''.join(f'» ☂ {c} λe e\n' for c, _ in rx_cases)], env)
+    want = [w for _, w in rx_cases]
+    check(got.returncode == 0 and got.stdout.split('\n')[:-1] == want, '⌕ ≋ з даних (суд 9): İ, \\², a{2³²}, (?a)(?u), \\N{…} — '
+          'помилки мови під ☂, без коду 4', '\n'.join(f'{a!r} ≠ {b!r}' for a, b in zip(got.stdout.split('\n'), want) if a != b)
+          + got.stderr)
+    for mode in (['--перевірити'], ['--печатка', '--json'], ['--розбір'], []):
+        got = run([*mode, '-e', '🜂\n» ⌕ 「a」 「a{4294967296}」'], env)
+        check(got.returncode == 2 and 'Traceback' not in got.stderr + got.stdout
+              and 'the repetition number is too large' in got.stderr + got.stdout,
+              f'буквальний a{{4294967296}} {" ".join(mode) or "запуск"} — помилка до запуску, код 2', got.stderr)
+    # суд 9: 🜔читати файлу, довшого за --розмір, — помилка, а не тихе обрізання (і CRLF — один символ)
+    (DATA / 'звіти' / 'межа_1000.txt').write_bytes(b'\xd0\x96' * 998 + b'\r\n!')
+    (DATA / 'звіти' / 'межа_1001.txt').write_bytes(b'\xd0\x96' * 999 + b'\r\n!')
+    got = run(['--розмір', '1000', '-e', f'🜂 【「читати:{DATA}」】\n» ρ 🜔читати 「звіти/межа_1000.txt」\n'
+               f'» ☂ ρ 🜔читати 「звіти/межа_1001.txt」 λe e'], env)
+    check(got.stdout == '1000\nфайл.читати: у файлі понад 1000 символів (--розмір) — частину не читаю мовчки: '
+          'звіти/межа_1001.txt\n', '🜔читати: рівно --розмір символів — так, на один більше — помилка (суд 9)',
+          got.stdout + got.stderr)
+
+    # суд 9: розбіжності Атанора з еталоном — та сама програма тут і еталоном поруч: вивід, код, кроки — однакові
+    def both(args, e=env):
+        return run(args, e), subprocess.run([sys.executable, str(NGR), *args], capture_output=True, text=True, env=e)
+    got, ref = both(['-e', '🜂\n» ⇣ 「ΣΣ ΑΣΣΑ ΟΔΥΣΣΕΥΣ ΑΣ\'Σ Σ」\n» ☂ δ 「1e99999999999999999999」 λe e\n'
+                     '» ☂ ν 「1e-99999999999999999999」 λe e\n» ☂ δ 「[1e999999999999999999]」 λe e'])
+    check(got.stdout == ref.stdout == "σς ασσα οδυσσευς ασ'ς σ\nδ: порядок числа понад 30000 цифр\n"
+          "ν: порядок числа понад 30000 цифр\nδ: порядок числа понад 30000 цифр\n",
+          '⇣ кінцева сигма (ΣΣ → σς) і порядок понад межі Decimal — однаково в обох', got.stdout + ref.stdout)
+    got, ref = both(['-e', '🜂 「памʼять」\n← глиб Σ …1 2001 【】 Λa i 【a】\n» ☂ 🜄 「k」 глиб λe e\n» 🜃 「k」\n'
+                     '← нам 1\n← นาม 2\n← नाम 3\n» ＋ ＋ нам นาม नाम'])
+    check(got.stdout == ref.stdout == '🜄: значення вкладене надто глибоко\n∅\n6\n',
+          '🜄 надто глибокого — помилка ДО запису в памʼять; імена зі знаками голосних (суд 9)', got.stdout + got.stderr)
+    got, ref = both(['-e', '🜂\n» ☂ ◷ 「2026-02-29」 1 λe e\n» ☂ ◷ 「2026-2-1」 1 λe e\n» ☂ ▦ δ 「"a,b\\\\rc,d"」 λe e\n'
+                     '» ☂ δ δ 「"\\\\ufeff[1]"」 λe e'])
+    check(got.stdout == ref.stdout and 'такої дати чи часу немає' in got.stdout and 'не дата ISO' in got.stdout
+          and 'newline' not in got.stdout and 'utf-8-sig' not in got.stdout and 'BOM (U+FEFF)' in got.stdout,
+          '◷ 2026-02-29 — «такої дати немає»; CSV і BOM — без порад Python (суд 9)', got.stdout + got.stderr)
+    deep = '🜂 「стек」\n← f λn ¿ ≤ n 0 0 ' + '＋ 1 ' * 60 + 'f － n 1\n» f 1900'
+    got, ref = both(['-e', deep])
+    check(got.returncode == ref.returncode == 0 and got.stdout == ref.stdout == '114000\n',
+          'рекурсія 1900 × 60 вкладених ＋ — у межах мови, без коду 4 (суд 9)', got.stderr[-300:] + ref.stderr[-300:])
+    (tmp / 'бд_вл').mkdir()
+    (tmp / 'бд_вл' / 'дозволи.json').write_text(json.dumps({'дозволено': [f'бд.писати:{DATA}/звіти', f'бд.читати:{DATA}/звіти',
+                                                                        'жереб']}, ensure_ascii=False), encoding='utf-8')
+    envd = dict(env, NIGREDO_HOME=str(tmp / 'бд_вл'))
+    db_ = f'🜂 【「бд.писати:{DATA}/звіти」】\n» 🜔бд.писати 「{DATA}/звіти/кроки.db」 「CREATE TABLE IF NOT EXISTS т(x)」 【】'
+    run(['-e', db_], envd)
+    cte = (f'🜂 【「бд.читати:{DATA}/звіти」】\n» 🜔бд.читати 「{DATA}/звіти/кроки.db」 「WITH RECURSIVE t(x) AS (SELECT 1 UNION ALL '
+           f'SELECT x + 1 FROM t WHERE x < 100000) SELECT count(*) AS n FROM t」 【】')
+    steps_ = []
+    for k_, cmd_ in enumerate((NGR_CMD, [sys.executable, str(NGR)])):
+        tp_ = tmp / f'кроки{k_}.jsonl'
+        subprocess.run([*cmd_, '--слід', str(tp_), '-e', cte], capture_output=True, env=envd)
+        steps_.append(json.loads(tp_.read_text(encoding='utf-8').splitlines()[-1]).get('кроків'))
+    check(steps_[0] == steps_[1] and steps_[0], 'кроки SQLite — детерміновано й однаково в обох (суд 9)', str(steps_))
+    got, ref = both(['-e', f'🜂 【「бд.писати:{DATA}/звіти」 「жереб≤2」】\n'
+                     f'» ☂ 🜔бд.писати 「{DATA}/звіти/кроки.db」 「SELECT strftime(?, ?) AS t」 【「%s」 「now」】 λe e\n'
+                     f'» ☂ 🜔бд.писати 「{DATA}/звіти/кроки.db」 「SELECT random() AS r」 【】 λe e'], envd)
+    check(got.stdout == ref.stdout and got.stdout.count('заборонено:') == 2 and 'без права «час»' in got.stdout
+          and 'з квотою «жереб≤N»' in got.stdout, 'SQLite: годинник без «час» і random() під квотою жеребу — відмова (суд 9)',
+          got.stdout + got.stderr)
     got = run(['--тести', str(ROOT / 'examples' / 'тести')], env)
     check(got.returncode == 0 and 'тестів пройшли' in got.stdout, 'ngr --тести: тести мовою (examples/тести) — усі пройшли',
           got.stdout + got.stderr)
@@ -1048,6 +1135,22 @@ def main():
     err = p.stderr.read().decode()
     p.wait()
     check(p.returncode != 4 and 'внутрішня' not in err and 'Exception' not in err, 'обірвана труба — тихо, не «вада мови»', err)
+    # --слід-розмір рахує записи після «початку» (поле «інтерпретатор» у ньому різне) — межа та сама в обох (суд 9)
+    flood = '🜂 「повінь」\n∀ …1 30 λi » i'
+    run(['--слід', str(tmp / 'повінь1.jsonl'), '-e', flood], env)
+    sizes = [len(x) + 1 for x in (tmp / 'повінь1.jsonl').read_bytes().split(b'\n')[1:-1]]
+    got = run(['--слід', str(tmp / 'повінь2.jsonl'), '--слід-розмір', str(sum(sizes[:12]) - 1), '-e', flood], env)
+    evs = [json.loads(x)['подія'] for x in (tmp / 'повінь2.jsonl').read_text(encoding='utf-8').splitlines()]
+    check(got.returncode == 1 and len(evs) == 14 and evs[-1] == 'помилка' and got.stdout.split() == [str(i) for i in range(1, 12)],
+          '--слід-розмір: «початок» не рахується — зупинка рівно після 12-го запису', f'{evs}\n{got.stderr}')
+    for bad in (['--слід-розмір', 'abc'], ['--кроки', '-5'], ['--зерно', '+-5'], ['--кроки']):
+        got = run([*bad, '-e', '» 1'] if len(bad) == 2 else bad, env)
+        check(got.returncode == 2 and 'Traceback' not in got.stderr and bad[0] in got.stderr,
+              f'криве значення {" ".join(bad)} — помилка, не трасування', got.stderr)
+    got = run(['--зерно', '007', '--слід', str(tmp / 'зерно.jsonl'), '-e', '🜂 「зерно」\n» 1'], env)
+    head = json.loads((tmp / 'зерно.jsonl').read_text(encoding='utf-8').split('\n')[0])
+    check(head['ліміти']['зерно'] == 7 and run(['--перевірити-слід', str(tmp / 'зерно.jsonl')], env).returncode == 0,
+          '--зерно 007 — у сліді число 7, слід цілий', str(head.get('ліміти')))
     got = subprocess.run([*NGR_CMD, '-e', '🜂 「а」 【】\n» ⌂', '--', os.fsdecode(b'\xff')],
                          capture_output=True, text=True, env=penv)
     tr = pathf.read_text(encoding='utf-8')
@@ -1089,12 +1192,16 @@ def main():
     check(not tres.get('isError') and '"пройшли": 1' in tres['content'][0]['text'], 'MCP: nigredo_testy проганяє *.тест.ngr робочої теки',
           got_t.stdout[-400:])
     got_s = subprocess.run([sys.executable, str(mcp)], input=json.dumps({'jsonrpc': '2.0', 'id': 10, 'method': 'tools/call',
-                           'params': {'name': 'nigredo_shvalyty', 'arguments': {'code': f'🜂 【「читати:{DATA}」】\n» 1'}}}) + '\n',
+                           'params': {'name': 'nigredo_shvalyty', 'arguments': {'code': f'🜂 【「читати:{DATA}」 「писати:{work}」】\n» 1'}}})
+                           + '\n',
                            capture_output=True, text=True, env=dict(env, NIGREDO_WORKDIR=str(work)))
     sres = json.loads(got_s.stdout.splitlines()[0])['result']
     stext = sres['content'][0]['text']
-    check(not sres.get('isError') and 'ВІДБИТОК' in stext and '"для_програм"' in stext and 'ПЕРЕКЛАД' in stext,
-          'MCP: nigredo_shvalyty — відбиток і запис «для_програм» для власника, без виконання', got_s.stdout[-400:])
+    entry_ = stext[stext.find('"для_програм"'):].split('\n')[0]
+    check(not sres.get('isError') and 'ВІДБИТОК' in stext and 'ПЕРЕКЛАД' in stext and f'файл.писати:{work}' in entry_
+          and 'файл.читати' not in entry_ and 'уже дозволено без схвалення' in stext,
+          'MCP: nigredo_shvalyty — відбиток і запис «для_програм» лише з тим, чого бракує (суд 9), без виконання',
+          got_s.stdout[-600:])
     check(not res[4].get('isError') and '✓ повтор збігся' in txt(4) and res[5].get('isError')
           and '1 дій не виконано' in txt(6) and not (DATA / 'звіти' / 'mcp_сухо.txt').exists(),
           'MCP: nigredo_povtoryty (лише сліди власника) і nigredo_vykonaty з suho', got.stdout[-800:] + got.stderr)
@@ -1229,6 +1336,37 @@ def main():
           and vr.returncode == 0 and 'СЕАНС REPL' in vr.stdout and '» ＋ x 1' in codes,
           'ngr --repl: спільні імена, відхилені частини, печатка на весь сеанс, слід з кодом кожної частини',
           rp.stdout + rp.stderr + vr.stdout)
+    # суд 9: перевірка програми на кожну частину; відмова й поганий UTF-8 — у сліді; --слід; провал частини — канал
+    # завершення; упала перша частина — сеанс завершено (печатку не змінити)
+    def repl(lines, *flags):
+        p_ = subprocess.run([*NGR_CMD, '--repl', '--тека', str(DATA), *flags], input=b'\n'.join(lines) + b'\n',
+                            capture_output=True, env=env)
+        tr_ = sorted((pathlib.Path(env['NIGREDO_HOME']) / 'сліди').glob('*-repl-*.jsonl'))[-1]
+        return p_.returncode, [json.loads(x) for x in p_.stdout.decode().splitlines()], tr_
+    j = lambda c: json.dumps({'код': c}, ensure_ascii=False).encode()      # noqa: E731
+    rc, ans, tr_ = repl([j('🜂 【「писати:звіти」】'), j('🜔писати 「звіти/repl_м.ngr」 「🜂\\n← f λx ＋ x 1」'),
+                         j('⊃ 「звіти/repl_м.ngr」 【「f」】\n» f 1')])
+    check(rc == 0 and [a_['гаразд'] for a_ in ans] == [True, True, False] and 'дозволено писати' in ans[2]['помилка'],
+          '--repl: модуль із теки запису — відмова, як у файлі (суд 9)', str(ans))
+    rc, ans, tr_ = repl([b'\xff\xfe', j('🜂 【「читати:/」】')])
+    evs = [json.loads(x)['подія'] for x in tr_.read_text(encoding='utf-8').splitlines()]
+    check(rc == 3 and 'не UTF-8' in ans[0]['помилка'] and evs == ['початок', 'код', 'код', 'відмова']
+          and run(['--перевірити-слід', str(tr_)], env).returncode == 0,
+          '--repl: поганий UTF-8 і печатка поза власником — у сліді («відмова»), без коду 4', f'{ans} {evs}')
+    rc, ans, tr_ = repl([j('🜂 「довіра」\n← p ≈ ● 0.41'), j('🜄 「k」 「до」\n¿ p ☠ 「стоп」 ∅\n🜄 「k」 「після」'),
+                         j('» ± 🜃 「k」')])
+    check(rc == 0 and ans[1]['гаразд'] is False and ans[2]['вивід'] == '0.41\n',
+          '--repl: частина впала за сумнівом — решта сеансу не впевненіша (канал завершення)', str(ans))
+    rc, ans, tr_ = repl([j('🜂 【「писати:звіти」】\n☠ 「впала」'), j('🜂 【「читати:.」】\n» 1')])
+    check(rc == 1 and len(ans) == 1 and ans[0].get('кінець') is True and 'сеанс завершено' in ans[0]['помилка'],
+          '--repl: перша частина (з печаткою) впала — сеанс завершено, другої печатки немає', str(ans))
+    own = tmp / 'repl_мій.jsonl'
+    rc, ans, tr_ = repl([j('🜂 「а」'), j('» 1')], '--слід', str(own))
+    recs = [json.loads(x) for x in own.read_text(encoding='utf-8').splitlines()]
+    vr2 = run(['--перевірити-слід', str(own), str(ROOT / 'examples' / 'pryvit.ngr')], env)
+    check(rc == 0 and [r_['подія'] for r_ in recs][-3:] == ['вивід', 'значення', 'кінець']
+          and vr2.returncode == 1 and 'СЕАНС REPL' in vr2.stdout,
+          '--repl --слід ФАЙЛ — копія сліду; --перевірити-слід СЛІД ПРОГРАМА для сеансу — ✗', vr2.stdout + str(recs[-3:]))
 
     sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',

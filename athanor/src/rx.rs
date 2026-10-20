@@ -2,7 +2,7 @@
 //! Pike VM без відкатів (те саме, що в еталоні: ті самі кроки, той самий пріоритет гілок).
 use crate::uni;
 
-const MAXREPEAT: u32 = 1_073_741_823;
+const MAXREPEAT: u32 = u32::MAX; // _sre.MAXREPEAT: {n} з n ≥ нього — OverflowError, а сам він — «без межі»
 const MAXGROUPS: usize = 1_073_741_823 / 2;
 pub const RX_MAX_PROG: usize = 20_000;
 
@@ -85,7 +85,6 @@ pub struct ReErr {
 pub enum RxErr {
     Re(ReErr),      // re.error → «хибний шаблон: …»
     Rx(String),     // RxError мови
-    Internal(String), // інший виняток Python (OverflowError…) — у еталоні це вада, код 4
 }
 
 struct Tok<'a> {
@@ -621,13 +620,13 @@ fn parse(src: &mut Tok, st: &mut State, mut verbose: bool, nested: usize, first:
                     let big = |s: &str| -> bool { s.trim_start_matches('0').len() > 10 || s.parse::<u64>().map_or(true, |v| v >= MAXREPEAT as u64) };
                     if !lo.is_empty() {
                         if big(&lo) {
-                            return Err(RxErr::Internal("OverflowError: the repetition number is too large".into()));
+                            return Err(RxErr::Re(ReErr { msg: "the repetition number is too large".into(), pos: None }));
                         }
                         min = lo.parse().unwrap();
                     }
                     if !hi.is_empty() {
                         if big(&hi) {
-                            return Err(RxErr::Internal("OverflowError: the repetition number is too large".into()));
+                            return Err(RxErr::Re(ReErr { msg: "the repetition number is too large".into(), pos: None }));
                         }
                         max = hi.parse().unwrap();
                         if max < min {
@@ -965,7 +964,7 @@ fn parse_pattern(pat: &[char]) -> PR<(Vec<Op>, u32, usize, Vec<(String, usize)>)
     if st.flags & F_ASCII == 0 {
         st.flags |= F_UNICODE;
     } else if st.flags & F_UNICODE != 0 {
-        return Err(RxErr::Internal("ValueError: ASCII and UNICODE flags are incompatible".into()));
+        return Err(RxErr::Re(ReErr { msg: "ASCII and UNICODE flags are incompatible".into(), pos: None }));
     }
     if src.next.is_some() {
         return src.error("unbalanced parenthesis".into(), 0);
@@ -1054,7 +1053,7 @@ impl Gen {
                 let c = char::from_u32(*v).unwrap_or('\u{FFFD}');
                 let mut cs = vec![c.to_string()];
                 if icase {
-                    for x in [uni::lower_char(c), uni::upper_char(c)] {
+                    for x in [low1(c), up1(c)] {
                         if !cs.contains(&x) {
                             cs.push(x);
                         }
@@ -1161,6 +1160,21 @@ impl Gen {
     }
 }
 
+/// Проста мала літера (як у re): «İ» → «i», а не «i̇» з двох символів (суд 9: [a-z] з (?i) на «İ» — код 4).
+fn low1(c: char) -> String {
+    let lo = uni::lower_char(c);
+    match lo.chars().nth(1) {
+        None => lo,
+        Some(_) => lo.chars().next().unwrap().to_string(),
+    }
+}
+
+/// Проста велика літера: «ß» лишається «ß» (повна — «SS»).
+fn up1(c: char) -> String {
+    let up = uni::upper_char(c);
+    if up.chars().nth(1).is_none() { up } else { c.to_string() }
+}
+
 /// Символ чи рядок (ch.lower() може бути довшим за символ).
 fn cat_hit(cat: Cat, ch: &str, ascii: bool) -> bool {
     let hit = if ascii && !ch.is_ascii() {
@@ -1181,7 +1195,7 @@ fn cat_hit(cat: Cat, ch: &str, ascii: bool) -> bool {
     if matches!(cat, Cat::NotDigit | Cat::NotSpace | Cat::NotWord) { !hit } else { hit }
 }
 
-/// one(ch) у класі: Err — ord() від рядка довшого за символ (у еталоні TypeError → вада, код 4).
+/// one(ch) у класі: Err — ord() від рядка довшого за символ (після low1/up1 не буває).
 fn one(parts: &[SetItem], ch: &str, ascii: bool) -> Result<bool, String> {
     for p in parts {
         match p {
@@ -1220,14 +1234,14 @@ impl Pred {
             Pred::Any { dotall } => Ok(*dotall || c != '\n'),
             Pred::Lit { cs, icase, neg } => {
                 let s = c.to_string();
-                let hit = cs.contains(&s) || (*icase && cs.contains(&uni::lower_char(c)));
+                let hit = cs.contains(&s) || (*icase && cs.contains(&low1(c)));
                 Ok(hit != *neg)
             }
             Pred::In { neg, parts, icase, ascii } => {
                 let s = c.to_string();
                 let mut hit = one(parts, &s, *ascii)?;
                 if !hit && *icase {
-                    hit = one(parts, &uni::lower_char(c), *ascii)? || one(parts, &uni::upper_char(c), *ascii)?;
+                    hit = one(parts, &low1(c), *ascii)? || one(parts, &up1(c), *ascii)?;
                 }
                 Ok(hit != *neg)
             }
@@ -1242,6 +1256,16 @@ impl Rx {
         let cs: Vec<char> = pat.chars().collect();
         if cs.len() > 1000 {
             return Err(RxErr::Rx("шаблон довший за 1000 символів".into()));
+        }
+        let mut i = 0;
+        while i + 1 < cs.len() {        // \N{назва}: бази назв Unicode немає — однаково з еталоном (суд 9)
+            if cs[i] == '\\' {
+                if cs[i + 1] == 'N' {
+                    return Err(RxErr::Rx("\\N{…} (назва символу) у шаблоні не підтримано — напишіть сам символ".into()));
+                }
+                i += 1;
+            }
+            i += 1;
         }
         let (tree, flags, ngroups, names) = parse_pattern(&cs)?;
         let mut g = Gen { prog: Vec::new(), preds: Vec::new(), ascii: flags & F_ASCII != 0 };
@@ -1401,9 +1425,9 @@ impl Rx {
                 return Err((true, "заміна закінчується на «\\»".into()));
             }
             let d = tmpl[i + 1];
-            if uni::isdigit(d) {
+            if d.is_ascii_digit() {                   // лише 0–9, як у re («\²» — не група; суд 9: було код 4)
                 let mut j = i + 1;
-                while j < n && j < i + 3 && uni::isdigit(tmpl[j]) {
+                while j < n && j < i + 3 && tmpl[j].is_ascii_digit() {
                     j += 1;
                 }
                 let s: String = tmpl[i + 1..j].iter().collect();
@@ -1419,7 +1443,7 @@ impl Rx {
                     None => return Err((true, "у заміні незакрите \\g<".into())),
                 };
                 let r: String = tmpl[i + 3..j].iter().collect();
-                let k: Option<i64> = if !r.is_empty() && r.chars().all(uni::isdigit) {
+                let k: Option<i64> = if !r.is_empty() && r.chars().all(|c| c.is_ascii_digit()) {
                     Some(py_int(&r).map_err(|e| (false, e))?)
                 } else {
                     self.names.iter().find(|(nm, _)| *nm == r).map(|(_, g)| *g as i64)

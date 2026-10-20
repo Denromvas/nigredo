@@ -152,8 +152,10 @@ def main():
 
     def sigma_class(cp):
         c = ch(cp)
-        if 0xD800 <= cp <= 0xDFFF or cp == 0x3A3:
+        if 0xD800 <= cp <= 0xDFFF:
             return 0
+        if cp == 0x3A3:                  # сама Σ — cased (пробою «…Σ» її не визначити; суд 9: ΣΣ → σσ замість σς)
+            return 2
         back_a = ('A' + c + 'Σ').lower()[-1] == 'ς'
         back_c = (c + 'Σ').lower()[-1] == 'ς'
         fwd = ('AΣ' + c).lower()[1] == 'ς'
