@@ -3134,11 +3134,11 @@ def _db(it, pos, tool, p, sql, params, write):
     try:
         con.setlimit(sqlite3.SQLITE_LIMIT_ATTACHED, 0)
         con.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 4 * it.max_size)      # одне значення — не більше за --розмір (суд 7)
-        con.execute(f'PRAGMA hard_heap_limit = {max(64 << 20, 32 * it.max_size)}')   # і памʼять самого SQLite (суд 7)
-        if write:                        # база не росте без меж (zeroblob заповнив би диск телефона)
-            page = con.execute('PRAGMA page_size').fetchone()[0]
-            con.execute(f'PRAGMA max_page_count = {DB_MAX_BYTES // page}')
         try:
+            con.execute(f'PRAGMA hard_heap_limit = {max(64 << 20, 32 * it.max_size)}')   # і памʼять SQLite (суд 7)
+            if write:                    # база не росте без меж (zeroblob заповнив би диск телефона); page_size уже
+                page = con.execute('PRAGMA page_size').fetchone()[0]   # читає схему: файл — не база чи схема
+                con.execute(f'PRAGMA max_page_count = {DB_MAX_BYTES // page}')   # пошкоджена — помилка програми (9б)
             helper = _db_guard(con, it, why, write)     # до authorizer і лічби кроків: це не запит програми
             con.set_authorizer(auth)
             con.set_progress_handler(progress, 1000)
@@ -3278,14 +3278,16 @@ def _db_guard(con, it, why, write):
 
     def rand(name):
         return lambda *a: refuse(f'випадковість SQLite ({name}) без права «жереб» (з квотою «жереб≤N» — лише 🜔жереб)')
+    # детермінованість — як у самого SQLite: функції дат — так, CURRENT_* і random — ні (інакше GENERATED … AS
+    # (random()) чи індекс на CURRENT_TIME пройшли б і записали схему, якої SQLite потім не відкриє; суд 9б)
     if not clock_ok:
         for n in DB_CLOCK:
             con.create_function(n, -1, clock(n), deterministic=True)
         for n in DB_NOW:
-            con.create_function(n, 0, now(n), deterministic=True)
+            con.create_function(n, 0, now(n))
     if not rand_ok:
-        con.create_function('random', 0, rand('random'), deterministic=True)
-        con.create_function('randomblob', 1, rand('randomblob'), deterministic=True)
+        con.create_function('random', 0, rand('random'))
+        con.create_function('randomblob', 1, rand('randomblob'))
         if write:
             con.execute('PRAGMA temp_store = MEMORY')
             con.create_function('ngr_rowid', 2, lambda t, hidden: refuse(
@@ -3363,7 +3365,9 @@ SQL_ERRORS = [('Incorrect number of bindings', 'кількість «?» у за
               ('no such table', 'немає такої таблиці'), ('no such column', 'немає такого стовпця'),
               ('syntax error', 'синтаксична помилка SQL'), ('UNIQUE constraint failed', 'порушено унікальність'),
               ('NOT NULL constraint failed', 'порожнє значення там, де заборонено'), ('database is locked', 'база зайнята'),
-              ('database or disk is full', 'база досягла межі розміру'), ('string or blob too big', 'значення більше за --розмір'), ('unable to open', 'не вдалося відкрити базу')]
+              ('database or disk is full', 'база досягла межі розміру'), ('string or blob too big', 'значення більше за --розмір'), ('unable to open', 'не вдалося відкрити базу'),
+              ('file is not a database', 'файл — не база SQLite'), ('malformed database schema', 'схема бази пошкоджена'),
+              ('non-deterministic functions prohibited', 'недетермінована функція (random(), CURRENT_* тощо) у згенерованому стовпці чи індексі')]
 
 
 def sql_err(msg):

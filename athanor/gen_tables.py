@@ -207,6 +207,8 @@ def lang():
     out.append(f'pub static TOOLS: [(&str, u8, bool, &str); {len(tools)}] = [' +
                ', '.join(f'({rs(k)}, {v[0]}, {str(v[3]).lower()}, {rs(v[4])})' for k, v in tools) + '];')
     al = list(N.TOOL_ALIASES.items())
+    out.append(f'pub static SQL_ERRORS: [(&str, &str); {len(N.SQL_ERRORS)}] = [' +
+               ', '.join(f'({rs(a)}, {rs(b)})' for a, b in N.SQL_ERRORS) + '];')
     out.append(f'pub static TOOL_ALIASES: [(&str, &str); {len(al)}] = [' + ', '.join(f'({rs(a)}, {rs(b)})' for a, b in al) + '];')
     for name in ('HEAVY', 'LAZY_GLYPHS', 'OWN_CONF', 'NEVER_FAILS', 'PURE_GLYPHS'):
         out.append(f'pub const {name}: &str = {rs("".join(sorted(getattr(N, name))))};')

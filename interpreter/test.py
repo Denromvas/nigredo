@@ -1157,6 +1157,35 @@ def main():
     ver = run(['--перевірити-слід', str(gtr)], envd)
     check(got.stdout == '【『「м」 「2026-03」』】\n' and ver.returncode == 0 and 'заборонено' not in ver.stdout,
           'SQLite: арифметика дат з даних без «час» — не «заборонено», слід без тривоги (суд 9б)', got.stderr + ver.stdout)
+    # суд 9б (атаки обома виконавцями): заглушка random() була «детермінованою» — CREATE … AS (random()) проходив і
+    # писав схему, якої SQLite не відкриє; а файл — не база чи пошкоджена схема давали код 4. CHECK недетерміновані
+    # функції SQLite пускає — і ми так само (а годинник у ньому — відмова)
+    import sqlite3
+    nd_, bad_, gen_ = (f'{DATA}/звіти/{n}' for n in ('не_база9б.db', 'схема_зламана9б.db', 'недет9б.db'))
+    pathlib.Path(nd_).write_text('не база даних, а текст, довший за заголовок SQLite: ' + 'ж' * 80, encoding='utf-8')
+    for f_ in (bad_, gen_):
+        if os.path.exists(f_):
+            os.remove(f_)
+    c_ = sqlite3.connect(bad_)
+    c_.create_function('random', 0, lambda: 4, deterministic=True)
+    c_.execute('CREATE TABLE ж3(a, b AS (random()))')
+    c_.close()
+    q_ = '🜂 【「бд.писати:{0}/звіти」 「бд.читати:{0}/звіти」】\n'.format(DATA) + ''.join(
+        f'» ☂ σ 🜔бд.писати 「{f_}」 「INSERT INTO ж3(a) VALUES (1)」 【】 λe e\n'
+        f'» ☂ σ 🜔бд.читати 「{f_}」 「SELECT count(*) AS x FROM sqlite_master」 【】 λe e\n' for f_ in (nd_, bad_)) + ''.join(
+        f'» ☂ σ 🜔бд.писати 「{gen_}」 「{s_}」 【】 λe e\n' for s_ in (
+            'CREATE TABLE г(a, b AS (random()))', 'CREATE TABLE ч(a, b AS (CURRENT_DATE))', 'CREATE TABLE IF NOT EXISTS і(a)',
+            'CREATE INDEX іі ON і(randomblob(2))', 'CREATE TABLE IF NOT EXISTS к(a CHECK (a < CURRENT_DATE))', 'INSERT INTO к VALUES (1)'))
+    got, ref = both(['-e', q_], envd)
+    c_ = sqlite3.connect(gen_)
+    names_ = sorted(r[0] for r in c_.execute('SELECT name FROM sqlite_master'))
+    c_.close()
+    check(got.stdout == ref.stdout and got.returncode == ref.returncode == 0
+          and got.stdout.count('файл — не база SQLite') == 2 and got.stdout.count('схема бази пошкоджена') == 2
+          and got.stdout.count('недетермінована функція') == 3 and got.stdout.count('годинник SQLite (current_date)') == 1
+          and names_ == ['к', 'і'],
+          'SQLite: файл — не база / пошкоджена схема — помилка програми, не код 4; random() і CURRENT_* у GENERATED та '
+          'індексі — відмова самого SQLite, у CHECK — як у SQLite; схема лишається читною (суд 9б)', got.stdout + got.stderr + ref.stderr)
     got = run(['--тести', str(ROOT / 'examples' / 'тести')], env)
     check(got.returncode == 0 and 'тестів пройшли' in got.stdout, 'ngr --тести: тести мовою (examples/тести) — усі пройшли',
           got.stdout + got.stderr)
