@@ -323,6 +323,9 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Back> {
             if buf.chars().any(|c| matches!(c as u32, 0x1100..=0x11FF | 0xA960..=0xA97F | 0xD7B0..=0xD7FF)) {
                 return back("чамо хангилю в імені"); // ᄉ ≈ ∧ (суд 9б) — помилку пише еталон
             }
+            if buf.chars().any(uni::odd_letter) {
+                return back("літера не для імен чи літера-цифра"); // ꜫ ≈ 3, 乂丨 ≈ ×1 (суд 9д)
+            }
             if buf.starts_with('米') || buf.starts_with('氺') {
                 return back("імʼя починається з 米 чи 氺"); // «米1 「…」» — як коментар «※1 …» (суд 9в, 9г)
             }
@@ -367,8 +370,11 @@ pub fn check_twins(toks: &[Token]) -> Result<(), Back> {
             if uni::looks_numeric(&sk) {
                 return back("імʼя виглядає як число"); // скелет лише з цифр (суд 9в)
             }
-            // імʼя на вигляд — стала (Ø ≈ ∅, ᄋ ≈ ○), і з цифрами (ø1; суд 9г): помилку пише еталон (суд 9)
-            let base = uni::digitless(v);
+            // імʼя на вигляд — стала (Ø ≈ ∅, ᄋ ≈ ○), і з цифрами (ø1; суд 9г), і повтором (øø; суд 9д): помилку пише
+            // еталон (суд 9)
+            let cs: Vec<char> = uni::digitless(v).chars().collect();
+            let base: String = uni::unit(&cs).iter().collect();
+            let base = base.as_str();
             let skb = uni::skeleton(base).ok_or(Back("скелет".into()))?;
             if matches!(uni::glyph_twin(&skb), Some("●" | "○" | "∅")) || matches!(base, "ᄋ" | "ㅇ" | "〇" | "ه" | "ס" | "ᴓ") {
                 return back("імʼя — двійник сталої");
