@@ -1,0 +1,30 @@
+🜂 「регресія суду 8 на Атанорі: SQLite із записом (ATTACH, VACUUM INTO, PRAGMA, .., BEGIN, load_extension, RETURNING, randomblob, тригер, DROP, двозначний шлях); база — аргумент」 【「бд.писати:звіти」 「писати:звіти」】
+← б § ⌂ 0
+» 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS t(x)」 【】
+» ☂ 🜔бд.писати б 「ATTACH 'дані/база.db' AS a」 【】 λe ＋ 「1 ATTACH: 」 e
+» ☂ 🜔бд.писати б 「VACUUM INTO 'дані/копія.db'」 【】 λe ＋ 「2 VACUUM INTO: 」 e
+» ☂ 🜔бд.писати б 「PRAGMA journal_mode=WAL」 【】 λe ＋ 「3 PRAGMA: 」 e
+» ☂ 🜔бд.писати 「звіти/../дані/база.db」 「CREATE TABLE z(x)」 【】 λe ＋ 「6 ..: 」 e
+» ☂ 🜔бд.писати б 「BEGIN」 【】 λe ＋ 「8 BEGIN: 」 e
+» ☂ 🜔бд.писати б 「SELECT load_extension('x')」 【】 λe ＋ 「9 load_extension: 」 e
+» ☂ 🜔бд.писати б 「INSERT INTO t VALUES(5),(6) RETURNING x」 【】 λe ＋ 「11 RETURNING: 」 e
+» ☂ 🜔бд.писати б 「INSERT INTO t SELECT length(randomblob(50000000))」 【】 λe ＋ 「12 randomblob 50 МБ: 」 e
+» ☂ 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS журнал(x)」 【】 λe e
+» ☂ 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS важливе(x)」 【】 λe e
+» ☂ 🜔бд.писати б 「INSERT INTO важливе VALUES(1),(2),(3)」 【】 λe e
+» ☂ 🜔бд.писати б 「CREATE TRIGGER міна AFTER INSERT ON журнал BEGIN DELETE FROM важливе; END」 【】 λe e
+» ☂ 🜔бд.писати б 「INSERT INTO журнал VALUES(1)」 【】 λe e
+» ☂ 🜔бд.писати б 「DROP TRIGGER міна」 【】 λe e
+» ☂ 🜔бд.писати б 「CREATE VIEW IF NOT EXISTS в AS SELECT * FROM журнал」 【】 λe e
+» ☂ 🜔бд.писати б 「DROP VIEW в」 【】 λe e
+» ☂ 🜔бд.писати б 「DROP TABLE журнал」 【】 λe e
+» ☂ 🜔бд.писати б 「PRAGMA user_version=5」 【】 λe e
+» ☂ 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS u(x); DROP TABLE t」 【】 λe e
+» ☂ 🜔бд.писати б 「/* */ ATTACH 'звіти/інша.db' AS i」 【】 λe e
+» ☂ 🜔бд.писати б 「CREATE TRIGGER м2 AFTER INSERT ON важливе BEGIN SELECT load_extension('x'); END」 【】 λe e
+» ☂ 🜔бд.писати б 「CREATE VIEW в2 AS SELECT load_extension('x')」 【】 λe e
+» ☂ 🜔бд.писати б 「INSERT INTO важливе VALUES (?)」 【÷ 1 3】 λe e
+» ☂ 🜔бд.писати б 「WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM c) INSERT INTO важливе SELECT i FROM c LIMIT 100000」 【】 λe e
+» ☂ 🜔писати 「дані/примітка.txt」 「тут」 λe e
+» ☂ 🜔бд.писати 「дані/база.db」 「CREATE TABLE IF NOT EXISTS замовлення(x)」 【】 λe e
+» 「кінець」

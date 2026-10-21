@@ -1,0 +1,24 @@
+🜂 「атака15 (без «жереб»): системні таблиці — старий файл на межі, біля неї, далеко; rowid через oid/_rowid_/"RowId", REPLACE, тригер, seq до межі, sqlite_stat1, ANALYZE」 【「бд.писати:звіти」】
+← сф § ⌂ 0
+← з Λім q ☂ σ 🜔бд.писати 〔звіти/с15_{ім}_{сф}.db〕 q 【】 λпом ＋ 「✗ 」 пом
+∀ 【「межа」 「біля」 「далеко」】 λім » 〔{ім}: q {з ім 「INSERT INTO q(x) VALUES (1)」} | a {з ім 「INSERT INTO a(x) VALUES (1)」} | seq {з ім 「UPDATE sqlite_sequence SET seq = 7 WHERE name = 'z'」}〕
+← св 「свіжий」
+» з св 「DROP TABLE IF EXISTS q」
+» з св 「DROP TABLE IF EXISTS a」
+» з св 「CREATE TABLE q(id INTEGER PRIMARY KEY AUTOINCREMENT, x)」
+» з св 「CREATE TABLE a(x)」
+» ＋ 「q: 」 з св 「INSERT INTO q(x) VALUES (1)」
+» ＋ 「oid: 」 з св 「UPDATE sqlite_sequence SET oid = 9223372036854775807」
+» ＋ 「_rowid_: 」 з св 「UPDATE sqlite_sequence SET _rowid_ = 9223372036854775807」
+» ＋ 「"RowId": 」 з св 「UPDATE sqlite_sequence SET "RowId" = 9223372036854775807」
+» ＋ 「rowid+: 」 з св 「UPDATE sqlite_sequence SET rowid = rowid + 9223372036854775806」
+» ＋ 「REPLACE: 」 з св 「REPLACE INTO sqlite_sequence(name, seq) VALUES ('q', 5)」
+» ＋ 「тригер: 」 з св 「CREATE TRIGGER tr AFTER INSERT ON a BEGIN INSERT INTO sqlite_sequence(rowid, name, seq) VALUES (9223372036854775807, 'z', 0); END」
+» ＋ 「a → тригер: 」 з св 「INSERT INTO a(x) VALUES (1)」
+» ＋ 「тригер2: 」 з св 「CREATE TRIGGER tr2 AFTER UPDATE ON a BEGIN UPDATE sqlite_sequence SET oid = 9223372036854775807; END」
+» ＋ 「a → тригер2: 」 з св 「UPDATE a SET x = 2」
+» ＋ 「на межі рядків: 」 з св 「DELETE FROM sqlite_sequence WHERE rowid = 9223372036854775807」
+» ＋ 「seq до межі: 」 з св 「UPDATE sqlite_sequence SET seq = 9223372036854775807 WHERE name = 'q'」
+» ＋ 「q після: 」 з св 「INSERT INTO q(x) VALUES (2)」
+» ＋ 「sqlite_stat1: 」 з св 「CREATE TABLE sqlite_stat1(tbl, idx, stat)」
+» ＋ 「ANALYZE: 」 з св 「ANALYZE」

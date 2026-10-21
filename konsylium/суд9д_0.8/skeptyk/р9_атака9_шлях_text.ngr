@@ -1,0 +1,6 @@
+🜂 【「читати:дані」】
+← д χ 🜔читати 「виписка.xml」
+» ↘ д 「//Ntry[CdtDbtInd='CRDT']/Amt/text()」
+» ↘ д 「//Ntry[CdtDbtInd='CRDT']/Amt/@Ccy」
+» ↘ д 「/Document/Stmt/Ntry[1]/Nm」
+» ↘ д 「Document/Stmt/Ntry[1]/Nm」

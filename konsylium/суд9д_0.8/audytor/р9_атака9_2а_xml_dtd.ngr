@@ -1,0 +1,16 @@
+🜂 「χ: DTD, сутності, XInclude, кодування, коментарі, CDATA」
+← спроби 【
+  「<!DOCTYPE a [<!ENTITY x "y">]><a>&x;</a>」
+  「<!doctype a [<!entity x "y">]><a>&x;</a>」
+  「<?xml version="1.0"?>\n<!DOCTYPE a SYSTEM "file:///etc/passwd"><a/>」
+  「<a>&x;</a>」
+  「<a>&lt;&#x202E;&#x200B;</a>」
+  「<?xml version="1.0" encoding="UTF-16"?><a>б</a>」
+  「<?xml version="1.0" encoding="UTF-7"?><a>+ADw-b+AD4-</a>」
+  「<a xmlns:xi="http://www.w3.org/2001/XInclude"><xi:include href="/etc/passwd" parse="text"/></a>」
+  「<a><?php system('id'); ?>т</a>」
+  「<!-- <!DOCTYPE --><a>коментар</a>」
+  「<a><![CDATA[<!DOCTYPE є лише текстом]]></a>」
+  「<a><!-- коментар -->т<b/>хвіст</a>」
+】
+∀ спроби λтекст » ☂ Δ χ текст λпом ＋ 「ВІДМОВА: 」 пом
