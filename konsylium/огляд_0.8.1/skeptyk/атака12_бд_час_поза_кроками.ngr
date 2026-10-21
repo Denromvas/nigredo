@@ -1,0 +1,2 @@
+🜂 「атака12: важкі інструкції SQLite — скільки кроків і скільки часу」 【「бд.читати:дані」】
+» Δ 🜔бд.читати 「дані/порожня.db」 「WITH RECURSIVE c(i, s) AS (SELECT 0, hex(zeroblob(500000)) UNION ALL SELECT i + 1, replace(s, '0', '1') FROM c WHERE i < 300) SELECT count(*) AS n, max(length(s)) AS l FROM c」 【】

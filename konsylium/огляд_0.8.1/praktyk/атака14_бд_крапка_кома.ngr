@@ -1,0 +1,10 @@
+🜂 「атака14: «;» на початку запиту — попередній прохід EXPLAIN падає, тригерів rowid немає; rowid навмання без «жереб»?」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「DROP TABLE IF EXISTS t」
+» з 「CREATE TABLE t(x)」
+» з 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, 0)」
+» з 「;INSERT INTO t(rowid, x) VALUES (9223372036854775807, 0)」
+» з 「INSERT INTO t(x) VALUES (1)」
+» з 「;INSERT INTO t(x) VALUES (1)」
+» ＋ 「біт з rowid SQLite: 」 з 「UPDATE t SET x = 2 WHERE x = 1 AND rowid % 2 = 0」

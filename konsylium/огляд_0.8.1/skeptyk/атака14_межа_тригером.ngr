@@ -1,0 +1,16 @@
+🜂 「атака14: старий файл (t на межі 2⁶³−1) — вставка в t лише тілом тригера програми, запит пише в іншу таблицю」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE a(v)」
+» з 「CREATE TRIGGER тр AFTER INSERT ON a BEGIN INSERT INTO t(x) VALUES (NEW.v); END」
+» з 「INSERT INTO a VALUES (11)」
+» з 「CREATE TABLE a2(v)」
+» з 「CREATE TRIGGER тр2 BEFORE DELETE ON a2 BEGIN INSERT INTO t(x) SELECT OLD.v; END」
+» з 「INSERT INTO a2 VALUES (12)」
+» з 「DELETE FROM a2」
+» з 「CREATE VIEW вв AS SELECT 1 AS z」
+» з 「CREATE TRIGGER тр3 INSTEAD OF UPDATE ON вв BEGIN INSERT INTO t(x) VALUES (13); END」
+» з 「UPDATE вв SET z = 2」
+» з 「UPDATE t SET rowid = 9223372036854775807 WHERE rowid = 9223372036854775807」
+» з 「DELETE FROM t WHERE rowid = 9223372036854775807」
+» з 「INSERT INTO t(x) VALUES (14)」

@@ -1,0 +1,25 @@
+🜂 「атака14: rowid 2⁶³−1 без «жереб» повз тригери — R*Tree (тіньова «_rowid»), FTS5, і назви таблиць, що можуть зламати текст тимчасового тригера」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「DROP TABLE IF EXISTS r」
+» з 「CREATE VIRTUAL TABLE r USING rtree(id, a, b)」
+» з 「INSERT INTO r VALUES (9223372036854775807, 0, 1)」
+» з 「INSERT INTO r(a, b) VALUES (0, 1)」
+» з 「DROP TABLE IF EXISTS f」
+» з 「CREATE VIRTUAL TABLE f USING fts5(x)」
+» з 「INSERT INTO f(rowid, x) VALUES (9223372036854775807, 'a')」
+» з 「INSERT INTO f(x) VALUES ('b')」
+» з 「DROP TABLE IF EXISTS "q"" WHEN 0 --"」
+» з 「CREATE TABLE "q"" WHEN 0 --"(x)」
+» з 「INSERT INTO "q"" WHEN 0 --"(rowid, x) VALUES (9223372036854775807, 0)」
+» з 「DROP TABLE IF EXISTS [w] ; 」
+» з 「CREATE TABLE "temp"(x)」
+» з 「INSERT INTO "temp"(rowid, x) VALUES (9223372036854775807, 0)」
+» з 「CREATE TABLE IF NOT EXISTS "ім'я ""з"" лапками; END; --"(x)」
+» з 「INSERT INTO "ім'я ""з"" лапками; END; --"(rowid, x) VALUES (9223372036854775807, 0)」
+» 「— лічба —」
+» з 「DELETE FROM r」
+» з 「DELETE FROM f」
+» з 「DELETE FROM "q"" WHEN 0 --"」
+» з 「DELETE FROM "temp"」
+» з 「DELETE FROM "ім'я ""з"" лапками; END; --"」

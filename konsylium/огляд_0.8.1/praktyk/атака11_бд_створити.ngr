@@ -1,0 +1,12 @@
+🜂 「створити базу для атак на бд.читати」 【「бд.писати:звіти」】
+← б 「звіти/т.db」
+» 🜔бд.писати б 「DROP TABLE IF EXISTS t」 【】
+» 🜔бд.писати б 「CREATE TABLE t (id INTEGER PRIMARY KEY, n INTEGER, r REAL, s TEXT, b BLOB, x)」 【】
+» 🜔бд.писати б 「INSERT INTO t (n, r, s, b, x) VALUES (?, ?, ?, X'00ff', ?)」 【9223372036854775807 0.1 「рядок」 ∅】
+» 🜔бд.писати б 「INSERT INTO t (n, r, s, b, x) VALUES (?, ?, ?, NULL, ?)」 【¯9223372036854775808 1.5 「a」 12.50】
+» 🜔бд.писати б 「INSERT INTO t (n, r, s, b, x) VALUES (?, ?, ?, NULL, ?)」 【0 ÷ 1 3 「」 ●】
+» 🜔бд.писати б 「INSERT INTO t (n, r, s, b, x) VALUES (1e3, 1e308, char(0, 65), NULL, 'текст')」 【】
+» 🜔бд.писати б 「CREATE TABLE u (k TEXT)」 【】
+» 🜔бд.писати б 「CREATE TRIGGER tr AFTER INSERT ON u BEGIN INSERT INTO t (n) VALUES (99); END」 【】
+» 🜔бд.писати б 「CREATE VIEW v AS SELECT n FROM t」 【】
+» 🜔бд.писати б 「INSERT INTO u VALUES (?)」 【「x」】

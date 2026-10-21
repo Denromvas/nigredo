@@ -1,0 +1,11 @@
+🜂 「атака15, підготовка (з «жереб»): старі файли, де sqlite_sequence на межі, біля неї (2⁶³−1−1000) і далеко (2⁶³−1−2³³)」 【「бд.писати:звіти」 「жереб」】
+← сф § ⌂ 0
+← з λq ☂ σ 🜔бд.писати 〔звіти/с15_{§q 0}_{сф}.db〕 §q 1 【】 λпом ＋ 「✗ 」 пом
+← кроки λ【ім р】 【
+  з 【ім 「DROP TABLE IF EXISTS q」】
+  з 【ім 「DROP TABLE IF EXISTS a」】
+  з 【ім 「CREATE TABLE q(id INTEGER PRIMARY KEY AUTOINCREMENT, x)」】
+  з 【ім 「CREATE TABLE a(x)」】
+  з 【ім 「DELETE FROM sqlite_sequence」】
+  з 【ім 〔INSERT INTO sqlite_sequence(rowid, name, seq) VALUES ({р}, 'z', 0)〕】】
+∀ 【【「межа」 「9223372036854775807」】 【「біля」 「9223372036854774807」】 【「далеко」 「9223372028264841215」】】 λп » 〔{§п 0}: {кроки п}〕
