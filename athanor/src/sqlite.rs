@@ -842,16 +842,48 @@ fn guard(l: &Lib, db: *mut c_void, it: &Interp, g: &mut Guard, write: bool, sql:
             }
             a.doubt = doubt;
             for t in &system {
-                // старий файл: системна таблиця біля межі, а рядки в неї пише сам SQLite (AUTOINCREMENT, CREATE) — і
-                // кілька за одну інструкцію (суд 9г, перевірка виправлення)
-                if pragma(l, db, &format!("SELECT max(rowid) > {} FROM main.\"{}\"", ROWID_NEAR, t.replace('"', "\"\"")))? == Some(1) {
-                    let msg = format!("випадковість SQLite (системна таблиця «{}» {}) без права «жереб»", uni::safe(t), ROWID_WHY[3]);
-                    if a.why.is_empty() {
-                        a.careful = true;
+                // старий файл: системна таблиця біля межі, а рядки в неї пише сам SQLite (AUTOINCREMENT, CREATE) — тригера
+                // на ній немає (суд 9г, перевірка виправлення)
+                let q = t.replace('"', "\"\"");
+                let msg = if uni::lower(t) != "sqlite_sequence" {
+                    // CREATE: рядки схеми й автоіндексів — «майже на межі»
+                    if pragma(l, db, &format!("SELECT max(rowid) > {} FROM main.\"{}\"", ROWID_NEAR, q))? != Some(1) {
+                        continue;
                     }
-                    a.why.push(msg.clone());
-                    return Err(PyErr::Sql(msg));
+                    format!("випадковість SQLite (системна таблиця «{}» {}) без права «жереб»", uni::safe(t), ROWID_WHY[3])
+                } else {
+                    // sqlite_sequence — точно: наявний рядок SQLite оновлює на місці, новий бере лише перша вставка в
+                    // таблицю з AUTOINCREMENT, якої тут ще немає, — max+1, а після 2⁶³−1 навмання (огляд 0.8.1б)
+                    let over = |k: usize| -> Result<bool, PyErr> {
+                        let s = execute(l, db, &format!("SELECT max(rowid) > {} - ? FROM main.\"{}\"", ROWID_MAX, q), &[Arg::Int(Int::S(k as i64))])?;
+                        let v = s.rc == SQLITE_ROW && (l.column_type)(s.st, 0) == 1 && (l.column_int64)(s.st, 0) == 1;
+                        if !s.st.is_null() {
+                            (l.finalize)(s.st);
+                        }
+                        Ok(v)
+                    };
+                    if !over(ins.len())? {
+                        continue;
+                    }
+                    let mut sorted: Vec<&String> = ins.iter().collect();
+                    sorted.sort();
+                    let mut new: Vec<&String> = Vec::new();
+                    for x in sorted {
+                        if autoinc(l, db, x) && !has_row(l, db, &format!("SELECT 1 FROM main.\"{}\" WHERE name = ?", q), &[Arg::Text(x.clone())])? {
+                            new.push(x);
+                        }
+                    }
+                    if new.is_empty() || !over(new.len())? {
+                        continue;
+                    }
+                    format!("випадковість SQLite (системна таблиця «{}» на межі rowid: рядок, який SQLite допише сюди для таблиці «{}» з AUTOINCREMENT, отримав би rowid навмання) без права «жереб»",
+                            uni::safe(t), uni::safe(new[0]))
+                };
+                if a.why.is_empty() {
+                    a.careful = true;
                 }
+                a.why.push(msg.clone());
+                return Err(PyErr::Sql(msg));
             }
             let mut all: Vec<&String> = ins.iter().chain(upd.iter()).collect();
             all.sort();
@@ -923,6 +955,11 @@ extern "C" fn on_auth(ud: *mut c_void, action: c_int, a1: *const c_char, a2: *co
         return 1;
     }
     let t = uni::lower(a1.as_deref().unwrap_or(""));
+    if t == "sqlite_dbpage" {
+        // сирі сторінки файлу: запис повз SQL, authorizer і тригери — клас writable_schema (огляд 0.8.1б)
+        cx.why.push("сирі сторінки бази (sqlite_dbpage): запис повз SQL, authorizer і тригери".into());
+        return 1;
+    }
     if !cx.rand && t.starts_with("sqlite_") && !SCHEMA_TABLES.contains(&t.as_str())
         && (action == 18 || (action == 23 && a2.as_deref() == Some("ROWID")))
     {
@@ -1233,8 +1270,10 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
                 }
                 // таблиця вже на межі чи системна біля неї — так у самій базі (суд 9д), — лише коли в запиті заборонених
                 // дій не знайдено (огляд 0.8.1, Н-1 Скептика)
+                let constraint = ((l.errcode)(db) & 0xff) == 19; // IntegrityError: RAISE тригера чи обмеження
                 let careful = auth.careful && auth.doubt.is_empty();
-                if auth.careful && !auth.doubt.is_empty() {
+                let doubted = auth.careful && !auth.doubt.is_empty();
+                if doubted {
                     let first = format!("{}; запит і не виконувався: {}", auth.doubt[0], auth.why[0]);
                     auth.why.insert(0, first);
                 }
@@ -1247,7 +1286,7 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
                         ("назва".into(), J::s(tool)),
                         ("шлях".into(), J::Str(uni::safe(&pv))),
                         ("запит".into(), J::Str(q)),
-                        ("причина".into(), J::Str(format!("стан бази: {}; запит не виконувався — authorizer і байткод SQLite заборонених дій у ньому не знайшли", auth.why[0]).chars().take(1000).collect())),
+                        ("причина".into(), J::Str(format!("стан бази: {}; запит не виконано — authorizer і байткод SQLite заборонених дій у ньому не знайшли, а rowid, який він дав би іншим таблицям, без виконання не перевірити", auth.why[0]).chars().take(1000).collect())),
                     ])?;
                 } else if denied {
                     let why = match auth.why.first() {
@@ -1257,9 +1296,11 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
                     deny(it, tool, &pv, &sql, &why.chars().take(1000).collect::<String>())?;
                 }
                 let msg = if careful {
-                    format!("запобіжна відмова (так у самій базі; запит не виконувався, а заборонених дій у ньому перевірка не знайшла): {}", auth.why[0])
+                    format!("запобіжна відмова (так у самій базі; запит не виконано, а заборонених дій у ньому authorizer і байткод SQLite не знайшли — rowid, який він дав би іншим таблицям, не перевірено): {}", auth.why[0])
+                } else if doubted {
+                    format!("заборонено: {}", auth.why[0])
                 } else if denied {
-                    if auth.why.first().map_or(false, |w| ["load_", "годинник", "випадковість"].iter().any(|p| w.starts_with(p))) {
+                    if auth.why.first().map_or(false, |w| ["load_", "годинник", "випадковість", "сирі сторінки"].iter().any(|p| w.starts_with(p))) {
                         format!("заборонено: {}", auth.why[0])
                     } else {
                         format!(
@@ -1269,6 +1310,8 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
                     }
                 } else if m.contains("one statement at a time") {
                     "лише одна інструкція SQL за раз".into()
+                } else if constraint && sql_err(&m) == m {
+                    format!("тригер бази зупинив запит: «{}»", m) // RAISE(ABORT, …) — слова бази, а не мови (огляд 0.8.1б)
                 } else {
                     sql_err(&m)
                 };
@@ -1304,29 +1347,29 @@ pub fn rights(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) ->
     };
     (l.limit)(db, 7, 0);
     (l.set_authorizer)(db, Some(on_record), &mut w as *mut Written as *mut c_void);
-    match execute(l, db, &db_explain(&sql), &[]) { // «;PRAGMA …» — та сама відмова, що й у запуску (суд 9г)
-        Ok(st) => {
-            let mut rc = st.rc;
-            while rc == SQLITE_ROW {
-                rc = (l.step)(st.st);
-            }
-            if !st.st.is_null() {
-                (l.finalize)(st.st);
-            }
-        }
+    // «;PRAGMA …» — та сама відмова, що й у запуску (суд 9г)
+    let ops = match explain_ops(l, db, &db_explain(&sql), &[]) {
+        Ok(ops) => ops,
         Err(PyErr::Sql(m)) => {
             if !write && readonly(&m) {
                 w.auth.why.push("запис через бд.читати".into());
             }
+            Vec::new()
         }
-        Err(_) => {}
-    }
+        Err(_) => Vec::new(),
+    };
     // таблицю-функцію PRAGMA authorizer спитає лише в запуску (огляд 0.8.1, Скептик)
     (l.set_authorizer)(db, None, std::ptr::null_mut());
     if w.auth.why.is_empty() {
         if let Ok(ts) = pragma_tables(l, db, &w.reads) {
             w.auth.why.extend(ts.iter().map(|t| format!("PRAGMA {}", uni::safe(&uni::lower(&t[7..])))));
         }
+    }
+    // random і годинник видно лише під час виконання — за байткодом, як на старій базі: інакше вичерпана квота ховала б
+    // спробу, а --сухо писав би «✓» (огляд 0.8.1б, Аудитор)
+    if w.auth.why.is_empty() {
+        let (clock_ok, rand_ok) = db_rights(it);
+        w.auth.why.extend(doubts(clock_ok, rand_ok, &ops, &[]));
     }
     (l.close_v2)(db);
     if let Some(why) = w.auth.why.first().cloned() {
