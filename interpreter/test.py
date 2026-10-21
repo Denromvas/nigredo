@@ -1573,7 +1573,7 @@ def main():
     pre81v = subprocess.run([sys.executable, '-c', 'import sys, sqlite3, types; sys.path.insert(0, sys.argv[1]); import nigredo as n\n'
                              'c = sqlite3.connect(":memory:", isolation_level=None)\n'
                              'c.executescript("CREATE TABLE t(x); CREATE VIEW ngr_rowid_0_0 AS SELECT 1")\n'
-                             'm = {"запобіжна": False, "сумнів": [], "тригери": set()}\n'
+                             'm = {"запобіжна": False, "сумнів": [], "тригери": set(), "функція": "ngr_rowid_x"}\n'
                              'n._db_guard(c, types.SimpleNamespace(caps=set(), quota_stack=[]), [], m, True, '
                              '"INSERT INTO t(x) VALUES (1)", [])\nprint(sorted(m["тригери"]), c.in_transaction)',
                              str(ROOT / 'interpreter')], capture_output=True, text=True)
@@ -1592,6 +1592,63 @@ def main():
           '«заборонено» (огляд 0.8.1в)',
           str(resr81) + dry81v[0].stderr + dry81v[1].stderr + pre81v.stdout + pre81v.stderr + dryn81[0].stdout
           + dryn81[0].stderr + drop81[0].stdout + drop81[0].stderr + drop81[1].stdout)
+    # огляд 0.8.1г (Новачок, Оркестратор): ngr_rowid у DEFAULT стовпця authorizer не бачить (схему SQLite розбирає ще
+    # при читанні) — явний rowid 2⁶³−1 ставав «запобіжним», а ngr_rowid('d9', 9) знову розводив виконавців; так само
+    # CHECK тіньової таблиці R-Tree з бази, зробленої поза Nigredo: тіньову таблицю пише сам R-Tree, своїми запитами, —
+    # у байткоді запиту їх немає (автор). Службова тепер — під випадковою назвою на кожен запит, ngr_rowid — приманка
+    svc81g_ = f'{DATA}/звіти/службова81г.db'
+    q81g_ = (f'🜂 【「бд.писати:{DATA}/звіти」】\n← п λq ☂ σ 🜔бд.писати 「{svc81g_}」 q 【】 λe e\n' + ''.join(
+        f'» п 「{s_}」\n' for s_ in (
+            "CREATE TABLE d(a, b DEFAULT (ngr_rowid('d', 0)))", 'INSERT INTO d(rowid, a) VALUES (9223372036854775807, 1)',
+            "CREATE TABLE d9(a, b DEFAULT (ngr_rowid('d9', 9)))", 'INSERT INTO d9(a) VALUES (1)',
+            "CREATE TABLE x(a CHECK (ngr_rowid('x', 0) IS NULL))", 'INSERT INTO r VALUES (1, 0, 1)', 'INSERT INTO c(a) VALUES (1)', 'INSERT INTO t(x) SELECT sql FROM temp.sqlite_master',
+            'INSERT INTO t(x) SELECT name FROM temp.sqlite_master', 'ALTER TABLE t RENAME TO t2',
+            'ALTER TABLE t2 RENAME COLUMN x TO y', 'ALTER TABLE t2 RENAME TO t', 'INSERT INTO t(y) VALUES (5)')))
+    res81g = []
+    for k_, cmd_ in enumerate((NGR_CMD, [sys.executable, str(NGR)])):
+        if os.path.exists(svc81g_):
+            os.remove(svc81g_)
+        with sqlite3.connect(svc81g_) as c_:    # база не з Nigredo: CHECK зі службовою в тіньовій таблиці R-Tree і в
+            c_.create_function('ngr_rowid', 2, lambda *a: None)   # таблиці «c», що вже на межі (запобіжна прийшла б раніше)
+            c_.executescript("CREATE TABLE t(x); CREATE TABLE c(a CHECK (ngr_rowid('c', 0) IS NULL)); "
+                             'INSERT INTO c(rowid, a) VALUES (9223372036854775807, 0); '
+                             'CREATE VIRTUAL TABLE r USING rtree(id, x0, x1); PRAGMA writable_schema = ON')
+            c_.execute('UPDATE sqlite_master SET sql = \'CREATE TABLE "r_rowid"(rowid INTEGER PRIMARY KEY, nodeno CHECK '
+                       "(ngr_rowid(''r'', 0) IS NULL))' WHERE name = 'r_rowid'")
+        tp_ = tmp / f'службова81г_{k_}.jsonl'
+        res81g.append(subprocess.run([*cmd_, '--слід', str(tp_), '-e', q81g_], capture_output=True, text=True, env=envd))
+        res81g.append(subprocess.run([sys.executable, str(NGR), '--перевірити-слід', str(tp_)], capture_output=True,
+                                     text=True, env=envd).stdout)
+        res81g.append(subprocess.run([*cmd_, '--сухо', '-e', f'🜂 【「бд.писати:{DATA}/звіти」】\n'
+                                      f'» 🜔бд.писати 「{svc81g_}」 「INSERT INTO d(a) VALUES (1)」 【】'],
+                                     capture_output=True, text=True, env=envd))
+        with sqlite3.connect(svc81g_) as c_:
+            res81g.append([r[0] for r in c_.execute('SELECT * FROM t')] + [c_.execute('SELECT count(*) FROM d').fetchone()[0]])
+    o_ = res81g[0].stdout
+    pre81g = subprocess.run([sys.executable, '-c', 'import sys, sqlite3, types; sys.path.insert(0, sys.argv[1]); import nigredo as n\n'
+                             'c = sqlite3.connect(":memory:", isolation_level=None)\nc.execute("CREATE TABLE t(x)")\n'
+                             'm, why = {"запобіжна": False, "сумнів": [], "тригери": set(), "функція": "ngr_rowid_x"}, []\n'
+                             'n._db_guard(c, types.SimpleNamespace(caps=set(), quota_stack=[]), why, m, True, '
+                             '"INSERT INTO t(x) VALUES (1)", [])\n'
+                             'print(c.execute("SELECT count(*) FROM temp.sqlite_master WHERE sql LIKE \'%ngr_rowid_x(%\'").fetchone()[0])\n'
+                             'try:\n    c.execute("SELECT ngr_rowid(\'t\', 0)")\nexcept sqlite3.Error:\n    pass\n'
+                             'print(m["запобіжна"], why)\n'
+                             'w, a = n._db_auth(True, types.SimpleNamespace(caps=set(), quota_stack=[]), set(), "ngr_rowid_x")\n'
+                             'c.set_authorizer(a)\ntry:\n    c.execute("SELECT ngr_rowid_x(\'t\', 0)")\nexcept sqlite3.Error:\n    pass\n'
+                             'print(w)', str(ROOT / 'interpreter')], capture_output=True, text=True)
+    check(o_ == res81g[4].stdout and res81g[0].returncode == res81g[4].returncode == 0 and res81g[3] == res81g[7]
+          and res81g[3] == ['ngr_rowid_0_0', 5, 0] and o_.count('бд.писати: заборонено: службова функція') == 5
+          and o_.count('бд.писати: заборонено: службові тригери інтерпретатора') == 1 and 'запобіжн' not in o_
+          and all('(«заборонено»): 6 ' in v_ and 'запобіжн' not in v_ for v_ in (res81g[1], res81g[5]))
+          and res81g[2].stdout == res81g[6].stdout and res81g[2].returncode == res81g[6].returncode != 0
+          and 'бд.писати: заборонено: службова функція' in res81g[2].stdout + res81g[2].stderr
+          and pre81g.stdout == '1\nFalse {0}\n{0}\n'.format(['службова функція інтерпретатора (ngr_rowid) — її кличуть лише '
+                                                           'його тимчасові тригери']),
+          'SQLite: службова функція — під випадковою назвою на кожен запит; ngr_rowid у DEFAULT стовпця, у CHECK таблиці на '
+          'межі й тіньової таблиці R-Tree — «заборонено», не «запобіжна», однаково обома; текст схеми temp програма не читає, ALTER TABLE '
+          'працює (огляд 0.8.1г)',
+          o_ + res81g[0].stderr + res81g[1] + res81g[4].stdout + str(res81g[3]) + str(res81g[7]) + res81g[2].stdout
+          + res81g[2].stderr + res81g[6].stdout + pre81g.stdout + pre81g.stderr)
     seal81 = tmp / 'печатка81'
     (seal81 / 'звіти').mkdir(parents=True, exist_ok=True)
     (seal81 / 'файл.ngr').write_text('🜂 「новий файл」 【「писати:звіти/нова.txt」】\n» 🜔писати 「звіти/нова.txt」 「x」\n',

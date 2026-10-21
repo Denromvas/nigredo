@@ -336,11 +336,14 @@ struct AuthCtx {
     why: Vec<String>,
     careful: bool,      // перша відмова — сама від стану бази (ознакою, а не підрядком причини; огляд 0.8.1)
     doubt: Vec<String>, // db_doubts запиту: з ними запобіжна відмова не доводить, що запит у межах прав
-    ours: Vec<String>,  // тимчасові тригери guard цього запиту: лише з них — ngr_rowid (огляд 0.8.1в)
+    ours: Vec<String>,  // тимчасові тригери guard цього запиту: лише з них — службова функція (огляд 0.8.1в)
+    svc: String,        // її назва — нова на кожен запит: ні схема бази, ні SQL програми її не знають (огляд 0.8.1г)
+    altered: bool,      // ALTER TABLE: текст схеми temp переписує сам SQLite
 }
 
 fn auth_ctx(it: &Interp, write: bool) -> AuthCtx {
-    AuthCtx { write, rand: db_rights(it).1, why: Vec::new(), careful: false, doubt: Vec::new(), ours: Vec::new() }
+    AuthCtx { write, rand: db_rights(it).1, why: Vec::new(), careful: false, doubt: Vec::new(), ours: Vec::new(),
+              svc: String::new(), altered: false }
 }
 
 /// (годинник, жереб) SQLite: «час» і «жереб» без квоти (її не порахувати), як 🜔час і 🜔жереб (суд 9; «час≤N» — суд 9в).
@@ -432,6 +435,7 @@ fn refusal(f: &FnCtx, a: &[SqlV]) -> Option<String> {
         }
         1 => Some(format!("годинник SQLite ({}) без права «час» (з квотою «час≤N» — лише 🜔час) — дати рахуйте в Nigredo (◷) чи дайте «час» у печатці", name)),
         2 => Some(format!("випадковість SQLite ({}) без права «жереб» (з квотою «жереб≤N» — лише 🜔жереб)", name)),
+        4 => Some(SVC_WHY.into()),
         _ => {
             let t = match a.first() {
                 Some(SqlV::Text(t)) => uni::safe(t),
@@ -755,6 +759,16 @@ fn doubts(clock_ok: bool, rand_ok: bool, ops: &[(String, Option<String>)], reads
     out
 }
 
+/// Чи байткод запиту кличе приманку ngr_rowid: схема бази (DEFAULT, CHECK, згенерований стовпець, індекс) authorizer не
+/// питає — вона розібрана ще при читанні схеми, — а в байткоді виклик видно (огляд 0.8.1г, Новачок і Оркестратор).
+fn service(ops: &[(String, Option<String>)]) -> bool {
+    ops.iter().any(|(op, p4)| (op == "Function" || op == "PureFunc")
+        && p4.as_deref().map_or(false, |p| uni::lower(p.split('(').next().unwrap_or("")) == "ngr_rowid"))
+}
+
+const SVC_WHY: &str = "службова функція інтерпретатора (ngr_rowid) — її кличуть лише його тимчасові тригери";
+const TEMP_WHY: &str = "службові тригери інтерпретатора (текст схеми temp) — програма їх не читає";
+
 /// Що знає попередній прохід: таблиці, у які запит пише (і системні), відмови authorizer і сумніви (db_doubts).
 struct Pass {
     ins: Vec<String>,
@@ -774,7 +788,8 @@ fn written(l: &Lib, db: *mut c_void, clock_ok: bool, sql: &str, args: &[Arg]) ->
         ins: Vec::new(),
         upd: Vec::new(),
         reads: Vec::new(),
-        auth: AuthCtx { write: true, rand: false, why: Vec::new(), careful: false, doubt: Vec::new(), ours: Vec::new() },
+        auth: AuthCtx { write: true, rand: false, why: Vec::new(), careful: false, doubt: Vec::new(), ours: Vec::new(),
+                        svc: String::new(), altered: false },
     };
     (l.set_authorizer)(db, Some(on_record), &mut w as *mut Written as *mut c_void);
     // помилку запиту покаже його виконання, а захист стане на всі таблиці
@@ -785,6 +800,10 @@ fn written(l: &Lib, db: *mut c_void, clock_ok: bool, sql: &str, args: &[Arg]) ->
     let none = |denied: Vec<String>| Pass { ins: Vec::new(), upd: Vec::new(), system: Vec::new(), denied, doubt: Vec::new() };
     if !w.auth.why.is_empty() {
         return Ok(none(w.auth.why));
+    }
+    if ops.as_ref().map_or(false, |o| service(o)) {
+        // без тригерів guard (їх ще немає) службову кличе лише схема чи запит програми
+        return Ok(none(vec![SVC_WHY.into()]));
     }
     // SQLITE_ERROR компіляції, коли authorizer нічого не відкинув, — помилка самого запиту (описка в стовпці, немає
     // таблиці, синтаксис): той самий authorizer, ті самі функції й та сама схема (транзакція запису) — і в запуску вона
@@ -860,7 +879,17 @@ fn guard(l: &Lib, db: *mut c_void, it: &Interp, g: &mut Guard, write: bool, sql:
             // з файлу: EXPLAIN не звіряє її версії, і прохід бачив би ту, що зʼєднання прочитало ще до транзакції
             exec(l, db, "BEGIN IMMEDIATE", &[])?;
             exec(l, db, "SELECT count(*) FROM main.sqlite_master", &[])?;
-            add("ngr_rowid", 2, 3, g)?;
+            // службова — під назвою, якої не знає ні схема, ні SQL програми; ngr_rowid — приманка: відмова, не «запобіжна»
+            let svc = unsafe { &*g.auth }.svc.clone();
+            let f = Box::new(FnCtx { name: "ngr_rowid", kind: 3, g: gp });
+            let c = CString::new(svc.clone()).unwrap();
+            let rc = (l.create_function)(db, c.as_ptr(), 2, 1 | 0x800, &*f as *const FnCtx as *mut c_void, Some(on_fn),
+                                         std::ptr::null(), std::ptr::null(), std::ptr::null());
+            g.fns.push(f);
+            if rc != 0 {
+                return Err(PyErr::Sql("Error creating function".into()));
+            }
+            add("ngr_rowid", 2, 4, g)?;
             let Pass { ins, upd, system, denied, doubt } = written(l, db, clock_ok, sql, args)?;
             let a = unsafe { &mut *g.auth };
             if !denied.is_empty() {
@@ -946,8 +975,8 @@ fn guard(l: &Lib, db: *mut c_void, it: &Interp, g: &mut Guard, write: bool, sql:
                     while taken.contains(&name) {
                         name.push('_'); // VIEW чи тригер бази з такою назвою підробив би authorizer'ові «свій»
                     }
-                    exec(l, db, &format!("CREATE TEMP TRIGGER \"{}\" {} ON main.\"{}\" WHEN {} BEGIN SELECT ngr_rowid('{}', {}); END",
-                                         name, when, q, cond, lit, k), &[])?;
+                    exec(l, db, &format!("CREATE TEMP TRIGGER \"{}\" {} ON main.\"{}\" WHEN {} BEGIN SELECT {}('{}', {}); END",
+                                         name, when, q, cond, svc, lit, k), &[])?;
                     a.ours.push(name);
                 }
             }
@@ -956,7 +985,7 @@ fn guard(l: &Lib, db: *mut c_void, it: &Interp, g: &mut Guard, write: bool, sql:
     Ok(())
 }
 
-const DENIED_WHY: [&str; 5] = ["load_", "годинник", "випадковість", "сирі сторінки", "службова"]; // у тексті помилки як є
+const DENIED_WHY: [&str; 5] = ["load_", "годинник", "випадковість", "сирі сторінки", "службов"]; // у тексті помилки як є
 
 /// db_refusal: текст відмови для програми — і в запуску, і в правах без дії (квота, --сухо; огляд 0.8.1в, Аудитор).
 fn db_refusal(why: &[String], write: bool) -> String {
@@ -1007,20 +1036,29 @@ fn action_name(a: c_int) -> String {
     }
 }
 
-extern "C" fn on_auth(ud: *mut c_void, action: c_int, a1: *const c_char, a2: *const c_char, _db: *const c_char,
+extern "C" fn on_auth(ud: *mut c_void, action: c_int, a1: *const c_char, a2: *const c_char, db: *const c_char,
                       view: *const c_char) -> c_int {
     let cx = unsafe { &mut *(ud as *mut AuthCtx) };
     let s = |p: *const c_char| -> Option<String> { if p.is_null() { None } else { Some(unsafe { cs(p) }) } };
-    let (a1, a2, view) = (s(a1), s(a2), s(view));
+    let (a1, a2, db, view) = (s(a1), s(a2), s(db), s(view));
     let f = uni::lower(a2.as_deref().unwrap_or(""));
     if action == 31 && f == "load_extension" {
         cx.why.push(format!("load_extension{}", view.map(|v| format!(" у тригері чи VIEW «{}»", v)).unwrap_or_default()));
         return 1;
     }
-    // службову ngr_rowid кличуть лише тимчасові тригери guard (SQLite називає authorizer найглибший тригер чи VIEW, а
-    // таких назв у базі немає), а не SQL програми (огляд 0.8.1в, Н-1 Скептика)
-    if action == 31 && f == "ngr_rowid" && !view.as_ref().map_or(false, |v| cx.ours.contains(v)) {
-        cx.why.push("службова функція інтерпретатора (ngr_rowid) — її кличуть лише його тимчасові тригери".into());
+    // службову кличуть лише тимчасові тригери guard (SQLite називає authorizer найглибший тригер чи VIEW, а таких назв у
+    // базі немає), а не SQL програми (огляд 0.8.1в, Н-1 Скептика); ngr_rowid — лише приманка: відмова завжди
+    if action == 31 && (f == "ngr_rowid" || (!cx.svc.is_empty() && f == cx.svc && !view.as_ref().map_or(false, |v| cx.ours.contains(v)))) {
+        cx.why.push(SVC_WHY.into());
+        return 1;
+    }
+    if action == 26 {
+        cx.altered = true;
+    }
+    // текст схеми temp (там назва службової — 128 біт випадковості без права «жереб») програма не читає — крім самого
+    // ALTER TABLE, що переписує його сам (огляд 0.8.1г)
+    if action == 20 && db.as_deref() == Some("temp") && uni::lower(a2.as_deref().unwrap_or("")) == "sql" && !cx.altered {
+        cx.why.push(TEMP_WHY.into());
         return 1;
     }
     let t = uni::lower(a1.as_deref().unwrap_or(""));
@@ -1228,6 +1266,7 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
         Err(PyErr::Other(m)) => return internal(m),
     };
     let mut auth = auth_ctx(it, write);
+    auth.svc = format!("ngr_rowid_{}", crate::rand_hex(16));
     let mut grd = Guard { auth: &mut auth as *mut AuthCtx, helper: std::ptr::null_mut(), fns: Vec::new() };
     let mut prog = ProgCtx { it: it as *mut Interp, deadline };
     let result = (|| -> R<V> {
@@ -1416,7 +1455,7 @@ pub fn rights(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) ->
     };
     (l.limit)(db, 7, 0);
     if write && !db_rights(it).1 {
-        // службова ngr_rowid — як у запуску: є, але SQL програми її не пустить (огляд 0.8.1в)
+        // приманка ngr_rowid — як у запуску: є, але SQL і схему програми з нею не пустить (огляд 0.8.1в, 0.8.1г)
         let c = CString::new("ngr_rowid").unwrap();
         (l.create_function)(db, c.as_ptr(), 2, 1 | 0x800, std::ptr::null_mut(), Some(on_stub), std::ptr::null(),
                             std::ptr::null(), std::ptr::null());
@@ -1449,7 +1488,7 @@ pub fn rights(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) ->
     // спробу, а --сухо писав би «✓» (огляд 0.8.1б, Аудитор)
     if w.auth.why.is_empty() {
         let (clock_ok, rand_ok) = db_rights(it);
-        w.auth.why.extend(doubts(clock_ok, rand_ok, &ops, &[]));
+        w.auth.why.extend(if service(&ops) { vec![SVC_WHY.into()] } else { doubts(clock_ok, rand_ok, &ops, &[]) });
     }
     (l.close_v2)(db);
     if let Some(why) = w.auth.why.first().cloned() {
