@@ -1945,9 +1945,12 @@ def main():
     # суд 9: перевірка програми на кожну частину; відмова й поганий UTF-8 — у сліді; --слід; провал частини — канал
     # завершення; упала перша частина — сеанс завершено (печатку не змінити)
     def repl(lines, *flags):
+        old_ = set((pathlib.Path(env['NIGREDO_HOME']) / 'сліди').glob('*-repl-*.jsonl'))
         p_ = subprocess.run([*NGR_CMD, '--repl', '--тека', str(DATA), *flags], input=b'\n'.join(lines) + b'\n',
                             capture_output=True, env=env)
-        tr_ = sorted((pathlib.Path(env['NIGREDO_HOME']) / 'сліди').glob('*-repl-*.jsonl'))[-1]
+        # слід саме цього сеансу: назви — за секундою й pid, тож «останній за абеткою» в ту саму секунду —
+        # навмання (Атанор, 0.8.1в: два сеанси в одну секунду)
+        tr_ = sorted(set((pathlib.Path(env['NIGREDO_HOME']) / 'сліди').glob('*-repl-*.jsonl')) - old_)[-1]
         return p_.returncode, [json.loads(x) for x in p_.stdout.decode().splitlines()], tr_
     j = lambda c: json.dumps({'код': c}, ensure_ascii=False).encode()      # noqa: E731
     rc, ans, tr_ = repl([j('🜂 【「писати:звіти」】'), j('🜔писати 「звіти/repl_м.ngr」 「🜂\\n← f λx ＋ x 1」'),
