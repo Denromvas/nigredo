@@ -61,6 +61,21 @@ and a `↻` loop that builds a new list every step is 1.7× slower. On a quiet p
 on a loaded one (judges measured while other judges ran) absolute times were 1.4–2.8× higher for Athanor and
 1.4–1.7× for the reference — the ratios above are from a quiet run.
 
+**Which bugs are caught before running** (`bench/помилки/`: 14 real bugs and 4 that exist only in Nigredo's model):
+
+| Class of bug | Python | + pyflakes | Nigredo |
+|---|---|---|---|
+| Unclosed string | ✓ | ✓ | ✓ |
+| Typo in a name; a look-alike name (Cyrillic `х` for Latin `x`) | — | ✓ | ✓ |
+| Wrong argument types: string + number, string < number, calling a number, indexing a list with a string | — | — | ✓ |
+| Missing argument; division by a literal zero | — | — | ✓ |
+| Typo in a dictionary key; a wrong type passed through a parameter; a computed zero; index out of range; a non-number parsed from text | — | — | — (only when running) |
+| Writing outside the allowed folder; network without permission; reassigning a name | not a Python concept | | ✓ |
+
+No bug in the set is caught by Python + pyflakes and missed by Nigredo; 5 of the 14 real ones are caught by neither.
+On 10 correct programs (`bench/правильні/`) Nigredo raised no false alarm. A catastrophic regular expression is not
+an error in Nigredo at all — its regex engine does not backtrack.
+
 ## Try it
 
 ```
@@ -178,6 +193,21 @@ by Claude (Anthropic) as an agent; the project owner is Denis Romaniuk. MIT lice
 список, — у 1,7 раза повільніший. На спокійному телефоні розкид між прогонами — ~10–20 %; на навантаженому (судді
 міряли, поки працювали інші) абсолютний час Атанора був у 1,4–2,8 раза більший, еталона — у 1,4–1,7: відношення
 вище — зі спокійного прогону.
+
+**Які помилки ловляться до запуску** (`bench/помилки/`: 14 справжніх і 4, що існують лише в моделі Nigredo):
+
+| Клас помилки | Python | + pyflakes | Nigredo |
+|---|---|---|---|
+| Незакритий рядок | ✓ | ✓ | ✓ |
+| Описка в імені; двійник імені (кирилична `х` замість латинської `x`) | — | ✓ | ✓ |
+| Не ті типи аргументів: рядок + число, рядок < число, виклик числа, індекс списку рядком | — | — | ✓ |
+| Бракує аргументу; ділення на буквальний нуль | — | — | ✓ |
+| Описка в ключі словника; не той тип через параметр; обчислений нуль; індекс поза межами; не-число з тексту | — | — | — (лише під час роботи) |
+| Запис поза дозволеною текою; мережа без дозволу; перепризначення імені | у Python такого поняття немає | | ✓ |
+
+Помилки, яку Python + pyflakes ловить, а Nigredo — ні, у наборі немає; 5 із 14 справжніх не ловить жодна сторона. На
+10 правильних програмах (`bench/правильні/`) хибних тривог Nigredo — 0. Катастрофічний регулярний вираз у Nigredo
+взагалі не помилка: рушій регулярок без відкатів.
 
 ## Запуск
 
