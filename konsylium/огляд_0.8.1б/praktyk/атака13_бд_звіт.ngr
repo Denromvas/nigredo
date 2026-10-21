@@ -1,0 +1,12 @@
+🜂 「атака13: звіт бухгалтерії з дат у даних — місяці, строк оплати, прострочка, день тижня (без «час»)」 【「бд.читати:дані」】
+← б 「дані/а13_док.db」
+← м 🜔бд.читати б 「SELECT strftime('%Y-%m', дата) AS місяць, COUNT(*) AS к, SUM(сума) AS с FROM док GROUP BY місяць ORDER BY місяць」 【】
+» ρ м
+» § м 0
+» § м ¯1
+← п 🜔бд.читати б 「SELECT SUM(julianday(оплата) - julianday(дата)) AS днів, SUM(CASE WHEN julianday(оплата) - julianday(дата) > 30 THEN 1 ELSE 0 END) AS прострочено FROM док」 【】
+» п
+← т 🜔бд.читати б 「SELECT strftime('%w', дата) AS д, COUNT(*) AS к FROM док GROUP BY д ORDER BY д」 【】
+» т
+← к 🜔бд.читати б 「SELECT date(дата, 'start of month', '+1 month', '-1 day') AS кінець, unixepoch(оплата) - unixepoch(дата) AS сек, strftime('%j', дата) AS день, timediff(оплата, дата) AS різниця FROM док ORDER BY н LIMIT 3」 【】
+» к

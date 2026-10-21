@@ -1,0 +1,18 @@
+🜂 「атака14: тексти помилок re, expat, SQLite — словами (мої англійські з суду 9в)」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← п λш ☂ σ ⌕ 「abc」 ＋ ш 「」 λe e
+» п 「a{99999999999}」
+» п ＋ 「\\」 「p」
+» п 「[z-a]」
+» п 「(?Q)a」
+» п 「(」
+» ☂ σ ≋ 「abc」 ＋ 「(a)」 「」 ＋ 「\\」 「3」 λe e
+» ☂ σ χ ＋ 「<a b='1' b='2'/>」 「」 λe e
+» ☂ σ χ ＋ 「<a><b></a>」 「」 λe e
+» ☂ σ 🜔бд.писати бд 「CREATE TABLE IF NOT EXISTS т(x, x)」 【】 λe e
+» ☂ σ 🜔бд.писати бд 「CREATE TABLE IF NOT EXISTS ч(x)」 【】 λe e
+» ☂ σ 🜔бд.писати бд 「INSERT INTO ч VALUES (json_extract('{}', 'abc'))」 【】 λe e
+» ☂ σ 🜔бд.писати бд 「INSERT INTO ч VALUES (json('{'))」 【】 λe e
+» ☂ σ 🜔бд.писати бд 「INSERT INTO ч(y) VALUES (1)」 【】 λe e
+» ☂ σ 🜔бд.писати бд 「INSERT INTO ч VALUES (1, 2)」 【】 λe e
+» ☂ σ 🜔бд.писати бд 「SELEKT 1」 【】 λe e

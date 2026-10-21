@@ -1,0 +1,29 @@
+🜂 「атака14: тексти помилок SQLite у типовій роботі (описки, вивантаження 1С) — словами чи англійською」 【「бд.писати:звіти」 「бд.читати:дані」】
+← бд § ⌂ 0
+← з λq ☂ σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+← зп Λq p ☂ σ 🜔бд.писати бд q p λпом ＋ 「✗ 」 пом
+» з 「DROP TABLE IF EXISTS док」
+» з 「CREATE TABLE док(н INTEGER PRIMARY KEY, код TEXT UNIQUE NOT NULL, сума INTEGER CHECK (сума >= 0), дата TEXT)」
+» з 「INSERT INTO док(код, сума, дата) VALUES ('А1', 10, '2026-01-01')」
+» з 「INSERT INTO док(код, сума, дата, коментар) VALUES ('А2', 10, '2026-01-01', 'х')」
+» з 「INSERT INTO док(код, сума) VALUES ('А2', 10, 5)」
+» з 「INSERT INTO док(код, сума) VALUES ('А1', 10)」
+» з 「INSERT INTO док(код, сума) VALUES (NULL, 10)」
+» з 「INSERT INTO док(код, сума) VALUES ('А3', -1)」
+» з 「SELECT сумма FROM док」
+» з 「SELECT н FROM док JOIN док AS д2 USING (н) WHERE код = 'А1'」
+» з 「SELECT * FROM док WHERE н = 1 GROUP BY」
+» з 「INSERT INTO док(н, код) VALUES ('абв', 'А4')」
+» з 「UPDATE док SET н = 'абв' WHERE н = 1」
+» з 「SELECT 9223372036854775807 + 1」
+» з 「INSERT INTO нема(x) VALUES (1)」
+» з 「CREATE TABLE док(x)」
+» з 「SELECT max() FROM док」
+» з 「SELECT abs(1, 2)」
+» з 「SELECT нема_функції(1)」
+» з 「SELECT * FROM (SELECT 1 UNION SELECT 1, 2)」
+» з 「CREATE INDEX і1 ON док(нема)」
+» зп 「INSERT INTO док(код, сума) VALUES (?, ?)」 【「А5」】
+» з 「INSERT INTO док(код, сума) VALUES ('А6', 1) RETURNING нема」
+» ☂ σ 🜔бд.читати 「дані/виписка.xml」 「SELECT 1」 【】 λпом ＋ 「✗ 」 пом
+» ☂ σ 🜔бд.читати 「дані/нема.db」 「SELECT 1」 【】 λпом ＋ 「✗ 」 пом

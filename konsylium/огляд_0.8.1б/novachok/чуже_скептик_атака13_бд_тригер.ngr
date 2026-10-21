@@ -1,0 +1,10 @@
+🜂 「атака13: випадковий rowid без «жереб» — свій BEFORE-тригер ставить 2⁶³−1 уже після перевірки Nigredo」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+» 🜔бд.писати бд 「DROP TABLE IF EXISTS t」 【】
+» 🜔бд.писати бд 「DROP TABLE IF EXISTS n」 【】
+» 🜔бд.писати бд 「CREATE TABLE t(x)」 【】
+» 🜔бд.писати бд 「CREATE TABLE n(i)」 【】
+» 🜔бд.писати бд 「CREATE TRIGGER пастка BEFORE INSERT ON t WHEN NEW.x = 1 BEGIN INSERT OR IGNORE INTO t(rowid, x) VALUES (9223372036854775807, 0); END」 【】
+» 🜔бд.писати бд 「INSERT INTO t(x) VALUES (1)」 【】
+← жр 🜔бд.писати бд 「WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM c WHERE i < (SELECT rowid % 100 + 1 FROM t WHERE x = 1)) INSERT INTO n SELECT i FROM c」 【】
+» 〔випадкове 0–99 з rowid SQLite (без права «жереб»): {－ жр 1}〕

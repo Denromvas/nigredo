@@ -1,0 +1,49 @@
+Exception in thread Thread-1 (target):
+Traceback (most recent call last):
+  File "/usr/lib/python3.13/threading.py", line 1043, in _bootstrap_inner
+    self.run()
+    ~~~~~~~~^^
+  File "/usr/lib/python3.13/threading.py", line 994, in run
+    self._target(*self._args, **self._kwargs)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/ai-agents/Nigredo/interpreter/nigredo.py", line 6059, in target
+    result[0] = main(sys.argv[1:])
+                ~~~~^^^^^^^^^^^^^^
+  File "/root/ai-agents/Nigredo/interpreter/nigredo.py", line 5769, in main
+    prog, perr = parse(src, cwd, None if path == '<-e>' else path, errors), None
+                 ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/ai-agents/Nigredo/interpreter/nigredo.py", line 1636, in parse
+    errs = type_errors(prog)
+  File "/root/ai-agents/Nigredo/interpreter/nigredo.py", line 1625, in type_errors
+    t(prog, [{}])
+    ~^^^^^^^^^^^^
+  File "/root/ai-agents/Nigredo/interpreter/nigredo.py", line 1537, in t
+    out = t(st, env)
+  File "/root/ai-agents/Nigredo/interpreter/nigredo.py", line 1573, in t
+    actual, body = [t(e, env) for e in args], _A
+                    ~^^^^^^^^
+  File "/root/ai-agents/Nigredo/interpreter/nigredo.py", line 1548, in t
+    t(e, env)
+    ~^^^^^^^^
+  File "/root/ai-agents/Nigredo/interpreter/nigredo.py", line 1544, in t
+    lam_t(n, env)
+    ~~~~~^^^^^^^^
+  File "/root/ai-agents/Nigredo/interpreter/nigredo.py", line 1623, in lam_t
+    return t(n[3], env + [sc])
+  File "/root/ai-agents/Nigredo/interpreter/nigredo.py", line 1585, in t
+    regex(args[1][2], g, n[1])
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/root/ai-agents/Nigredo/interpreter/nigredo.py", line 2334, in regex
+    r = Rx(pat)
+  File "/root/ai-agents/Nigredo/interpreter/nigredo.py", line 2083, in __init__
+    tree = P.parse(pat)
+  File "/usr/lib/python3.13/re/_parser.py", line 980, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "/usr/lib/python3.13/re/_parser.py", line 459, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/re/_parser.py", line 670, in _parse
+    raise OverflowError("the repetition number is too large")
+OverflowError: the repetition number is too large
