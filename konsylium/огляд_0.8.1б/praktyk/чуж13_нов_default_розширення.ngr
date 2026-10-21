@@ -1,0 +1,8 @@
+🜂 「суд 9б: load_extension і fts3_tokenizer у DEFAULT стовпця — чи дійдуть до SQLite」 【「бд.писати:звіти」】
+← б 「звіти/default_розш.db」
+» ☂ 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS р (x, y DEFAULT (load_extension('звіти/нема')))」 【】 λe ＋ 「таблиця: 」 e
+» ☂ 🜔бд.писати б 「INSERT INTO р (x) VALUES (1)」 【】 λe ＋ 「вставка: 」 e
+» ☂ 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS ф (x, y DEFAULT (fts3_tokenizer('simple')))」 【】 λe ＋ 「таблиця ф: 」 e
+» ☂ 🜔бд.писати б 「INSERT INTO ф (x) VALUES (1)」 【】 λe ＋ 「вставка ф: 」 e
+» ☂ 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS п (x, y DEFAULT (sqlite_offset(1)))」 【】 λe ＋ 「таблиця п: 」 e
+» 「кінець」

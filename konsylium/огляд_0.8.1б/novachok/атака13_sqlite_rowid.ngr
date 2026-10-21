@@ -1,0 +1,44 @@
+🜂 「суд 9в: жереб SQLite без «жереб» — rowid після 2⁶³−1 у нових формах (база — з аргументу)」 【「бд.писати:звіти」】
+← б § ⌂ 0
+← ш λq » ＋ ＋ ⊏ q 0 60 「 ⇒ 」 ☂ σ 🜔бд.писати б q 【】 λe ⇄ ⇄ e 「бд.писати: 」 「」 「bad JSON path: 」 「」
+← м 「9223372036854775807」
+ш 「CREATE TABLE IF NOT EXISTS а(x)」
+ш 「DELETE FROM а」
+ш ＋ ＋ 「INSERT INTO а(rowid, x) VALUES (」 м 「, 0)」
+ш 「INSERT INTO а(x) VALUES (1)」
+ш 「SELECT json_extract('{}', 'а:' || (SELECT rowid FROM а WHERE x=1))」
+ш 「CREATE TABLE IF NOT EXISTS б(x)」
+ш 「DELETE FROM б」
+ш ＋ ＋ 「INSERT INTO б(rowid, x) VALUES (」 м 「, 0), (NULL, 1)」
+ш 「SELECT json_extract('{}', 'б:' || (SELECT rowid FROM б WHERE x=1))」
+ш 「CREATE TABLE IF NOT EXISTS в(x)」
+ш 「DELETE FROM в」
+ш 「CREATE TABLE IF NOT EXISTS в_s(x)」
+ш ＋ ＋ 「CREATE TRIGGER IF NOT EXISTS в_тр AFTER INSERT ON в_s BEGIN INSERT INTO в(rowid, x) VALUES (」 м 「, 0); INSERT INTO в(x) VALUES (1); END」
+ш 「INSERT INTO в_s VALUES (1)」
+ш 「SELECT json_extract('{}', 'в:' || (SELECT rowid FROM в WHERE x=1))」
+ш 「CREATE TABLE IF NOT EXISTS г(id INTEGER PRIMARY KEY, x)」
+ш 「DELETE FROM г」
+ш ＋ ＋ 「INSERT INTO г(id, x) VALUES (」 м 「, 0)」
+ш 「INSERT OR REPLACE INTO г(x) VALUES (1)」
+ш 「SELECT json_extract('{}', 'г:' || (SELECT id FROM г WHERE x=1))」
+ш 「CREATE TABLE IF NOT EXISTS ґ(x)」
+ш 「DELETE FROM ґ」
+ш 「INSERT INTO ґ(x) VALUES (0)」
+ш 「CREATE TRIGGER IF NOT EXISTS ґ_тр AFTER UPDATE ON ґ WHEN new.x = 0 BEGIN INSERT INTO ґ(x) VALUES (1); END」
+ш ＋ ＋ 「UPDATE ґ SET rowid = 」 м 「 WHERE x = 0」
+ш 「SELECT json_extract('{}', 'ґ:' || (SELECT rowid FROM ґ WHERE x=1))」
+ш 「CREATE TABLE IF NOT EXISTS д(x)」
+ш 「DELETE FROM д」
+ш 「CREATE VIEW IF NOT EXISTS д_в AS SELECT x FROM д」
+ш ＋ ＋ 「CREATE TRIGGER IF NOT EXISTS д_тр INSTEAD OF INSERT ON д_в BEGIN INSERT INTO д(rowid, x) VALUES (」 м 「, 0); INSERT INTO д(x) VALUES (new.x); END」
+ш 「INSERT INTO д_в VALUES (1)」
+ш 「SELECT json_extract('{}', 'д:' || (SELECT rowid FROM д WHERE x=1))」
+ш 「CREATE TABLE IF NOT EXISTS е(x)」
+ш 「DELETE FROM е」
+ш ＋ ＋ 「INSERT INTO е(rowid, x) SELECT 」 м 「, 0 UNION ALL SELECT NULL, 1」
+ш 「SELECT json_extract('{}', 'е:' || (SELECT rowid FROM е WHERE x=1))」
+ш 「SELECT json_extract('{}', 'random:' || random())」
+ш 「SELECT json_extract('{}', 'randomblob0:' || hex(randomblob(0)))」
+ш 「SELECT json_extract('{}', 'жеребом:' || (SELECT x FROM а ORDER BY random() LIMIT 1))」
+» 「кінець」

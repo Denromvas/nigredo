@@ -1,0 +1,6 @@
+🜂 「атака15: невинна програма на старому файлі (sqlite_sequence біля межі) — звичайний INSERT без AUTOINCREMENT; що каже ключ власника?」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) VALUES (1)」
+» з 「INSERT INTO t(rowid, x) VALUES (7, 1)」
+» з 「UPDATE t SET x = 2」

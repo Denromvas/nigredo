@@ -1,0 +1,9 @@
+🜂 「атака16: таблиця вже на межі (старий файл) — чи сховає запобіжна відмова тригера справжню спробу поза правами」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t2(x) SELECT 1 UNION ALL SELECT random()」
+» з 「INSERT INTO t2(x) SELECT 1 UNION ALL SELECT date('now')」
+» з 「INSERT INTO t2(x) VALUES (random())」
+» з 「ATTACH DATABASE 'звіти/інша_маска.db' AS y」
+» з 「INSERT INTO t2(x) VALUES (1)」
+» з 「INSERT INTO t2(rowid, x) VALUES (5, 1)」

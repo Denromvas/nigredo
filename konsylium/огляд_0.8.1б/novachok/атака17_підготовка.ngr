@@ -1,0 +1,17 @@
+🜂 「атака17 (підготовка, з «жереб»): база з тригерами, VIEW і DEFAULT, що ховають random/годинник/PRAGMA; рядок у t; наприкінці — sqlite_sequence біля межі (зсув 1 — стара, від’ємний — далеко)」 【「бд.писати:звіти」 「жереб」】
+← бд § ⌂ 0
+← зсув § ⌂ 1
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE q(id INTEGER PRIMARY KEY AUTOINCREMENT, x)」
+» з 「CREATE TABLE t(x)」
+» з 「CREATE TABLE t2(x)」
+» з 「CREATE TABLE tr_src(x)」
+» з 「CREATE TRIGGER trr AFTER INSERT ON tr_src BEGIN INSERT INTO t2 VALUES (random()); END」
+» з 「CREATE TABLE tc_src(x)」
+» з 「CREATE TRIGGER trc AFTER INSERT ON tc_src BEGIN INSERT INTO t2 VALUES (date('now')); END」
+» з 「CREATE VIEW vp AS SELECT file FROM pragma_database_list」
+» з 「CREATE VIEW vr AS SELECT random() AS r」
+» з 「CREATE TABLE td(x, y DEFAULT (random()))」
+» з 「INSERT INTO q(x) VALUES (1)」
+» з 「INSERT INTO t(x) VALUES (1)」
+» з ⁀ 【「INSERT INTO sqlite_sequence(rowid, name, seq) VALUES (9223372032559808511 + 」 зсув 「, 'z', 0)」】 「」

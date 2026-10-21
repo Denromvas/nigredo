@@ -1,0 +1,12 @@
+🜂 「атака16 (без «жереб»): запит пише в таблицю з AUTOINCREMENT (там тригерів rowid немає), а її тригер — у звичайну з rowid 2⁶³−1; і явний 2⁶³−1 у саму AUTOINCREMENT」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE ai(id INTEGER PRIMARY KEY AUTOINCREMENT, x)」
+» з 「CREATE TABLE p(x)」
+» з 「CREATE TRIGGER tr AFTER INSERT ON ai BEGIN INSERT INTO p(rowid, x) VALUES (9223372036854775807, NEW.x); END」
+» ＋ 「ai → тригер у p 2⁶³−1: 」 з 「INSERT INTO ai(x) VALUES (1)」
+» ＋ 「p рядків: 」 з 「UPDATE p SET x = x」
+» з 「DROP TRIGGER tr」
+» ＋ 「ai явний 2⁶³−1: 」 з 「INSERT INTO ai(id, x) VALUES (9223372036854775807, 2)」
+» ＋ 「ai далі: 」 з 「INSERT INTO ai(x) VALUES (3)」
+» ＋ 「ai рядків: 」 з 「UPDATE ai SET x = x」
