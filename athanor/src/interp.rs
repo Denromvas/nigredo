@@ -123,7 +123,8 @@ pub struct Interp {
     pub last_call: Option<(String, Vec<J>)>,
     pub modules: HashMap<String, Rc<Env>>,
     pub prof: Option<HashMap<String, (u64, std::time::Duration)>>,
-    pub dry: Option<Vec<(u64, &'static str, Vec<J>, f64)>>, // --сухо: придушені дії (№, назва, аргументи, впевненість)
+    pub dry: Option<Vec<(u64, &'static str, Vec<J>, f64, bool)>>, // --сухо: придушені дії (№, назва, аргументи, впевненість, запит не скомпілювався)
+    pub db_unchecked: bool, // права без дії: запит SQLite не скомпілювався на нинішній базі (огляд 0.8.1в)
 }
 
 impl Interp {
@@ -1458,6 +1459,7 @@ impl Interp {
             // --сухо (нативно, суд 9): дія не відбувається, результат невідомий; права — як завжди: поза ними
             // «заборонено», а не «дій не виконано»; інша помилка (таблиці ще немає) — не судимо
             self.denied = false;
+            self.db_unchecked = false;
             let r = if job.name == "файл.писати" {
                 let a0 = job.args[0].v.clone();
                 self.path_ok(job.name, &a0, job.pos, true).map(|_| ())
@@ -1473,7 +1475,8 @@ impl Interp {
                 }
             }
             let n = self.ends;
-            self.dry.as_mut().unwrap().push((n, job.name, job.targs.clone(), job.ac));
+            let unchecked = job.name == "бд.писати" && self.db_unchecked;
+            self.dry.as_mut().unwrap().push((n, job.name, job.targs.clone(), job.ac, unchecked));
             let v = if job.name == "файл.писати" { Val::None } else { Val::Int(Int::S(0)) };
             return (Some(V::new(v, 0.0)), None, Vec::new());
         }

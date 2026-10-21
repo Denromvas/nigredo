@@ -1453,7 +1453,7 @@ def main():
                            'print(n.db_compiles(c, "UPDATE а SET x = x + 1", []), n.db_compiles(c, "INSERT INTO б VALUES (1)", []),'
                            ' n.clip("слово " * 40, 50))', str(ROOT / 'interpreter')], capture_output=True, text=True)
     check(got.stdout == ref.stdout and got.returncode == ref.returncode != 0
-          and 'дія поза дозволеним (PRAGMA database_list)' in got.stdout + got.stderr
+          and 'дія поза дозволеним (лише SELECT, INSERT' in got.stdout + got.stderr
           and pre_.stdout == 'True False ' + 'слово ' * 7 + 'слово…\n',
           '--сухо: таблиця-функція PRAGMA — та сама відмова, що й у запуску; db_compiles — за викликом authorizer, а не '
           'текстом помилки (UPDATE з читанням стовпця); підсумок сліду не обрізає посеред слова (огляд 0.8.1)',
@@ -1489,7 +1489,8 @@ def main():
     dry81 = both(['--сухо', '-e', f'🜂 【「бд.писати:{DATA}/звіти」】\n'
                   f'» 🜔бд.писати 「{quota81_}」 「INSERT INTO t(x) VALUES (random())」 【】'], envd)
     o_ = resq81[0].stdout
-    check(o_ == resq81[2].stdout and o_.count('вичерпано квоту') == 1 and o_.count('дія поза дозволеним') == 3
+    check(o_ == resq81[2].stdout and o_.count('вичерпано квоту') == 1 and o_.count('дія поза дозволеним (лише') == 1
+          and o_.count('бд.писати: заборонено: ') == 2
           and 'у запиті — random' in o_ and 'у запиті — date' in o_
           and all('(«заборонено»): 3 ' in v_ and 'квоту вичерпано (межа спрацювала' in v_
                   and 'VALUES (9223372036854775807, 1)' in v_ for v_ in (resq81[1], resq81[3]))
@@ -1497,6 +1498,100 @@ def main():
           and 'у запиті — random' in dry81[0].stdout + dry81[0].stderr,
           'квота не ховає спроби: random і годинник у запиті після вичерпаної квоти — «заборонено», у підсумку квоти — сам '
           'запит; --сухо бачить random (огляд 0.8.1б)', o_ + resq81[0].stderr + resq81[1] + dry81[0].stdout + dry81[0].stderr)
+    # огляд 0.8.1в: службова ngr_rowid — лише з тимчасових тригерів інтерпретатора (Скептик: ngr_rowid('t', 0) у SQL
+    # програми робив спробу «запобіжною», ngr_rowid('t', 9) розводив виконавців; Оркестратор: не за назвою, яку програма
+    # може дати своєму тригеру чи VIEW); описка в стовпці на базі «межа» — звичайна помилка (Скептик, Оркестратор);
+    # ON CONFLICT FAIL лишає зроблене, як автокоміт (транзакція запису); текст відмови під квотою — як у запуску (Аудитор)
+    svc81_ = f'{DATA}/звіти/службова81.db'
+    q81v_ = (f'🜂 【「бд.писати:{DATA}/звіти」】\n← п λq ☂ σ 🜔бд.писати 「{svc81_}」 q 【】 λe e\n' + ''.join(
+        f'» п 「{s_}」\n' for s_ in (
+            "INSERT INTO t(rowid, x) VALUES (9223372036854775807, ngr_rowid('t', 0))",
+            "INSERT INTO t(x) VALUES (ngr_rowid('t', 9))", "CREATE VIEW ngr_rowid_0_0 AS SELECT ngr_rowid('t', 0) AS a",
+            'INSERT INTO t(x) SELECT a FROM ngr_rowid_0_0',
+            "CREATE TRIGGER ngr_rowid_0_1 AFTER INSERT ON t BEGIN SELECT ngr_rowid('t', 0); END",
+            'INSERT INTO t(x) VALUES (1)', 'DROP TRIGGER ngr_rowid_0_1', 'INSERT INTO t(y) VALUES (1)',
+            'INSERT INTO u(k) VALUES (1)', 'INSERT OR FAIL INTO u(k) SELECT 2 UNION ALL SELECT 1 UNION ALL SELECT 3',
+            'INSERT INTO t(x) VALUES (2)')))
+    res81v = []
+    for k_, cmd_ in enumerate((NGR_CMD, [sys.executable, str(NGR)])):
+        if os.path.exists(svc81_):
+            os.remove(svc81_)
+        with sqlite3.connect(svc81_) as c_:     # «межа»: sqlite_sequence на 2⁶³−1, b з AUTOINCREMENT ще без рядка
+            c_.executescript('CREATE TABLE t(x); CREATE TABLE u(k UNIQUE); '
+                             'CREATE TABLE b(id INTEGER PRIMARY KEY AUTOINCREMENT, x)')
+            c_.execute("INSERT INTO sqlite_sequence(rowid, name, seq) VALUES (9223372036854775807, 'я', 1)")
+        tp_ = tmp / f'службова81_{k_}.jsonl'
+        res81v.append(subprocess.run([*cmd_, '--слід', str(tp_), '-e', q81v_], capture_output=True, text=True, env=envd))
+        res81v.append(subprocess.run([sys.executable, str(NGR), '--перевірити-слід', str(tp_)], capture_output=True,
+                                     text=True, env=envd).stdout)
+        with sqlite3.connect(svc81_) as c_:
+            res81v.append([r[0] for r in c_.execute('SELECT x FROM t')] + [r[0] for r in c_.execute('SELECT k FROM u')])
+    o_ = res81v[0].stdout
+    check(o_ == res81v[3].stdout and res81v[0].returncode == res81v[3].returncode == 0 and res81v[2] == res81v[5] == [2, 1, 2]
+          and o_.count('бд.писати: заборонено: службова функція інтерпретатора (ngr_rowid)') == 4
+          and 'запобіжн' not in o_ and o_.count('у таблиці немає стовпця з такою назвою') == 1
+          and o_.count('порушено унікальність') == 1 and o_.splitlines().count('0') == 3
+          and all('(«заборонено»): 4 ' in v_ and 'запобіжн' not in v_ for v_ in (res81v[1], res81v[4])),
+          'SQLite: службова ngr_rowid — лише з тимчасових тригерів інтерпретатора (з SQL програми, її VIEW і тригера — '
+          '«заборонено»); описка в стовпці на базі «межа» — звичайна помилка; ON CONFLICT FAIL лишає зроблене (огляд 0.8.1в)',
+          o_ + res81v[0].stderr + res81v[1] + res81v[3].stdout + str(res81v[2]) + str(res81v[5]))
+    # автор (огляд 0.8.1в): між попереднім проходом і запуском інший процес (чи гілка ‖) міняв схему — тригер бази писав
+    # rowid 2⁶³−1 у таблицю, на якій тригерів rowid не було; тепер прохід, тригери й запит — в одній транзакції запису
+    race81_ = f'{DATA}/звіти/гонка81.db'
+    resr81 = []
+    for cmd_ in (NGR_CMD, [sys.executable, str(NGR)]):
+        if os.path.exists(race81_):
+            os.remove(race81_)
+        with sqlite3.connect(race81_) as c_:
+            c_.executescript('CREATE TABLE t(x); CREATE TABLE u(x)')
+        holder_ = subprocess.Popen([sys.executable, '-c', 'import sqlite3, sys, time\n'
+                                    'c = sqlite3.connect(sys.argv[1], isolation_level=None); c.execute("BEGIN IMMEDIATE")\n'
+                                    'print("так", flush=True); time.sleep(1.5)\n'
+                                    'c.execute("CREATE TRIGGER tr AFTER INSERT ON t BEGIN INSERT INTO u(rowid, x) '
+                                    'VALUES (9223372036854775807, 1); END"); c.execute("COMMIT")', race81_],
+                                   stdout=subprocess.PIPE, text=True)
+        holder_.stdout.readline()
+        resr81.append(subprocess.run([*cmd_, '-e', f'🜂 【「бд.писати:{DATA}/звіти」】\n'
+                                      f'» ☂ 🜔бд.писати 「{race81_}」 「INSERT INTO t(x) VALUES (1)」 【】 λe e'],
+                                     capture_output=True, text=True, env=envd).stdout)
+        holder_.wait()
+        with sqlite3.connect(race81_) as c_:
+            resr81.append(c_.execute('SELECT count(*) FROM u').fetchone()[0])
+    # запит, якого попередній прохід не скомпілював (зайвий параметр), — захист на всіх таблицях, і DROP TABLE прибирає
+    # з таблицею й тимчасовий тригер інтерпретатора: це не спроба
+    drop81 = []
+    for cmd_ in (NGR_CMD, [sys.executable, str(NGR)]):
+        with sqlite3.connect(race81_) as c_:
+            c_.execute('CREATE TABLE IF NOT EXISTS u(x)')
+        drop81.append(subprocess.run([*cmd_, '-e', f'🜂 【「бд.писати:{DATA}/звіти」】\n'
+                                      f'» ☂ 🜔бд.писати 「{race81_}」 「DROP TABLE u」 【1】 λe e\n'
+                                      f'» 🜔бд.писати 「{race81_}」 「DROP TABLE u」 【】'], capture_output=True, text=True, env=envd))
+    dry81v = both(['--сухо', '-e', f'🜂 【「бд.писати:{DATA}/звіти」】\n» 🜔бд.писати 「{svc81_}」 「CREATE TABLE нова(x)」 【】\n'
+                   f'» 🜔бд.писати 「{svc81_}」 「INSERT INTO нова(x) VALUES (random())」 【】'], envd)
+    dryn81 = both(['--сухо', '-e', f'🜂 【「бд.писати:{DATA}/звіти」】\n'
+                   f"» 🜔бд.писати 「{svc81_}」 「INSERT INTO t(x) VALUES (ngr_rowid('t', 0))」 【】"], envd)
+    pre81v = subprocess.run([sys.executable, '-c', 'import sys, sqlite3, types; sys.path.insert(0, sys.argv[1]); import nigredo as n\n'
+                             'c = sqlite3.connect(":memory:", isolation_level=None)\n'
+                             'c.executescript("CREATE TABLE t(x); CREATE VIEW ngr_rowid_0_0 AS SELECT 1")\n'
+                             'm = {"запобіжна": False, "сумнів": [], "тригери": set()}\n'
+                             'n._db_guard(c, types.SimpleNamespace(caps=set(), quota_stack=[]), [], m, True, '
+                             '"INSERT INTO t(x) VALUES (1)", [])\nprint(sorted(m["тригери"]), c.in_transaction)',
+                             str(ROOT / 'interpreter')], capture_output=True, text=True)
+    check(resr81[0] == resr81[2] and resr81[1] == resr81[3] == 0
+          and 'заборонено: випадковість SQLite (таблиця «u» — рядок отримав би rowid 2⁶³−1' in resr81[0]
+          and dry81v[0].stderr == dry81v[1].stderr and dry81v[0].stdout == dry81v[1].stdout
+          and dry81v[0].stderr.count('⚠ запит не скомпілювався на нинішній базі') == 1
+          and dry81v[0].stderr.count('бд.писати без виконання: authorizer і байткод SQLite перевірено, а rowid') == 1
+          and pre81v.stdout == "['ngr_rowid_0_0_'] True\n" and dryn81[0].stdout == dryn81[1].stdout
+          and drop81[0].stdout == drop81[1].stdout and drop81[0].stdout.startswith('бд.писати: кількість «?»')
+          and drop81[0].stdout.endswith('\n0\n') and 'дозволен' not in drop81[0].stdout
+          and dryn81[0].returncode == dryn81[1].returncode != 0
+          and 'бд.писати: заборонено: службова функція інтерпретатора' in dryn81[0].stdout + dryn81[0].stderr,
+          'SQLite: попередній прохід, тригери й запит — в одній транзакції запису (інший процес не змінить схеми між ними); '
+          'назви тимчасових тригерів — не з бази; --сухо: «не скомпілювався», rowid без виконання і ngr_rowid — '
+          '«заборонено» (огляд 0.8.1в)',
+          str(resr81) + dry81v[0].stderr + dry81v[1].stderr + pre81v.stdout + pre81v.stderr + dryn81[0].stdout
+          + dryn81[0].stderr + drop81[0].stdout + drop81[0].stderr + drop81[1].stdout)
     seal81 = tmp / 'печатка81'
     (seal81 / 'звіти').mkdir(parents=True, exist_ok=True)
     (seal81 / 'файл.ngr').write_text('🜂 「новий файл」 【「писати:звіти/нова.txt」】\n» 🜔писати 「звіти/нова.txt」 「x」\n',
@@ -1507,9 +1602,10 @@ def main():
               for f_ in ('файл.ngr', 'тека.ngr')]
     rtl81 = run(['--розбір', '-e', '🜂\n» ＋ 「שלום」 「x」\n» ＋ 「мир」 「x」\n» ＋ 「١٢」 「٣٤」'], env).stdout
     check(len(warn81[0]) == 1 and 'рядок 2: файл.писати пише в «звіти/нова.txt» — це сам шлях з печатки' in warn81[0][0]
-          and warn81[1] == [] and '«שלום»\u200e' in rtl81 and '«мир»\u200e' not in rtl81 and '«١٢»\u200e' in rtl81,
+          and warn81[1] == [] and '\u200e«שלום»\u200e' in rtl81 and '«мир»\u200e' not in rtl81
+          and '\u200e«мир»' not in rtl81 and '\u200e«١٢»\u200e' in rtl81,
           'попередження про запис у сам шлях з печатки — і для ще не створеного файлу, а тека, яку створить запис, — без '
-          'нього; --розбір: LRM після тексту справа наліво (огляд 0.8.1)', str(warn81) + rtl81)
+          'нього; --розбір: LRM з обох боків тексту справа наліво (огляд 0.8.1, 0.8.1в)', str(warn81) + rtl81)
     # суд 9в (Аудитор): межа сліду між «виклик» і результатом — --перевірити-слід каже про виклик без результату
     lim_prog, lim_tr = '🜂 【「жереб」】\n» 🜔жереб 6\n» 🜔жереб 6\n» 🜔жереб 6', tmp / 'межа9в.jsonl'
     subprocess.run([*NGR_CMD, '--слід', str(lim_tr), '-e', lim_prog], capture_output=True, env=env)

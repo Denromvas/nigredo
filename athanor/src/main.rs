@@ -411,6 +411,7 @@ fn execute(
         modules: Default::default(),
         prof: if std::env::var_os("ATHANOR_PROFILE").is_some() { Some(Default::default()) } else { None },
         dry: None,
+        db_unchecked: false,
     };
     let mut head = vec![
         ("версія".to_string(), J::s(lang::VERSION)),
@@ -526,7 +527,7 @@ fn dry_report(it: &mut interp::Interp) {
     let mut done = done;
     done.sort_by_key(|d| d.0);
     let mut unsure = 0;
-    for (_, name, args, ac) in &done {
+    for (_, name, args, ac, unchecked) in &done {
         let shown: Vec<String> = args
             .iter()
             .map(|a| match a {
@@ -541,7 +542,15 @@ fn dry_report(it: &mut interp::Interp) {
             mark = format!("  ⚠ залежить від невідомого (впевненість {}) — справжній запуск може зробити інше", pyf::fmt_g2(*ac));
             unsure += 1;
         }
+        if *unchecked {
+            // таблицю, певно, створила б придушена дія (огляд 0.8.1в, Практик)
+            mark.push_str("  ⚠ запит не скомпілювався на нинішній базі — права в ньому без виконання не перевірено");
+        }
         err.push_str(&format!("  {} {}{}\n", name, shown, mark));
+    }
+    if done.iter().any(|d| d.1 == "бд.писати") {
+        // огляд 0.8.1в, Скептик: rowid 2⁶³−1 у переліку — без позначки
+        err.push_str("  ⚠ бд.писати без виконання: authorizer і байткод SQLite перевірено, а rowid, який дав би запит, — ні\n");
     }
     if decided < 1.0 {
         err.push_str(&format!(

@@ -115,6 +115,9 @@ rights in the query, and Hebrew and Arabic are no longer allowed in names (a bid
 next re-review (6:1) found the same class left — an explicit rowid 2⁶³−1 on such a database, a quota the program set
 for itself, and raw page writes through `sqlite_dbpage` — now the refusal is precautionary only when SQLite itself
 would have to take a random rowid, an exhausted quota no longer hides an attempt, and `sqlite_dbpage` is refused. The
+third short re-review (5:2) found that a query could call the interpreter's internal function that marks a refusal as
+precautionary: now only the interpreter's own temporary triggers can call it; and the pre-check, the guard triggers and
+the query itself now run in one write transaction, so another process can no longer change the schema in between. The
 latest comparison report is
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols — [`konsylium/`](konsylium/).
 
@@ -246,7 +249,10 @@ claude mcp add nigredo -- python3 mcp/nigredo_mcp.py   # дати мову бу�
 не знайшли в запиті нічого поза правами; іврит і арабське в іменах — помилка (переглядач з bidi переставляє аргументи
 префіксного запису). Наступний огляд (6:1) знайшов залишки того самого класу — явний rowid 2⁶³−1 на такій базі, квоту, яку
 програма оголосила собі сама, і запис сирих сторінок через `sqlite_dbpage`: тепер відмова запобіжна, лише коли rowid
-навмання взяв би сам SQLite, вичерпана квота спроби не ховає, а `sqlite_dbpage` — відмова. Останній звіт звірки —
+навмання взяв би сам SQLite, вичерпана квота спроби не ховає, а `sqlite_dbpage` — відмова. Третій короткий огляд (5:2)
+знайшов, що запит міг сам покликати службову функцію інтерпретатора, яка позначає відмову запобіжною: тепер її кличуть
+лише тимчасові тригери самого інтерпретатора; а попередня перевірка, тригери захисту й сам запит тепер ідуть в одній
+транзакції запису, тож інший процес між ними схеми не змінить. Останній звіт звірки —
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); історія й протоколи — [`konsylium/`](konsylium/).
 
 **Чесно про межі:** Nigredo — інструмент прозорості й аудиту, **не пісочниця ОС**: агент із доступом до shell може
