@@ -1,0 +1,14 @@
+🜂 「атака16: AUTOINCREMENT без тригерів rowid — UPDATE ставить rowid 2⁶³−1, далі INSERT: чесна відмова SQLite чи rowid навмання? Контроль — та сама таблиця без AUTOINCREMENT」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE ai(id INTEGER PRIMARY KEY AUTOINCREMENT, x)」
+» з 「INSERT INTO ai(x) VALUES (1)」
+» з 「UPDATE ai SET id = 9223372036854775807」
+» з 「INSERT INTO ai(x) VALUES (2)」
+» з 「INSERT INTO ai(x) VALUES (3)」
+» з 「DELETE FROM sqlite_sequence」
+» з 「INSERT INTO ai(x) VALUES (4)」
+» з 「CREATE TABLE na(id INTEGER PRIMARY KEY, x)」
+» з 「INSERT INTO na(x) VALUES (1)」
+» з 「UPDATE na SET id = 9223372036854775807」
+» з 「INSERT INTO na(x) VALUES (2)」

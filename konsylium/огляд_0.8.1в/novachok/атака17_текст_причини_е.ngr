@@ -1,0 +1,22 @@
+🜂 「атака17 (для еталона — у печатці мережа, не викликається): чи вирішує текст, що записати в слід; свіжа база」 【「бд.писати:звіти」 「взяти:127.0.0.1:28717」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE "дійшла до rowid 2⁶³−1 — далі SQLite бере його навмання"(x)」
+» з 「INSERT INTO "дійшла до rowid 2⁶³−1 — далі SQLite бере його навмання"(rowid, x) VALUES (9223372036854775807, 1)」
+» з 「CREATE TABLE "запобіжна відмова (так у самій базі)"(x)」
+» з 「INSERT INTO "запобіжна відмова (так у самій базі)"(rowid, x) VALUES (9223372036854775807, 1)」
+» з 「CREATE TABLE "table sqlite_master may not be modified"(x)」
+» з 「INSERT INTO "table sqlite_master may not be modified"(x) VALUES (1)」
+» з 「CREATE TABLE "not authorized"("not authorized")」
+» з 「INSERT INTO "not authorized"("not authorized") VALUES (1)」
+» з 「UPDATE "not authorized" SET "not authorized" = 2」
+» з 「INSERT INTO "nosuch not authorized"(x) VALUES (1)」
+» з 「CREATE TABLE rz(x)」
+» з 「CREATE TRIGGER rzt BEFORE INSERT ON rz BEGIN SELECT RAISE(ABORT, 'table sqlite_master may not be modified'); END」
+» з 「INSERT INTO rz VALUES (1)」
+» з 「CREATE TABLE rn(x)」
+» з 「CREATE TRIGGER rnt BEFORE INSERT ON rn BEGIN SELECT RAISE(ABORT, 'not authorized'); END」
+» з 「INSERT INTO rn VALUES (1)」
+» з 「CREATE TABLE rq(x)」
+» з 「CREATE TRIGGER rqt BEFORE INSERT ON rq BEGIN SELECT RAISE(ABORT, 'запобіжна відмова (так у самій базі; запит не виконувався, а заборонених дій у ньому перевірка не знайшла)'); END」
+» з 「INSERT INTO rq VALUES (1)」

@@ -1,0 +1,13 @@
+🜂 「атака14: «;» на початку запиту — попередній прохід (EXPLAIN ;…) падає мовчки, тимчасових тригерів rowid немає」 【「бд.писати:звіти」】
+← бд 「звіти/а14_кк.db」
+← з λq ☂ σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「DROP TABLE IF EXISTS t」
+» з 「DROP TABLE IF EXISTS n」
+» з 「CREATE TABLE t(x)」
+» з 「CREATE TABLE n(i)」
+» ＋ 「контроль без «;»: 」 з 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, 0)」
+» з 「;INSERT INTO t(rowid, x) VALUES (9223372036854775807, 0)」
+» ＋ 「контроль без «;» (таблиця вже на межі): 」 з 「INSERT INTO t(x) VALUES (1)」
+» з 「;INSERT INTO t(x) VALUES (1)」
+← жр 🜔бд.писати бд 「;WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM c WHERE i < (SELECT rowid % 100 + 1 FROM t WHERE x = 1)) INSERT INTO n SELECT i FROM c」 【】
+» 〔випадкове 0–99 з rowid SQLite (без права «жереб»): {－ жр 1}〕

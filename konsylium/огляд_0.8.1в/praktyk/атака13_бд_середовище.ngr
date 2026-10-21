@@ -1,0 +1,16 @@
+🜂 「атака13: що SQLite каже про середовище — версія, опції збірки, розширення; порядок без ORDER BY」 【「бд.читати:дані」】
+← б 「дані/а13_док.db」
+← з λq ☂ σ 🜔бд.читати б q 【】 λпом ＋ 「✗ 」 пом
+» з 「SELECT sqlite_version() AS в」
+» з 「SELECT substr(sqlite_source_id(), 1, 19) AS д」
+» з 「SELECT sqlite_compileoption_used('THREADSAFE') AS т」
+» з 「SELECT count(*) AS к FROM pragma_compile_options」
+» з 「PRAGMA compile_options」
+» з 「SELECT load_extension('/nonexistent') AS р」
+» з 「SELECT контрагент, count(*) AS к FROM док GROUP BY контрагент LIMIT 3」
+» з 「SELECT DISTINCT сума % 7 AS о FROM док LIMIT 7」
+» з 「SELECT контрагент FROM док WHERE сума > 999000 LIMIT 5」
+» з 「SELECT changes() AS ч, total_changes() AS т, last_insert_rowid() AS р」
+» з 「SELECT typeof(date('2026-01-01', '+0.5 days')) AS т, datetime('2026-01-01 12:00', '+1.5 hours') AS д, date(2461000.5) AS ю, datetime(1760000000, 'unixepoch') AS у, date('2026-02-29') AS н, date('2026-13-01') AS п」
+» з 「SELECT date('2026-10-20', 'weekday 0') AS нд, date('2026-10-20', '-6 months', 'start of year') AS р, strftime('%W %U %G %V %u', '2026-01-01') AS т, strftime('%f %J %e %k %l %p %P', '2026-01-01 15:04:05.678') AS ф」
+» з 「SELECT date('2026-10-20T10:00:00+03:00') AS п, datetime('2026-10-20 10:00:00Z') AS з, date('2026-10-20', 'auto') AS а, date(1760000000, 'auto') AS а2, julianday('2026-10-20', 'subsec') AS с」

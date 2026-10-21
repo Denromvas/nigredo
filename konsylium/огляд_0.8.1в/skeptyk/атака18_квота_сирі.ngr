@@ -1,0 +1,10 @@
+🜂 「атака18: після вичерпаної власної квоти — sqlite_dbpage, VACUUM INTO, службова ngr_rowid, CURRENT_TIMESTAMP у DEFAULT, random у тригері」 【「бд.писати:звіти≤1」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) VALUES (5)」
+» з 「UPDATE sqlite_dbpage SET data = data WHERE pgno = 2」
+» з 「VACUUM INTO 'звіти/в18_вакуум2.db'」
+» з 「INSERT INTO t(x) VALUES (ngr_rowid('t', 0))」
+» з 「INSERT INTO td2(x) VALUES (1)」
+» з 「INSERT INTO t3(x) VALUES (1)」
+» з 「INSERT INTO t(x) VALUES (6)」
