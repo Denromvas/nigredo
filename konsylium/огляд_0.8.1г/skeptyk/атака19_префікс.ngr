@@ -1,0 +1,13 @@
+🜂 「атака19 (Н): запити, де EXPLAIN-прохід міг би впасти інакше, ніж запуск — провідний «;», коментар, трейлінг, подвійний пробіл, CTE-запис」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE т(x)」
+» з 「;INSERT INTO т(x) VALUES (1)」
+» з 「/*c*/INSERT INTO т(x) VALUES (2)」
+» з 「-- коментар
+INSERT INTO т(x) VALUES (3)」
+» з 「INSERT INTO т(x) VALUES (4);」
+» з 「INSERT INTO т(x) VALUES (5) -- хвіст」
+» з 「  INSERT INTO т(нема) VALUES (6)」
+» з 「;;; INSERT INTO т(x) VALUES (7)」
+» з 「WITH c AS (SELECT 8 AS v) INSERT INTO т(x) SELECT v FROM c」

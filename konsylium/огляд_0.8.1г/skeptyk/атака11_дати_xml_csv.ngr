@@ -1,0 +1,42 @@
+🜂 「дати на межах, XML з кодуванням, CSV з великим полем — Атанор проти еталона」
+← спроба λx ☂ Δ x λe ⊏ ＋ 「помилка: 」 e 0 150
+» ☂ Δ ◷ 「9999-12-31」 1 λe e
+» ☂ Δ ◷ 「0001-01-01」 ¯1 λe e
+» ☂ Δ ◷ 「2026-01-01」 1000000000 λe e
+» ☂ Δ ◷ 「2026-01-01」 100000000000000000000 λe e
+» ☂ Δ ◷ 「2026-01-01」 0.0000001 λe e
+» ☂ Δ ◷ 「2026-10-15T09:30:00」 「2026-10-15T09:30:00+03:00」 λe e
+» ☂ Δ ◷ 「2026-10-15」 「2026-10-15T09:30:00+03:00」 λe e
+» ☂ Δ ◷ 「2026-10-15T09:30:00+14:00」 「2026-10-15T09:30:00-12:00」 λe e
+» ☂ Δ ◷ 「2026-10-15T09:30:00+03:00:30」 1 λe e
+» ☂ Δ ◷ 「2026-10-15T09:30:00.1234567」 1 λe e
+» ☂ Δ ◷ 「2026-10-15T09:30:00Z」 1 λe e
+» ☂ Δ ◷ 「2026-10-15T24:00:00」 1 λe e
+» ☂ Δ ◷ 「2026-02-29」 1 λe e
+» ☂ Δ ◷ 「2024-02-29」 365 λe e
+» ☂ Δ ◷ 「2026-10-15T09:30:00+24:00」 1 λe e
+» ☂ Δ ◷ 「9999-12-31T23:59:59-23:59」 1 λe e
+» ☂ Δ ◷ 「0001-01-01T00:00:00+23:59」 「2026-01-01」 λe e
+» ☂ Δ ◷ 「0001-01-01T00:00:00+23:59」 0 λe e
+» ☂ Δ ✓ 「0001-01-01」 「дата」 λe e
+» ☂ Δ χ 「<?xml version="1.0" encoding="ISO-8859-1"?><a>Київ</a>」 λe e
+» ☂ Δ χ 「<?xml version="1.0" encoding="windows-1251"?><a>Київ</a>」 λe e
+» ☂ Δ χ 「<?xml version="1.0" encoding="UTF-16"?><a>Київ</a>」 λe e
+» ☂ Δ χ 「<?xml version="1.0" encoding="koi8-u"?><a>Київ</a>」 λe e
+» ☂ Δ χ 「<?xml version="1.0" encoding="bogus"?><a>Київ</a>」 λe e
+» ☂ Δ χ 「<a b="1&#10;2&#9;3	4\n5"/>」 λe e
+» ☂ Δ χ 「<a>x<![CDATA[<y>]]>z<!-- k -->w<?pi d?>v</a>」 λe e
+← великий ⁀ μ …1 150 λi 「aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa」 「」
+» ρ великий
+» ☂ ρ ▦ ＋ 「x,y\n」 ＋ великий 「,1」 λe e
+» ☂ ρ ▦ ＋ 「x,y\n"」 ＋ великий 「",1」 λe e
+» ☂ Δ ▦ δ 「"x,y\\n1\\u0000,2"」 λe e
+» ☂ Δ ▦ 「x,y\n1,2,3\n4」 λe e
+» ☂ Δ ▦ 「x,x\n1,2」 λe e
+» ☂ Δ ▦ 「\n\nx\n1」 λe e
+» ☂ Δ ▦ 「x;y\n1;2」 λe e
+» ☂ Δ ▦ 「"x"y,z\n1,2」 λe e
+» ☂ Δ ▦ δ 「"\\ufeffx,y\\r\\n1,2\\r\\n"」 λe e
+» ☂ Δ ▦ δ 「"x,y\\r1,2\\r"」 λe e
+» ☂ Δ ▦ 「x\n"a\nb"」 λe e
+» ☂ Δ ▦ 「x\n"a」 λe e

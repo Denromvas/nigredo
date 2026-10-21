@@ -1,0 +1,16 @@
+🜂 「атака16: звичайна p, її тригер пише в AUTOINCREMENT-таблицю a — чи не вважає перевірка й p «AUTOINCREMENT» (MemMax у підпрограмі тригера) і чи не дасть p rowid навмання」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE a(id INTEGER PRIMARY KEY AUTOINCREMENT, v)」
+» з 「CREATE TABLE p(x)」
+» з 「CREATE TRIGGER tp AFTER INSERT ON p BEGIN INSERT INTO a(v) VALUES (NEW.x); END」
+» з 「CREATE TRIGGER tu AFTER UPDATE ON p BEGIN INSERT INTO a(v) VALUES (NEW.x); END」
+» з 「INSERT INTO p(x) VALUES (1)」
+» з 「INSERT INTO p(rowid, x) VALUES (9223372036854775807, 2)」
+» з 「UPDATE p SET rowid = 9223372036854775807 WHERE x = 1」
+» з 「INSERT INTO p(x) SELECT 3 UNION ALL SELECT 4」
+» з 「INSERT INTO a(id, v) VALUES (9223372036854775807, 5)」
+» з 「INSERT INTO p(x) VALUES (6)」
+» з 「INSERT INTO p(x) VALUES (7)」
+» з 「CREATE TABLE IF NOT EXISTS підсумок(n, mx)」
+» з 「INSERT INTO підсумок SELECT count(*), max(rowid) FROM p」

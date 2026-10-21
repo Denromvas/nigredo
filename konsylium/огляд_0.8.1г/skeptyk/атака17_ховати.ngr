@@ -1,0 +1,24 @@
+🜂 「атака17: чи сховає стара база спробу поза правами інакше — явний rowid, VIEW/DEFAULT/тригер, інші таблиці-функції, варіанти назв; і невинні контролі」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, 1)」
+» з 「INSERT INTO t(rowid, x) SELECT 9223372036854775806 + 1, 1」
+» з 「INSERT INTO t(x) SELECT r FROM v_rnd」
+» з 「INSERT INTO t(x) SELECT file FROM v_prg」
+» з 「INSERT INTO td(x) VALUES (1)」
+» з 「INSERT INTO td2(x) VALUES (1)」
+» з 「INSERT INTO t3(x) VALUES (1)」
+» з 「INSERT INTO t4(x) VALUES (1)」
+» з 「INSERT INTO t(x) SELECT file FROM "PRAGMA_DATABASE_LIST"」
+» з 「INSERT INTO t(x) SELECT file FROM main.pragma_database_list」
+» з 「INSERT INTO t(x) SELECT count(*) FROM dbstat」
+» з 「INSERT INTO t(x) SELECT count(*) FROM sqlite_dbpage」
+» з 「INSERT INTO t(x) SELECT load_extension('звіти/нема')」
+» з 「INSERT INTO t(x) VALUES (unixepoch())」
+» з 「INSERT INTO t(x) VALUES (strftime('%s'))」
+» з 「INSERT INTO t(x) VALUES (julianday())」
+» з 「INSERT INTO t(x) SELECT CASE WHEN 0 THEN random() ELSE 1 END」
+» з 「INSERT INTO t(x) VALUES (date('2020-01-01'))」
+» з 「INSERT INTO t(x) SELECT count(*) FROM json_each('[1,2]')」
+» з 「INSERT INTO t(x) SELECT name FROM pragma_table_info('t')」
+» з 「INSERT INTO t(x) VALUES (5)」

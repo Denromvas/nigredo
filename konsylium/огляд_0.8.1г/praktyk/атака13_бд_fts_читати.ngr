@@ -1,0 +1,8 @@
+🜂 「атака13: які rowid дав SQLite у віртуальних таблицях після 2⁶³−1」 【「бд.читати:дані」】
+← б 「дані/а13_fts.db」
+← з λq ☂ σ 🜔бд.читати б q 【】 λпом ＋ 「✗ 」 пом
+» з 「SELECT rowid, x FROM ф5」
+» з 「SELECT docid, x FROM ф4」
+» з 「SELECT * FROM р」
+» з 「SELECT * FROM з」
+» з 「SELECT name, type FROM pragma_table_list」

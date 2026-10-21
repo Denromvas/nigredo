@@ -1,0 +1,13 @@
+🜂 「атака17 (для еталона — у печатці мережа, не викликається): таблиці-функції PRAGMA в лапках — чи бачить їх перевірка」 【「бд.писати:звіти」 「взяти:127.0.0.1:28718」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) SELECT name FROM pragma_table_list」
+» з 「INSERT INTO t(x) SELECT file FROM "pragma_database_list"」
+» з 「INSERT INTO t(x) SELECT file FROM [pragma_database_list]」
+» з 「INSERT INTO t(x) SELECT file FROM `pragma_database_list`」
+» з 「INSERT INTO t(x) SELECT name FROM "pragma_function_list"」
+» з 「INSERT INTO t(x) SELECT name FROM "pragma_compile_options"」
+» з 「INSERT INTO t(x) SELECT compile_options FROM "pragma_compile_options"」
+» з 「INSERT INTO t(x) SELECT name FROM "pragma_table_info"('t')」
+» з 「INSERT INTO t(x) SELECT name FROM pragma_table_info('t')」
+» з 「INSERT INTO t(x) SELECT file FROM "PRAGMA_DATABASE_LIST"」

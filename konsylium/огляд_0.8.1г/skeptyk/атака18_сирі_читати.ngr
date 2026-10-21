@@ -1,0 +1,8 @@
+🜂 「атака18: бд.читати сирих сторінок — sqlite_dbpage і dbstat; поряд звичайне читання」 【「бд.читати:дані」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.читати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「SELECT pgno, length(data) FROM sqlite_dbpage」
+» з 「SELECT count(*) FROM "Sqlite_DbPage"」
+» з 「SELECT * FROM sqlite_dbpage('main') WHERE pgno = 1」
+» з 「SELECT count(*) FROM dbstat」
+» з 「SELECT count(*) FROM t」

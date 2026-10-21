@@ -1,0 +1,12 @@
+🜂 「SQLite: годинник у тригері, VIEW, генерованому стовпці й CHECK без права час」 【「бд.писати:звіти」】
+← б 「звіти/а12_б3.db」
+» ☂ 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS журнал(x)」 【】 λe e
+» ☂ 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS подія(x)」 【】 λe e
+» ☂ 🜔бд.писати б 「CREATE TRIGGER IF NOT EXISTS т1 AFTER INSERT ON подія BEGIN INSERT INTO журнал VALUES (datetime('now')); END」 【】 λe e
+» ☂ 🜔бд.писати б 「INSERT INTO подія VALUES (1)」 【】 λe e
+» ☂ 🜔бд.писати б 「CREATE VIEW IF NOT EXISTS вид AS SELECT random() AS r」 【】 λe e
+» ☂ 🜔бд.писати б 「INSERT INTO журнал SELECT r FROM вид」 【】 λe e
+» ☂ 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS ген(a, b AS (julianday('now')))」 【】 λe e
+» ☂ 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS пер(a CHECK (a < julianday('now')))」 【】 λe e
+» ☂ 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS д2(a DEFAULT (randomblob(4)), b DEFAULT (julianday('now')), c DEFAULT CURRENT_DATE)」 【】 λe e
+» ☂ 🜔бд.писати б 「INSERT INTO д2 DEFAULT VALUES」 【】 λe e

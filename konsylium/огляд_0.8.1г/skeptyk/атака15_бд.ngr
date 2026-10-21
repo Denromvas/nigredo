@@ -1,0 +1,43 @@
+🜂 「атака15: попередній прохід і виконання — хвости, префікси, EXPLAIN, VACUUM, тексти SQLite」 【「бд.писати:звіти」 「бд.читати:дані」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+← ч λq ☂ ＋ 「✓ 」 σ 🜔бд.читати 「дані/порожня.db」 q 【】 λпом ＋ 「✗ 」 пом
+» з 「DROP TABLE IF EXISTS t」
+» з 「DROP TABLE IF EXISTS u」
+» з 「DROP TABLE IF EXISTS v」
+» з 「CREATE TABLE t(x)」
+» з 「CREATE TABLE u(id INTEGER PRIMARY KEY AUTOINCREMENT, y)」
+» з 「CREATE VIEW v AS SELECT x FROM t」
+» з 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, 0);;」
+» з 「;;INSERT INTO t(rowid, x) VALUES (9223372036854775807, 0); -- к」
+» з 「;」
+» з 「-- лише коментар」
+» з 「/* незакритий коментар INSERT INTO t(rowid, x) VALUES (9223372036854775807, 0)」
+» з 「/* к */ EXPLAIN INSERT INTO t(rowid, x) VALUES (9223372036854775807, 0)」
+» з 「EXPLAIN/**/INSERT INTO t(rowid, x) VALUES (9223372036854775807, 0)」
+» з 「explain query plan INSERT INTO t(rowid, x) VALUES (9223372036854775807, 0)」
+» з 「EXPLAIN_ INSERT INTO t(rowid, x) VALUES (9223372036854775807, 0)」
+» з 「	 ; /*a*/ ; --b
+ ; INSERT INTO t(rowid, x) VALUES (9223372036854775807, 0)」
+» з 「;INSERT INTO u(y) VALUES (1)」
+» з 「;INSERT INTO t(x) SELECT 1 UNION ALL SELECT 2」
+» з 「-- к
+VACUUM」
+» з 「;/**/VACUUM」
+» ч 「;SELECT 1 AS а」
+» ч 「/* к */ ; WITH c AS (SELECT 1 AS б) SELECT * FROM c」
+» ч 「;DELETE FROM t」
+» з 「INSERT INTO t(y) VALUES (1)」
+» з 「INSERT INTO t(x) VALUES (1, 2)」
+» з 「INSERT INTO t VALUES (1, 2)」
+» з 「SELECT 1 UNION SELECT 1, 2」
+» з 「CREATE TABLE w(x) STRICT」
+» з 「SELECT nosuch(1)」
+» з 「SELECT abs(1, 2)」
+» з 「SELECT x FROM t, t AS t2 WHERE x = 1」
+» з 「SELECT (SELECT 1, 2)」
+» з 「INSERT INTO v VALUES (1)」
+» з 「CREATE TABLE t2(x, x)」
+» з 「SELECT 1 ORDER BY 2」
+» з 「SELECT count(*) FROM t WHERE count(*) > 1」
+» з 「SELECT * FROM t WHERE x =」

@@ -1,0 +1,30 @@
+🜂 「атака14: тексти помилок re, expat, SQLite — словами, з оригіналом у дужках, однаково в обох」 【「бд.писати:звіти」】
+← рег λш ☂ ⌕ 「abc」 ш λe e
+» рег 「(」
+» рег 「a{2,1}」
+» рег 「[z-a]」
+» рег 「(?P<1>a)」
+» рег 「\\k<x>」
+» рег 「(?<=a+)b」
+» рег 「a**」
+» рег 「(?z)」
+← хмл λs ☂ χ s λe e
+» хмл 「<a>」
+» хмл 「<a></b>」
+» хмл 「<a x="1" x="2"/>」
+» хмл 「<a>&nbsp;</a>」
+» хмл 「<!DOCTYPE a [<!ENTITY e "x">]><a>&e;</a>」
+» хмл 「<a/><b/>」
+» хмл 「」
+← скл λq ☂ σ 🜔бд.писати 「звіти/тексти14.db」 q 【】 λe e
+» скл 「CREATE TABLE IF NOT EXISTS t(x UNIQUE NOT NULL CHECK (x > 0))」
+» скл 「INSERT INTO t VALUES (1)」
+» скл 「INSERT INTO t VALUES (1)」
+» скл 「INSERT INTO t VALUES (NULL)」
+» скл 「INSERT INTO t VALUES (-5)」
+» скл 「INSERT INTO нема VALUES (1)」
+» скл 「INSERT INTO t(y) VALUES (1)」
+» скл 「SELEC 1」
+» скл 「INSERT INTO t VALUES (1, 2)」
+» скл 「CREATE TABLE t(x)」
+» скл 「SELECT abs(-9223372036854775808)」

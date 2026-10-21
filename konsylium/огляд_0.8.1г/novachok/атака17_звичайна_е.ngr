@@ -1,0 +1,17 @@
+🜂 「атака17 (для еталона — у печатці мережа, не викликається): звичайна робота з базою без «час» і «жереб»」 【「бд.писати:звіти」 「взяти:127.0.0.1:28718」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS z(id INTEGER PRIMARY KEY, n INTEGER, d TEXT, j REAL)」
+» з 「CREATE TABLE IF NOT EXISTS za(id INTEGER PRIMARY KEY AUTOINCREMENT, n)」
+» з 「CREATE INDEX IF NOT EXISTS zi ON z(d)」
+← k ∫ …1 200 λi 🜔бд.писати бд 「INSERT INTO z(n, d, j) VALUES (?, date('2020-01-01', ?), julianday('2020-01-01', ?))」 【i 〔+{i} days〕 〔+{i} days〕】
+» 〔вставлено: {k}〕
+» ∫ …1 20 λi 🜔бд.писати бд 「INSERT INTO za(n) VALUES (?)」 【i】
+» з 「INSERT INTO z(id, n, d) VALUES (100000, 0, strftime('%Y-%m', '2026-10-21'))」
+» з 「UPDATE z SET n = n * 2 WHERE d < '2020-03-01'」
+» з 「DELETE FROM z WHERE n > 300」
+» з 「INSERT INTO z(n, d) SELECT count(*), max(d) FROM z」
+» з 「UPDATE za SET n = (SELECT count(*) FROM z) WHERE id = 1」
+» з 「ALTER TABLE z ADD COLUMN m TEXT DEFAULT 'x'」
+» з 「CREATE VIEW IF NOT EXISTS zv AS SELECT d, n FROM z」
+» з 「INSERT INTO za(n) SELECT n FROM zv WHERE n < 5」

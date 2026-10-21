@@ -1,0 +1,13 @@
+🜂 「атака18: sqlite_sequence рівно на межі (без місця) — що виконується (наявна AUTOINCREMENT, звичайна таблиця), що запобіжне (перша вставка в нову AUTOINCREMENT), що заборонено; описки」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS q2(id INTEGER PRIMARY KEY AUTOINCREMENT, x)」
+» з 「INSERT INTO q(x) VALUES (3)」
+» з 「INSERT INTO t(x) VALUES (4)」
+» з 「UPDATE t SET x = x + 1」
+» з 「INSERT INTO q2(x) VALUES (1)」
+» з 「INSERT INTO q2(x) VALUES (random())」
+» з 「INSERT INTO q2(rowid, x) VALUES (9223372036854775807, 1)」
+» з 「INSERT INTO t(y) VALUES (1)」
+» з 「INSERT INTO q2(y) VALUES (1)」
+» з 「INSERT INTO q(x) VALUES (5)」

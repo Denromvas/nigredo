@@ -1,0 +1,20 @@
+🜂 【「бд.писати:звіти」】
+← в λq ☂ σ 🜔бд.писати 「р8.db」 q 【】 λe ＋ 「відмова: 」 e
+» ＋ 「1 ATTACH: 」 в 「ATTACH DATABASE '/root/ai-agents/Nigredo/konsylium/огляд_0.8.1г/skeptyk/x.db' AS x」
+» ＋ 「2 VACUUM INTO: 」 в 「VACUUM INTO '/root/ai-agents/Nigredo/konsylium/огляд_0.8.1г/skeptyk/x.db'」
+» ＋ 「3 CREATE: 」 в 「CREATE TABLE IF NOT EXISTS t(a)」
+» ＋ 「4 тригер load_extension: 」 в 「CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT load_extension('x'); END」
+» ＋ 「5 RETURNING (1): 」 в 「INSERT INTO t VALUES (2) RETURNING a」
+» ＋ 「6 PRAGMA: 」 в 「PRAGMA journal_mode=WAL」
+» ＋ 「7 два запити: 」 в 「INSERT INTO t VALUES (3); DROP TABLE t」
+» ＋ 「8 file-шлях: 」 ☂ σ 🜔бд.писати 「file:/root/ai-agents/Nigredo/konsylium/огляд_0.8.1г/skeptyk/y.db」 「CREATE TABLE z(a)」 【】 λe ＋ 「відмова: 」 e
+» ＋ 「9 важливе: 」 в 「CREATE TABLE IF NOT EXISTS важливе(a)」
+» ＋ 「10 журнал: 」 в 「CREATE TABLE IF NOT EXISTS журнал(a)」
+» ＋ 「11 три рядки: 」 в 「INSERT INTO важливе VALUES (1),(2),(3)」
+» ＋ 「12 тригер: 」 в 「CREATE TRIGGER IF NOT EXISTS зт AFTER INSERT ON журнал BEGIN DELETE FROM важливе; END」
+» ＋ 「13 INSERT у журнал (4 зміни): 」 в 「INSERT INTO журнал VALUES (1)」
+» ＋ 「14 DROP TRIGGER: 」 в 「DROP TRIGGER зт」
+» ＋ 「15 VIEW: 」 в 「CREATE VIEW IF NOT EXISTS v AS SELECT a FROM t」
+» ＋ 「16 DROP VIEW: 」 в 「DROP VIEW v」
+» ＋ 「17 диск 20 МБ: 」 в 「CREATE TABLE IF NOT EXISTS b(a)」
+» ＋ 「18 zeroblob 70 МБ: 」 в 「INSERT INTO b VALUES (zeroblob(70000000))」
