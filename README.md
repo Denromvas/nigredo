@@ -118,6 +118,8 @@ would have to take a random rowid, an exhausted quota no longer hides an attempt
 third short re-review (5:2) found that a query could call the interpreter's internal function that marks a refusal as
 precautionary: now only the interpreter's own temporary triggers can call it; and the pre-check, the guard triggers and
 the query itself now run in one write transaction, so another process can no longer change the schema in between. The
+fourth (5:2 “A”) confirmed it; two judges found the database schema itself (a column `DEFAULT`) could still call that
+function, so it now gets a fresh random name for every query, and the old name is a decoy that is always refused. The
 latest comparison report is
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols — [`konsylium/`](konsylium/).
 
@@ -252,7 +254,9 @@ claude mcp add nigredo -- python3 mcp/nigredo_mcp.py   # дати мову бу�
 навмання взяв би сам SQLite, вичерпана квота спроби не ховає, а `sqlite_dbpage` — відмова. Третій короткий огляд (5:2)
 знайшов, що запит міг сам покликати службову функцію інтерпретатора, яка позначає відмову запобіжною: тепер її кличуть
 лише тимчасові тригери самого інтерпретатора; а попередня перевірка, тригери захисту й сам запит тепер ідуть в одній
-транзакції запису, тож інший процес між ними схеми не змінить. Останній звіт звірки —
+транзакції запису, тож інший процес між ними схеми не змінить. Четвертий (5:2 «А») це підтвердив; двоє суддів знайшли,
+що функцію ще могла покликати сама схема бази (`DEFAULT` стовпця), тож тепер вона щоразу має нову випадкову назву, а
+стара назва — приманка, на яку завжди відмова. Останній звіт звірки —
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); історія й протоколи — [`konsylium/`](konsylium/).
 
 **Чесно про межі:** Nigredo — інструмент прозорості й аудиту, **не пісочниця ОС**: агент із доступом до shell може
