@@ -144,10 +144,11 @@ async function boot() {
     py = await loadPyodide();
     $('state').textContent = 'Завантаження інтерпретатора Nigredo…';
     await py.loadPackage('sqlite3');
-    const [src, twins] = await Promise.all([fetch('nigredo.py').then(r => r.text()), fetch('dviyniky.tsv').then(r => r.text())]);
+    const [src, twins, letters] = await Promise.all(['nigredo.py', 'dviyniky.tsv', 'litery.tsv'].map(f => fetch(f).then(r => r.text())));
     py.FS.mkdirTree('/ngr');
     py.FS.writeFile('/ngr/nigredo.py', src);
     py.FS.writeFile('/ngr/двійники.tsv', twins);
+    py.FS.writeFile('/ngr/літери.tsv', letters);
     py.runPython(HARNESS);
     py.FS.mkdirTree('/пісочниця/дані');
     for (const [name, text] of Object.entries(DATA.дані)) py.FS.writeFile('/пісочниця/дані/' + name, text);
