@@ -94,7 +94,10 @@ with tests on both engines; the SQLite guard now fails closed. The fifth re-revi
 announced (2026-10-21). Its wishes are 0.8.1: names with letters that Unicode does not recommend for identifiers (UTS #39
 Identifier_Status — `ƻ` ≈ 2, `ꜫ` ≈ 3) are errors as a class rather than by a list, an old database already at the rowid
 limit gives a separate “precautionary refusal” in the trace instead of “denied”, and the seal check warns about a file
-given where writing needs a folder. The latest comparison report is
+given where writing needs a folder. A short re-review (6:1) found that the new trace event could hide a real attempt:
+now a refusal is precautionary only when neither the authorizer nor SQLite's own bytecode finds anything outside the
+rights in the query, and Hebrew and Arabic are no longer allowed in names (a bidi viewer reorders prefix arguments). The
+latest comparison report is
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols — [`konsylium/`](konsylium/).
 
 **Honest limits:** Nigredo is a transparency and audit tool, **not an OS sandbox** — an agent with shell access can
@@ -205,7 +208,10 @@ claude mcp add nigredo -- python3 mcp/nigredo_mcp.py   # дати мову бу�
 замовчуванням. Пʼятий повторний огляд підтвердив виправлення 7:0, і 0.8 оголошено (2026-10-21). Його побажання — у
 0.8.1: імена з літерами, яких Unicode не радить для ідентифікаторів (UTS #39 Identifier_Status — `ƻ` ≈ 2, `ꜫ` ≈ 3), —
 помилка класом, а не списком; стара база, що вже на межі rowid, дає в сліді окрему «запобіжну відмову», а не
-«заборонено»; перевірка печатки попереджає про файл там, де для запису потрібна тека. Останній звіт звірки —
+«заборонено»; перевірка печатки попереджає про файл там, де для запису потрібна тека. Короткий огляд (6:1) знайшов,
+що нова подія сліду могла сховати справжню спробу: тепер відмова запобіжна, лише коли ні authorizer, ні байткод SQLite
+не знайшли в запиті нічого поза правами; іврит і арабське в іменах — помилка (переглядач з bidi переставляє аргументи
+префіксного запису). Останній звіт звірки —
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); історія й протоколи — [`konsylium/`](konsylium/).
 
 **Чесно про межі:** Nigredo — інструмент прозорості й аудиту, **не пісочниця ОС**: агент із доступом до shell може

@@ -486,6 +486,13 @@ def invisible(ch):
             or any(a <= o <= b for a, b in IGNORABLE))
 
 
+def unknown_char(ch, where=''):
+    """Символ, якого немає в Unicode еталона (Cn): літера новішого Unicode (ꟛ U+A7DB — Unicode 16) — не «невидимий
+    символ» (огляд 0.8.1, Мовознавець); таблиці мови її однаково не знають."""
+    return (f'{where}символ U+{ord(ch):04X}, якого немає в Unicode {unicodedata.unidata_version} (таблицях мови): новіша '
+            f'версія Unicode чи непризначений код — у коді його не прочитати')
+
+
 def hidden(text, allow='\n\t'):
     """Невидимі символи тексту (крім allow). Селектор вигляду емодзі (U+FE0E/F) одразу після значка — видимий."""
     if not any(invisible(ch) for ch in set(text) if ch not in allow):   # швидко: різних символів зазвичай мало
@@ -564,8 +571,8 @@ def script_of(ch):
     return name.split(' ')[0]
 
 
-NAME_SCRIPTS = {'LATIN', 'CYRILLIC', 'CJK', 'HIRAGANA', 'KATAKANA', 'HANGUL', 'ARABIC', 'HEBREW', 'DEVANAGARI',
-                'BENGALI', 'TAMIL', 'THAI', 'GEORGIAN'}     # мала o — звичне імʼя змінної, лишаємо (мірило)
+NAME_SCRIPTS = {'LATIN', 'CYRILLIC', 'CJK', 'HIRAGANA', 'KATAKANA', 'HANGUL', 'DEVANAGARI', 'BENGALI', 'TAMIL', 'THAI',
+                'GEORGIAN'}   # іврит і арабське — ні: справа наліво переставляють аргументи на екрані (огляд 0.8.1)     # мала o — звичне імʼя змінної, лишаємо (мірило)
 _CONFUSABLES = {}
 
 
@@ -764,7 +771,8 @@ def lex(src):
             text = ''.join(buf)
             bad = hidden(text)
             if bad:
-                raise StaticError(f'у шаблоні невидимий чи керівний символ U+{ord(bad[0]):04X}', pos)
+                raise StaticError(unknown_char(bad[0], 'у шаблоні ') if unicodedata.category(bad[0]) == 'Cn' else
+                                  f'у шаблоні невидимий чи керівний символ U+{ord(bad[0]):04X}', pos)
             if text:
                 toks.append(('tpart', text, pos))
             tpos = (line, col)
@@ -801,6 +809,8 @@ def lex(src):
             adv()
         elif ch in ' \t' or (ch == '\r' and src[i + 1:i + 2] == '\n'):
             adv()
+        elif unicodedata.category(ch) == 'Cn':      # ꟛ U+A7DB — літера Unicode 16, а не невидимий символ (огляд 0.8.1)
+            raise StaticError(unknown_char(ch), pos)
         elif ch.isspace() or invisible(ch):
             raise StaticError(f'нестандартний чи невидимий символ U+{ord(ch):04X} поза рядком — у коді лише пробіл, '
                               f'табуляція й новий рядок', pos)
@@ -810,7 +820,8 @@ def lex(src):
             text = src[i:j - 1] if src[j - 1:j] == '\r' and j > i else src[i:j]
             bad = hidden(text, '\t')
             if bad:
-                raise StaticError(f'у коментарі невидимий чи керівний символ U+{ord(bad[0]):04X} (CR, ESC, bidi, '
+                raise StaticError(unknown_char(bad[0], 'у коментарі ') if unicodedata.category(bad[0]) == 'Cn' else
+                                  f'у коментарі невидимий чи керівний символ U+{ord(bad[0]):04X} (CR, ESC, bidi, '
                                   f'теги…) — ним ховають код від людини, що читає сирий текст', pos)
             while i < n and src[i] != '\n':
                 adv()
@@ -837,7 +848,8 @@ def lex(src):
             text = ''.join(buf)
             bad = hidden(text)
             if bad:
-                raise StaticError(f'у рядку коду невидимий чи керівний символ U+{ord(bad[0]):04X} — у тексті програми '
+                raise StaticError(unknown_char(bad[0], 'у рядку коду ') if unicodedata.category(bad[0]) == 'Cn' else
+                                  f'у рядку коду невидимий чи керівний символ U+{ord(bad[0]):04X} — у тексті програми '
                                   f'лише видиме (і \\n, \\t); такі символи беріть із даних: δ 「"\\u…"」', pos)
             toks.append(('str', text, pos))
         elif digit(ch) is not None or (ch == NEG and i + 1 < n and digit(src[i + 1]) is not None):
@@ -870,6 +882,10 @@ def lex(src):
                 adv()
             buf = unicodedata.normalize('NFC', buf)
             scripts = {script_of(c) for c in buf if unicodedata.category(c) in ('Lu', 'Ll', 'Lt', 'Lo', 'Mn', 'Mc')}
+            if any(unicodedata.bidirectional(c) in ('R', 'AL') for c in buf):   # огляд 0.8.1, Мовознавець
+                raise StaticError(f'імʼя «{buf}» письмом справа наліво: переглядач з bidi (GitHub, браузер, редактор) '
+                                  f'переставляє сусідні числа й імена, а в префіксному записі порядок — це зміст '
+                                  f'(«－ ד 1» видно як «－ 1 ד»); візьміть інше письмо', pos)
             if len(scripts) > 1:
                 raise StaticError(f'імʼя «{buf}» змішує письма ({", ".join(sorted(scripts))}): однакові на вигляд '
                                   f'літери різних абеток у Nigredo заборонені', pos)
@@ -2030,13 +2046,12 @@ def _verify(path, program=None):
             return f'✗ слід пошкоджено або змінено в рядку {lineno}', info
         if n == 0:
             head = rec
-        if rec.get('подія') == 'заборонено':
-            what = rec.get('шлях') or rec.get('адреса') or rec.get('субагент') or rec.get('аргументи') or ''
-            denied.append(f'{rec.get("агент", "?")}: {rec.get("назва") or "делегування"} '
-                          f'{safe(str(what))[:80]} — {rec.get("причина") or "бракує прав"}')
-        if rec.get('подія') == 'запобіжна відмова':
-            careful.append(f'{rec.get("агент", "?")}: {rec.get("назва")} {safe(str(rec.get("шлях", "")))[:80]} — '
-                           f'{safe(str(rec.get("причина", "")))[:200]}')
+        if rec.get('подія') in ('заборонено', 'запобіжна відмова'):   # з самим запитом і причиною не посеред слова —
+            what = rec.get('шлях') or rec.get('адреса') or rec.get('субагент') or rec.get('аргументи') or ''   # (огляд 0.8.1)
+            sql = f' запит «{clip(safe(str(rec["запит"])), 160)}»' if rec.get('запит') else ''
+            (denied if rec['подія'] == 'заборонено' else careful).append(
+                f'{rec.get("агент", "?")}: {rec.get("назва") or "делегування"} {clip(safe(str(what)), 120)}{sql} — '
+                f'{clip(safe(str(rec.get("причина") or "бракує прав")), 400)}')
         if rec.get('подія') == 'квоту вичерпано':
             quota_hits.append(f'{rec.get("агент", "?")}: {rec.get("квота", "?")} ({rec.get("чия", "?")})')
         caught += rec.get('подія') == 'помилку перехоплено'
@@ -2111,8 +2126,9 @@ def _verify(path, program=None):
         info['частини'], info['відкинуто'] = chunks, rejected
     notes.append(f'⚠ спроб поза правами («заборонено»): {len(denied)} — ' + '; '.join(denied[:5])
                  + (' …' if len(denied) > 5 else '') if denied else 'спроб поза правами немає')
-    if careful:                        # не спроба програми: так стоїть сама база (суд 9д)
-        notes.append(f'запобіжних відмов (так у самій базі, а не дія програми; дію не виконано): {len(careful)} — '
+    if careful:                        # не спроба програми: так стоїть сама база (суд 9д), а в запиті заборонених дій не
+        notes.append(f'запобіжних відмов (так у самій базі; запит не виконувався, а заборонених дій у ньому перевірка '
+                     f'не знайшла): {len(careful)} — '        # знайдено (огляд 0.8.1)
                      + '; '.join(careful[:5]) + (' …' if len(careful) > 5 else ''))
     if quota_hits:                     # не порушення прав: оголошена межа (печатка, модуль, субагент, власник)
         notes.append(f'квоту вичерпано (межа спрацювала, дію не виконано): {len(quota_hits)} — '
@@ -3243,7 +3259,7 @@ def _db(it, pos, tool, p, sql, params, write):
                               isolation_level=None, timeout=5)
     except sqlite3.Error as e:
         raise NgrError(f'{tool}: {e}: {p.v}', pos)
-    cur, helper = None, []
+    cur, helper, mark = None, [], {'запобіжна': False, 'сумнів': []}
     try:
         con.setlimit(sqlite3.SQLITE_LIMIT_ATTACHED, 0)
         con.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 4 * it.max_size)      # одне значення — не більше за --розмір (суд 7)
@@ -3252,7 +3268,7 @@ def _db(it, pos, tool, p, sql, params, write):
             if write:                    # база не росте без меж (zeroblob заповнив би диск телефона); page_size уже
                 page = con.execute('PRAGMA page_size').fetchone()[0]   # читає схему: файл — не база чи схема
                 con.execute(f'PRAGMA max_page_count = {DB_MAX_BYTES // page}')   # пошкоджена — помилка програми (9б)
-            helper = _db_guard(con, it, why, write, sql.v, args)   # до authorizer і лічби кроків: не запит програми
+            helper = _db_guard(con, it, why, mark, write, sql.v, args)   # до authorizer і лічби кроків: не запит програми
             con.set_authorizer(auth)
             con.set_progress_handler(progress, 1000)
             before = con.total_changes
@@ -3286,17 +3302,22 @@ def _db(it, pos, tool, p, sql, params, write):
                 raise NgrError(f'{tool}: запит довший за 30 с', pos)
             # відмова — лише та, яку дав сам authorizer (чи сам SQLite на запис через бд.читати), а не текст помилки:
             # RAISE(FAIL, 'not authorized') у тригері пише програма, а зміни до нього лишаються (суд 8б)
-            denied = bool(why) or (not write and 'may not be modified' in str(e))
-            # таблиця вже на межі чи системна біля неї — так у самій базі (старий файл), а запит програми в межах прав:
-            # запобіжна відмова, а не спроба (суд 9д: інакше власника будили б даремно)
-            careful = bool(why) and (DB_ROWID_WHY[0] in why[0] or DB_ROWID_WHY[3] in why[0])
+            # таблиця вже на межі чи системна біля неї — так у самій базі (старий файл): запобіжна відмова, а не спроба
+            # (суд 9д: інакше власника будили б даремно), — лише коли в запиті заборонених дій не знайдено: authorizer
+            # відмовив би раніше, а random, годинник і PRAGMA-таблиці видно в байткоді (огляд 0.8.1, Н-1 Скептика)
+            careful = mark['запобіжна'] and not mark['сумнів']
+            if mark['запобіжна'] and mark['сумнів']:
+                why.insert(0, f'{mark["сумнів"][0]}; запит і не виконувався: {why[0]}')
+            denied = bool(why) or (not write and db_readonly(str(e)))
             if careful:
                 it.caution(агент=it.agent, назва=tool, шлях=safe(p.v), запит=safe(sql.v)[:500],
-                           причина=f'стан бази, а не дія програми: {why[0]}')
+                           причина=f'стан бази: {why[0]}; запит не виконувався — authorizer і байткод SQLite заборонених '
+                                   f'дій у ньому не знайшли'[:1000])
             elif denied:
                 it.deny(агент=it.agent, назва=tool, шлях=safe(p.v), запит=safe(sql.v)[:500],
-                         причина='дія SQLite поза дозволеним')
-            msg = (f'запобіжна відмова (так у самій базі, а запит — у межах прав): {why[0]}' if careful else
+                         причина=('дія SQLite поза дозволеним' + (f': {why[0]}' if why else ''))[:1000])
+            msg = (f'запобіжна відмова (так у самій базі; запит не виконувався, а заборонених дій у ньому перевірка не '
+                   f'знайшла): {why[0]}' if careful else
                    f'заборонено: {why[0]}' if why and why[0].startswith(DB_DENIED_WHY) else 'дія поза дозволеним (лише ' + ('SELECT' if not write else
                    'SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER') + '; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)') \
                 if denied else 'лише одна інструкція SQL за раз' if 'one statement at a time' in str(e) \
@@ -3308,6 +3329,14 @@ def _db(it, pos, tool, p, sql, params, write):
         con.close()
         for h in helper:
             h.close()
+
+
+def db_readonly(msg):
+    """Запис через бд.читати, який SQLite відкинув ще до authorizer («WITH … DELETE FROM sqlite_master»): увесь текст —
+    «table ІМʼЯ may not be modified». Частина тексту — ні: «no such table: …may not be modified» — описка, а не спроба
+    (огляд 0.8.1, автор: хибне «заборонено» в сліді)."""
+    import re as _re
+    return bool(_re.fullmatch(r'table [A-Za-z0-9_]+ may not be modified', msg))
 
 
 DB_ACTION_NAMES = ('SQLITE_PRAGMA', 'SQLITE_ATTACH', 'SQLITE_DETACH', 'SQLITE_TRANSACTION', 'SQLITE_SAVEPOINT',
@@ -3409,15 +3438,21 @@ def db_explain(sql):
 
 def db_compiles(con, sql, args):
     """Чи SQLite скомпілює сам запит: компіляція з authorizer, що відмовляє на першій же дії, — нічого не виконується.
-    Інша помилка, ніж ця відмова, сталася ще до першої дії, тож так само станеться й у справжньому виконанні — запит
-    нічого не запише (суд 9д, Оркестратор: описка в запиті ставила тригери на всі таблиці — ≈1 с на 400 таблиць)."""
+    Помилка, коли authorizer ще не питали, сталася до першої дії, тож так само станеться й у справжньому виконанні —
+    запит нічого не запише (суд 9д, Оркестратор: описка ставила тригери на всі таблиці — ≈1 с на 400 таблиць). Ознака —
+    сам виклик authorizer, а не текст помилки: відмова на читанні стовпця пише «access … prohibited» (огляд 0.8.1)."""
     import sqlite3
-    con.set_authorizer(lambda *a: sqlite3.SQLITE_DENY)
+    asked = []
+
+    def deny(*a):
+        asked.append(1)
+        return sqlite3.SQLITE_DENY
+    con.set_authorizer(deny)
     try:
         con.execute(sql, args)
         return True
-    except sqlite3.DatabaseError as e:
-        return 'not authorized' in str(e)
+    except sqlite3.DatabaseError:
+        return bool(asked)
     except (sqlite3.Error, ValueError, OverflowError):
         return True                  # невідоме — як «компілюється»: захист на всіх таблицях
     finally:
@@ -3441,32 +3476,65 @@ def db_autoinc(con, t):
     return False
 
 
+def db_pragma_tables(con, names):
+    """Таблиці-функції PRAGMA (pragma_database_list …), яких authorizer не пустить: свою PRAGMA вони готують лише під
+    час виконання, а при компіляції authorizer бачить тільки читання «таблиці» (огляд 0.8.1, Скептик). Своя таблиця з
+    такою назвою — не PRAGMA."""
+    return [t for t in sorted(names) if t.lower().startswith('pragma_') and t.lower()[7:] not in DB_INFO_PRAGMAS
+            and not con.execute('SELECT 1 FROM pragma_table_list WHERE name = ? COLLATE NOCASE', (t,)).fetchone()]
+
+
+def db_doubts(it, ops, reads):
+    """Що в запиті могло б вийти за права лише під час виконання, — за байткодом SQLite (запит, тригери, DEFAULT,
+    згенеровані стовпці й VIEW: опкоди Function/PureFunc) і читанням таблиць-функцій PRAGMA. Запобіжна відмова не
+    виконує запиту, тож з таким у ньому вона не доводить, що запит у межах прав (огляд 0.8.1, Н-1 Скептика)."""
+    clock_ok, rand_ok = _db_rights(it)
+    out = []
+    for r in ops:
+        name = r[5].split('(')[0].lower() if len(r) > 5 and r[1] in ('Function', 'PureFunc') and isinstance(r[5], str) else ''
+        why = (f'випадковість SQLite (у запиті — {name}) без права «жереб»' if name in ('random', 'randomblob') and not rand_ok
+               else f'годинник SQLite (у запиті — {name}) без права «час»' if name in DB_NOW and not clock_ok
+               else f'годинник SQLite (у запиті — {name}: «зараз» чи дата з даних — без виконання не перевірити) без права «час»'
+               if name in DB_CLOCK and not clock_ok else None)
+        if why and why not in out:
+            out.append(why)
+    return out + [f'PRAGMA (у запиті — таблиця-функція {safe(t)})' for t in reads]
+
+
 def _db_written(con, it, sql, args):
     """Таблиці main, у які запит може писати (INSERT, UPDATE) — і сам, і тригерами: authorizer бачить їхні тіла, ще
-    коли SQLite компілює запит (EXPLAIN — без виконання). Рішення — того самого authorizer (без запису причин): дозвільний
-    підключив би віртуальну таблицю, якої справжній не пустить, і FTS5 падав би SIGSEGV. Пише віртуальна таблиця — то й
-    тіньові (FTS5 бере rowid сам, своїми запитами). Запит не скомпілювався — то всі таблиці: захист закритий, доки не
-    доведено інше (суд 9г: «EXPLAIN ;INSERT» падав, помилку ковтали — і тригерів не було зовсім). Третє — системні
-    таблиці, у які рядок допише сам SQLite: sqlite_schema — на CREATE (authorizer бачить INSERT у sqlite_master),
-    sqlite_sequence — на INSERT у будь-яку таблицю (AUTOINCREMENT authorizer не показує)."""
+    коли SQLite компілює запит (EXPLAIN — без виконання). Рішення — того самого authorizer: дозвільний підключив би
+    віртуальну таблицю, якої справжній не пустить, і FTS5 падав би SIGSEGV; відмовив він — відмовить і справжній, тож
+    це одразу «заборонено» з його причинами, без тригерів і перевірки стану бази (огляд 0.8.1, Н-1 Скептика: ATTACH на
+    старій базі ставав «запобіжною відмовою»). Пише віртуальна таблиця — то й тіньові (FTS5 бере rowid сам, своїми
+    запитами). Запит не скомпілювався — то всі таблиці: захист закритий, доки не доведено інше (суд 9г: «EXPLAIN
+    ;INSERT» падав, помилку ковтали — і тригерів не було зовсім). Третє — системні таблиці, у які рядок допише сам
+    SQLite: sqlite_schema — на CREATE (authorizer бачить INSERT у sqlite_master), sqlite_sequence — на INSERT у будь-яку
+    таблицю (AUTOINCREMENT authorizer не показує). Четверте — відмови authorizer, п'яте — сумніви (db_doubts)."""
     import sqlite3
-    ins, upd = set(), set()
-    _, check = _db_auth(True, it)
+    ins, upd, reads, ops = set(), set(), set(), []
+    denied, check = _db_auth(True, it)
 
     def rec(action, a1, a2, db, src):
         if db == 'main' and action in (sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE):
             (ins if action == sqlite3.SQLITE_INSERT else upd).add(a1)
+        if action == sqlite3.SQLITE_READ and (a1 or '').lower().startswith('pragma_'):
+            reads.add(a1)
         return check(action, a1, a2, db, src)
     con.set_authorizer(rec)
     try:
-        con.execute(db_explain(sql), args).fetchall()
+        ops = con.execute(db_explain(sql), args).fetchall()
         failed = False
     except (sqlite3.Error, ValueError, OverflowError):
         failed = True                # помилку запиту покаже його виконання, а захист стане на всі таблиці
     finally:
         con.set_authorizer(None)
+    if denied:
+        return set(), set(), [], denied, []
     if failed and not db_compiles(con, sql, args):
-        return set(), set(), []      # не скомпілюється й сам: нічого не запише, а тригери на всіх таблицях — дорого
+        return set(), set(), [], [], []   # не скомпілюється й сам: нічого не запише, а тригери на всіх таблицях — дорого
+    doubt = ['запит не перевірено до виконання (EXPLAIN не скомпілювався)'] if failed else \
+        db_doubts(it, ops, db_pragma_tables(con, reads))
     rows = con.execute("SELECT name, type, name LIKE 'sqlite\\_%' ESCAPE '\\' FROM pragma_table_list "
                        "WHERE schema = 'main' AND wr = 0").fetchall()
     kinds = {t: k for t, k, system in rows if not system}
@@ -3480,16 +3548,17 @@ def _db_written(con, it, sql, args):
         shadow = {t for t, k in kinds.items() if k == 'shadow'}
         ins, upd = ins | shadow, upd | shadow
     ok = {t for t, k in kinds.items() if k in ('table', 'shadow')}
-    return ins & ok, upd & ok, system
+    return ins & ok, upd & ok, system, [], doubt
 
 
-def _db_guard(con, it, why, write, sql, args):
+def _db_guard(con, it, why, mark, write, sql, args):
     """Годинник і випадковість SQLite — лише з правами (суд 9б): без «час» функції дат — свої, на цьому зʼєднанні (їх
     бачить і DEFAULT, і тригер, і VIEW): дата з даних — як у SQLite, а 'now', виклик без часу, localtime/utc і
     CURRENT_* — відмова; без «жереб» так само random/randomblob, а жоден рядок не доходить до rowid 2⁶³−1 (після нього
     SQLite бере rowid навмання; суд 9в: свій BEFORE-тригер програми ставив його вже після перевірки). Тимчасові
     тригери — лише на таблицях, у які запит пише (на кожній таблиці бази — ~1 мс кожен бд.писати, суд 9в), у памʼяті,
-    у файл бази не потрапляють."""
+    у файл бази не потрапляють. mark: «запобіжна» — перша відмова сама від стану бази (ознакою, а не підрядком причини:
+    причина містить імʼя таблиці, а його дає програма — огляд 0.8.1), «сумнів» — db_doubts запиту."""
     import sqlite3
     clock_ok, rand_ok = _db_rights(it)
     helper = []
@@ -3499,7 +3568,9 @@ def _db_guard(con, it, why, write, sql, args):
             helper.append(sqlite3.connect(':memory:'))
         return helper[0].execute(f'SELECT {name}({", ".join("?" * len(a))})', a).fetchone()[0]
 
-    def refuse(msg):
+    def refuse(msg, careful=False):
+        if careful and not why:
+            mark['запобіжна'] = True
         why.append(msg)
         raise sqlite3.Error(msg)
 
@@ -3535,13 +3606,17 @@ def _db_guard(con, it, why, write, sql, args):
         if write:
             con.execute('PRAGMA temp_store = MEMORY')
             con.create_function('ngr_rowid', 2, lambda t, k: refuse(
-                f'випадковість SQLite (таблиця «{safe(t)}» {DB_ROWID_WHY[k]}) без права «жереб»'), deterministic=True)
-            ins, upd, system = _db_written(con, it, sql, args)
+                f'випадковість SQLite (таблиця «{safe(t)}» {DB_ROWID_WHY[k]}) без права «жереб»', k == 0), deterministic=True)
+            ins, upd, system, denied, mark['сумнів'] = _db_written(con, it, sql, args)
+            if denied:                # відмовив authorizer — так само відмовить і в запуску: одразу, без тригерів
+                why.extend(denied)
+                raise sqlite3.Error(denied[0])
             for t in system:   # старий файл: системна таблиця біля межі, а рядки в неї пише сам SQLite (AUTOINCREMENT,
                 q = t.replace('"', '""')   # CREATE) — тригера на ній немає, тож і «майже на межі»: два нові рядки за одну
                 # інструкцію (тригер, автоіндекси) — і другий навмання (суд 9г, перевірка виправлення)
                 if con.execute(f'SELECT max(rowid) > {DB_ROWID_NEAR} FROM main."{q}"').fetchone()[0]:
-                    refuse(f'випадковість SQLite (системна таблиця «{safe(t)}» {DB_ROWID_WHY[3]}) без права «жереб»')
+                    refuse(f'випадковість SQLite (системна таблиця «{safe(t)}» {DB_ROWID_WHY[3]}) без права «жереб»',
+                           True)
             for i, t in enumerate(sorted(ins | upd)):
                 if db_autoinc(con, t):
                     continue
@@ -3601,20 +3676,32 @@ def _db_ok(it, pos, tool, p, sql, write):
             if os.path.isfile(real) else sqlite3.connect(':memory:')
     except sqlite3.Error:
         return
+    reads = set()
+
+    def rec(action, a1, *a):
+        if action == sqlite3.SQLITE_READ and (a1 or '').lower().startswith('pragma_'):
+            reads.add(a1)
+        return auth(action, a1, *a)
     try:
         con.setlimit(sqlite3.SQLITE_LIMIT_ATTACHED, 0)
-        con.set_authorizer(auth)
+        con.set_authorizer(rec)
         try:
             con.execute(db_explain(sql.v)).fetchall()      # «;PRAGMA …» — та сама відмова, що й у запуску (суд 9г)
         except sqlite3.Error as e:
-            if not write and 'may not be modified' in str(e):
+            if not write and db_readonly(str(e)):
                 why.append('запис через бд.читати')
         except (ValueError, OverflowError):
+            pass
+        con.set_authorizer(None)     # таблицю-функцію PRAGMA authorizer спитає лише в запуску (огляд 0.8.1, Скептик)
+        try:
+            why.extend(f'PRAGMA {safe(t[7:].lower())}' for t in ([] if why else db_pragma_tables(con, reads)))
+        except sqlite3.Error:
             pass
     finally:
         con.close()
     if why:
-        it.deny(агент=it.agent, назва=tool, шлях=safe(p.v), запит=safe(sql.v)[:500], причина='дія SQLite поза дозволеним')
+        it.deny(агент=it.agent, назва=tool, шлях=safe(p.v), запит=safe(sql.v)[:500],
+                причина=f'дія SQLite поза дозволеним: {why[0]}'[:1000])
         raise NgrError(f'{tool}: дія поза дозволеним ({why[0]})', pos)
 
 
@@ -3856,7 +3943,9 @@ TOOLS = {
                   'номери»); у таблицю, що вже на межі, явний rowid — можна, крім −1 (його не відрізнити від «rowid бере '
                   'SQLite») і самого 2⁶³−1; захист — на таблицях, у які пише запит (не вдалося їх визначити — на всіх); '
                   'стара база, де таблиця чи sqlite_sequence уже на межі, — «запобіжна відмова» (у сліді окремо від '
-                  '«заборонено»: так у самій базі, а не дія програми); CREATE VIRTUAL TABLE — відмова',
+                  '«заборонено»: так у самій базі, а в запиті заборонених дій authorizer і байткод SQLite не знайшли; '
+                  'знайшли — ATTACH, PRAGMA, random, годинник, — це «заборонено», хоч база й на межі); CREATE VIRTUAL '
+                  'TABLE — відмова',
                   True, 'тека', t_db_write),
     'мережа.взяти': (1, '🜔взяти url → рядок', 'HTTP GET (до 1 МБ, 30 с; адреса — повністю в сліді: даними в адресі '
                      'теж можна поділитися з хостом, тож дозволяйте лише хости, яким довіряєте)', True, 'хост', t_fetch),
@@ -5423,10 +5512,20 @@ class Interp:
 # ------------------------------------------------------------------ розбір для людини
 
 
+def clip(text, n):
+    """Не довше за n символів — і не посеред слова: обрізане закінчує «…» (огляд 0.8.1: «без права «же»)."""
+    if len(text) <= n:
+        return text
+    cut = text[:n - 1]
+    return (cut[:cut.rfind(' ')] if ' ' in cut[n // 2:] else cut) + '…'
+
+
 def quote(text):
-    """Слова автора в --розбір: у «…» з екрануванням «, », \\ і переносу — лапки не можна закрити зсередини (суд 7)."""
+    """Слова автора в --розбір: у «…» з екрануванням «, », \\ і переносу — лапки не можна закрити зсередини (суд 7).
+    Текст письмом справа наліво (іврит, арабське) — з LRM після лапок: інакше переглядач з bidi переставить сусідні
+    числа й слова, і «(«ד» − 1)» читалося б як «(1 − «ד»)» (огляд 0.8.1, Мовознавець)."""
     t = safe(text).replace('\\', '\\\\').replace('«', '\\«').replace('»', '\\»').replace('\n', '\\n')
-    return '«' + t + '»'
+    return '«' + t + '»' + ('\u200e' if any(unicodedata.bidirectional(c) in ('R', 'AL') for c in t) else '')
 
 
 def explain(node, ind=0):
@@ -5541,13 +5640,36 @@ def quota_text(qs):
 
 def seal_warnings(prog, cwd):
     """Що впаде напевно, хоч права й у межах: файл у печатці запису — запис дозволяють у теку (у файли в ній), тож
-    кожен запис туди — відмова (суд 9д, Практик: «✓ в межах», а єдиний запис програми гарантовано падав)."""
+    кожен запис туди — відмова (суд 9д, Практик: «✓ в межах», а єдиний запис програми гарантовано падав). І запис
+    рядком-шляхом, що дорівнює самому шляху з печатки (субагента — з його прав), — хоч файлу ще й немає (огляд 0.8.1,
+    Практик: найчастіше це новий вихідний файл); тека, яку програма створить і писатиме в неї, — не він."""
     out = []
-    for t, scopes in (prog[2][0][3].items() if prog[2] else ()):
-        for sc in scopes if t in ('файл.писати', 'бд.писати') else ():
+    seal = prog[2][0][3] if prog[2] else {}
+    for t, scopes in seal.items():
+        for sc in scopes if t in WRITE_TOOLS else ():
             if os.path.isfile(os.path.realpath(os.path.join(cwd, sc))):
                 out.append(f'«{t}:{safe(sc)}» — файл, а запис дозволяють у теку: кожен запис туди дасть відмову; '
                            f'дайте в печатці теку')
+
+    def walk(n, caps):
+        if isinstance(n, list):
+            for x in n:
+                walk(x, caps)
+        elif isinstance(n, tuple) and n and n[0] != 'import':         # модуль — зі своєю печаткою
+            if n[0] == 'deleg':
+                return walk(n[5], n[4])
+            arg = n[3][0] if n[0] == 'tool' and n[2] in WRITE_TOOLS else None
+            if arg and arg[0] == 'lit' and isinstance(arg[2], str) and caps.get(n[2]):
+                first = os.path.realpath(os.path.join(cwd, arg[2]))
+                named = os.path.exists(first) or ('/' in arg[2].rstrip('/') and os.path.isdir(os.path.dirname(first)))
+                same = any(os.path.realpath(os.path.join(cwd, sc)) == first for sc in caps[n[2]])
+                if same and (named or os.path.isabs(arg[2]) or len(caps[n[2]]) != 1):   # шлях — як у _path_ok
+                    msg = (f'рядок {n[1][0]}: {n[2]} пише в «{safe(arg[2])}» — це сам шлях з печатки, а запис дозволяють '
+                           f'лише у файли всередині нього: тут буде відмова; дайте в печатці теку')
+                    out.extend([msg] if msg not in out else [])
+            for x in n:
+                walk(x, caps)
+    walk(prog[2][1:] if prog[2] else [], seal)
     return out
 
 
@@ -5917,8 +6039,9 @@ def cheatsheet():
            '  починається з `米` чи `氺` (≈ `※`), один ієрогліф чи знак кани — і з цифрами чи рискою (`乂5` ≈ `×5`, `乂丨` ≈ `×1`),',
            '  і **функція**, схожа на гліф, — і з цифрами чи повтором (`х р v ф σ`, `x5`, `xx`, `匚匚`: `х 2 3` читалося б як',
            '  `× 2 3`; змінна `x`, `x1`, `xx` — можна). Це правила за таблицями UTS #39 і кількома своїми — повноти не обіцяють.',
-           '  Письма імен: латиниця, кирилиця, CJK, кана, хангиль, арабське, іврит, деванагарі, бенгальське, тамільське, тайське,',
-           '  грузинське; інші — помилка.',
+           '  Письма імен: латиниця, кирилиця, CJK, кана, хангиль, деванагарі, бенгальське, тамільське, тайське, грузинське;',
+           '  інші — помилка. Іврит і арабське — у рядках, не в іменах: справа наліво переглядач з bidi переставляє аргументи',
+           '  (`－ ד 1` видно як `－ 1 ד`); у `--розбір` такий рядок закриває LRM.',
            '- **Невидимого в тексті програми немає**: керівні, bidi, теги, ZWSP, U+034F, нестандартні пробіли, заповнювачі',
            '  (U+3164) — помилка всюди: в коді, рядках, коментарях, печатці. Такі дані беріть через `δ 「"\\u…"」`;',
            '  у виводі й сліді вони показані як `⟨U+…⟩`.',
