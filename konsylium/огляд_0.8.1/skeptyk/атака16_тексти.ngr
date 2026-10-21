@@ -1,0 +1,9 @@
+🜂 「атака16: тексти SQLite з побажань 9д — view, ORDER BY term, unrecognized token, reserved」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS тт(x)」
+» з 「CREATE VIEW IF NOT EXISTS вв AS SELECT x FROM тт」
+» з 「DELETE FROM вв」
+» з 「INSERT INTO тт SELECT x FROM тт ORDER BY 5」
+» з 「INSERT INTO тт VALUES ('незакрита)」
+» з 「CREATE TABLE sqlite_мій(x)」

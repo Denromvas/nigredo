@@ -1,0 +1,15 @@
+🜂 「атака15: системні таблиці — чи може програма сама створити sqlite_stat1 (ANALYZE заборонено) і писати в неї; sqlite_sequence — що можна без «жереб»」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS а(н INTEGER PRIMARY KEY AUTOINCREMENT, x)」
+» з 「CREATE TABLE sqlite_stat1(tbl, idx, stat)」
+» з 「CREATE TABLE "SQLITE_X"(x)」
+» з 「INSERT INTO sqlite_stat1 VALUES ('а', NULL, '1')」
+» з 「;INSERT INTO sqlite_stat1 VALUES ('а', NULL, '1')」
+» з 「INSERT INTO а(x) VALUES (1)」
+» з 「UPDATE sqlite_sequence SET seq = 9223372036854775806 WHERE name = 'а'」
+» з 「INSERT INTO а(x) VALUES (2)」
+» з 「INSERT INTO а(x) VALUES (3)」
+» з 「UPDATE sqlite_sequence SET rowid = 9223372036854775807」
+» з 「REPLACE INTO sqlite_sequence(name, seq) VALUES ('а', 5)」
+» з 「INSERT INTO а(x) VALUES (4)」

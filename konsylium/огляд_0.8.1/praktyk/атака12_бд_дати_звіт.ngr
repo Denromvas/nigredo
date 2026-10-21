@@ -1,0 +1,13 @@
+🜂 「атака12: звичайна бухгалтерська робота з датами в SQLite — без «зараз», лише дати з даних」 【「бд.читати:дані」】
+← б 「дані/база.db」
+← з λq ☂ σ 🜔бд.читати б q 【】 λпом ＋ 「✗ 」 пом
+» з 「SELECT date('2026-01-31', '+1 month') AS наступний_місяць」
+» з 「SELECT strftime('%Y-%m', '2026-03-15') AS місяць」
+» з 「SELECT julianday('2026-03-15') - julianday('2026-03-01') AS днів」
+» з 「SELECT date('2026-03-15', 'start of month', '+1 month', '-1 day') AS кінець_місяця」
+» з 「SELECT strftime('%w', '2026-10-20') AS день_тижня」
+» з 「SELECT date() AS сьогодні_без_аргументів」
+» з 「SELECT strftime('%s') AS зараз_без_аргументу」
+» з 「SELECT date('NOW') AS великими」
+» з 「SELECT date(' now ') AS з_пробілами」
+» з 「SELECT date('2026-01-01', 'localtime') AS місцевий」

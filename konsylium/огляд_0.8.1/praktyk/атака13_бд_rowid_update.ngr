@@ -1,0 +1,17 @@
+🜂 「атака13: випадковий rowid без вставки — UPDATE rowid = NULL у таблиці з rowid 2⁶³−1 (тригер лише BEFORE INSERT)」 【「бд.писати:звіти」 「бд.читати:дані」】
+← б 「звіти/а13_ру.db」
+← з λq ☂ σ 🜔бд.писати б q 【】 λпом ＋ 「✗ 」 пом
+» з 「DROP TABLE IF EXISTS р」
+» з 「CREATE TABLE р(x)」
+» з 「INSERT INTO р(rowid, x) VALUES (9223372036854775807, 'макс')」
+» з 「INSERT INTO р(rowid, x) VALUES (1, 'один')」
+» з 「UPDATE р SET rowid = NULL WHERE rowid = 1」
+» з 「UPDATE р SET _rowid_ = NULL WHERE x = 'один'」
+» з 「UPDATE р SET oid = NULL WHERE x = 'один'」
+» з 「DROP TABLE IF EXISTS к」
+» з 「CREATE TABLE к(id INTEGER PRIMARY KEY, x)」
+» з 「INSERT INTO к VALUES (9223372036854775807, 'макс')」
+» з 「INSERT INTO к VALUES (1, 'один')」
+» з 「UPDATE к SET id = NULL WHERE id = 1」
+» з 「UPDATE р SET x = rowid % 2 WHERE x = 'один'」
+» з 「UPDATE к SET x = id % 2 WHERE x = 'один'」

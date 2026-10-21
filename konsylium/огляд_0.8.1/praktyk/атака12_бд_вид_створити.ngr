@@ -1,0 +1,5 @@
+🜂 「атака12: база з VIEW на годиннику (створює програма з правом «час»)」 【「бд.писати:звіти」 「час」】
+← б 「звіти/а12_вид.db」
+» 🜔бд.писати б 「CREATE VIEW IF NOT EXISTS зараз AS SELECT datetime('now') AS t」 【】
+» 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS т(x INTEGER)」 【】
+» 🜔бд.писати б 「INSERT INTO т VALUES (1)」 【】

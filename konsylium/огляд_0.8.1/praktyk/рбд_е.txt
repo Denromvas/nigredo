@@ -1,0 +1,28 @@
+0
+1 ATTACH: бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+2 VACUUM INTO: бд.писати: VACUUM заборонено (VACUUM INTO пише файл поза текою з печатки)
+3 PRAGMA: бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+6 ..: бд.писати: «звіти/../дані/база.db» поза дозволеним (звіти)
+8 BEGIN: бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+9 load_extension: бд.писати: load_extension заборонено (і в тригерах та VIEW)
+2
+12 randomblob 50 МБ: бд.писати: значення більше за --розмір (string or blob too big)
+0
+0
+3
+0
+4
+0
+0
+0
+0
+бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+бд.писати: лише одна інструкція SQL за раз
+бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+бд.писати: load_extension заборонено (і в тригерах та VIEW)
+бд.писати: load_extension заборонено (і в тригерах та VIEW)
+1
+100000
+файл.писати: «дані/примітка.txt» поза дозволеним (звіти)
+бд.писати: «дані/база.db» поза дозволеним (звіти)
+кінець

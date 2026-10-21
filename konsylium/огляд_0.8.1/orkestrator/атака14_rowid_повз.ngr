@@ -1,0 +1,42 @@
+🜂 「атака14: rowid 2⁶³−1 повз тригери Nigredo — службова sqlite_sequence, тіні rowid, вкладені й INSTEAD OF тригери, старий файл」 【「бд.писати:звіти」】
+← бд 「звіти/а14_повз.db」
+← з λq ☂ σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» 「— sqlite_sequence (назва sqlite_… — поза перевіркою?)」
+» з 「DROP TABLE IF EXISTS q」
+» з 「CREATE TABLE q(id INTEGER PRIMARY KEY AUTOINCREMENT, x)」
+» з 「DELETE FROM sqlite_sequence」
+» з 「INSERT INTO sqlite_sequence(rowid, name, seq) VALUES (9223372036854775807, 'z', 0)」
+» з 「INSERT INTO sqlite_sequence(name, seq) VALUES ('w', 1)」
+» ＋ 「біт з rowid sqlite_sequence: 」 з 「UPDATE sqlite_sequence SET seq = 2 WHERE name = 'w' AND rowid % 2 = 0」
+» 「— тінь: стовпець rowid, справжній — через oid」
+» з 「DROP TABLE IF EXISTS s」
+» з 「CREATE TABLE s(rowid, x)」
+» з 「INSERT INTO s(oid, x) VALUES (9223372036854775807, 0)」
+» з 「INSERT INTO s(x) VALUES (1)」
+» 「— вкладені тригери a → b → t2」
+» з 「DROP TABLE IF EXISTS a」
+» з 「DROP TABLE IF EXISTS b」
+» з 「DROP TABLE IF EXISTS t2」
+» з 「CREATE TABLE a(x)」
+» з 「CREATE TABLE b(x)」
+» з 「CREATE TABLE t2(x)」
+» з 「CREATE TRIGGER ta AFTER INSERT ON a BEGIN INSERT INTO b VALUES (NEW.x); END」
+» з 「CREATE TRIGGER tb AFTER INSERT ON b BEGIN INSERT OR IGNORE INTO t2(rowid, x) VALUES (9223372036854775807, 0); INSERT INTO t2(x) VALUES (1); END」
+» з 「INSERT INTO a VALUES (1)」
+» 「— INSTEAD OF на VIEW」
+» з 「DROP VIEW IF EXISTS v」
+» з 「DROP TABLE IF EXISTS t3」
+» з 「CREATE TABLE t3(x)」
+» з 「CREATE VIEW v AS SELECT 1 AS x」
+» з 「CREATE TRIGGER vi INSTEAD OF INSERT ON v BEGIN INSERT INTO t3(rowid, x) VALUES (9223372036854775807, 0); INSERT INTO t3(x) VALUES (1); END」
+» з 「INSERT INTO v VALUES (1)」
+» 「— тригер на DELETE」
+» з 「DROP TABLE IF EXISTS t4」
+» з 「DROP TABLE IF EXISTS d」
+» з 「CREATE TABLE t4(x)」
+» з 「CREATE TABLE d(x)」
+» з 「INSERT INTO d VALUES (9)」
+» з 「CREATE TRIGGER td AFTER DELETE ON d BEGIN INSERT INTO t4(rowid, x) VALUES (9223372036854775807, 0); INSERT INTO t4(x) VALUES (1); END」
+» з 「DELETE FROM d」
+» 「— крапка з комою на початку」
+» з 「;INSERT INTO b VALUES (5)」
