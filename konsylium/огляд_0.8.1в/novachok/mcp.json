@@ -1,0 +1,1 @@
+{"mcpServers": {"nigredo": {"command": "python3", "args": ["/root/ai-agents/Nigredo/mcp/nigredo_mcp.py"], "env": {"NIGREDO_HOME": "/root/ai-agents/Nigredo/konsylium/огляд_0.8.1в/власник", "NIGREDO_WORKDIR": "/root/ai-agents/Nigredo/konsylium/огляд_0.8.1в/novachok"}}}}

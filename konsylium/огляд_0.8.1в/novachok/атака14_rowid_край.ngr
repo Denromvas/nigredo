@@ -1,0 +1,18 @@
+🜂 「атака14: rowid 2⁶³−1 без «жереб» — таблиця на межі, тригер іншої таблиці, UPDATE rowid+1, UPSERT, INSERT…SELECT, два рядки; потім лічба рядків」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO m(x) VALUES (1)」
+» з 「INSERT INTO m(rowid, x) VALUES (5, 2)」
+» з 「INSERT INTO o(x) VALUES (3)」
+» з 「UPDATE t2 SET rowid = rowid + 1 WHERE x = 0」
+» з 「INSERT INTO t3(k, x) VALUES (1, 1) ON CONFLICT(k) DO UPDATE SET k = 9223372036854775807」
+» з 「INSERT INTO t4 SELECT 9223372036854775807, 1」
+» з 「INSERT INTO t5(x) SELECT x FROM t5」
+» з 「INSERT INTO t2(x) VALUES (7); INSERT INTO t2(x) VALUES (8)」
+» 「— лічба (DELETE повертає, скільки рядків було) —」
+» з 「DELETE FROM m WHERE x = 1 OR x = 3」
+» з 「DELETE FROM m WHERE x = 2」
+» з 「DELETE FROM t2 WHERE rowid = 9223372036854775807」
+» з 「DELETE FROM t3 WHERE k = 9223372036854775807」
+» з 「DELETE FROM t4」
+» з 「DELETE FROM t5」

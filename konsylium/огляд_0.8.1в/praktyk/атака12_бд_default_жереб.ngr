@@ -1,0 +1,7 @@
+🜂 「атака12: DEFAULT (random()) — випадковість SQLite без права «жереб»?」 【「бд.писати:звіти」 「писати:звіти」】
+← б 「звіти/а12_жереб.db」
+← з λq ☂ σ 🜔бд.писати б q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS к(н INTEGER, в INTEGER DEFAULT (abs(random()) % 2))」
+» з 「DELETE FROM к」
+» з 「INSERT INTO к(н) VALUES (1)」
+» з 「UPDATE к SET н = 2 WHERE в = 1」
