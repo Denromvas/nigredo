@@ -1,0 +1,7 @@
+🜂 「атака17: що в базі до й після запису в sqlite_dbpage — корені таблиць і їхні рядки」 【「бд.читати:дані」】
+← бд § ⌂ 0
+← з λq ☂ σ 🜔бд.читати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「SELECT name, rootpage FROM sqlite_master WHERE rootpage > 0 ORDER BY rootpage」
+» з 「SELECT rowid, * FROM q」
+» з 「SELECT rowid, name, seq FROM sqlite_sequence」
+» з 「SELECT rowid, x FROM t」

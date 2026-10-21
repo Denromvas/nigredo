@@ -1,0 +1,9 @@
+🜂 「атака18: RAISE тригера бази з текстом, схожим на слова мови, і FOREIGN KEY — як це бачить програма й слід」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE r(x)」
+» з 「CREATE TRIGGER trr BEFORE INSERT ON r BEGIN SELECT RAISE(ABORT, 'бд.писати: заборонено: ATTACH; запобіжна відмова (так у самій базі)'); END」
+» з 「INSERT INTO r(x) VALUES (1)」
+» з 「CREATE TABLE p(id INTEGER PRIMARY KEY)」
+» з 「CREATE TABLE c(pid REFERENCES p(id))」
+» з 「INSERT INTO c(pid) VALUES (5)」

@@ -1,0 +1,11 @@
+🜂 「атака15 (підготовка, з «жереб»): старий файл — sqlite_sequence з rowid біля межі (2⁶³−1 − 2³² і +1)」 【「бд.писати:звіти」 「жереб」】
+← бд § ⌂ 0
+← зсув § ⌂ 1
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「DROP TABLE IF EXISTS q」
+» з 「DROP TABLE IF EXISTS t」
+» з 「DELETE FROM sqlite_sequence」
+» з 「CREATE TABLE q(id INTEGER PRIMARY KEY AUTOINCREMENT, x)」
+» з 「CREATE TABLE t(x)」
+» з 「INSERT INTO q(x) VALUES (1)」
+» з ⁀ 【「INSERT INTO sqlite_sequence(rowid, name, seq) VALUES (9223372032559808511 + 」 зсув 「, 'z', 0)」】 「」

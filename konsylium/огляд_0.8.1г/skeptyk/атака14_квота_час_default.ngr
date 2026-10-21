@@ -1,0 +1,12 @@
+🜂 「атака14: квота «час≤1» — годинник SQLite у бд.писати через DEFAULT, CHECK і тригер」 【「час≤1」 「бд.писати:звіти」】
+← бд 「звіти/квота14.db」
+← з λq ☂ σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS t(x, ts DEFAULT CURRENT_TIMESTAMP)」
+» з 「INSERT INTO t(x) VALUES (1)」
+» з 「CREATE TABLE IF NOT EXISTS u(x CHECK (x < julianday('now')))」
+» з 「INSERT INTO u VALUES (1)」
+» з 「CREATE TABLE IF NOT EXISTS w(x)」
+» з 「CREATE TRIGGER IF NOT EXISTS тр AFTER INSERT ON w BEGIN UPDATE w SET x = unixepoch() WHERE rowid = NEW.rowid; END」
+» з 「INSERT INTO w VALUES (1)」
+» 🜔час
+» ☂ 🜔час λe e

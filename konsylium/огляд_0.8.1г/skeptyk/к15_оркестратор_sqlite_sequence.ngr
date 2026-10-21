@@ -1,0 +1,11 @@
+🜂 「атака14 (тихо): службова таблиця sqlite_sequence поза захистом rowid (назва sqlite_…) — rowid навмання без «жереб»」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+» 🜔бд.писати бд 「DROP TABLE IF EXISTS q」 【】
+» 🜔бд.писати бд 「DROP TABLE IF EXISTS n」 【】
+» 🜔бд.писати бд 「CREATE TABLE q(id INTEGER PRIMARY KEY AUTOINCREMENT, x)」 【】
+» 🜔бд.писати бд 「CREATE TABLE n(i)」 【】
+» 🜔бд.писати бд 「DELETE FROM sqlite_sequence」 【】
+» 🜔бд.писати бд 「INSERT INTO sqlite_sequence(rowid, name, seq) VALUES (9223372036854775807, 'z', 0)」 【】
+» 🜔бд.писати бд 「INSERT INTO sqlite_sequence(name, seq) VALUES ('w', 1)」 【】
+← жр 🜔бд.писати бд 「WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM c WHERE i < (SELECT rowid % 100 + 1 FROM sqlite_sequence WHERE name = 'w')) INSERT INTO n SELECT i FROM c」 【】
+» 〔випадкове 0–99: {－ жр 1}〕

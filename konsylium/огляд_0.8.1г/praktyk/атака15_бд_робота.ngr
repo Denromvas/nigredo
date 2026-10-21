@@ -1,0 +1,29 @@
+🜂 「атака15: звичайна робота з базою після виправлень 9г — WITHOUT ROWID, STRICT, UPSERT, AUTOINCREMENT, шапка-коментар, запит з помилкою; хибних відмов немає?」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+← зп Λq p ☂ σ 🜔бд.писати бд q p λпом ＋ 「✗ 」 пом
+» з 「DROP TABLE IF EXISTS залишки」
+» з 「DROP TABLE IF EXISTS ціни」
+» з 「DROP TABLE IF EXISTS журнал」
+» з 「CREATE TABLE залишки(склад TEXT, товар TEXT, к INTEGER, PRIMARY KEY (склад, товар)) WITHOUT ROWID」
+» з 「CREATE TABLE ціни(товар TEXT PRIMARY KEY, ціна INTEGER NOT NULL) STRICT」
+» з 「CREATE TABLE журнал(н INTEGER PRIMARY KEY AUTOINCREMENT, подія TEXT)」
+» зп 「INSERT INTO залишки VALUES (?, ?, ?)」 【「С1」 「хліб」 5】
+» зп 「INSERT INTO залишки VALUES (?, ?, ?) ON CONFLICT(склад, товар) DO UPDATE SET к = к + excluded.к」 【「С1」 「хліб」 3】
+» з 「UPDATE залишки SET к = к - 1 WHERE товар = 'хліб'」
+» зп 「INSERT OR REPLACE INTO ціни VALUES (?, ?)」 【「хліб」 25】
+» зп 「-- шапка
+INSERT INTO ціни VALUES (?, ?) ON CONFLICT(товар) DO UPDATE SET ціна = excluded.ціна」 【「хліб」 27】
+» зп 「;INSERT INTO журнал(подія) VALUES (?)」 【「ціна」】
+» зп 「/* к */ INSERT INTO журнал(подія) VALUES (?)」 【「залишок」】
+» з 「INSERT INTO журнал(н, подія) VALUES (100, 'явний')」
+» з 「INSERT INTO журнал(подія) VALUES ('після явного')」
+» з 「INSERT INTO журнал(подія) SELECT товар FROM залишки」
+» з 「INSERT INTO журнал(подія) VALUES ('без лапки)」
+» з 「INSERT INTO журнал(подія) VALUES ('ok') ;」
+» з 「INSERT INTO журнал(подія) VALUES ('ok') -- хвіст」
+» з 「UPDATE sqlite_sequence SET seq = 1000 WHERE name = 'журнал'」
+» з 「INSERT INTO журнал(подія) VALUES ('після seq')」
+» з 「DELETE FROM журнал WHERE н = 100」
+» з 「ALTER TABLE журнал ADD COLUMN сума INTEGER」
+» з 「CREATE INDEX IF NOT EXISTS і_подія ON журнал(подія)」

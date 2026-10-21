@@ -1,0 +1,43 @@
+✗ бд.читати: стовпець «b» — двійкові дані; візьміть hex(b)
+【『「typeof(n)」 「integer」 「typeof(r)」 「real」 「typeof(s)」 「text」 「typeof(b)」 「blob」 「typeof(x)」 「null」』 『「typeof(n)」 「integer」 「typeof(r)」 「real」 「typeof(s)」 「text」 「typeof(b)」 「null」 「typeof(x)」 「text」』 『「typeof(n)」 「integer」 「typeof(r)」 「real」 「typeof(s)」 「text」 「typeof(b)」 「null」 「typeof(x)」 「integer」』 『「typeof(n)」 「integer」 「typeof(r)」 「real」 「typeof(s)」 「text」 「typeof(b)」 「null」 「typeof(x)」 「text」』 『「typeof(n)」 「integer」 「typeof(r)」 「null」 「typeof(s)」 「null」 「typeof(b)」 「null」 「typeof(x)」 「null」』】
+【『「big」 9223372036854776000』】
+【『「s」 100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 「a」 219.6 「t」 100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000』】
+✗ бд.читати: лише одна інструкція SQL за раз
+【『「cid」 0 「name」 「id」 「type」 「INTEGER」 「notnull」 0 「dflt_value」 ∅ 「pk」 1』 『「cid」 1 「name」 「n」 「type」 「INTEGER」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』 『「cid」 2 「name」 「r」 「type」 「REAL」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』 『「cid」 3 「name」 「s」 「type」 「TEXT」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』 『「cid」 4 「name」 「b」 「type」 「BLOB」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』 『「cid」 5 「name」 「x」 「type」 「」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』】
+✗ бд.читати: «pragma» поза дозволеним — лише SELECT (WITH, VALUES) і довідкові PRAGMA (table_info …); для змін — бд.писати
+✗ бд.читати: «pragma» поза дозволеним — лише SELECT (WITH, VALUES) і довідкові PRAGMA (table_info …); для змін — бд.писати
+✗ бд.читати: «pragma» поза дозволеним — лише SELECT (WITH, VALUES) і довідкові PRAGMA (table_info …); для змін — бд.писати
+✗ бд.читати: «pragma» поза дозволеним — лише SELECT (WITH, VALUES) і довідкові PRAGMA (table_info …); для змін — бд.писати
+✗ бд.читати: «pragma» поза дозволеним — лише SELECT (WITH, VALUES) і довідкові PRAGMA (table_info …); для змін — бд.писати
+✗ бд.читати: «pragma» поза дозволеним — лише SELECT (WITH, VALUES) і довідкові PRAGMA (table_info …); для змін — бд.писати
+【『「cid」 0 「name」 「id」 「type」 「INTEGER」 「notnull」 0 「dflt_value」 ∅ 「pk」 1』 『「cid」 1 「name」 「n」 「type」 「INTEGER」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』 『「cid」 2 「name」 「r」 「type」 「REAL」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』 『「cid」 3 「name」 「s」 「type」 「TEXT」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』 『「cid」 4 「name」 「b」 「type」 「BLOB」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』 『「cid」 5 「name」 「x」 「type」 「」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』】
+【『「cid」 0 「name」 「id」 「type」 「INTEGER」 「notnull」 0 「dflt_value」 ∅ 「pk」 1』 『「cid」 1 「name」 「n」 「type」 「INTEGER」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』 『「cid」 2 「name」 「r」 「type」 「REAL」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』 『「cid」 3 「name」 「s」 「type」 「TEXT」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』 『「cid」 4 「name」 「b」 「type」 「BLOB」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』 『「cid」 5 「name」 「x」 「type」 「」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』】
+【『「cid」 0 「name」 「id」 「type」 「INTEGER」 「notnull」 0 「dflt_value」 ∅ 「pk」 1』 『「cid」 1 「name」 「n」 「type」 「INTEGER」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』 『「cid」 2 「name」 「r」 「type」 「REAL」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』 『「cid」 3 「name」 「s」 「type」 「TEXT」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』 『「cid」 4 「name」 「b」 「type」 「BLOB」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』 『「cid」 5 「name」 「x」 「type」 「」 「notnull」 0 「dflt_value」 ∅ 「pk」 0』】
+✗ бд.читати: лише одна інструкція SQL за раз
+✗ бд.читати: дія поза дозволеним (лише SELECT; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+【『「n」 9223372036854775807』 『「n」 -9223372036854775808』 『「n」 0』 『「n」 1000』 『「n」 99』】
+✗ бд.читати: «attach» поза дозволеним — лише SELECT (WITH, VALUES) і довідкові PRAGMA (table_info …); для змін — бд.писати
+✗ бд.читати: load_extension заборонено (і в тригерах та VIEW)
+✗ бд.читати: VACUUM заборонено (VACUUM INTO пише файл поза текою з печатки)
+【『「v」 1』】
+✗ бд.читати: стовпець «z» — двійкові дані; візьміть hex(z)
+【『「r」 1』】
+【『「l」 100000』】
+【『「count(*)」 200000』】
+✗ бд.читати: однакові назви стовпців (a, a) — дайте різні через AS
+【『「」 「x」』】
+✗ бд.читати: стовпець «inf» — не число (inf); SQLite переповнився
+✗ бд.читати: Could not decode to UTF-8 column 'sur' with text '���'
+✗ бд.читати: Could not decode to UTF-8 column 't' with text '�'
+✗ бд.читати: немає такої таблиці (no such table: nosuch)
+✗ бд.читати: incomplete input
+✗ бд.читати: «» поза дозволеним — лише SELECT (WITH, VALUES) і довідкові PRAGMA (table_info …); для змін — бд.писати
+【『「c」 2』】
+✗ бд.читати: «pragma» поза дозволеним — лише SELECT (WITH, VALUES) і довідкові PRAGMA (table_info …); для змін — бд.писати
+✗ бд.читати: кількість «?» у запиті не дорівнює кількості параметрів (Incorrect number of bindings supplied. The current statement uses 1, and there are 0 supplied.)
+✗ бд.читати: кількість «?» у запиті не дорівнює кількості параметрів (Incorrect number of bindings supplied. The current statement uses 2, and there are 1 supplied.)
+✗ бд.читати: параметр — рядок, число, істинність чи ∅, а не список
+【『「p」 「0.33333333333333333333333333333」』】
+【『「p」 1』】
+✗ бд.читати: немає такого файлу: дані/немає.db
+【『「1」 1』】

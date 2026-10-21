@@ -1,0 +1,12 @@
+🜂 「атака17: явний rowid 2⁶³−1 в INSERT іншими способами (параметр, SELECT, REPLACE) і звичайні описки — що каже ключ на старій базі й на далекій」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» ☂ ＋ 「✓ 」 σ 🜔бд.писати бд 「INSERT INTO t(rowid, x) VALUES (?, 7)」 【9223372036854775807】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(rowid, x) SELECT 9223372036854775807, 8」
+» з 「INSERT OR REPLACE INTO t(rowid, x) VALUES (9223372036854775807, 9)」
+» з 「INSERT INTO t(rowid, x) SELECT count(*) + 9223372036854775807, 10 FROM t WHERE 0」
+» з 「INSERT INTO t(rowid, x) VALUES (9223372036854775806 + 1, 11)」
+» з 「INSERT INTO t(y) VALUES (1)」
+» з 「INSERT INTO немає(x) VALUES (1)」
+» з 「INSERT INTO t(x) VALUES (1」
+» з 「INSERT INTO t(x) VALUES (12)」

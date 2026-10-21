@@ -1,0 +1,2 @@
+🜂 「показати sqlite_sequence бази аргументу」 【「бд.читати:дані」】
+» σ 🜔бд.читати § ⌂ 0 「SELECT name, seq, rowid FROM sqlite_sequence」 【】

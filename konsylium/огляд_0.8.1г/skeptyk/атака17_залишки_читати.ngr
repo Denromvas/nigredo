@@ -1,0 +1,5 @@
+🜂 「атака17: бд.читати — чи видно через sqlite_dbpage рядок, який уже видалено (SQL його не покаже)」 【「бд.читати:дані」】
+← бд § ⌂ 0
+← з λq ☂ σ 🜔бд.читати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「SELECT count(*) AS n FROM s」
+» з 「SELECT pgno, instr(data, CAST('таємниця17' AS BLOB)) AS де FROM sqlite_dbpage WHERE instr(data, CAST('таємниця17' AS BLOB)) > 0」
