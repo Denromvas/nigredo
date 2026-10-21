@@ -1,0 +1,22 @@
+
+
+процес: «sh -c echo $(id)» поза дозволеним (echo, ls, sh -c echo; дозвіл — початок команди за словами)
+
+
+
+
+процес: «/bin/sh -c id» поза дозволеним (echo, ls, sh -c echo; дозвіл — початок команди за словами)
+процес: «/usr/bin/id» поза дозволеним (echo, ls, sh -c echo; дозвіл — початок команди за словами)
+a
+b
+
+
+
+total 763
+drwxr-xr-x.  3 root root    3452 Oct 19 14:53 .
+drwxr-xr-x. 11 root root    3452 Oct 19 14:52 ..
+-rw-r--r--.  1 root root    6403 Oct 19 14:51 дозволи.json
+-rw-------.  1 root root      64 Oct 19 14:53 ключ
+drwx------.  2 root root 1036288 Oct 19 18:13 сліди
+
+666520

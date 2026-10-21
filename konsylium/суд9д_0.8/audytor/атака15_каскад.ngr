@@ -1,0 +1,13 @@
+🜂 「атака15: каскад зовнішнього ключа (ON UPDATE CASCADE) у rowid дочірньої таблиці — 2⁶³−1 без «жереб»? і --перевірити-слід」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「DROP TABLE IF EXISTS дит」
+» з 「DROP TABLE IF EXISTS бат」
+» з 「CREATE TABLE бат(к INTEGER UNIQUE)」
+» з 「CREATE TABLE дит(id INTEGER PRIMARY KEY REFERENCES бат(к) ON UPDATE CASCADE, x)」
+» з 「INSERT INTO бат(к) VALUES (5)」
+» з 「INSERT INTO дит(id, x) VALUES (5, 0)」
+» ＋ 「батька змінено: 」 з 「UPDATE бат SET к = 9223372036854775807 WHERE к = 5」
+» ＋ 「каскад дійшов до rowid дитини (1 — так): 」 з 「UPDATE дит SET x = 1 WHERE id = 9223372036854775807」
+» ＋ 「наступний рядок дитини: 」 з 「INSERT INTO дит(x) VALUES (2)」
+» ＋ 「біт з rowid SQLite: 」 з 「UPDATE дит SET x = 3 WHERE x = 2 AND rowid % 2 = 0」

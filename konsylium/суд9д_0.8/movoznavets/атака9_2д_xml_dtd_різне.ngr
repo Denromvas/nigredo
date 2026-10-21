@@ -1,0 +1,15 @@
+🜂 「χ: DTD у різному вигляді, XInclude, CDATA, невидиме через посилання на символ, кодування」
+← docs 【
+  「<!DOCTYPE a [<!ENTITY x "1">]><a>&x;</a>」
+  「<!doctype a><a/>」
+  「<a><!-- <!DOCTYPE це лише коментар --></a>」
+  「<a><![CDATA[<!ENTITY не сутність>]]></a>」
+  「<a>&lt;!DOCTYPE&gt;</a>」
+  「<a xmlns:xi="http://www.w3.org/2001/XInclude"><xi:include href="/etc/passwd" parse="text"/></a>」
+  「<a>&#x202E;txt.exe&#x200B;</a>」
+  「<a>&ent;</a>」
+  「<?xml version="1.0" encoding="UTF-16"?><a>ю</a>」
+  「<?xml-stylesheet href="http://evil/x.xsl"?><a/>」
+  「<a>&#0;</a>」
+】
+∀ docs λd » ☂ 《 ← el χ d ¦ 〔ok тег={§ el 「тег」} текст={§ el 「текст」} діти={ρ § el 「діти」}〕 》 λe 〔помилка: {e}〕
