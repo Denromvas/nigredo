@@ -1329,7 +1329,7 @@ def main():
     check(o_ == res9g[2].stdout and res9g[0].returncode == res9g[2].returncode == 0 and res9g[1] == res9g[3] == [1, 1, 1]
           and o_.count('рядок отримав би rowid 2⁶³−1') == 5 and o_.count('VACUUM заборонено') == 1
           and o_.count('системна таблиця «sqlite_sequence»: INSERT і зміна rowid') == 2
-          and o_.count('системна таблиця «sqlite_sequence» підійшла до rowid 2⁶³−1') == 2
+          and o_.count('системна таблиця «sqlite_sequence» на межі rowid: рядок, який SQLite допише') == 2
           and o_.count('системна таблиця «sqlite_schema» підійшла до rowid 2⁶³−1') == 1 and o_.endswith('【『「н」 1』】\n'),
           'SQLite: «;», «;;», коментар перед «;» — та сама відмова rowid 2⁶³−1; sqlite_sequence без «жереб» — ні INSERT, ні '
           'rowid; старий файл, де системна таблиця на межі чи біля неї, — відмова (суд 9г)',
@@ -1396,24 +1396,33 @@ def main():
     # підрядком причини (автор: таблиця з назвою «…дійшла до rowid 2⁶³−1…» робила спробу «запобіжною» й на свіжій базі)
     old81_, full81_, new81_ = (f'{DATA}/звіти/{n_}81.db' for n_ in ('старий', 'повний', 'новий'))
     mask_ = '«x» дійшла до rowid 2⁶³−1 — далі SQLite бере його навмання'
+    # огляд 0.8.1б: запобіжна для sqlite_sequence — точно (перший рядок нової таблиці з AUTOINCREMENT, а місця до межі
+    # немає): решта запитів на старій базі — як на звичайній, з тригерами rowid (явний 2⁶³−1 був «запобіжним», Скептик);
+    # sqlite_dbpage — відмова (запис сирих сторінок повз authorizer, Скептик); RAISE тригера бази — його слова (Новачок)
     q81_ = (f'🜂 【「бд.писати:{DATA}/звіти」】\n← п Λф q ☂ σ 🜔бд.писати ф q 【】 λe e\n' + ''.join(
         f'» п 「{f_}」 「{s_}」\n' for f_, s_ in (
             (old81_, f"ATTACH DATABASE '{DATA}/звіти/приєднана81.db' AS x"), (old81_, 'PRAGMA writable_schema = 1'),
-            (old81_, 'CREATE TEMP TABLE tt(x)'), (old81_, 'INSERT INTO t(x) VALUES (random())'),
-            (old81_, "INSERT INTO t(x) VALUES (date('now'))"),
-            (old81_, 'INSERT INTO t(x) SELECT count(*) FROM pragma_database_list'),
-            (old81_, "INSERT INTO t(x) VALUES (date('2020-01-01'))"), (old81_, 'INSERT INTO t(x) VALUES (1)'),
+            (old81_, 'CREATE TEMP TABLE tt(x)'), (old81_, 'INSERT INTO b(x) VALUES (random())'),
+            (old81_, "INSERT INTO b(x) VALUES (date('now'))"),
+            (old81_, 'INSERT INTO b(x) SELECT count(*) FROM pragma_database_list'),
+            (old81_, "INSERT INTO b(x) VALUES (date('2020-01-01'))"), (old81_, 'INSERT INTO b(x) VALUES (1)'),
+            (old81_, 'INSERT INTO t(x) VALUES (1)'), (old81_, 'INSERT INTO a(x) VALUES (1)'),
+            (old81_, 'INSERT INTO t(rowid, x) VALUES (9223372036854775807, 1)'),
             (full81_, 'INSERT INTO f(x) VALUES (1)'), (new81_, f'CREATE TABLE "{mask_}"(x)'),
-            (new81_, f'INSERT INTO "{mask_}"(rowid, x) VALUES (9223372036854775807, 1)'))))
+            (new81_, f'INSERT INTO "{mask_}"(rowid, x) VALUES (9223372036854775807, 1)'),
+            (new81_, 'UPDATE sqlite_dbpage SET data = data WHERE pgno = 1'), (new81_, 'CREATE TABLE r(x)'),
+            (new81_, "CREATE TRIGGER rr BEFORE INSERT ON r BEGIN SELECT RAISE(ABORT, 'запобіжна відмова (x)'); END"),
+            (new81_, 'INSERT INTO r(x) VALUES (1)'))))
     res81 = []
     for k_, cmd_ in enumerate((NGR_CMD, [sys.executable, str(NGR)])):
         for f_ in (old81_, full81_, new81_):
             if os.path.exists(f_):
                 os.remove(f_)
         with sqlite3.connect(old81_) as c_:
-            c_.executescript('CREATE TABLE a(id INTEGER PRIMARY KEY AUTOINCREMENT, x); CREATE TABLE t(x); '
-                             'INSERT INTO a(x) VALUES (1)')
-            c_.execute("INSERT INTO sqlite_sequence(rowid, name, seq) VALUES (9223372036854775807 - 4294967291, 'я', 1)")
+            c_.executescript('CREATE TABLE t(x); CREATE TABLE a(id INTEGER PRIMARY KEY AUTOINCREMENT, x); '
+                             'CREATE TABLE b(id INTEGER PRIMARY KEY AUTOINCREMENT, x)')
+            c_.execute("INSERT INTO sqlite_sequence(rowid, name, seq) VALUES (1, 'a', 0)")
+            c_.execute("INSERT INTO sqlite_sequence(rowid, name, seq) VALUES (9223372036854775807, 'я', 1)")
         with sqlite3.connect(full81_) as c_:
             c_.execute('CREATE TABLE f(x)')
             c_.execute('INSERT INTO f(rowid, x) VALUES (9223372036854775807, 0)')
@@ -1423,15 +1432,19 @@ def main():
                                     text=True, env=envd).stdout)
     o_ = res81[0].stdout
     check(o_ == res81[2].stdout and res81[0].returncode == res81[2].returncode == 0
-          and o_.count('запобіжна відмова') == 2 and o_.count('дія поза дозволеним') == 4
+          and o_.count('запобіжна відмова (так у самій базі') == 2 and o_.count('дія поза дозволеним') == 3
           and o_.count('у запиті — random') == 1 and o_.count('у запиті — date: «зараз» чи дата з даних') == 2
-          and o_.count('запит і не виконувався') == 3 and o_.count('рядок отримав би rowid 2⁶³−1') == 1
+          and o_.count('таблиця-функція pragma_database_list') == 1 and o_.count('запит і не виконувався') == 4
+          and o_.count('рядок отримав би rowid 2⁶³−1') == 2 and o_.count('сирі сторінки бази (sqlite_dbpage)') == 1
+          and o_.count('тригер бази зупинив запит: «запобіжна відмова (x)»') == 1
+          and o_.splitlines().count('1') == 2 and o_.splitlines().count('0') == 3
           and 'у межах прав' not in o_ and not os.path.exists(f'{DATA}/звіти/приєднана81.db')
-          and all('⚠ спроб поза правами («заборонено»): 8' in v_ and 'дія SQLite поза дозволеним: ATTACH' in v_
-                  and 'запобіжних відмов (так у самій базі; запит не виконувався' in v_
-                  and 'запит «INSERT INTO t(x) VALUES (1)»' in v_ for v_ in (res81[1], res81[3])),
-          'SQLite: запобіжна відмова — лише коли в запиті заборонених дій не знайдено (ATTACH, PRAGMA, CREATE TEMP, random, '
-          'date, pragma_database_list на старій базі — «заборонено»); не підрядком причини (огляд 0.8.1)',
+          and all('⚠ спроб поза правами («заборонено»): 10' in v_ and 'дія SQLite поза дозволеним: ATTACH' in v_
+                  and 'запобіжних відмов (так у самій базі; запит не виконано' in v_
+                  and 'запит «INSERT INTO b(x) VALUES (1)»' in v_ for v_ in (res81[1], res81[3])),
+          'SQLite: запобіжна відмова — лише коли в запиті заборонених дій не знайдено (огляд 0.8.1), а для sqlite_sequence — '
+          'точно: перший рядок нової таблиці з AUTOINCREMENT без місця до межі; явний rowid 2⁶³−1 на старій базі — '
+          '«заборонено»; sqlite_dbpage — відмова; RAISE тригера — слова бази (огляд 0.8.1б)',
           o_ + res81[0].stderr + '\n---\n' + res81[2].stdout + res81[2].stderr + res81[1] + res81[3])
     got, ref = both(['--сухо', '-e', f'🜂 【「бд.писати:{DATA}/звіти」】\n'
                      f'» 🜔бд.писати 「{new81_}」 「SELECT count(*) FROM pragma_database_list」 【】'], envd)
@@ -1456,6 +1469,34 @@ def main():
           and rd81[0].stdout.count('дія поза дозволеним') == 1 and all('(«заборонено»): 1 ' in v_ for v_ in v81),
           'бд.читати: «table … may not be modified» — запис, який SQLite відкинув до authorizer, — лише весь текст '
           'помилки; описка з цими словами в назві — не «заборонено» (огляд 0.8.1)', rd81[0].stdout + rd81[1].stdout + str(v81))
+    # огляд 0.8.1б (Аудитор): вичерпана квота ховала спробу — random і годинник ставали «квоту вичерпано»; права без
+    # дії тепер бачать байткод, як і стара база (і --сухо: «✓» на random); rowid без виконання не перевірити — так і сказано
+    quota81_ = f'{DATA}/звіти/квота81.db'
+    q81q_ = (f'🜂 【「бд.писати:{DATA}/звіти≤1」】\n← п λq ☂ σ 🜔бд.писати 「{quota81_}」 q 【】 λe e\n' + ''.join(
+        f'» п 「{s_}」\n' for s_ in ('INSERT INTO t(x) VALUES (1)', 'INSERT INTO t(x) VALUES (random())',
+                                   "INSERT INTO t(x) VALUES (date('now'))", f"ATTACH DATABASE '{DATA}/звіти/к81.db' AS z",
+                                   'INSERT INTO t(rowid, x) VALUES (9223372036854775807, 1)')))
+    resq81 = []
+    for k_, cmd_ in enumerate((NGR_CMD, [sys.executable, str(NGR)])):
+        if os.path.exists(quota81_):
+            os.remove(quota81_)
+        with sqlite3.connect(quota81_) as c_:
+            c_.execute('CREATE TABLE t(x)')
+        tp_ = tmp / f'квота81_{k_}.jsonl'
+        resq81.append(subprocess.run([*cmd_, '--слід', str(tp_), '-e', q81q_], capture_output=True, text=True, env=envd))
+        resq81.append(subprocess.run([sys.executable, str(NGR), '--перевірити-слід', str(tp_)], capture_output=True,
+                                     text=True, env=envd).stdout)
+    dry81 = both(['--сухо', '-e', f'🜂 【「бд.писати:{DATA}/звіти」】\n'
+                  f'» 🜔бд.писати 「{quota81_}」 「INSERT INTO t(x) VALUES (random())」 【】'], envd)
+    o_ = resq81[0].stdout
+    check(o_ == resq81[2].stdout and o_.count('вичерпано квоту') == 1 and o_.count('дія поза дозволеним') == 3
+          and 'у запиті — random' in o_ and 'у запиті — date' in o_
+          and all('(«заборонено»): 3 ' in v_ and 'квоту вичерпано (межа спрацювала' in v_
+                  and 'VALUES (9223372036854775807, 1)' in v_ for v_ in (resq81[1], resq81[3]))
+          and dry81[0].stdout == dry81[1].stdout and dry81[0].returncode == dry81[1].returncode != 0
+          and 'у запиті — random' in dry81[0].stdout + dry81[0].stderr,
+          'квота не ховає спроби: random і годинник у запиті після вичерпаної квоти — «заборонено», у підсумку квоти — сам '
+          'запит; --сухо бачить random (огляд 0.8.1б)', o_ + resq81[0].stderr + resq81[1] + dry81[0].stdout + dry81[0].stderr)
     seal81 = tmp / 'печатка81'
     (seal81 / 'звіти').mkdir(parents=True, exist_ok=True)
     (seal81 / 'файл.ngr').write_text('🜂 「новий файл」 【「писати:звіти/нова.txt」】\n» 🜔писати 「звіти/нова.txt」 「x」\n',
@@ -1464,9 +1505,9 @@ def main():
                                      '» 🜔писати 「звіти/нова.txt/зміст.txt」 「x」\n', encoding='utf-8')
     warn81 = [json.loads(run(['--перевірити', '--json', str(seal81 / f_)], env).stdout)['печатка']['попередження']
               for f_ in ('файл.ngr', 'тека.ngr')]
-    rtl81 = run(['--розбір', '-e', '🜂\n» ＋ 「שלום」 「x」\n» ＋ 「мир」 「x」'], env).stdout
+    rtl81 = run(['--розбір', '-e', '🜂\n» ＋ 「שלום」 「x」\n» ＋ 「мир」 「x」\n» ＋ 「١٢」 「٣٤」'], env).stdout
     check(len(warn81[0]) == 1 and 'рядок 2: файл.писати пише в «звіти/нова.txt» — це сам шлях з печатки' in warn81[0][0]
-          and warn81[1] == [] and '«שלום»\u200e' in rtl81 and '«мир»\u200e' not in rtl81,
+          and warn81[1] == [] and '«שלום»\u200e' in rtl81 and '«мир»\u200e' not in rtl81 and '«١٢»\u200e' in rtl81,
           'попередження про запис у сам шлях з печатки — і для ще не створеного файлу, а тека, яку створить запис, — без '
           'нього; --розбір: LRM після тексту справа наліво (огляд 0.8.1)', str(warn81) + rtl81)
     # суд 9в (Аудитор): межа сліду між «виклик» і результатом — --перевірити-слід каже про виклик без результату
