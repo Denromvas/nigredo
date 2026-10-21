@@ -5,6 +5,7 @@
 Таблиці GLYPHS і TOOLS нижче — єдине джерело правди: з них генеруються
 памʼятка (`--памʼятка`) і переклад (`--розбір`).
 """
+import bisect
 import functools
 import hashlib
 import hmac
@@ -19,7 +20,7 @@ import decimal
 import math
 from decimal import ROUND_HALF_UP, Decimal
 
-VERSION = '0.8'
+VERSION = '0.8.1-dev'
 MAX_DEPTH = 2000
 WALK_MAX_DEPTH = 2000     # показ, порівняння, JSON, ключі ⇅ обходять значення не глибше: далі — «вкладене надто глибоко»
 #                           (межа мови, а не стека CPython — та сама в еталоні й Атанорі, від версії Python не залежить)
@@ -584,6 +585,34 @@ def confusables():
     return _CONFUSABLES
 
 
+_LETTERS = []          # [(перший, останній, тип)] з interpreter/літери.tsv — за зростанням
+_LETTER_STARTS = []
+LETTER_KINDS = {'Technical': 'технічна', 'Obsolete': 'застаріла', 'Uncommon_Use': 'рідковживана',
+                'Limited_Use': 'обмеженого вжитку', 'Exclusion': 'історична', 'Not_XID': 'не для ідентифікаторів',
+                'Deprecated': 'нерекомендована', 'Default_Ignorable': 'невидима'}
+
+
+def restricted_letter(ch):
+    """Тип літери за UTS #39 (Technical, Obsolete, Uncommon_Use …), якщо Unicode не радить її для імен
+    (Identifier_Status = Restricted; interpreter/літери.tsv), або None. Суд 9д: ƻ ≈ 2, ꜫ ≈ 3, ꜭ ≈ 4 — ручна таблиця
+    двійників цифр цей клас не закривала, тож тепер його закриває статус літери."""
+    if ch < '\x80':
+        return None
+    if not _LETTERS:
+        path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'літери.tsv')
+        try:
+            text = open(path, encoding='utf-8').read()
+        except OSError as e:
+            raise Fatal(f'немає таблиці літер {path}: {e.strerror} — без неї не відловити літер, схожих на цифри')
+        for line in text.split('\n'):
+            if line and line[0] != '#':
+                a, b, t = line.split('\t')
+                _LETTERS.append((int(a, 16), int(b, 16), t))
+        _LETTER_STARTS.extend(a for a, _, _ in _LETTERS)
+    i = bisect.bisect_right(_LETTER_STARTS, ord(ch)) - 1
+    return _LETTERS[i][2] if i >= 0 and ord(ch) <= _LETTERS[i][1] else None
+
+
 _PROTO = {}
 
 
@@ -607,6 +636,14 @@ GLYPH_TWINS = {'ơ': 'σ',   # двійники гліфів, яких скел�
                'ⱱ': 'ν', 'ʖ': '¿', 'No': '№',   # суд 9в (Новачок)
                '乂': '×', 'メ': '×', 'ニ': '＝'}   # суд 9г: досі їх ловило лише правило «один ієрогліф», а 乂5 — два знаки
 DIGIT_TWINS = {'ȝ': '3', 'ვ': '3'}   # скелети, схожі на цифру, яких UTS #39 з цифрою не звʼязує: ȝ ʒ ӡ ჳ, ვ (суд 9г)
+DIGIT_LETTERS = {'丨': '1', 'Ҙ': '3', 'ҙ': '3'}   # літери, які UTS #39 радить для імен, а на вигляд вони — цифра, і скелет
+                                                # цього не дає: 丨 — риска (乂丨 ≈ ×1), Ҙ ҙ — з хвостиком (суд 9д)
+_DIGIT_LETTERS = str.maketrans(DIGIT_LETTERS)
+
+
+def digit_letters(name):
+    """Імʼя, де літери-цифри (DIGIT_LETTERS) замінено цифрами: з цим скелет бачить 乂丨 як ×1."""
+    return name.translate(_DIGIT_LETTERS)
 
 
 def digit_skeleton():
@@ -618,7 +655,7 @@ def digit_skeleton():
 def looks_numeric(name):
     """Число, на яке імʼя схоже на вигляд (l0 → 10, б → 6, IOO → 100; суд 9в — замість латки з чотирьох літер), або
     None."""
-    sk = skeleton(name)
+    sk = skeleton(digit_letters(name))
     digits = {ord('O'): '0', ord('l'): '1', **{ord(k): v for k, v in DIGIT_TWINS.items()}}
     return sk.translate(digits) if sk and all(c in digit_skeleton() for c in sk) else None
 
@@ -637,8 +674,8 @@ def unit(s):
 
 def glyph_twin(name):
     """Гліф, на який схоже імʼя (х → ×, р → ρ, v → ν), — і з цифрами в кінці (x5 ≈ ×5, 十5 ≈ ＋5; суд 9в), і повтором
-    (xx ≈ ××, 十十 ≈ ＋＋; суд 9г), або None."""
-    sk = skeleton(name)
+    (xx ≈ ××, 十十 ≈ ＋＋; суд 9г), і з літерою-цифрою (乂丨 ≈ ×1; суд 9д), або None."""
+    sk = skeleton(digit_letters(name))
     if not hasattr(glyph_twin, 'table'):
         glyph_twin.table = glyph_twin_table()
     t = glyph_twin.table
@@ -658,9 +695,9 @@ NAME_TWINS = {'ƒ': '∫', 'ɜ': '∋'}   # за самим іменем: ске
 
 
 def const_twin(name):
-    """Стала (● ○ ∅), на яку схоже імʼя (Ø → ∅, ᄋ → ○), — і з цифрами в кінці (ø1 у списку — як «∅ 1»; суд 9г), або
-    None."""
-    name = name.rstrip('0123456789') or name
+    """Стала (● ○ ∅), на яку схоже імʼя (Ø → ∅, ᄋ → ○), — і з цифрами в кінці (ø1 у списку — як «∅ 1»; суд 9г), і
+    повтором (øø — як «∅∅»; суд 9д), або None."""
+    name = unit(name.rstrip('0123456789') or name)
     sk = skeleton(name)
     return CONST_TWINS.get(name) or next((c for c in CONSTS if skeleton(c) == sk), None)
 
@@ -681,8 +718,9 @@ def check_twins(toks):
                               f'назвіть інакше', pos)
         twin = const_twin(val)
         if twin:
-            twin += val[len(val.rstrip('0123456789') or val):]      # ø1 — як «∅1» (суд 9г)
-            raise StaticError(f'імʼя «{val}» на вигляд — стала «{twin[0]}»: «{val}» читається як «{twin}»; назвіть інакше', pos)
+            base = val.rstrip('0123456789') or val                 # ø1 — як «∅1» (суд 9г), øø — як «∅∅» (суд 9д)
+            seen_as = twin * (len(base) // len(unit(base))) + val[len(base):]
+            raise StaticError(f'імʼя «{val}» на вигляд — стала «{twin}»: «{val}» читається як «{seen_as}»; назвіть інакше', pos)
         sk = skeleton(val)
         if sk in seen and seen[sk] != val:
             raise StaticError(f'імена «{seen[sk]}» і «{val}» однакові на вигляд — двійники заборонені', pos)
@@ -848,9 +886,17 @@ def lex(src):
             if any(is_jamo(ch) for ch in buf):          # ᄉ ≈ ∧, ᄃ ≈ ⊏, ᆼ ≈ ○ — латки таблицею не встигали (суд 9б)
                 raise StaticError(f'імʼя «{buf}»: окремі чамо хангилю (ᄉ ᄃ ᆼ …) схожі на гліфи мови — пишіть '
                                   f'складами (가–힣)', pos)
-            base = buf.rstrip('0123456789')      # цифра — не другий знак: 乂5 ≈ ×5 (суд 9г)
+            bad = next((c for c in buf if restricted_letter(c)), None)
+            if bad:                             # ƻ ≈ 2, ꜫ ≈ 3, ꜭ ≈ 4 — класом, а не списком (суд 9д)
+                kinds = ', '.join(LETTER_KINDS.get(k, k) for k in restricted_letter(bad).split())
+                raise StaticError(f'імʼя «{buf}»: літеру «{bad}» (U+{ord(bad):04X}) Unicode не радить для імен '
+                                  f'(UTS #39: {kinds}) — такі літери бувають схожі на цифри й знаки (ƻ ≈ 2, ꜫ ≈ 3); '
+                                  f'візьміть звичайну', pos)
+            base = buf.rstrip('0123456789' + ''.join(DIGIT_LETTERS))   # цифра — не другий знак: 乂5 ≈ ×5 (суд 9г),
+            tail = buf[len(base):]                                      # і літера-цифра: 乂丨 ≈ ×1 (суд 9д)
             if len(base) == 1 and scripts & {'CJK', 'HIRAGANA', 'KATAKANA'} and (base == buf or base not in '米氺'):
-                twin, more = glyph_twin(base), ' з цифрами' if base != buf else ''   # 米 ≈ ※, 乂 ≈ ×, ニ ≈ ＝ (суд 9б)
+                twin = glyph_twin(base)                                   # 米 ≈ ※, 乂 ≈ ×, ニ ≈ ＝ (суд 9б)
+                more = '' if not tail else ' з цифрами' if tail.isascii() else f' зі знаком, схожим на цифру («{tail}»)'
                 raise StaticError(f'імʼя «{buf}» з одного ієрогліфа чи знака кани{more}: ' + (
                     f'«{base}» на вигляд — гліф «{twin}»' if twin else 'їх легко сплутати з гліфами мови (米 і ※, 乂 і ×, ニ і ＝)')
                     + ' — візьміть щонайменше два знаки, крім цифр', pos)
@@ -1130,6 +1176,10 @@ class Parser:
                 if twin:
                     raise StaticError(f'функція «{val}» на вигляд — гліф «{twin}»: «{val} …» читається як «{twin} …»; '
                                       f'назвіть її інакше', pos)
+                one = unit(val.rstrip('0123456789') or val)
+                if len(one) == 1 and script_of(one) in ('CJK', 'HIRAGANA', 'KATAKANA'):   # 匚匚 ≈ ⊏⊏ (суд 9д)
+                    raise StaticError(f'функція «{val}» — повтор одного знака «{one}»: як імʼя з одного ієрогліфа, він '
+                                      f'на вигляд буває гліфом (匚 і ⊏, 田 і ⊞); назвіть її різними знаками', pos)
                 return ('call', pos, val, [self.expr() for _ in range(ar)])
             return ('var', pos, val)
         if kind_ == 'open':
@@ -1759,14 +1809,15 @@ def all_static_errors(src, base=None, path=None, limit=50):
     дозвіл 「…」 (печатка) чи рядок інструкції з глибшими продовженнями й розбирати далі, до limit помилок. Пізніші
     позначено after_skip — можуть бути наслідком пропуску; про імена з пропущених рядків «←» — не повідомляти. Порядок —
     за рядками (суд 9в: через MCP приходило до 5 помилок і не по порядку). limit — помилок, а не проходів: кожен прохід
-    прибирає рядок чи дозвіл, а наслідки пропуску («невідоме імʼя») теж їли прохід — і з 40 двійників лишалося 29 (суд 9г)."""
+    прибирає рядок чи дозвіл, а наслідки пропуску («невідоме імʼя») теж їли прохід — і з 40 двійників лишалося 29 (суд 9г).
+    Повертає (помилки, чи є ще): шукає на одну більше за limit, щоб сказати «показано 50 — є ще» (суд 9д)."""
     import re as _re
     lines, errors, gone = src.split('\n'), [], set()
 
     def keep(e):
         return not any(f'«{n}»' in e.msg for n in gone)
     for _ in range(len(lines) + src.count('「') + 1):
-        if len(errors) >= limit:
+        if len(errors) > limit:
             break
         errs = []
         try:
@@ -1800,7 +1851,7 @@ def all_static_errors(src, base=None, path=None, limit=50):
             x.after_skip = bool(errors)
         errors += [x for x in errs if keep(x)]
         break
-    return sorted(errors[:limit], key=lambda e: e.pos or (0, 0))
+    return sorted(errors[:limit], key=lambda e: e.pos or (0, 0)), len(errors) > limit
 
 
 # ------------------------------------------------------------------ слід
@@ -1951,7 +2002,7 @@ def _verify(path, program=None):
     Підсумок цілого сліду каже й те, що отримувачу важливо без читання сліду: спроби поза правами («заборонено»),
     перехоплені помилки, підсумовані (не повністю записані) значення, теку й аргументи запуску."""
     key, prev, n, last, head = owner_key(), '0' * 16, 0, None, None
-    denied, caught, summed, modules, dry, raised, quota_hits = [], 0, 0, [], False, 0, []
+    denied, caught, summed, modules, dry, raised, quota_hits, careful = [], 0, 0, [], False, 0, [], []
     chunks, events, rejected, running = {'виконується': 0, 'відкинуто': 0, 'помилка частини': 0}, [], [], False
     info = {}
     try:
@@ -1983,6 +2034,9 @@ def _verify(path, program=None):
             what = rec.get('шлях') or rec.get('адреса') or rec.get('субагент') or rec.get('аргументи') or ''
             denied.append(f'{rec.get("агент", "?")}: {rec.get("назва") or "делегування"} '
                           f'{safe(str(what))[:80]} — {rec.get("причина") or "бракує прав"}')
+        if rec.get('подія') == 'запобіжна відмова':
+            careful.append(f'{rec.get("агент", "?")}: {rec.get("назва")} {safe(str(rec.get("шлях", "")))[:80]} — '
+                           f'{safe(str(rec.get("причина", "")))[:200]}')
         if rec.get('подія') == 'квоту вичерпано':
             quota_hits.append(f'{rec.get("агент", "?")}: {rec.get("квота", "?")} ({rec.get("чия", "?")})')
         caught += rec.get('подія') == 'помилку перехоплено'
@@ -2036,6 +2090,7 @@ def _verify(path, program=None):
     info.update({'модулі': [{'шлях': r, 'sha256': h} for r, _, h in modules],
                  'інтерпретатор': head.get('інтерпретатор'),
                  'записів': n, 'останній': last, 'заборонено': denied, 'квоту_вичерпано': quota_hits,
+                 'запобіжні_відмови': careful,
                  'перехоплено_помилок': caught,
                  'підсумовано_значень': summed, 'тека': head.get('тека'), 'аргументи': head.get('аргументи'),
                  'режим': 'повтор' if head.get('повтор') else 'сухо' if dry else 'repl' if head.get('repl') else 'звичайний'})
@@ -2056,6 +2111,9 @@ def _verify(path, program=None):
         info['частини'], info['відкинуто'] = chunks, rejected
     notes.append(f'⚠ спроб поза правами («заборонено»): {len(denied)} — ' + '; '.join(denied[:5])
                  + (' …' if len(denied) > 5 else '') if denied else 'спроб поза правами немає')
+    if careful:                        # не спроба програми: так стоїть сама база (суд 9д)
+        notes.append(f'запобіжних відмов (так у самій базі, а не дія програми; дію не виконано): {len(careful)} — '
+                     + '; '.join(careful[:5]) + (' …' if len(careful) > 5 else ''))
     if quota_hits:                     # не порушення прав: оголошена межа (печатка, модуль, субагент, власник)
         notes.append(f'квоту вичерпано (межа спрацювала, дію не виконано): {len(quota_hits)} — '
                      + '; '.join(quota_hits[:5]) + (' …' if len(quota_hits) > 5 else ''))
@@ -3229,10 +3287,17 @@ def _db(it, pos, tool, p, sql, params, write):
             # відмова — лише та, яку дав сам authorizer (чи сам SQLite на запис через бд.читати), а не текст помилки:
             # RAISE(FAIL, 'not authorized') у тригері пише програма, а зміни до нього лишаються (суд 8б)
             denied = bool(why) or (not write and 'may not be modified' in str(e))
-            if denied:
+            # таблиця вже на межі чи системна біля неї — так у самій базі (старий файл), а запит програми в межах прав:
+            # запобіжна відмова, а не спроба (суд 9д: інакше власника будили б даремно)
+            careful = bool(why) and (DB_ROWID_WHY[0] in why[0] or DB_ROWID_WHY[3] in why[0])
+            if careful:
+                it.caution(агент=it.agent, назва=tool, шлях=safe(p.v), запит=safe(sql.v)[:500],
+                           причина=f'стан бази, а не дія програми: {why[0]}')
+            elif denied:
                 it.deny(агент=it.agent, назва=tool, шлях=safe(p.v), запит=safe(sql.v)[:500],
                          причина='дія SQLite поза дозволеним')
-            msg = (f'заборонено: {why[0]}' if why and why[0].startswith(DB_DENIED_WHY) else 'дія поза дозволеним (лише ' + ('SELECT' if not write else
+            msg = (f'запобіжна відмова (так у самій базі, а запит — у межах прав): {why[0]}' if careful else
+                   f'заборонено: {why[0]}' if why and why[0].startswith(DB_DENIED_WHY) else 'дія поза дозволеним (лише ' + ('SELECT' if not write else
                    'SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER') + '; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)') \
                 if denied else 'лише одна інструкція SQL за раз' if 'one statement at a time' in str(e) \
                 else sql_err(str(e))
@@ -3342,6 +3407,40 @@ def db_explain(sql):
     return body if own else 'EXPLAIN ' + body
 
 
+def db_compiles(con, sql, args):
+    """Чи SQLite скомпілює сам запит: компіляція з authorizer, що відмовляє на першій же дії, — нічого не виконується.
+    Інша помилка, ніж ця відмова, сталася ще до першої дії, тож так само станеться й у справжньому виконанні — запит
+    нічого не запише (суд 9д, Оркестратор: описка в запиті ставила тригери на всі таблиці — ≈1 с на 400 таблиць)."""
+    import sqlite3
+    con.set_authorizer(lambda *a: sqlite3.SQLITE_DENY)
+    try:
+        con.execute(sql, args)
+        return True
+    except sqlite3.DatabaseError as e:
+        return 'not authorized' in str(e)
+    except (sqlite3.Error, ValueError, OverflowError):
+        return True                  # невідоме — як «компілюється»: захист на всіх таблицях
+    finally:
+        con.set_authorizer(None)
+
+
+def db_autoinc(con, t):
+    """Таблиця з AUTOINCREMENT: після rowid 2⁶³−1 SQLite не бере rowid навмання, а відмовляє (database or disk is full)
+    — тригери rowid їй не потрібні (суд 9д, Практик: «навмання» там, де його немає). Ознака — з байткоду самого SQLite:
+    MemMax у головній програмі вставки (його дає лише AUTOINCREMENT; підпрограми тригерів — після неї, з адреси 0)."""
+    import sqlite3
+    try:
+        ops = con.execute(f'EXPLAIN INSERT INTO main."{t.replace(chr(34), chr(34) * 2)}" DEFAULT VALUES').fetchall()
+    except sqlite3.Error:
+        return False
+    for i, r in enumerate(ops):
+        if i and r[0] <= ops[i - 1][0]:
+            return False
+        if r[1] == 'MemMax':
+            return True
+    return False
+
+
 def _db_written(con, it, sql, args):
     """Таблиці main, у які запит може писати (INSERT, UPDATE) — і сам, і тригерами: authorizer бачить їхні тіла, ще
     коли SQLite компілює запит (EXPLAIN — без виконання). Рішення — того самого authorizer (без запису причин): дозвільний
@@ -3366,6 +3465,8 @@ def _db_written(con, it, sql, args):
         failed = True                # помилку запиту покаже його виконання, а захист стане на всі таблиці
     finally:
         con.set_authorizer(None)
+    if failed and not db_compiles(con, sql, args):
+        return set(), set(), []      # не скомпілюється й сам: нічого не запише, а тригери на всіх таблицях — дорого
     rows = con.execute("SELECT name, type, name LIKE 'sqlite\\_%' ESCAPE '\\' FROM pragma_table_list "
                        "WHERE schema = 'main' AND wr = 0").fetchall()
     kinds = {t: k for t, k, system in rows if not system}
@@ -3442,6 +3543,8 @@ def _db_guard(con, it, why, write, sql, args):
                 if con.execute(f'SELECT max(rowid) > {DB_ROWID_NEAR} FROM main."{q}"').fetchone()[0]:
                     refuse(f'випадковість SQLite (системна таблиця «{safe(t)}» {DB_ROWID_WHY[3]}) без права «жереб»')
             for i, t in enumerate(sorted(ins | upd)):
+                if db_autoinc(con, t):
+                    continue
                 q, lit = t.replace('"', '""'), t.replace("'", "''")
                 cols = {r[0].lower() for r in con.execute('SELECT name FROM pragma_table_xinfo(?)', (t,))}
                 a = next((a for a in ('rowid', '_rowid_', 'oid') if a not in cols), None)
@@ -3519,7 +3622,7 @@ SQL_ERRORS = [('Incorrect number of bindings', 'кількість «?» у за
               ('no such table', 'немає такої таблиці'), ('no such column', 'немає такого стовпця'),
               ('syntax error', 'синтаксична помилка SQL'), ('UNIQUE constraint failed', 'порушено унікальність'),
               ('NOT NULL constraint failed', 'порожнє значення там, де заборонено'), ('database is locked', 'база зайнята'),
-              ('database or disk is full', 'база досягла межі розміру'), ('string or blob too big', 'значення більше за --розмір'), ('unable to open', 'не вдалося відкрити базу'),
+              ('database or disk is full', 'база досягла межі розміру або таблиця з AUTOINCREMENT вичерпала номери rowid'), ('string or blob too big', 'значення більше за --розмір'), ('unable to open', 'не вдалося відкрити базу'),
               ('file is not a database', 'файл — не база SQLite'), ('malformed database schema', 'схема бази пошкоджена'),
               ('non-deterministic functions prohibited', 'недетермінована функція (random(), CURRENT_* тощо) у згенерованому стовпці чи індексі'),
               ('duplicate column name', 'стовпець з такою назвою вже є'), ('bad JSON path', 'хибний шлях JSON'),
@@ -3534,7 +3637,11 @@ SQL_ERRORS = [('Incorrect number of bindings', 'кількість «?» у за
               ('values were supplied', 'кількість значень не дорівнює кількості стовпців таблиці'),
               ('values for', 'кількість значень не дорівнює кількості стовпців'),
               ('do not have the same number of result columns', 'частини UNION (INTERSECT, EXCEPT) мають різну кількість стовпців'),
-              ('missing datatype', 'у таблиці STRICT стовпець без типу')]
+              ('missing datatype', 'у таблиці STRICT стовпець без типу'),
+              ('unrecognized token', 'незнайомий знак у запиті (часто — незакрита лапка)'),       # суд 9д
+              ('object name reserved for internal use', 'назви sqlite_… — службові, їх бере лише сам SQLite'),
+              ('because it is a view', 'представлення (VIEW) не змінюють напряму — лише через тригер INSTEAD OF'),
+              ('term out of range', 'номер стовпця в ORDER BY чи GROUP BY поза межами')]
 
 # тексти помилок re і expat — словами, оригінал у дужках (суд 9в, Новачок); Атанор бере ті самі таблиці (gen_tables)
 RE_ERRORS = [('bad escape (end of pattern)', 'шаблон закінчується на «\\»'), ('bad escape', 'хибне екранування'),
@@ -3745,8 +3852,11 @@ TOOLS = {
                   'CREATE/DROP/ALTER; без ATTACH, VACUUM, PRAGMA); файл створюється, якщо нема; повертає лише кількість '
                   'змінених рядків — читати — бд.читати. Годинник і жереб — як у бд.читати; без 「жереб」 жоден рядок не '
                   'отримає rowid 2⁶³−1 (ні тригером, ні в sqlite_sequence, хоч що стоїть перед запитом; далі SQLite бере '
-                  'rowid навмання) — відмова; у таблицю, що вже на межі, явний rowid — можна, крім −1 (його не відрізнити '
-                  'від «rowid бере SQLite»); захист — на таблицях, у які пише запит; CREATE VIRTUAL TABLE — відмова',
+                  'rowid навмання) — відмова; таблиці з AUTOINCREMENT можна: на межі SQLite відмовляє сам («вичерпала '
+                  'номери»); у таблицю, що вже на межі, явний rowid — можна, крім −1 (його не відрізнити від «rowid бере '
+                  'SQLite») і самого 2⁶³−1; захист — на таблицях, у які пише запит (не вдалося їх визначити — на всіх); '
+                  'стара база, де таблиця чи sqlite_sequence уже на межі, — «запобіжна відмова» (у сліді окремо від '
+                  '«заборонено»: так у самій базі, а не дія програми); CREATE VIRTUAL TABLE — відмова',
                   True, 'тека', t_db_write),
     'мережа.взяти': (1, '🜔взяти url → рядок', 'HTTP GET (до 1 МБ, 30 с; адреса — повністю в сліді: даними в адресі '
                      'теж можна поділитися з хостом, тож дозволяйте лише хости, яким довіряєте)', True, 'хост', t_fetch),
@@ -4190,6 +4300,12 @@ class Interp:
         """«Заборонено» з дії інструмента: дію не виконано — і квоту поверне tool_do."""
         self.tl.denied = True
         self.trace('заборонено', **kw)
+
+    def caution(self, **kw):
+        """Запобіжна відмова: дію не виконано через стан світу (стара база на межі rowid), а не через права програми —
+        у сліді окремо від «заборонено» (суд 9д). Квоту так само поверне tool_do."""
+        self.tl.denied = True
+        self.trace('запобіжна відмова', **kw)
 
     def tool_do(self, job):
         """Сама дія (у ‖ — у своєму потоці; записи сліду з потоку — у його буфер). У повторі — записане."""
@@ -5423,6 +5539,18 @@ def quota_text(qs):
     return ', '.join(f'«{x["інструмент"]}{":" + x["обмеження"] if x["обмеження"] else ""}» ≤ {x["не_більше"]}' for x in qs)
 
 
+def seal_warnings(prog, cwd):
+    """Що впаде напевно, хоч права й у межах: файл у печатці запису — запис дозволяють у теку (у файли в ній), тож
+    кожен запис туди — відмова (суд 9д, Практик: «✓ в межах», а єдиний запис програми гарантовано падав)."""
+    out = []
+    for t, scopes in (prog[2][0][3].items() if prog[2] else ()):
+        for sc in scopes if t in ('файл.писати', 'бд.писати') else ():
+            if os.path.isfile(os.path.realpath(os.path.join(cwd, sc))):
+                out.append(f'«{t}:{safe(sc)}» — файл, а запис дозволяють у теку: кожен запис туди дасть відмову; '
+                           f'дайте в печатці теку')
+    return out
+
+
 def seal_info(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
     """Усе, що отримувач має знати до запуску, — словником (для --печатка і --печатка --json)."""
     def scopes(t, sc):
@@ -5460,7 +5588,7 @@ def seal_info(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
             'квоти_власника': [{'інструмент': t, 'обмеження': safe(sc), 'не_більше': n} for t, sc, n in owner_quotas(allowed)],
             'права_теки': [safe(x) for x in dir_extra] if dir_extra is not None else None,
             'права_схвалення': [safe(x) for x in prog_extra or []], 'тека': safe(cwd), 'в_межах': not missing,
-            'бракує': missing}
+            'бракує': missing, 'попередження': seal_warnings(prog, cwd)}
 
 
 def seal_report(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
@@ -5501,6 +5629,7 @@ def seal_report(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
     if i['права_схвалення']:
         lines.append(f'  права, схвалені власником саме для цієї програми («для_програм»): {", ".join(i["права_схвалення"])}')
     lines.append('  ✓ печатка в межах дозволів власника' if i['в_межах'] else f'  ✗ бракує дозволу власника: {", ".join(i["бракує"])}')
+    lines += [f'  ⚠ {w}' for w in i['попередження']]
     lines.append('  (права перевіряються й під час виконання: кожен інструмент і кожен субагент — лише в межах агента, '
                  'що його викликає. Цього необхідно, але не досить: намір, імена й вивід — слова автора програми)')
     return '\n'.join(lines)
@@ -5782,11 +5911,14 @@ def cheatsheet():
            '  (усередині виразу — блок `《 ← … 》`). Цикли — `∀ μ φ Σ ↻`.',
            '- Імена — слова будь-якою мовою, але **одним письмом** (`звiт` з латинською i — помилка). Грецькі літери — гліфи.',
            '  **Двійники** — два різні імена, однакові на вигляд за скелетом UTS #39 (`x`/`х`, `h`/`һ`, `I`/`l`), — помилка;',
-           '  так само імʼя з символів сумісності (`ｘ`, `𝚡`), імʼя, що на вигляд — число (скелет лише з цифр: `l I O О б З`,',
-           '  `l0`, `IOO`, `ȝ`), стала з цифрами (`ø1` ≈ `∅1`), імʼя, що починається з `米` чи `氺` (≈ `※`), один ієрогліф чи',
-           '  знак кани — і з цифрами (`乂5` ≈ `×5`), і **функція**, схожа на гліф, — і з цифрами чи повтором (`х р v ф σ`,',
-           '  `x5`, `xx`: `х 2 3` читалося б як `× 2 3`; змінна `x`, `x1`, `xx` — можна). Письма імен: латиниця, кирилиця, CJK,',
-           '  кана, хангиль, арабське, іврит, деванагарі, бенгальське, тамільське, тайське, грузинське; інші — помилка.',
+           '  так само імʼя з символів сумісності (`ｘ`, `𝚡`), з літерою, якої Unicode не радить для імен (UTS #39',
+           '  Identifier_Status: технічні, застарілі, рідковживані — `ƻ ƽ ꜫ ꜭ ʃ ԁ`), імʼя, що на вигляд — число (скелет лише з',
+           '  цифр: `l I O О б З`, `l0`, `IOO`, `ʒ`, `Ҙ`), стала з цифрами чи повтором (`ø1` ≈ `∅1`, `øø` ≈ `∅∅`), імʼя, що',
+           '  починається з `米` чи `氺` (≈ `※`), один ієрогліф чи знак кани — і з цифрами чи рискою (`乂5` ≈ `×5`, `乂丨` ≈ `×1`),',
+           '  і **функція**, схожа на гліф, — і з цифрами чи повтором (`х р v ф σ`, `x5`, `xx`, `匚匚`: `х 2 3` читалося б як',
+           '  `× 2 3`; змінна `x`, `x1`, `xx` — можна). Це правила за таблицями UTS #39 і кількома своїми — повноти не обіцяють.',
+           '  Письма імен: латиниця, кирилиця, CJK, кана, хангиль, арабське, іврит, деванагарі, бенгальське, тамільське, тайське,',
+           '  грузинське; інші — помилка.',
            '- **Невидимого в тексті програми немає**: керівні, bidi, теги, ZWSP, U+034F, нестандартні пробіли, заповнювачі',
            '  (U+3164) — помилка всюди: в коді, рядках, коментарях, печатці. Такі дані беріть через `δ 「"\\u…"」`;',
            '  у виводі й сліді вони показані як `⟨U+…⟩`.',
@@ -6020,7 +6152,8 @@ def cheatsheet_short():
               'Впевненість: усе з даних і під сумнівними умовами не впевненіше за джерело; змінити — лише ≈ (у слід).',
               'Канал завершення: якщо гілка під сумнівною умовою могла зупинити програму (☠ 🜍 ÷0 § виклик…) або операція',
               'могла впасти на сумнівному аргументі, то й решта запуску не впевненіша. Ліміти — єдиний невідстежений залишок.',
-              'Двійники імен (x/х, h/һ, I/l за UTS #39), імена-«числа» (скелет лише з цифр: l I O О б З l0 IOO), функція чи',
+              'Двійники імен (x/х, h/һ, I/l за UTS #39), літери, яких UTS #39 не радить для імен (ƻ ꜫ ꜭ ʃ), імена-«числа»',
+              '(скелет лише з цифр: l I O О б З l0 IOO), функція чи',
               'стала, схожа на гліф (х р v ф к ʃ ʌ Э x5 十5 × ρ ν φ ∫ ∧ ∋ ‖ …, Ø ø ≈ ∅), імʼя з одного ієрогліфа чи знака кани',
               'і з 米 на початку (米 ≈ ※), окремі чамо',
               'хангилю (ᄉ ≈ ∧), письма імен поза поширеними (коптське, вірменське…), і будь-що',
@@ -6229,7 +6362,7 @@ def load_replay(tpath, program=None):
     tools = []
     for k, r in enumerate(recs):        # відмова за правами — «заборонено» просто перед своїм «інструмент» (і в ‖)
         if r.get('подія') == 'інструмент':
-            denied = 'помилка' in r and k and recs[k - 1].get('подія') == 'заборонено'
+            denied = 'помилка' in r and k and recs[k - 1].get('подія') in ('заборонено', 'запобіжна відмова')
             tools.append(dict(r, відмова=True) if denied else r)
     lost = [i + 1 for i, r in enumerate(tools) if 'помилка' not in r and r.get('значення') not in store]
     if lost:
@@ -6460,14 +6593,15 @@ def _main(argv, opts, it, value):
     else:
         cwd = os.path.dirname(os.path.abspath(path))
         dir_rights = True
-    errors = []
+    errors, more = [], False
     try:
         prog, perr = parse(src, cwd, None if path == '<-e>' else path, errors), None
         perr = errors[0] if errors else None
     except StaticError as e:
         prog, perr, errors = None, e, [e]
         if opts['mode'] == 'перевірити':
-            errors = all_static_errors(src, cwd, None if path == '<-e>' else path) or [e]
+            errors, more = all_static_errors(src, cwd, None if path == '<-e>' else path)
+            errors = errors or [e]
     approval = approval_of(raw if path != '<-e>' else src.encode(), prog) if prog else None
     try:
         # -e --тека: «програма» лежить у тій теці — і в теці запису прав теки не дістає, як файл там (суд 8в)
@@ -6482,20 +6616,26 @@ def _main(argv, opts, it, value):
         return 3
     if opts['mode'] == 'перевірити':
         missing = [safe(m) for m in check_program(prog, allowed, cwd)] if prog else []
+        warnings = seal_warnings(prog, cwd) if prog else []
         if opts['json']:
             print(json.dumps({'гаразд': not errors and not missing,
                               'помилки': [{'рядок': e.pos[0] if e.pos else None, 'стовпець': e.pos[1] if e.pos else None,
                                            'повідомлення': safe(e.msg),
                                            **({'після_пропуску': True} if getattr(e, 'after_skip', False) else {})}
                                           for e in errors],
-                              'печатка': {'в_межах': not missing, 'бракує': missing} if prog else None},
+                              'обрізано': more,
+                              'печатка': {'в_межах': not missing, 'бракує': missing, 'попередження': warnings} if prog else None},
                              ensure_ascii=False, indent=1))
         else:
             for e in errors:
                 print(safe(str(e)) + (' (після пропуску попереднього — може бути наслідком)'
                                       if getattr(e, 'after_skip', False) else ''))
+            if more:
+                print(f'… показано {len(errors)} помилок — є ще: виправте ці й перевірте знову')
             if missing:
                 print(f'✗ печатка просить більше, ніж дозволив власник: {", ".join(missing)}')
+            for w in warnings:
+                print(f'⚠ {w}')
             if not errors and not missing:
                 print('✓ помилок до запуску не знайдено; печатка в межах дозволів власника')
         return 2 if errors else 3 if missing else 0

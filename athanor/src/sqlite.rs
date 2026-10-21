@@ -583,6 +583,59 @@ fn db_explain(sql: &str) -> String {
     if own { body.to_string() } else { format!("EXPLAIN {}", body) }
 }
 
+extern "C" fn on_deny(_: *mut c_void, _: c_int, _: *const c_char, _: *const c_char, _: *const c_char,
+                      _: *const c_char) -> c_int {
+    1
+}
+
+/// db_compiles: чи SQLite скомпілює сам запит — компіляція з authorizer, що відмовляє на першій же дії. Інша помилка
+/// сталася ще до першої дії — так само й у справжньому виконанні: запит нічого не запише (суд 9д, Оркестратор).
+fn compiles(l: &Lib, db: *mut c_void, sql: &str, args: &[Arg]) -> bool {
+    (l.set_authorizer)(db, Some(on_deny), std::ptr::null_mut());
+    let r = match execute(l, db, sql, args) {
+        Ok(st) => {
+            if !st.st.is_null() {
+                (l.finalize)(st.st);
+            }
+            true
+        }
+        Err(PyErr::Sql(m)) => m.contains("not authorized"),
+        Err(_) => true, // невідоме — як «компілюється»: захист на всіх таблицях
+    };
+    (l.set_authorizer)(db, None, std::ptr::null_mut());
+    r
+}
+
+/// db_autoinc: таблиця з AUTOINCREMENT — після rowid 2⁶³−1 SQLite відмовляє (database or disk is full), а не бере
+/// навмання: тригери rowid їй не потрібні (суд 9д, Практик). Ознака — MemMax у головній програмі вставки.
+fn autoinc(l: &Lib, db: *mut c_void, t: &str) -> bool {
+    let st = match execute(l, db, &format!("EXPLAIN INSERT INTO main.\"{}\" DEFAULT VALUES", t.replace('"', "\"\"")), &[]) {
+        Ok(st) => st,
+        Err(_) => return false,
+    };
+    let mut ops: Vec<(i64, String)> = Vec::new();
+    let mut rc = st.rc;
+    while rc == SQLITE_ROW {
+        let op = (l.column_text)(st.st, 1);
+        let op = if op.is_null() { String::new() } else { unsafe { cs(op as *const c_char) } };
+        ops.push(((l.column_int64)(st.st, 0), op));
+        rc = (l.step)(st.st);
+    }
+    (l.finalize)(st.st);
+    if rc != SQLITE_DONE {
+        return false; // як fetchall еталона: помилка посеред — не AUTOINCREMENT
+    }
+    for (i, (addr, op)) in ops.iter().enumerate() {
+        if i > 0 && *addr <= ops[i - 1].0 {
+            return false; // далі — підпрограми тригерів
+        }
+        if op == "MemMax" {
+            return true;
+        }
+    }
+    false
+}
+
 /// _db_written: таблиці main, у які запит може писати — і сам, і тригерами (EXPLAIN — без виконання); пише віртуальна
 /// таблиця — то й тіньові (FTS5 бере rowid сам, своїми запитами). Не скомпілювався — то всі таблиці (суд 9г: захист
 /// закритий, доки не доведено інше). Третє — системні таблиці, у які рядок допише сам SQLite: sqlite_schema — на CREATE,
@@ -593,6 +646,9 @@ fn written(l: &Lib, db: *mut c_void, sql: &str, args: &[Arg]) -> Result<(Vec<Str
     // помилку запиту покаже його виконання, а захист стане на всі таблиці
     let failed = exec(l, db, &db_explain(sql), args).is_err();
     (l.set_authorizer)(db, None, std::ptr::null_mut());
+    if failed && !compiles(l, db, sql, args) {
+        return Ok((Vec::new(), Vec::new(), Vec::new())); // не скомпілюється й сам — нічого не запише
+    }
     let names = exec(l, db, r"SELECT name FROM pragma_table_list WHERE schema = 'main' AND wr = 0 AND name NOT LIKE 'sqlite\_%' ESCAPE '\' ORDER BY name", &[])?;
     let types = exec(l, db, r"SELECT type FROM pragma_table_list WHERE schema = 'main' AND wr = 0 AND name NOT LIKE 'sqlite\_%' ESCAPE '\' ORDER BY name", &[])?;
     let sys = exec(l, db, r"SELECT name FROM pragma_table_list WHERE schema = 'main' AND wr = 0 AND type = 'table' AND name LIKE 'sqlite\_%' ESCAPE '\' ORDER BY name", &[])?;
@@ -666,6 +722,9 @@ fn guard(l: &Lib, db: *mut c_void, it: &Interp, g: &mut Guard, write: bool, sql:
             all.sort();
             all.dedup();
             for (i, t) in all.into_iter().enumerate() {
+                if autoinc(l, db, t) {
+                    continue;
+                }
                 let (q, lit) = (t.replace('"', "\"\""), t.replace('\'', "''"));
                 let cols: Vec<String> = exec(l, db, "SELECT name FROM pragma_table_xinfo(?)", &[Arg::Text(t.clone())])?
                     .iter().map(|c| c.to_ascii_lowercase()).collect();
@@ -1031,10 +1090,24 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
                     return ngr(format!("{}: запит довший за 30 с", tool), pos);
                 }
                 let denied = !auth.why.is_empty() || (!write && m.contains("may not be modified"));
-                if denied {
+                // таблиця вже на межі чи системна біля неї — так у самій базі, а запит у межах прав (суд 9д)
+                let careful = auth.why.first().map_or(false, |w| w.contains(ROWID_WHY[0]) || w.contains(ROWID_WHY[3]));
+                if careful {
+                    let q: String = uni::safe(&sql).chars().take(500).collect();
+                    let agent = it.agent.clone();
+                    it.caution(vec![
+                        ("агент".into(), J::Str(agent)),
+                        ("назва".into(), J::s(tool)),
+                        ("шлях".into(), J::Str(uni::safe(&pv))),
+                        ("запит".into(), J::Str(q)),
+                        ("причина".into(), J::Str(format!("стан бази, а не дія програми: {}", auth.why[0]))),
+                    ])?;
+                } else if denied {
                     deny(it, tool, &pv, &sql, "дія SQLite поза дозволеним")?;
                 }
-                let msg = if denied {
+                let msg = if careful {
+                    format!("запобіжна відмова (так у самій базі, а запит — у межах прав): {}", auth.why[0])
+                } else if denied {
                     if auth.why.first().map_or(false, |w| ["load_", "годинник", "випадковість"].iter().any(|p| w.starts_with(p))) {
                         format!("заборонено: {}", auth.why[0])
                     } else {

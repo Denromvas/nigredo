@@ -76,8 +76,14 @@ pub fn glyph_twin(skel: &str) -> Option<&'static str> {
     GLYPH_TWIN.binary_search_by(|&(a, _)| a.cmp(skel)).ok().map(|i| GLYPH_TWIN[i].1)
 }
 
+/// Літера, якої UTS #39 не радить для імен (interpreter/літери.tsv; ƻ ≈ 2, ꜫ ≈ 3 — суд 9д), чи літера-цифра (丨 Ҙ ҙ):
+/// імʼя з нею розбирає еталон.
+pub fn odd_letter(c: char) -> bool {
+    c as u32 >= 0x80 && (in_ranges(&RESTRICTED_LETTERS, c as u32) || DIGIT_LETTERS.contains(c))
+}
+
 /// Найкоротший шматок, повтором якого є рядок (xx → x, 乂乂 → 乂), або сам рядок (як nigredo.unit).
-fn unit(cs: &[char]) -> &[char] {
+pub fn unit(cs: &[char]) -> &[char] {
     let n = cs.len();
     (1..=n / 2).find(|&k| n % k == 0 && cs.chunks(k).all(|c| c == &cs[..k])).map_or(cs, |k| &cs[..k])
 }
@@ -99,6 +105,13 @@ pub fn glyph_twin_name(skel: &str) -> Option<&'static str> {
 pub fn digitless(v: &str) -> &str {
     let t = v.trim_end_matches(|c: char| c.is_ascii_digit());
     if t.is_empty() { v } else { t }
+}
+
+/// Імʼя функції — повтор одного ієрогліфа чи знака кани (匚匚 ≈ ⊏⊏, ハハ; суд 9д), і з цифрами: помилку пише еталон.
+pub fn cjk_repeat(v: &str) -> bool {
+    let cs: Vec<char> = digitless(v).chars().collect();
+    let u = unit(&cs);
+    u.len() == 1 && matches!(letter_script(u[0]), "CJK" | "HIRAGANA" | "KATAKANA")
 }
 
 /// NAME_TWINS еталона (за самим іменем, без цифр і повтору): ƒ ≈ ∫, ɜ ≈ ∋.

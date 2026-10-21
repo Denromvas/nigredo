@@ -1447,6 +1447,12 @@ impl Interp {
         self.rec("заборонено", data)
     }
 
+    /// Запобіжна відмова: дію не виконано через стан світу (стара база на межі rowid), а не через права (суд 9д).
+    pub fn caution(&mut self, data: Vec<(String, J)>) -> R<()> {
+        self.denied = true;
+        self.rec("запобіжна відмова", data)
+    }
+
     fn tool_do(&mut self, job: &Job) -> (Option<V>, Option<Box<E>>, Vec<String>) {
         if self.dry.is_some() && matches!(job.name, "файл.писати" | "бд.писати") {
             // --сухо (нативно, суд 9): дія не відбувається, результат невідомий; права — як завжди: поза ними

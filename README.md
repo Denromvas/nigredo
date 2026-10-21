@@ -91,7 +91,10 @@ column `DEFAULT`, then through the program's own trigger setting rowid 2⁶³−
 pre-compilation failed and the failure was ignored) and the `sqlite_sequence` table — plus a trace copy a program could
 corrupt from a database folder of its seal, a crash on deep `☂`/`¿` and an `(?i)` that was not Python's — all fixed
 with tests on both engines; the SQLite guard now fails closed. The fifth re-review confirmed the fixes 7:0, and 0.8 was
-announced (2026-10-21). The latest comparison report is
+announced (2026-10-21). Its wishes are 0.8.1: names with letters that Unicode does not recommend for identifiers (UTS #39
+Identifier_Status — `ƻ` ≈ 2, `ꜫ` ≈ 3) are errors as a class rather than by a list, an old database already at the rowid
+limit gives a separate “precautionary refusal” in the trace instead of “denied”, and the seal check warns about a file
+given where writing needs a folder. The latest comparison report is
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols — [`konsylium/`](konsylium/).
 
 **Honest limits:** Nigredo is a transparency and audit tool, **not an OS sandbox** — an agent with shell access can
@@ -199,7 +202,10 @@ claude mcp add nigredo -- python3 mcp/nigredo_mcp.py   # дати мову бу�
 що ставить rowid 2⁶³−1, далі через `;` на початку запиту — попередня компіляція захисту падала, і це ковтали, — і
 таблицю `sqlite_sequence`), копію сліду, яку програма могла зіпсувати з теки бази своєї печатки, аварію на глибоких
 `☂`/`¿` і `(?i)`, не такий, як у Python, — усе виправлено з тестами обома виконавцями; захист SQLite тепер закритий за
-замовчуванням. Пʼятий повторний огляд підтвердив виправлення 7:0, і 0.8 оголошено (2026-10-21). Останній звіт звірки —
+замовчуванням. Пʼятий повторний огляд підтвердив виправлення 7:0, і 0.8 оголошено (2026-10-21). Його побажання — у
+0.8.1: імена з літерами, яких Unicode не радить для ідентифікаторів (UTS #39 Identifier_Status — `ƻ` ≈ 2, `ꜫ` ≈ 3), —
+помилка класом, а не списком; стара база, що вже на межі rowid, дає в сліді окрему «запобіжну відмову», а не
+«заборонено»; перевірка печатки попереджає про файл там, де для запису потрібна тека. Останній звіт звірки —
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); історія й протоколи — [`konsylium/`](konsylium/).
 
 **Чесно про межі:** Nigredo — інструмент прозорості й аудиту, **не пісочниця ОС**: агент із доступом до shell може

@@ -120,6 +120,16 @@ def main():
                ', '.join(f'({a}, {rs(b)})' for a, b in skel) + '];')
     twins = sorted(N.glyph_twin_table().items())
     out.append(f'pub static DIGIT_SKELETON: &str = {rs(N.digit_skeleton())};')
+    # літери, яких UTS #39 не радить для імен (interpreter/літери.tsv), і літери-цифри (丨 Ҙ ҙ): імʼя з ними розбирає еталон
+    N.restricted_letter('\u0100')
+    rl = []
+    for a, b, _ in N._LETTERS:
+        if rl and rl[-1][1] == a - 1:
+            rl[-1][1] = b
+        else:
+            rl.append([a, b])
+    out.append(f'pub static RESTRICTED_LETTERS: [(u32, u32); {len(rl)}] = [' + ', '.join(f'({a}, {b})' for a, b in rl) + '];')
+    out.append(f'pub static DIGIT_LETTERS: &str = {rs("".join(sorted(N.DIGIT_LETTERS)))};')
     out.append(f'pub static GLYPH_TWIN: [(&str, &str); {len(twins)}] = [' +
                ', '.join(f'({rs(a)}, {rs(b)})' for a, b in twins) + '];')
 

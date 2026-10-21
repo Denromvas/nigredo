@@ -234,11 +234,33 @@ def main():
     # суд 9г (Новачок): межа 50 рахувала проходи, а не помилки — наслідки пропуску («невідоме імʼя») теж їли прохід, і з 40
     # двійників --перевірити називав 29
     many_ = '🜂\n' + ''.join(f'← {chr(0x3105 + i)} 1\n» {chr(0x3105 + i)}\n' for i in range(30)) + ''.join(
-        f'← {t_} λx x\n» {t_} 1\n' for t_ in 'ʆʅƪʟⱱ')
+        f'← {t_} λx x\n» {t_} 1\n' for t_ in 'ҡҳơბƒ')     # двійники гліфів, які UTS #39 радить для імен (суд 9д)
     got = run(['--перевірити', '-e', many_], env)
-    check(got.returncode == 2 and got.stdout.count('✗') == 35 and got.stdout.count('на вигляд — гліф') == 5,
+    check(got.returncode == 2 and got.stdout.count('✗') == 35 and got.stdout.count('на вигляд — гліф') == 5
+          and 'є ще' not in got.stdout,
           '--перевірити: 30 помилок письма й 5 функцій-двійників — усі 35, межа — помилок, а не проходів (суд 9г)',
           got.stdout + got.stderr)
+    # суд 9д (Скептик, Новачок): на межі 50 --перевірити мовчки зупинявся — тепер «є ще», а в JSON «обрізано»
+    many_ = '🜂\n' + '» + 1 2\n' * 60
+    got, js_ = run(['--перевірити', '-e', many_], env), run(['--перевірити', '--json', '-e', many_], env)
+    try:
+        info = json.loads(js_.stdout)
+    except ValueError:
+        info = {}
+    check(got.stdout.count('✗') == 50 and '… показано 50 помилок — є ще' in got.stdout and info.get('обрізано') is True
+          and len(info.get('помилки', [])) == 50,
+          '--перевірити: понад 50 помилок — показано 50 і «є ще», у JSON «обрізано» (суд 9д)', got.stdout[-300:] + js_.stdout[-300:])
+    # суд 9д (Практик): файл у печатці запису — «✓ в межах», а кожен запис туди падав; тепер попередження до запуску
+    (tmp / 'ф9д.db').write_text('', encoding='utf-8')
+    seal_ = f'🜂 「т」 【「бд.писати:{tmp}/ф9д.db」 「файл.писати:{tmp}」】\n» 1'
+    got, js_ = run(['--перевірити', '-e', seal_], env), run(['--печатка', '--json', '-e', seal_], env)
+    try:
+        info = json.loads(js_.stdout)
+    except ValueError:
+        info = {}
+    check(got.stdout.count('⚠') == 1 and 'файл, а запис дозволяють у теку' in got.stdout
+          and len(info.get('попередження', [])) == 1 and 'бд.писати' in info['попередження'][0],
+          '--перевірити і --печатка: файл у печатці запису — попередження (суд 9д)', got.stdout + js_.stdout)
     # суд 6: --розбір шаблону ≠ рядка з {…}; підміна модуля після запуску; модуль із теки запису; зайвий аргумент
     r1 = run(['--розбір', '-e', '🜂 「т」 【「оракул」】\n» 〔А: {σ 🜔оракул 「п」}〕'], env).stdout.strip().splitlines()[-1]
     r2 = run(['--розбір', '-e', '🜂 「т」 【「оракул」】\n» 「А: {рядок(інструмент оракул(«п»))}」'], env).stdout.strip().splitlines()[-1]
@@ -1323,6 +1345,51 @@ def main():
           and pre_.stdout == "['а', 'б']\n",
           '--сухо: «;PRAGMA …» — та сама відмова, що й у запуску; попередній прохід не вдався — захист на всіх таблицях (суд 9г)',
           got.stdout + got.stderr + ref.stdout + ref.stderr + pre_.stdout + pre_.stderr)
+    # суд 9д (Практик): AUTOINCREMENT на межі rowid не бере навмання, а відмовляє (database or disk is full) — тригери
+    # rowid йому не потрібні; (Аудитор, Оркестратор): таблиця на межі в старому файлі — запобіжна відмова, а не
+    # «заборонено» (запит програми — у межах прав); запит, що не компілюється, — без тригерів на всіх таблицях; тексти
+    ai_, old_ = f'{DATA}/звіти/авто9д.db', f'{DATA}/звіти/старий9д.db'
+    q9d_ = (f'🜂 【「бд.писати:{DATA}/звіти」】\n← п Λф q ☂ σ 🜔бд.писати ф q 【】 λe e\n' + ''.join(
+        f'» п 「{f_}」 「{s_}」\n' for f_, s_ in (
+            (ai_, 'CREATE TABLE a(id INTEGER PRIMARY KEY AUTOINCREMENT, x)'), (ai_, 'INSERT INTO a(x) VALUES (1)'),
+            (ai_, 'UPDATE sqlite_sequence SET seq = 9223372036854775806'), (ai_, 'INSERT INTO a(x) VALUES (2)'),
+            (ai_, 'INSERT INTO a(x) VALUES (3)'), (old_, 'INSERT INTO т(x) VALUES (1)'),
+            (old_, 'INSERT INTO т(rowid, x) VALUES (5, 1)'), (old_, 'INSERT INTO т(x) VALUES ('),
+            (ai_, 'CREATE VIEW v AS SELECT 1 AS k'), (ai_, 'DELETE FROM v'), (ai_, 'SELECT x FROM a ORDER BY 5'),
+            (ai_, "SELECT 'a"), (ai_, 'CREATE TABLE sqlite_x(a)'))))
+    res9d = []
+    for k_, cmd_ in enumerate((NGR_CMD, [sys.executable, str(NGR)])):
+        for f_ in (ai_, old_):
+            if os.path.exists(f_):
+                os.remove(f_)
+        with sqlite3.connect(old_) as c_:
+            c_.execute('CREATE TABLE т(x)')
+            c_.execute('INSERT INTO т(rowid, x) VALUES (9223372036854775807, 0)')
+        tp_ = tmp / f'запобіжно{k_}.jsonl'
+        res9d.append(subprocess.run([*cmd_, '--слід', str(tp_), '-e', q9d_], capture_output=True, text=True, env=envd))
+        with sqlite3.connect(ai_) as c_:
+            res9d.append([r[0] for r in c_.execute('SELECT id FROM a')])
+        res9d.append(subprocess.run([sys.executable, str(NGR), '--перевірити-слід', str(tp_)], capture_output=True,
+                                    text=True, env=envd).stdout)
+    o_ = res9d[0].stdout
+    check(o_ == res9d[3].stdout and res9d[0].returncode == res9d[3].returncode == 0
+          and res9d[1] == res9d[4] == [1, 9223372036854775807] and o_.startswith('0\n1\n1\n1\n')
+          and o_.count('таблиця з AUTOINCREMENT вичерпала номери rowid') == 1 and o_.count('запобіжна відмова') == 1
+          and 'заборонено' not in o_ and o_.count('незавершений запит') == 1 and 'VIEW) не змінюють' in o_
+          and 'поза межами' in o_ and 'незакрита лапка' in o_ and 'службові' in o_
+          and all('запобіжних відмов (так у самій базі' in v_ and 'спроб поза правами немає' in v_ and '«заборонено»' not in v_
+                  for v_ in (res9d[2], res9d[5])),
+          'SQLite: AUTOINCREMENT на межі — SQLITE_FULL, а не відмова «навмання»; таблиця на межі в старому файлі — '
+          'запобіжна відмова окремо від «заборонено»; тексти SQLite словами (суд 9д)',
+          o_ + res9d[0].stderr + '\n---\n' + res9d[3].stdout + res9d[3].stderr + str(res9d[1::3]) + res9d[2] + res9d[5])
+    pre_ = subprocess.run([sys.executable, '-c', 'import sys, sqlite3; sys.path.insert(0, sys.argv[1]); import nigredo as n\n'
+                           'c = sqlite3.connect(":memory:"); c.execute("CREATE TABLE а(x)")\n'
+                           'it = n.Interp.__new__(n.Interp); it.caps, it.quota_stack = set(), []\n'
+                           'print(n._db_written(c, it, "INSERT INTO а VALUES (", []), n._db_written(c, it, "SELECT 1; SELECT 2", [])[0])',
+                           str(ROOT / 'interpreter')], capture_output=True, text=True)
+    check(pre_.stdout == "(set(), set(), []) {'а'}\n",
+          'запит, що не компілюється й сам, — без тригерів на всіх таблицях; що компілюється — захист на всіх (суд 9д)',
+          pre_.stdout + pre_.stderr)
     # суд 9в (Аудитор): межа сліду між «виклик» і результатом — --перевірити-слід каже про виклик без результату
     lim_prog, lim_tr = '🜂 【「жереб」】\n» 🜔жереб 6\n» 🜔жереб 6\n» 🜔жереб 6', tmp / 'межа9в.jsonl'
     subprocess.run([*NGR_CMD, '--слід', str(lim_tr), '-e', lim_prog], capture_output=True, env=env)
