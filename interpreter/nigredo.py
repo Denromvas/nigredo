@@ -3244,7 +3244,8 @@ def _db(it, pos, tool, p, sql, params, write):
         else:
             raise NgrError(f'{tool}: параметр — рядок, число, істинність чи ∅, а не {kind(x)}', pos)
     _db_static_ok(it, pos, tool, p, sql)
-    why, auth = _db_auth(write, it)
+    ours = set()                    # тимчасові тригери _db_guard: лише з них — ngr_rowid (огляд 0.8.1в)
+    why, auth = _db_auth(write, it, ours)
     if not write and not os.path.isfile(real):
         raise NgrError(f'{tool}: немає такого файлу: {p.v}', pos)
     deadline = min(time.monotonic() + 30, getattr(it, 'par_deadline', None) or float('inf'))   # у ‖ — спільні 30 с
@@ -3262,7 +3263,7 @@ def _db(it, pos, tool, p, sql, params, write):
                               isolation_level=None, timeout=5)
     except sqlite3.Error as e:
         raise NgrError(f'{tool}: {e}: {p.v}', pos)
-    cur, helper, mark = None, [], {'запобіжна': False, 'сумнів': []}
+    cur, helper, mark = None, [], {'запобіжна': False, 'сумнів': [], 'тригери': ours}
     try:
         con.setlimit(sqlite3.SQLITE_LIMIT_ATTACHED, 0)
         con.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 4 * it.max_size)      # одне значення — не більше за --розмір (суд 7)
@@ -3278,7 +3279,9 @@ def _db(it, pos, tool, p, sql, params, write):
             cur = con.execute(sql.v, args)
             if write:                       # усі змінені рядки (зокрема з RETURNING і тригерами), а не rowcount
                 cur.fetchall()
-                return V(con.total_changes - before)
+                n = con.total_changes - before
+                db_commit(con)
+                return V(n)
             cols = [d[0] for d in cur.description or []]
             if len(set(cols)) != len(cols):
                 raise NgrError(f'{tool}: однакові назви стовпців ({", ".join(cols)}) — дайте різні через AS', pos)
@@ -3299,6 +3302,7 @@ def _db(it, pos, tool, p, sql, params, write):
         except MemoryError:
             raise NgrError(f'{tool}: запит перевищив межу памʼяті SQLite — зменште вибірку (LIMIT, менші значення)', pos)
         except sqlite3.Error as e:
+            db_commit(con, quiet=True)
             if it.steps_left < 0:
                 raise Fatal('перевищено ліміт кроків (--кроки)', pos)
             if time.monotonic() > deadline:
@@ -3323,9 +3327,7 @@ def _db(it, pos, tool, p, sql, params, write):
                          причина=('дія SQLite поза дозволеним' + (f': {why[0]}' if why else ''))[:1000])
             msg = (f'запобіжна відмова (так у самій базі; запит не виконано, а заборонених дій у ньому authorizer і '
                    f'байткод SQLite не знайшли — rowid, який він дав би іншим таблицям, не перевірено): {why[0]}'
-                   if careful else f'заборонено: {why[0]}' if doubted else
-                   f'заборонено: {why[0]}' if why and why[0].startswith(DB_DENIED_WHY) else 'дія поза дозволеним (лише ' + ('SELECT' if not write else
-                   'SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER') + '; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)') \
+                   if careful else f'заборонено: {why[0]}' if doubted else db_refusal(why, write)) \
                 if denied else 'лише одна інструкція SQL за раз' if 'one statement at a time' in str(e) \
                 else f'тригер бази зупинив запит: «{e}»' if isinstance(e, sqlite3.IntegrityError) and sql_err(str(e)) == str(e) \
                 else sql_err(str(e))      # RAISE(ABORT, …) тригера — слова бази, а не мови (огляд 0.8.1б, Новачок)
@@ -3336,6 +3338,32 @@ def _db(it, pos, tool, p, sql, params, write):
         con.close()
         for h in helper:
             h.close()
+
+
+def db_refusal(why, write):
+    """Текст відмови для програми — і в запуску, і в правах без дії (квота, --сухо; огляд 0.8.1в, Аудитор)."""
+    return f'заборонено: {why[0]}' if why and why[0].startswith(DB_DENIED_WHY) else 'дія поза дозволеним (лише ' + (
+        'SELECT' if not write else 'SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER') + \
+        '; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)'
+
+
+def db_commit(con, quiet=False):
+    """Кінець транзакції _db_guard — як автокоміт самого SQLite: що інструкція лишила (і ON CONFLICT FAIL посеред неї),
+    те й записано; authorizer і лічба кроків — не для COMMIT. Не вдалося — відкат, як в автокоміті."""
+    import sqlite3
+    if not con.in_transaction:
+        return
+    con.set_authorizer(None)
+    con.set_progress_handler(None, 0)
+    try:
+        con.execute('COMMIT')
+    except sqlite3.Error:
+        try:
+            con.execute('ROLLBACK')
+        except sqlite3.Error:
+            pass                     # закриття зʼєднання відкотить само
+        if not quiet:
+            raise
 
 
 def db_readonly(msg):
@@ -3366,7 +3394,7 @@ def db_word(x):
     if isinstance(x, str):
         x = x.encode('utf-8', 'surrogatepass')
     return x.split(b'\0', 1)[0].lower() if isinstance(x, bytes) else None
-DB_DENIED_WHY = ('load_', 'годинник', 'випадковість', 'сирі сторінки')   # ці причини відмови — у тексті помилки як є
+DB_DENIED_WHY = ('load_', 'годинник', 'випадковість', 'сирі сторінки', 'службова')   # ці причини відмови — у тексті помилки як є
 DB_UDF_ERR = 'user-defined function raised exception'   # текст SQLite, коли своя функція відмовила
 
 
@@ -3378,11 +3406,14 @@ def _db_rights(it):
     return free('час'), free('жереб')
 
 
-def _db_auth(write, it):
+def _db_auth(write, it, ours=()):
     """authorizer SQLite: лише дії з білого списку; кожну відмову — у why (за ним і «заборонено»). Годинник і
     випадковість — не тут (authorizer не бачить DEFAULT стовпця, а за назвою забороняв і дату з даних, суд 9б), а у
     _db_guard: свої функції на зʼєднанні. Без «жереб» — ні INSERT, ні зміни rowid у системних таблицях (sqlite_sequence,
-    sqlite_stat1): тригера на них SQLite не дає, а з rowid 2⁶³−1 наступний рядок — навмання (суд 9г, Оркестратор)."""
+    sqlite_stat1): тригера на них SQLite не дає, а з rowid 2⁶³−1 наступний рядок — навмання (суд 9г, Оркестратор).
+    ours — тимчасові тригери _db_guard цього запиту: службову ngr_rowid кличуть лише вони (SQLite називає authorizer
+    найглибший тригер чи VIEW, а таких назв у базі немає), а не SQL програми (огляд 0.8.1в, Н-1 Скептика: виклик
+    ngr_rowid('t', 0) робив спробу «запобіжною відмовою»)."""
     import sqlite3
     acts, why = _db_acts()[1 if write else 0], []
     _, rand_ok = _db_rights(it)
@@ -3392,9 +3423,12 @@ def _db_auth(write, it):
         if action == sqlite3.SQLITE_FUNCTION and f == 'load_extension':
             why.append(f'load_extension{f" у тригері чи VIEW «{view}»" if view else ""}')
             return sqlite3.SQLITE_DENY
+        if action == sqlite3.SQLITE_FUNCTION and f == 'ngr_rowid' and view not in ours:
+            why.append('службова функція інтерпретатора (ngr_rowid) — її кличуть лише його тимчасові тригери')
+            return sqlite3.SQLITE_DENY
         t = (a1 or '').lower()
-        if t == 'sqlite_dbpage':         # сирі сторінки файлу: запис повз SQL, authorizer і тригери — клас writable_schema
-            why.append('сирі сторінки бази (sqlite_dbpage): запис повз SQL, authorizer і тригери')   # (огляд 0.8.1б)
+        if t == 'sqlite_dbpage':         # сирі сторінки файлу: вміст повз SQL, authorizer і тригери — клас writable_schema
+            why.append('сирі сторінки бази (sqlite_dbpage): вміст файлу повз SQL, authorizer і тригери')   # (огляд 0.8.1б)
             return sqlite3.SQLITE_DENY
         if not rand_ok and t.startswith('sqlite_') and t not in DB_SCHEMA_TABLES and (
                 action == sqlite3.SQLITE_INSERT or (action == sqlite3.SQLITE_UPDATE and a2 == 'ROWID')):
@@ -3403,7 +3437,7 @@ def _db_auth(write, it):
             return sqlite3.SQLITE_DENY
         if action in acts or (action == sqlite3.SQLITE_PRAGMA and (a1 or '').lower() in DB_INFO_PRAGMAS):   # SQL — без регістру
             return sqlite3.SQLITE_OK
-        if write and action == sqlite3.SQLITE_DROP_TEMP_TRIGGER and (a1 or '').startswith('ngr_rowid_'):
+        if write and action == sqlite3.SQLITE_DROP_TEMP_TRIGGER and a1 in ours:
             return sqlite3.SQLITE_OK     # DROP TABLE прибирає й тимчасовий тригер _db_guard на цій таблиці
         why.append(next((n[7:] for n in DB_ACTION_NAMES if getattr(sqlite3, n, None) == action), f'дія SQLite {action}'))
         return sqlite3.SQLITE_DENY
@@ -3532,16 +3566,23 @@ def _db_written(con, it, sql, args):
             reads.add(a1)
         return check(action, a1, a2, db, src)
     con.set_authorizer(rec)
+    code = None
     try:
         ops = con.execute(db_explain(sql), args).fetchall()
         failed = False
-    except (sqlite3.Error, ValueError, OverflowError):
+    except sqlite3.Error as e:
+        failed, code = True, getattr(e, 'sqlite_errorcode', None)   # код — лише в помилки самого SQLite
+    except (ValueError, OverflowError):
         failed = True                # помилку запиту покаже його виконання, а захист стане на всі таблиці
     finally:
         con.set_authorizer(None)
     if denied:
         return set(), set(), [], denied, []
-    if failed and not db_compiles(con, sql, args):
+    # SQLITE_ERROR компіляції, коли authorizer нічого не відкинув, — помилка самого запиту (описка в стовпці, немає
+    # таблиці, синтаксис): той самий authorizer, ті самі функції й та сама схема (транзакція запису) — і в запуску вона
+    # та сама, ще до першого кроку (огляд 0.8.1в, Скептик і Оркестратор: описка в стовпці ставила тригери на всі
+    # таблиці — ≈1 с на 400 таблиць — і на базі «межа» давала хибне «заборонено»)
+    if failed and (code is not None and code & 0xff == sqlite3.SQLITE_ERROR or not db_compiles(con, sql, args)):
         return set(), set(), [], [], []   # не скомпілюється й сам: нічого не запише, а тригери на всіх таблицях — дорого
     doubt = ['запит не перевірено до виконання (EXPLAIN не скомпілювався)'] if failed else \
         db_doubts(it, ops, db_pragma_tables(con, reads))
@@ -3615,6 +3656,11 @@ def _db_guard(con, it, why, mark, write, sql, args):
         con.create_function('randomblob', 1, rand('randomblob'))
         if write:
             con.execute('PRAGMA temp_store = MEMORY')
+            # попередній прохід, тригери й сам запит — в одній транзакції запису: інакше між ними інша гілка ‖ чи інший
+            # процес змінила б схему (свій тригер на таблиці — і запит писав би туди, де тригерів rowid немає); схема —
+            # з файлу: EXPLAIN не звіряє її версії, і прохід бачив би ту, що зʼєднання прочитало ще до транзакції
+            con.execute('BEGIN IMMEDIATE')
+            con.execute('SELECT count(*) FROM main.sqlite_master').fetchone()
             con.create_function('ngr_rowid', 2, lambda t, k: refuse(
                 f'випадковість SQLite (таблиця «{safe(t)}» {DB_ROWID_WHY[k]}) без права «жереб»', k == 0), deterministic=True)
             ins, upd, system, denied, mark['сумнів'] = _db_written(con, it, sql, args)
@@ -3639,6 +3685,7 @@ def _db_guard(con, it, why, mark, write, sql, args):
                 if new and con.execute(f'SELECT max(rowid) > {DB_ROWID_MAX} - ? FROM main."{q}"', (len(new),)).fetchone()[0]:
                     refuse(f'випадковість SQLite (системна таблиця «{safe(t)}» на межі rowid: рядок, який SQLite допише сюди '
                            f'для таблиці «{safe(new[0])}» з AUTOINCREMENT, отримав би rowid навмання) без права «жереб»', True)
+            taken = {r[0] for r in con.execute('SELECT name FROM main.sqlite_master')}   # назви тригерів — не з бази
             for i, t in enumerate(sorted(ins | upd)):
                 if db_autoinc(con, t):
                     continue
@@ -3655,7 +3702,11 @@ def _db_guard(con, it, why, mark, write, sql, args):
                 if t in upd and a is not None:
                     trig.append(('AFTER UPDATE', f'NEW.{a} = {DB_ROWID_MAX} AND OLD.{a} IS NOT {DB_ROWID_MAX}', 2))
                 for j, (when, cond, k) in enumerate(trig):
-                    con.execute(f'CREATE TEMP TRIGGER "ngr_rowid_{i}_{j}" {when} ON main."{q}" WHEN {cond} '
+                    name = f'ngr_rowid_{i}_{j}'
+                    while name in taken:     # VIEW чи тригер бази з такою назвою підробив би authorizer'ові «свій»
+                        name += '_'
+                    mark['тригери'].add(name)
+                    con.execute(f'CREATE TEMP TRIGGER "{name}" {when} ON main."{q}" WHEN {cond} '
                                 f"BEGIN SELECT ngr_rowid('{lit}', {k}); END")
     return helper
 
@@ -3674,7 +3725,7 @@ def _db_static_ok(it, pos, tool, p, sql):
     body = db_body(sql.v)
     if _re.match(r'(?:\s+|/\*.*?\*/|--[^\n]*(?:\n|$))*vacuum\b', body, _re.I | _re.S):
         it.deny(агент=it.agent, назва=tool, шлях=safe(show(p)), запит=safe(sql.v)[:500], причина='VACUUM')
-        raise NgrError(f'{tool}: VACUUM заборонено (VACUUM INTO пише файл поза текою з печатки)', pos)
+        raise NgrError(f'{tool}: VACUUM заборонено (переписує весь файл бази повз authorizer, а VACUUM INTO пише файл поза текою з печатки)', pos)
     # бд.читати — лише запити: REINDEX чи DROP TABLE IF EXISTS на відсутній authorizer не питають (суд 8в)
     gap = r'(?:\s+|/\*.*?\*/|--[^\n]*(?:\n|$))*'
     m = _re.match(rf'(?:{gap}\()*{gap}(\w*){gap}(?:main{gap}\.{gap})?(\w*)', body, _re.S | _re.I)
@@ -3699,6 +3750,7 @@ def _db_ok(it, pos, tool, p, sql, write):
     except sqlite3.Error:
         return
     reads, ops = set(), []
+    it.tl.unchecked = False
 
     def rec(action, a1, *a):
         if action == sqlite3.SQLITE_READ and (a1 or '').lower().startswith('pragma_'):
@@ -3706,14 +3758,17 @@ def _db_ok(it, pos, tool, p, sql, write):
         return auth(action, a1, *a)
     try:
         con.setlimit(sqlite3.SQLITE_LIMIT_ATTACHED, 0)
+        if write and not _db_rights(it)[1]:   # службова ngr_rowid — як у запуску: є, але SQL програми її не пустить
+            con.create_function('ngr_rowid', 2, lambda t, k: None, deterministic=True)
         con.set_authorizer(rec)
         try:
             ops = con.execute(db_explain(sql.v)).fetchall()      # «;PRAGMA …» — та сама відмова, що й у запуску (9г)
         except sqlite3.Error as e:
             if not write and db_readonly(str(e)):
                 why.append('запис через бд.читати')
+            it.tl.unchecked = True   # не скомпілювався на нинішній базі: random, годинник — без виконання не видно
         except (ValueError, OverflowError):
-            pass
+            it.tl.unchecked = True
         con.set_authorizer(None)     # таблицю-функцію PRAGMA authorizer спитає лише в запуску (огляд 0.8.1, Скептик)
         try:
             why.extend(f'PRAGMA {safe(t[7:].lower())}' for t in ([] if why else db_pragma_tables(con, reads)))
@@ -3727,7 +3782,7 @@ def _db_ok(it, pos, tool, p, sql, write):
     if why:
         it.deny(агент=it.agent, назва=tool, шлях=safe(p.v), запит=safe(sql.v)[:500],
                 причина=f'дія SQLite поза дозволеним: {why[0]}'[:1000])
-        raise NgrError(f'{tool}: дія поза дозволеним ({why[0]})', pos)
+        raise NgrError(f'{tool}: {db_refusal(why, write)}', pos)   # той самий текст, що й у запуску (огляд 0.8.1в)
 
 
 SQL_ERRORS = [('Incorrect number of bindings', 'кількість «?» у запиті не дорівнює кількості параметрів'),
@@ -4430,13 +4485,15 @@ class Interp:
             return self.replayed(job)
         if self.dry is not None and job['назва'] in DRY_SUPPRESS:   # --сухо: дія не відбувається, результат невідомий
             self.tl.denied = False          # але права — як завжди: поза ними «заборонено», а не «дій не виконано» (суд 8в)
+            self.tl.unchecked = False
             try:
                 RIGHTS[job['назва']](self, job['pos'], *job['аргументи'])
             except (NgrError, Fatal) as e:
                 if self.tl.denied:
                     self.quota_refund(job.get('квота'))
                     return None, e          # інша помилка (таблиці ще немає — її створила б придушена дія) — не судимо
-            self.dry.append((job.get('№', self.ends), job['назва'], job['слід'], job['ac']))   # № — порядок і в ‖
+            self.dry.append((job.get('№', self.ends), job['назва'], job['слід'], job['ac'],   # № — порядок і в ‖
+                             job['назва'] == 'бд.писати' and getattr(self.tl, 'unchecked', False)))
             job['сухо'] = True
             return V(DRY_SUPPRESS[job['назва']], 0.0), None
         self.tl.paths = job['шляхи'] = []
@@ -5550,11 +5607,13 @@ def clip(text, n):
 
 def quote(text):
     """Слова автора в --розбір: у «…» з екрануванням «, », \\ і переносу — лапки не можна закрити зсередини (суд 7).
-    Текст письмом справа наліво (іврит, арабське) і арабсько-індійські цифри — з LRM після лапок: інакше переглядач з
-    bidi переставить сусідні числа й слова, і «(«ד» − 1)» читалося б як «(1 − «ד»)», а «злити(«١٢», «٣٤»)» — як
-    «злити(«٣٤» ,«١٢»)» (огляд 0.8.1 і 0.8.1б, Мовознавець)."""
+    Текст письмом справа наліво (іврит, арабське) і арабсько-індійські цифри — у LRM з обох боків лапок: інакше
+    переглядач з bidi переставить сусідні числа й слова, і «(«ד» − 1)» читалося б як «(1 − «ד»)», а «злити(«١٢», «٣٤»)»
+    — як «злити(«٣٤» ,«١٢»)»; LRM перед лапкою — щоб і рядок, який з такого тексту починається, переглядач з
+    автонапрямком (Android, GTK, Qt) не взяв за абзац справа наліво (огляд 0.8.1, 0.8.1б і 0.8.1в, Мовознавець)."""
     t = safe(text).replace('\\', '\\\\').replace('«', '\\«').replace('»', '\\»').replace('\n', '\\n')
-    return '«' + t + '»' + ('\u200e' if any(unicodedata.bidirectional(c) in ('R', 'AL', 'AN') for c in t) else '')
+    lrm = '\u200e' if any(unicodedata.bidirectional(c) in ('R', 'AL', 'AN') for c in t) else ''
+    return lrm + '«' + t + '»' + lrm
 
 
 def explain(node, ind=0):
@@ -6070,7 +6129,7 @@ def cheatsheet():
            '  `× 2 3`; змінна `x`, `x1`, `xx` — можна). Це правила за таблицями UTS #39 і кількома своїми — повноти не обіцяють.',
            '  Письма імен: латиниця, кирилиця, CJK, кана, хангиль, деванагарі, бенгальське, тамільське, тайське, грузинське;',
            '  інші — помилка. Іврит і арабське — у рядках, не в іменах: справа наліво переглядач з bidi переставляє аргументи',
-           '  (`－ ד 1` видно як `－ 1 ד`); у `--розбір` такий рядок закриває LRM.',
+           '  (`－ ד 1` видно як `－ 1 ד`); у `--розбір` такий рядок обгорнуто в LRM.',
            '- **Невидимого в тексті програми немає**: керівні, bidi, теги, ZWSP, U+034F, нестандартні пробіли, заповнювачі',
            '  (U+3164) — помилка всюди: в коді, рядках, коментарях, печатці. Такі дані беріть через `δ 「"\\u…"」`;',
            '  у виводі й сліді вони показані як `⟨U+…⟩`.',
@@ -6529,12 +6588,17 @@ def load_replay(tpath, program=None):
 def dry_report(done, decided=1.0):
     print(f'── --сухо: {len(done)} дій не виконано' + (':' if done else ' (жодної дії назовні)'), file=sys.stderr)
     unsure = 0
-    for _, name, args, ac in sorted(done, key=lambda d: d[0]):
+    for _, name, args, ac, unchecked in sorted(done, key=lambda d: d[0]):
         shown = ' '.join(a if isinstance(a, str) else f'‹{a.get("довжина")} символів›' for a in args)
         mark = ''
         if ac < 1:                   # аргументи чи сам вибір цієї дії залежать від невідомого (впевненість < 1)
             mark, unsure = f'  ⚠ залежить від невідомого (впевненість {ac:.2g}) — справжній запуск може зробити інше', unsure + 1
+        if unchecked:                # таблицю, певно, створила б придушена дія (огляд 0.8.1в, Практик)
+            mark += '  ⚠ запит не скомпілювався на нинішній базі — права в ньому без виконання не перевірено'
         print(f'  {name} {safe(shown)[:300]}{mark}', file=sys.stderr)
+    if any(d[1] == 'бд.писати' for d in done):   # огляд 0.8.1в, Скептик: rowid 2⁶³−1 у переліку — без позначки
+        print('  ⚠ бд.писати без виконання: authorizer і байткод SQLite перевірено, а rowid, який дав би запит, — ні',
+              file=sys.stderr)
     if decided < 1:
         print(f'  ⚠ рішення програми залежали від невідомих у сухому прогоні значень (впевненість {decided:.2g}): '
               f'справжній запуск може піти іншим шляхом і зробити дії, яких тут немає', file=sys.stderr)
