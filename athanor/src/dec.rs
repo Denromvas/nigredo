@@ -223,6 +223,42 @@ impl Dec {
         Dec { neg, coef, exp: e }.finalize(ctx, 0)
     }
 
+    /// ＋ － × у exact_ctx над малими (знак, коефіцієнт до 64 біт, порядок): те саме, що add/sub/mul + finalize, без
+    /// довгої арифметики. Порядки — у ±20 000 (межі контексту ±30 000), вирівнювання — до 19 розрядів: коефіцієнт
+    /// результату вміщається в u128 (≤ 39 цифр < prec 60), тож finalize нічого не округлює, не обрізає й не сигналить.
+    /// Інакше None — загальний шлях.
+    pub fn small_exact(op: char, a: (bool, u64, i64), b: (bool, u64, i64)) -> Option<Dec> {
+        const SAFE: i64 = 20_000;
+        let ((na, ca, ea), (nb, cb, eb)) = (a, b);
+        if ea.abs() > SAFE || eb.abs() > SAFE {
+            return None;
+        }
+        let (neg, coef, exp) = if op == '×' {
+            if (ea + eb).abs() > SAFE {
+                return None;
+            }
+            (na != nb, ca as u128 * cb as u128, ea + eb)
+        } else {
+            let nb = if op == '－' { !nb } else { nb }; // sub = add(negate)
+            let e = ea.min(eb);
+            let (da, db) = ((ea - e) as u32, (eb - e) as u32);
+            if da > 19 || db > 19 {
+                return None;
+            }
+            let (xa, xb) = (ca as u128 * 10u128.pow(da), cb as u128 * 10u128.pow(db));
+            if na == nb {
+                (na, xa + xb, e) // нуль — зі знаком доданків, як в add
+            } else {
+                match xa.cmp(&xb) {
+                    Ordering::Greater => (na, xa - xb, e),
+                    Ordering::Less => (nb, xb - xa, e),
+                    Ordering::Equal => (false, 0, e), // exact_ctx — HalfEven, не Floor: нуль додатний
+                }
+            }
+        };
+        Some(Dec { neg, coef: Nat::from_u128(coef), exp })
+    }
+
     /// -d у контексті (як Decimal.__neg__): нуль — додатний; результат округлено до контексту.
     pub fn minus(&self, ctx: &Ctx) -> Result<Dec, u32> {
         let neg = if self.is_zero() { false } else { !self.neg };

@@ -26,6 +26,11 @@ impl PStr {
     pub fn from(s: &str) -> PStr {
         PStr::new(s.to_string())
     }
+    /// Довжина в символах уже відома (зʼєднання рядків: сума довжин) — без підрахунку.
+    #[inline]
+    pub fn owned(s: String, nch: usize) -> PStr {
+        PStr { s: s.into_boxed_str(), nch, idx: RefCell::new(None) }
+    }
     /// Довжина в символах уже відома (частина рядка, розрізаного ✂).
     #[inline]
     pub fn with_nch(s: &str, nch: usize) -> PStr {
@@ -662,8 +667,10 @@ fn show_into(out: &mut String, x: &V, d: usize) -> crate::interp::R<()> {
 
 /// Друкована форма (рядок верхнього рівня — як є); глибше за WALK — deep().
 pub fn show(x: &V, top: bool) -> crate::interp::R<String> {
-    if let (true, Val::Str(s)) = (top, &x.v) {
-        return Ok(s.s.to_string());
+    match (&x.v, top) {
+        (Val::Str(s), true) => return Ok(s.s.to_string()),
+        (Val::Int(_) | Val::Dec(_) | Val::Float(_), _) => return Ok(fmt_num(&x.v)), // те саме, що show_leaf, без копії
+        _ => {}
     }
     let mut out = String::new();
     show_into(&mut out, x, 0)?;

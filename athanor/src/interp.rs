@@ -240,7 +240,23 @@ impl Interp {
     }
 
     /// Межі розміру й облік створеного; g — гліф чи назва для повідомлення (char — без перекодування щоразу).
+    /// Частий випадок — мале значення в межах — на місці: лише облік створеного (work(n < 64) — нуль кроків).
+    #[inline(always)]
     fn sized(&mut self, res: V, g: impl std::fmt::Display, pos: Pos) -> R<V> {
+        if res.n < 64 && res.n <= self.max_size && self.steps_left >= 0 && !matches!(res.v, Val::Int(Int::B(_))) {
+            if res.n > 1 {
+                self.alloc += res.n;
+                if self.alloc > lang::ALLOC_FACTOR * self.max_size {
+                    return fatal(format!("сумарно створено забагато ({} > {} × --розмір)", self.alloc, lang::ALLOC_FACTOR), Some(pos));
+                }
+            }
+            return Ok(res);
+        }
+        self.sized_full(res, g, pos)
+    }
+
+    #[inline(never)]
+    fn sized_full(&mut self, res: V, g: impl std::fmt::Display, pos: Pos) -> R<V> {
         if res.n > self.max_size {
             return fatal(format!("{}: значення завелике (логічний розмір {} > --розмір {})", g, res.n, self.max_size), Some(pos));
         }
@@ -375,8 +391,10 @@ impl Interp {
                         let a0 = self.arg(&args[0], env)?;
                         let a1 = self.arg(&args[1], env)?;
                         let a = [a0, a1];
-                        if let Some(r) = self.int_fast(g, &a, pos)? {
-                            return Ok(r);
+                        if let (Val::Int(_), Val::Int(_)) = (&a[0].v, &a[1].v) {
+                            if let Some(r) = self.int_fast(g, &a, pos)? {
+                                return Ok(r);
+                            }
                         }
                         self.strict(g, &a, pos)?
                     }
@@ -1280,6 +1298,9 @@ impl Interp {
                 '－' => a.sub(b),
                 _ => a.mul(b),
             }));
+        }
+        if let Some(r) = crate::prims::small_exact(op, x, y) {
+            return Ok(r);
         }
         let (a, b) = (to_dec(x), to_dec(y));
         let ctx = dec::exact_ctx();
