@@ -1685,22 +1685,30 @@ def main():
         with sqlite3.connect(vt81д_) as c_:
             c_.execute('CREATE TABLE v(s)')
         res81д.append(subprocess.run([*cmd_, '--сухо', '-e', q81д_], capture_output=True, text=True, env=envd))
+        os.remove(vt81д_)            # індекс з назвою модуля — не таблиця: модуль лишається модулем; VIEW — таблиця бази
+        res81д.append(subprocess.run([*cmd_, '-e', f'🜂 【「бд.писати:{DATA}/звіти」 「бд.читати:{DATA}/звіти」】\n' + head81д_
+                                      + ''.join(f'» п 「{s_}」\n' for s_ in ('CREATE TABLE v(s)', 'CREATE INDEX dbstat ON v(s)'))
+                                      + '» ч 「SELECT count(*) AS n FROM dbstat」\n» п 「DROP INDEX dbstat」\n'
+                                      '» п 「CREATE VIEW dbstat AS SELECT 5 AS x」\n» ч 「SELECT x FROM dbstat」'],
+                                     capture_output=True, text=True, env=envd))
     o_ = res81д[0].stdout
     den81д_ = 'заборонено: віртуальна таблиця SQLite «{}» — програмі лише json_each, json_tree і таблиці самої бази'
-    dry81д = [r_.stdout + r_.stderr for r_ in (res81д[5], res81д[11])]
-    check(all(r_.stdout == o_ for r_ in (res81д[2], res81д[6], res81д[8])) and res81д[0].returncode == 0
+    dry81д = [r_.stdout + r_.stderr for r_ in (res81д[5], res81д[12])]
+    check(all(r_.stdout == o_ for r_ in (res81д[2], res81д[7], res81д[9])) and res81д[0].returncode == 0
           and o_.count('бд.писати: ' + den81д_.format('sqlite_stmt')) == 8 and o_.count(den81д_.format('sqlite_stmt')) == 9
           and o_.count(den81д_.format('Sqlite_Stmt')) == 1 and o_.count(den81д_.format('dbstat')) == 2
           and '【『「value」 1』 『「value」 2』】\n2\n0\n1\n【『「x」 7』】\n【『「n」 2』】\n' in o_
-          and all('(«заборонено»): 12 ' in v_ for v_ in (res81д[1], res81д[3], res81д[7], res81д[9]))
-          and res81д[4].stdout == res81д[10].stdout and res81д[4].stdout.count(den81д_.format('sqlite_stmt')) == 4
+          and all('(«заборонено»): 12 ' in v_ for v_ in (res81д[1], res81д[3], res81д[8], res81д[10]))
+          and res81д[4].stdout == res81д[11].stdout and res81д[4].stdout.count(den81д_.format('sqlite_stmt')) == 4
+          and res81д[6].stdout == res81д[13].stdout == f'0\n0\nбд.читати: {den81д_.format("dbstat")}\n0\n0\n【『「x」 5』】\n'
           and res81д[4].stdout.count('вичерпано квоту') == 2
           and dry81д[0] == dry81д[1] and dry81д[0].count(den81д_.format('sqlite_stmt')) == 9
           and dry81д[0].count(den81д_.format('dbstat')) == 3,   # третя — INSERT у dbstat: таблицю створила б придушена дія
           'SQLite: віртуальні таблиці — перелік дозволених (json_each, json_tree і таблиці самої бази): sqlite_stmt і '
           'dbstat — «заборонено» в запуску, під квотою й у --сухо; біти Аудитора однакові в кожному запуску й обох '
-          'виконавців; CREATE TABLE dbstat(x) — таблиця (огляд 0.8.1д)',
-          o_ + res81д[0].stderr + '\n---\n' + res81д[6].stdout + str(res81д[1]) + res81д[4].stdout + res81д[4].stderr
+          'виконавців; таблиця й VIEW з назвою dbstat — таблиці бази, індекс — ні (огляд 0.8.1д)',
+          o_ + res81д[0].stderr + '\n---\n' + res81д[7].stdout + str(res81д[1]) + res81д[4].stdout + res81д[4].stderr
+          + res81д[6].stdout + res81д[6].stderr + res81д[13].stdout
           + dry81д[0] + '\n---\n' + dry81д[1])
     # огляд 0.8.1д (Н-2 Скептика, Практика, Мовознавця): CHECK таблиці на межі й тіньової таблиці R-Tree з бази, зробленої
     # поза Nigredo, під квотою й у --сухо — «вичерпано квоту» й рядок без позначки (зʼєднання прав без дії — лише на
