@@ -1,0 +1,12 @@
+🜂 「атака16 (копія Скептика, повна): чи сховає стара база (sqlite_sequence біля межі) справжню спробу поза правами під «запобіжну відмову»」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「ATTACH DATABASE 'звіти/о17_інша_маска.db' AS y」
+» з 「PRAGMA writable_schema = 1」
+» з 「PRAGMA journal_mode = OFF」
+» з 「CREATE TEMP TABLE tt(x)」
+» з 「INSERT INTO t(x) VALUES (random())」
+» з 「INSERT INTO t(x) VALUES (date('now'))」
+» з 「INSERT INTO t(x) SELECT file FROM pragma_database_list」
+» з 「;ATTACH DATABASE 'звіти/о17_інша_маска.db' AS y」
+» з 「DELETE FROM t WHERE x = 99」

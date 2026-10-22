@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
+ <Stmt>
+  <Ntry><Amt Ccy="UAH">1200.50</Amt><CdtDbtInd>CRDT</CdtDbtInd><Nm>ТОВ Ромашка</Nm></Ntry>
+  <Ntry><Amt Ccy="UAH">300.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Nm>ТОВ Ромашка</Nm></Ntry>
+  <Ntry><Amt Ccy="UAH">99.99</Amt><CdtDbtInd>CRDT</CdtDbtInd><Nm>ФОП Коваль</Nm></Ntry>
+  <Ntry><Amt Ccy="UAH">0.01</Amt><CdtDbtInd>CRDT</CdtDbtInd><Nm>ТОВ Ромашка</Nm></Ntry>
+  <Ntry><Amt Ccy="UAH">5000</Amt><CdtDbtInd>CRDT</CdtDbtInd><Nm>ПрАТ Схід</Nm></Ntry>
+ </Stmt>
+</Document>

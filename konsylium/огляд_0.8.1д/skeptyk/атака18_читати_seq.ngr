@@ -1,0 +1,5 @@
+🜂 「атака18: огляд sqlite_sequence і таблиць після запитів」 【「бд.читати:дані」】
+← бд § ⌂ 0
+» 🜔бд.читати бд 「SELECT rowid AS r, name, seq FROM sqlite_sequence ORDER BY rowid」 【】
+» 🜔бд.читати бд 「SELECT rowid AS r, x FROM q ORDER BY rowid」 【】
+» 🜔бд.читати бд 「SELECT count(*) AS n FROM t」 【】

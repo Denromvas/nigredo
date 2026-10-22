@@ -1,0 +1,14 @@
+🜂 「XML: DTD під іншим кодуванням, сутності без DTD, символьні посилання на невидиме, глибина」 【】
+» ☂ ρ χ 「<?xml version="1.0" encoding="UTF-7"?>+ADwAIQ-DOCTYPE a +AFs- +ADwAIQ-ENTITY x +ACI-hi+ACI- +AD4- +AF0- +AD4-<a>&x;</a>」 λe ＋ 「UTF-7: 」 e
+» ☂ ρ χ 「<?xml version="1.0" encoding="UTF-16"?><a/>」 λe ＋ 「UTF-16: 」 e
+» ☂ χ 「<a>&x;</a>」 λe ＋ 「сутність без DTD: 」 e
+» ☂ §χ 「<a>&#x202E;evil&#x200B;</a>」 「текст」 λe ＋ 「невидиме посиланням: 」 e
+» ☂ χ 「<a>&#0;</a>」 λe ＋ 「&#0;: 」 e
+» ☂ ρ χ 「<x:a xmlns:x="urn:x" xmlns:xi="http://www.w3.org/2001/XInclude"><xi:include href="/etc/passwd" parse="text"/></x:a>」 λe e
+← г 501
+» ☂ ρ χ ＋ ⁀ μ … 1 г λi 「<a>」 「」 ⁀ μ … 1 г λi 「</a>」 「」 λe ＋ 「глибина 501: 」 e
+» ☂ ρ χ ＋ ⁀ μ … 1 100000 λi 「<a>」 「」 ⁀ μ … 1 100000 λi 「</a>」 「」 λe ＋ 「глибина 100000: 」 e
+← інж 『「тег」 「a/><Amt>999999</Amt><b」』
+← ч χ 『「тег」 「Pmt」 「діти」 【інж】』
+» ч
+» μ ↘ χ ч 「//Amt」 λe §e 「текст」

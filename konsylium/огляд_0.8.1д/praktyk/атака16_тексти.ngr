@@ -1,0 +1,13 @@
+🜂 「атака16: тексти SQLite, які я просив у 9д (незакрита лапка, службова назва), і сусідні описки щоденної роботи」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS док(н INTEGER PRIMARY KEY AUTOINCREMENT, назва TEXT NOT NULL, сума REAL)」
+» з 「INSERT INTO док(назва, сума) VALUES ('Рахунок №1, 100.5)」
+» з 「INSERT INTO док(назва, сума) VALUES ("Рахунок №2", 1)」
+» з 「CREATE TABLE sqlite_мої(x)」
+» з 「CREATE INDEX sqlite_autoindex_док_1 ON док(назва)」
+» з 「INSERT INTO док(назва, сума) VALUES ('а', 1) RETURNING н」
+» з 「INSERT INTO док(назва) VALUES (NULL)」
+» з 「SELECT * FROM док ORDER BY 5」
+» з 「INSERT INTO док(назва, сума) VALUES ('Рахунок №3', 1」
+» з 「INSERT INTO док(назва, сума) VALUES ('б', 1) @」

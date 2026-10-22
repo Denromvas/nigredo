@@ -1,0 +1,4 @@
+процес: «ls» завершився з кодом 2: ls: cannot access '/немає_такого': No such file or directory
+lrwxrwxrwx. 1 root root 7 Oct 14  2025 /usr/bin/echo -> gnuecho
+lrwxrwxrwx. 1 root root 5 Oct 14  2025 /usr/bin/ls -> gnuls
+

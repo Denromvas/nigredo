@@ -1,0 +1,16 @@
+🜂 「атака14 (підготовка, з правом «жереб»): таблиці на межі rowid і поруч із нею」 【「бд.писати:звіти」 「жереб」】
+← бд § ⌂ 0
+← з λq ☂ σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+∀ 【「m」 「o」 「t2」 「t3」 「t4」 「t5」】 λт » з ＋ 「DROP TABLE IF EXISTS 」 т
+» з 「CREATE TABLE m(x)」
+» з 「INSERT INTO m(rowid, x) VALUES (9223372036854775807, 0)」
+» з 「CREATE TABLE o(x)」
+» з 「CREATE TRIGGER tro AFTER INSERT ON o BEGIN INSERT INTO m(x) VALUES (NEW.x); END」
+» з 「CREATE TABLE t2(x)」
+» з 「INSERT INTO t2(rowid, x) VALUES (9223372036854775806, 0)」
+» з 「CREATE TABLE t3(k INTEGER PRIMARY KEY, x)」
+» з 「INSERT INTO t3(k, x) VALUES (1, 0)」
+» з 「CREATE TABLE t4(k INTEGER PRIMARY KEY, x)」
+» з 「CREATE TABLE t5(x)」
+» з 「INSERT INTO t5(rowid, x) VALUES (1, 1)」
+» з 「INSERT INTO t5(rowid, x) VALUES (9223372036854775806, 0)」

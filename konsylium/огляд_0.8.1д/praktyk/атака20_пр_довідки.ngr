@@ -1,0 +1,14 @@
+🜂 「атака20 (практик): довідки про схему, як їх пишуть інструменти й агенти, через бд.читати — main і temp; де хибна тривога」 【「бд.читати:дані」】
+← бд § ⌂ 0
+← ч λq ☂ ＋ 「✓ 」 σ 🜔бд.читати бд q 【】 λпом ＋ 「✗ 」 пом
+» ч 「SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name」
+» ч 「SELECT type, name, sql FROM sqlite_master ORDER BY name」
+» ч 「SELECT * FROM sqlite_schema WHERE type = 'table' AND name = 't'」
+» ч 「SELECT * FROM pragma_table_info('t')」
+» ч 「PRAGMA table_info(t)」
+» ч 「SELECT name FROM sqlite_temp_master」
+» ч 「SELECT count(*) FROM sqlite_temp_master」
+» ч 「SELECT * FROM sqlite_temp_master」
+» ч 「SELECT name FROM (SELECT * FROM sqlite_master UNION ALL SELECT * FROM sqlite_temp_master) WHERE type = 'table'」
+» ч 「SELECT name FROM (SELECT name, type FROM sqlite_master UNION ALL SELECT name, type FROM sqlite_temp_master) WHERE type = 'table'」
+» ч 「SELECT schema, name, type FROM pragma_table_list ORDER BY schema, name」

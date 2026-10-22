@@ -1,0 +1,12 @@
+бд.читати: «delete» поза дозволеним — лише SELECT (WITH, VALUES) і довідкові PRAGMA (table_info …); для змін — бд.писати
+бд.читати: unknown database 'wal'
+【】
+бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+бд.писати: VACUUM заборонено (VACUUM INTO пише файл поза текою з печатки)
+бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+бд.писати: unknown database 'wal'
+0
+бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+бд.писати: load_extension заборонено (і в тригерах та VIEW)
+бд.писати: лише одна інструкція SQL за раз
+✗ 13:5 перевищено ліміт кроків (--кроки)

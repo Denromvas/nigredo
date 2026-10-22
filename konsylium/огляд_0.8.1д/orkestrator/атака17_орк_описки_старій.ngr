@@ -1,0 +1,10 @@
+🜂 「атака17 (оркестратор): що бачить агент на старій базі й на контролі — описки (стовпець, таблиця, синтаксис), похибка в безпечний бік (мертвий random, дата з даних) і невинний INSERT」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(y) VALUES (1)」
+» з 「INSERT INTO немає(x) VALUES (1)」
+» з 「INSERT INTO t(x) VALUS (1)」
+» з 「INSERT INTO t(x) SELECT CASE WHEN 0 THEN random() ELSE 1 END」
+» з 「INSERT INTO t(x) VALUES (date('2020-01-01'))」
+» з 「INSERT INTO t(x) VALUES (1)」
+» з 「DELETE FROM t WHERE x = 99」

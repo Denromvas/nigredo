@@ -1,0 +1,33 @@
+🜂 「атака20: текст схеми temp (назва службової) і ALTER TABLE RENAME / RENAME COLUMN / DROP COLUMN / DROP TABLE після запису з тимчасовими тригерами; чи є випадковість без «жереб»; лише бд.писати」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE t(x, y, z)」
+» з 「INSERT INTO t(x, y, z) VALUES (1, 2, 3)」
+» з 「CREATE TABLE лог(v)」
+» з 「INSERT INTO лог(v) SELECT sql FROM temp.sqlite_master」
+» з 「INSERT INTO лог(v) SELECT name FROM temp.sqlite_master」
+» з 「INSERT INTO лог(v) SELECT sql FROM sqlite_temp_master」
+» з 「INSERT INTO лог(v) SELECT sql FROM temp.sqlite_schema」
+» з 「INSERT INTO лог(v) SELECT count(*) FROM temp.sqlite_master」
+» з 「INSERT INTO лог(v) SELECT name FROM pragma_function_list WHERE name LIKE 'ngr%'」
+» з 「INSERT INTO лог(v) SELECT sqlite_source_id()」
+» з 「ALTER TABLE t RENAME TO t2」
+» з 「INSERT INTO t2(x, y, z) VALUES (4, 5, 6)」
+» з 「ALTER TABLE t2 RENAME COLUMN x TO xx」
+» з 「INSERT INTO t2(xx, y, z) VALUES (7, 8, 9)」
+» з 「ALTER TABLE t2 DROP COLUMN z」
+» з 「INSERT INTO t2(xx, y) VALUES (10, 11)」
+» з 「ALTER TABLE t2 ADD COLUMN w DEFAULT 0」
+» з 「UPDATE t2 SET w = xx * 2」
+» з 「DELETE FROM t2 WHERE xx = 1」
+» з 「ALTER TABLE t2 RENAME TO t」
+» з 「INSERT INTO t(xx, y) VALUES (12, 13)」
+» з 「CREATE TABLE a(k INTEGER PRIMARY KEY AUTOINCREMENT, v)」
+» з 「INSERT INTO a(v) VALUES ('раз'), ('два')」
+» з 「ALTER TABLE a RENAME TO b」
+» з 「INSERT INTO b(v) VALUES ('три')」
+» з 「DROP TABLE b」
+» з 「DROP TABLE t」
+» з 「CREATE TABLE t(x)」
+» з 「INSERT INTO t(x) VALUES (1)」
+» з 「SELECT count(*) AS n FROM лог」

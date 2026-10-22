@@ -1,0 +1,9 @@
+🜂 「атака19: --сухо — запит, що не скомпілюється, бо таблицю створила б придушена дія; rowid 2⁶³−1; описка; службова функція — які позначки」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE нова(x)」
+» з 「INSERT INTO нова(x) VALUES (random())」
+» з 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, 1)」
+» з 「INSERT INTO t(y) VALUES (1)」
+» з 「INSERT INTO t(x) VALUES (ngr_rowid('t', 0))」
+» з 「INSERT INTO t(x) VALUES (2)」
