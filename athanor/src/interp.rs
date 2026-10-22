@@ -175,6 +175,36 @@ fn type_of(x: &V) -> &'static str {
     }
 }
 
+fn env_up(env: &Rc<Env>, hops: u32) -> Option<&Env> {
+    let mut e: &Env = env;
+    for _ in 0..hops {
+        e = e.parent.as_deref()?;
+    }
+    Some(e)
+}
+
+/// Вузол F_IDX (`§ імʼя ціле`): f від елемента, якщо імʼя — певний список певної будови, а номер у межах (як швидкий §
+/// у strict_); інакше None.
+#[inline(always)]
+fn index_leaf_with<T>(n: &Node, env: &Rc<Env>, f: impl FnOnce(&V) -> Option<T>) -> Option<T> {
+    let K::Op(_, args) = &n.k else { return None };
+    let (K::Var(_, hops, slot), Some(V { v: Val::Int(Int::S(i)), .. })) = (&args[0].k, &args[1].lv) else { return None };
+    let vars = env_up(env, *hops)?.vars.borrow();
+    let V { v: Val::List(l), c, s, .. } = vars.get(*slot as usize)? else { return None };
+    if *c < 1.0 || *s < 1.0 {
+        return None;
+    }
+    let len = l.len() as i64;
+    if !(-len <= *i && *i < len) {
+        return None;
+    }
+    f(&l[if *i < 0 { (*i + len) as usize } else { *i as usize }])
+}
+
+fn index_leaf(n: &Node, env: &Rc<Env>) -> Option<V> {
+    index_leaf_with(n, env, |e| Some(e.clone()))
+}
+
 impl Interp {
     #[inline]
     pub fn cpc(&self) -> f64 {
@@ -209,7 +239,8 @@ impl Interp {
         Ok(())
     }
 
-    fn sized(&mut self, res: V, g: &str, pos: Pos) -> R<V> {
+    /// Межі розміру й облік створеного; g — гліф чи назва для повідомлення (char — без перекодування щоразу).
+    fn sized(&mut self, res: V, g: impl std::fmt::Display, pos: Pos) -> R<V> {
         if res.n > self.max_size {
             return fatal(format!("{}: значення завелике (логічний розмір {} > --розмір {})", g, res.n, self.max_size), Some(pos));
         }
@@ -319,9 +350,18 @@ impl Interp {
             K::Lit(_) => self.eval_lit(n),
             K::Var(_, hops, slot) => self.eval_var(pos, env, *hops, *slot),
             K::Op(g, args) if !lang::is_lazy_glyphs(*g) => {
-                if n.ints > 1 && self.pc >= 1.0 && self.halt_c >= 1.0 && self.steps_left >= n.ints as i64 && self.max_size >= 22 {
-                    if let Some(r) = self.int_tree(n, env) {
-                        return Ok(r);
+                if n.fast != 0 && self.pc >= 1.0 && self.halt_c >= 1.0 && self.steps_left >= n.ints as i64 {
+                    if n.fast == F_TREE {
+                        if self.max_size >= 22 {
+                            if let Some(r) = self.int_tree(n, env) {
+                                return Ok(r);
+                            }
+                        }
+                    } else if let Some(e) = index_leaf(n, env) {
+                        // § імʼя ціле: ті самі три кроки (§, імʼя, номер) і sized елемента, що й eval_var + eval_lit +
+                        // швидкий § у strict_ (певний список і будова, номер у межах) — без значень-посередників
+                        self.steps_left -= 3;
+                        return self.sized(e, '§', pos);
                     }
                 }
                 self.step(pos)?;
@@ -354,7 +394,7 @@ impl Interp {
                         self.strict(g, &a, pos)?
                     }
                 };
-                self.sized(r, g.encode_utf8(&mut [0u8; 4]), pos)
+                self.sized(r, g, pos)
             }
             K::Call(_, hops, slot, args) => {
                 self.step(pos)?;
@@ -372,6 +412,8 @@ impl Interp {
     /// Цілочислове дерево (Node::ints) певних малих цілих — одним проходом без значень-посередників: ті самі кроки
     /// (по одному на вузол), той самий облік створеного (alloc), що й eval + int_fast вузол за вузлом. Будь-що інше
     /// (невпевнене, велике, переповнення, ‰ 0, межа alloc) — None, і вузол рахує звичайний eval (тут нічого не змінено).
+    /// Листок `§ імʼя ціле` — те саме, що eval + швидкий § у strict_ + sized: певний список (і будова), номер у межах,
+    /// елемент — певне мале ціле; sized елемента додає його розмір до alloc (n ≤ 22 ≤ --розмір: work — нуль кроків).
     fn int_tree(&mut self, n: &Node, env: &Rc<Env>) -> Option<V> {
         fn go(n: &Node, env: &Rc<Env>, alloc: &mut u64) -> Option<i64> {
             match &n.k {
@@ -379,16 +421,19 @@ impl Interp {
                     Some(V { v: Val::Int(Int::S(x)), .. }) => Some(*x),
                     _ => None,
                 },
-                K::Var(_, hops, slot) => {
-                    let mut e: &Env = env;
-                    for _ in 0..*hops {
-                        e = e.parent.as_deref()?;
+                K::Var(_, hops, slot) => match env_up(env, *hops)?.vars.borrow().get(*slot as usize)? {
+                    V { v: Val::Int(Int::S(x)), c, .. } if *c >= 1.0 => Some(*x),
+                    _ => None,
+                },
+                K::Op('§', _) => index_leaf_with(n, env, |e| match e {
+                    V { v: Val::Int(Int::S(x)), c, n, .. } if *c >= 1.0 && *n <= 22 => {
+                        if *n > 1 {
+                            *alloc += *n;
+                        }
+                        Some(*x)
                     }
-                    match e.vars.borrow().get(*slot as usize)? {
-                        V { v: Val::Int(Int::S(x)), c, .. } if *c >= 1.0 => Some(*x),
-                        _ => None,
-                    }
-                }
+                    _ => None,
+                }),
                 K::Op(g, args) => {
                     let x = go(&args[0], env, alloc)?;
                     let y = go(&args[1], env, alloc)?;
@@ -625,7 +670,7 @@ impl Interp {
                     self.prof_add(&format!("лінивий {}", g), t);
                 }
                 let r = r?;
-                self.sized(r, g.encode_utf8(&mut [0u8; 4]), pos)
+                self.sized(r, g, pos)
             }
             K::Lit(_) | K::Var(..) | K::Call(..) => unreachable!(),
         }
