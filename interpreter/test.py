@@ -1387,7 +1387,7 @@ def main():
                            'it = n.Interp.__new__(n.Interp); it.caps, it.quota_stack = set(), []\n'
                            'print(n._db_written(c, it, "INSERT INTO а VALUES (", []), n._db_written(c, it, "SELECT 1; SELECT 2", [])[0])',
                            str(ROOT / 'interpreter')], capture_output=True, text=True)
-    check(pre_.stdout == "(set(), set(), [], [], []) {'а'}\n",
+    check(pre_.stdout == "(set(), set(), [], [], [], True) {'а'}\n",
           'запит, що не компілюється й сам, — без тригерів на всіх таблицях; що компілюється — захист на всіх (суд 9д)',
           pre_.stdout + pre_.stderr)
     # огляд 0.8.1 (Н-1 Скептика, відтворили всі шестеро): на старій базі справжня спроба ставала «запобіжною відмовою»
@@ -1637,18 +1637,170 @@ def main():
                              'c.set_authorizer(a)\ntry:\n    c.execute("SELECT ngr_rowid_x(\'t\', 0)")\nexcept sqlite3.Error:\n    pass\n'
                              'print(w)', str(ROOT / 'interpreter')], capture_output=True, text=True)
     check(o_ == res81g[4].stdout and res81g[0].returncode == res81g[4].returncode == 0 and res81g[3] == res81g[7]
-          and res81g[3] == ['ngr_rowid_0_0', 5, 0] and o_.count('бд.писати: заборонено: службова функція') == 5
-          and o_.count('бд.писати: заборонено: службові тригери інтерпретатора') == 1 and 'запобіжн' not in o_
-          and all('(«заборонено»): 6 ' in v_ and 'запобіжн' not in v_ for v_ in (res81g[1], res81g[5]))
+          and res81g[3] == [None, 'ngr_rowid_0_0', 5, 0] and o_.count('бд.писати: заборонено: службова функція') == 5
+          and 'службові тригери' not in o_ and 'запобіжн' not in o_
+          and all('(«заборонено»): 5 ' in v_ and 'запобіжн' not in v_ for v_ in (res81g[1], res81g[5]))
           and res81g[2].stdout == res81g[6].stdout and res81g[2].returncode == res81g[6].returncode != 0
           and 'бд.писати: заборонено: службова функція' in res81g[2].stdout + res81g[2].stderr
           and pre81g.stdout == '1\nFalse {0}\n{0}\n'.format(['службова функція інтерпретатора (ngr_rowid) — її кличуть лише '
                                                            'його тимчасові тригери']),
           'SQLite: службова функція — під випадковою назвою на кожен запит; ngr_rowid у DEFAULT стовпця, у CHECK таблиці на '
-          'межі й тіньової таблиці R-Tree — «заборонено», не «запобіжна», однаково обома; текст схеми temp програма не читає, ALTER TABLE '
-          'працює (огляд 0.8.1г)',
+          'межі й тіньової таблиці R-Tree — «заборонено», не «запобіжна», однаково обома; текст схеми temp програма не читає '
+          '(з огляду 0.8.1д — NULL), ALTER TABLE працює (огляд 0.8.1г)',
           o_ + res81g[0].stderr + res81g[1] + res81g[4].stdout + str(res81g[3]) + str(res81g[7]) + res81g[2].stdout
           + res81g[2].stderr + res81g[6].stdout + pre81g.stdout + pre81g.stderr)
+    # огляд 0.8.1д (Н-1 Аудитора й Оркестратора): sqlite_stmt — перелік підготовлених запитів зʼєднання з їхнім текстом;
+    # в еталона там і кеш Python з тимчасовими тригерами (назва службової — 128 біт випадковості без «жереб»), в Атанора
+    # — ні: біти без «жереб» і розбіжність виконавців. Віртуальні таблиці тепер — перелік дозволених: json_each, json_tree
+    # і таблиці самої бази (dbstat — теж «заборонено», а таблиця бази з назвою dbstat — таблиця); і під квотою, і в --сухо
+    vt81д_ = f'{DATA}/звіти/віртуальні81д.db'
+    bit81д_ = ("INSERT INTO v(s) SELECT 1 FROM sqlite_stmt WHERE sql LIKE 'CREATE TEMP TRIGGER%' AND instr(sql, "
+               "'BEGIN SELECT ngr_rowid_') > 0 AND substr(sql, instr(sql, 'BEGIN SELECT ngr_rowid_') + 23, 1) < '8'")
+    head81д_ = f'← п λq ☂ σ 🜔бд.писати 「{vt81д_}」 q 【】 λe e\n← ч λq ☂ σ 🜔бд.читати 「{vt81д_}」 q 【】 λe e\n'
+    q81д_ = (f'🜂 【「бд.писати:{DATA}/звіти」 「бд.читати:{DATA}/звіти」】\n' + head81д_ + ''.join(
+        f'» п 「{s_}」\n' for s_ in ('CREATE TABLE v(s)', *[bit81д_] * 6, 'INSERT INTO v(s) SELECT sql FROM sqlite_stmt',
+                                     'INSERT INTO v(s) SELECT count(*) FROM sqlite_stmt')) + ''.join(
+        f'» ч 「{s_}」\n' for s_ in ('SELECT sql FROM sqlite_stmt', 'SELECT count(*) AS n FROM Sqlite_Stmt',
+                                     'SELECT count(*) AS n FROM dbstat'))
+        + "» п 「INSERT INTO v(s) SELECT name FROM dbstat」\n» ч 「SELECT value FROM json_each('[1,2]')」\n" + ''.join(
+        f'» п 「{s_}」\n' for s_ in ("INSERT INTO v(s) SELECT key FROM json_tree('{\"a\":1}')", 'CREATE TABLE dbstat(x)',
+                                     'INSERT INTO dbstat(x) VALUES (7)'))
+        + '» ч 「SELECT x FROM dbstat」\n» ч 「SELECT count(*) AS n FROM v」')
+    qk81д_ = (f'🜂 【「бд.писати:{DATA}/звіти≤1」 「бд.читати:{DATA}/звіти≤1」】\n' + head81д_
+              + '» п 「INSERT INTO v(s) VALUES (1)」\n» ч 「SELECT count(*) AS n FROM v」\n' + ''.join(
+                  f'» п 「{s_}」\n' for s_ in ('INSERT INTO v(s) SELECT sql FROM sqlite_stmt', bit81д_)) + ''.join(
+                  f'» ч 「{s_}」\n' for s_ in ('SELECT sql FROM sqlite_stmt', 'SELECT count(*) AS n FROM sqlite_stmt'))
+              + '» п 「INSERT INTO v(s) VALUES (2)」\n» ч 「SELECT count(*) AS n FROM v」')
+    res81д = []
+    for k_, cmd_ in enumerate((NGR_CMD, [sys.executable, str(NGR)])):
+        for j_ in range(2):          # двічі: біти Аудитора — ті самі в кожному запуску й в обох виконавців
+            if os.path.exists(vt81д_):
+                os.remove(vt81д_)
+            tp_ = tmp / f'віртуальні81д_{k_}_{j_}.jsonl'
+            res81д.append(subprocess.run([*cmd_, '--слід', str(tp_), '-e', q81д_], capture_output=True, text=True, env=envd))
+            res81д.append(subprocess.run([sys.executable, str(NGR), '--перевірити-слід', str(tp_)], capture_output=True,
+                                         text=True, env=envd).stdout)
+        res81д.append(subprocess.run([*cmd_, '-e', qk81д_], capture_output=True, text=True, env=envd))
+        os.remove(vt81д_)
+        with sqlite3.connect(vt81д_) as c_:
+            c_.execute('CREATE TABLE v(s)')
+        res81д.append(subprocess.run([*cmd_, '--сухо', '-e', q81д_], capture_output=True, text=True, env=envd))
+    o_ = res81д[0].stdout
+    den81д_ = 'заборонено: віртуальна таблиця SQLite «{}» — програмі лише json_each, json_tree і таблиці самої бази'
+    dry81д = [r_.stdout + r_.stderr for r_ in (res81д[5], res81д[11])]
+    check(all(r_.stdout == o_ for r_ in (res81д[2], res81д[6], res81д[8])) and res81д[0].returncode == 0
+          and o_.count('бд.писати: ' + den81д_.format('sqlite_stmt')) == 8 and o_.count(den81д_.format('sqlite_stmt')) == 9
+          and o_.count(den81д_.format('Sqlite_Stmt')) == 1 and o_.count(den81д_.format('dbstat')) == 2
+          and '【『「value」 1』 『「value」 2』】\n2\n0\n1\n【『「x」 7』】\n【『「n」 2』】\n' in o_
+          and all('(«заборонено»): 12 ' in v_ for v_ in (res81д[1], res81д[3], res81д[7], res81д[9]))
+          and res81д[4].stdout == res81д[10].stdout and res81д[4].stdout.count(den81д_.format('sqlite_stmt')) == 4
+          and res81д[4].stdout.count('вичерпано квоту') == 2
+          and dry81д[0] == dry81д[1] and dry81д[0].count(den81д_.format('sqlite_stmt')) == 9
+          and dry81д[0].count(den81д_.format('dbstat')) == 3,   # третя — INSERT у dbstat: таблицю створила б придушена дія
+          'SQLite: віртуальні таблиці — перелік дозволених (json_each, json_tree і таблиці самої бази): sqlite_stmt і '
+          'dbstat — «заборонено» в запуску, під квотою й у --сухо; біти Аудитора однакові в кожному запуску й обох '
+          'виконавців; CREATE TABLE dbstat(x) — таблиця (огляд 0.8.1д)',
+          o_ + res81д[0].stderr + '\n---\n' + res81д[6].stdout + str(res81д[1]) + res81д[4].stdout + res81д[4].stderr
+          + dry81д[0] + '\n---\n' + dry81д[1])
+    # огляд 0.8.1д (Н-2 Скептика, Практика, Мовознавця): CHECK таблиці на межі й тіньової таблиці R-Tree з бази, зробленої
+    # поза Nigredo, під квотою й у --сухо — «вичерпано квоту» й рядок без позначки (зʼєднання прав без дії — лише на
+    # читання, і CHECK SQLite там не бере; тіньові таблиці R-Tree пише сам R-Tree). Тепер — той самий попередній прохід у
+    # запуску, квоті й --сухо, з правилом тексту схеми, і з параметрами виклику (Оркестратор: «?» — «не скомпілювався»);
+    # у відмові — що службову кличе схема бази, коли в запиті її немає (Практик, Оркестратор, Мовознавець, Новачок);
+    # бд.читати на базі з R-Tree — не «заборонено: INSERT» (Новачок)
+    f81д_, r81д_, rc81д_ = (f'{DATA}/звіти/{n_}81д.db' for n_ in ('чужа', 'дерево', 'дерево_чисте'))
+
+    def foreign81д():
+        for f_ in (f81д_, r81д_, rc81д_):
+            if os.path.exists(f_):
+                os.remove(f_)
+        with sqlite3.connect(f81д_) as c_:   # база не з Nigredo, як в огляді 0.8.1г; k — CHECK на межі без пастки
+            c_.create_function('ngr_rowid', 2, lambda *a: None)
+            c_.executescript("CREATE TABLE t(x); CREATE TABLE c(a CHECK (ngr_rowid('c', 0) IS NULL)); "
+                             "CREATE TABLE d(a, b DEFAULT (ngr_rowid('d', 0))); CREATE TABLE k(a CHECK (a IS NOT NULL)); "
+                             'INSERT INTO c(rowid, a) VALUES (9223372036854775807, 0); '
+                             'INSERT INTO k(rowid, a) VALUES (9223372036854775807, 0)')
+        for f_, trap_ in ((r81д_, True), (rc81д_, False)):
+            with sqlite3.connect(f_) as c_:
+                c_.executescript('CREATE TABLE t(x); CREATE VIRTUAL TABLE r USING rtree(id, x0, x1)')
+                if trap_:
+                    c_.execute('PRAGMA writable_schema = ON')
+                    c_.execute('UPDATE sqlite_master SET sql = \'CREATE TABLE "r_rowid"(rowid INTEGER PRIMARY KEY, nodeno '
+                               "CHECK (ngr_rowid(''r'', 0) IS NULL))' WHERE name = 'r_rowid'")
+    body81д_ = ('← п λq ☂ σ 🜔бд.писати 「' + f81д_ + '」 q 【】 λe e\n' + ''.join(f'» п 「{s_}」\n' for s_ in (
+        'INSERT INTO t(x) VALUES (1)', 'INSERT INTO c(a) VALUES (1)', 'INSERT INTO d(a, b) VALUES (1, 2)',
+        "INSERT INTO c(a) VALUES (NGR_ROWID('c', 1))", 'INSERT INTO k(a) VALUES (1)'))
+        + f'» ☂ σ 🜔бд.писати 「{f81д_}」 「INSERT INTO t(x) VALUES (random() + ?)」 【1】 λe e\n'
+        + f'» ☂ σ 🜔бд.писати 「{f81д_}」 「INSERT INTO t(x) VALUES (?)」 【2】 λe e\n'
+        + f'» ☂ σ 🜔бд.писати 「{r81д_}」 「INSERT INTO r VALUES (1, 0, 1)」 【】 λe e\n'
+        + f'» ☂ σ 🜔бд.писати 「{rc81д_}」 「INSERT INTO r VALUES (1, 0, 1)」 【】 λe e\n'
+        + f'» ☂ σ 🜔бд.читати 「{r81д_}」 「SELECT count(*) AS n FROM r」 【】 λe e\n'
+        + f'» ☂ σ 🜔бд.читати 「{rc81д_}」 「SELECT count(*) AS n FROM r」 【】 λe e')
+    res81дч = []
+    for k_, cmd_ in enumerate((NGR_CMD, [sys.executable, str(NGR)])):
+        for mode_, seal_ in (('запуск', ''), ('квота', '≤1'), ('сухо', '')):
+            foreign81д()
+            before_ = pathlib.Path(r81д_).read_bytes()
+            tp_ = tmp / f'чужа81д_{k_}_{mode_}.jsonl'
+            res81дч.append(subprocess.run(
+                [*cmd_, '--слід', str(tp_), *(['--сухо'] if mode_ == 'сухо' else []), '-e',
+                 f'🜂 【「бд.писати:{DATA}/звіти{seal_}」 「бд.читати:{DATA}/звіти」】\n' + body81д_],
+                capture_output=True, text=True, env=envd))
+            res81дч.append(subprocess.run([sys.executable, str(NGR), '--перевірити-слід', str(tp_)],
+                                          capture_output=True, text=True, env=envd).stdout)
+            res81дч.append(pathlib.Path(r81д_).read_bytes() == before_)
+    svc81д_ = 'бд.писати: заборонено: службова функція інтерпретатора (ngr_rowid) — її кличуть лише його тимчасові тригери'
+    note81д_ = (svc81д_ + '; у запиті її немає — її кличе схема бази (DEFAULT, CHECK, згенерований стовпець, індекс, '
+                'тригер, VIEW чи тіньова таблиця)')
+    quota81д_ = f'бд.писати: вичерпано квоту (печатка: «бд.писати:{DATA}/звіти≤1»)'
+    rnd81д_ = 'бд.писати: заборонено: випадковість SQLite (у запиті — random) без права «жереб»'
+    out81д = [r_.stdout.splitlines() for r_ in res81дч[0::3]]
+    run81д, quota81д, dry81дч = out81д[0], out81д[1], out81д[2]
+    check(out81д[:3] == out81д[3:] and all(res81дч[2::3]) and run81д[:4] == ['1', note81д_, note81д_, svc81д_]
+          and run81д[4].startswith('бд.писати: запобіжна відмова (так у самій базі')
+          and run81д[5].startswith('бд.писати: заборонено: випадковість SQLite (random)')
+          and run81д[6:] == ['1', note81д_, '3', '【『「n」 0』】', '【『「n」 1』】']   # 3 — і тіньові таблиці R-Tree
+          and quota81д == ['1', note81д_, note81д_, svc81д_, quota81д_, rnd81д_, quota81д_, note81д_, quota81д_,
+                           '【『「n」 0』】', '【『「n」 0』】']
+          and dry81дч == ['0', note81д_, note81д_, svc81д_, '0', rnd81д_, '0', note81д_, '0', '【『「n」 0』】', '【『「n」 0』】']
+          and 'не скомпілювався' not in res81дч[6].stderr and 'INSERT INTO t(x) VALUES (?)' in res81дч[6].stderr
+          and 'INSERT INTO k(a) VALUES (1)' in res81дч[6].stderr
+          and all('(«заборонено»): 5 ' in v_ and 'у запиті її немає — її кличе схема бази' in v_
+                  for v_ in (res81дч[1], res81дч[4], res81дч[10], res81дч[13])),
+          'SQLite: CHECK таблиці на межі й тіньової таблиці R-Tree з чужої бази — «заборонено: службова функція» ще до '
+          'виконання в запуску, під квотою й у --сухо (той самий попередній прохід; файл R-Tree незмінний), «у запиті її '
+          'немає — її кличе схема бази»; права без дії — з параметрами (random() з «?» — «заборонено»); бд.читати з R-Tree '
+          '— ✓ (огляд 0.8.1д)',
+          '\n---\n'.join(r_.stdout + r_.stderr for r_ in res81дч[0::3]) + str(res81дч[2::3]) + res81дч[1] + res81дч[4])
+    # огляд 0.8.1д (Скептик, Практик, Мовознавець): ідіома FAQ SQLite зі sqlite_temp_master давала «заборонено: службові
+    # тригери інтерпретатора» — і в бд.читати, де їх немає; тепер стовпець sql схеми temp для програми — NULL; ALTER TABLE
+    # працює, як і досі
+    faq81д_ = f'{DATA}/звіти/ідіома81д.db'
+    faq_ = "SELECT * FROM sqlite_master UNION ALL SELECT * FROM sqlite_temp_master"
+    qf81д_ = (f'🜂 【「бд.писати:{DATA}/звіти」 「бд.читати:{DATA}/звіти」】\n'
+              f'← п λq ☂ σ 🜔бд.писати 「{faq81д_}」 q 【】 λe e\n← ч λq ☂ σ 🜔бд.читати 「{faq81д_}」 q 【】 λe e\n'
+              '» п 「CREATE TABLE v(s)」\n'
+              f"» ч 「SELECT name FROM ({faq_}) WHERE type = 'table' ORDER BY name」\n" + ''.join(f'» п 「{s_}」\n' for s_ in (
+                  f"INSERT INTO v(s) SELECT name FROM ({faq_}) WHERE type = 'table'",
+                  'INSERT INTO v(s) SELECT count(*) FROM temp.sqlite_master WHERE sql IS NULL',
+                  'INSERT INTO v(s) SELECT count(*) FROM sqlite_temp_master WHERE sql IS NOT NULL',
+                  'CREATE TABLE a(x, y)', 'ALTER TABLE a RENAME TO b', 'ALTER TABLE b RENAME COLUMN x TO z',
+                  'ALTER TABLE b DROP COLUMN y', 'INSERT INTO b(z) VALUES (1)'))
+              + '» ч 「SELECT s FROM v」\n» ч 「SELECT z FROM b」')
+    resf81д = []
+    for k_, cmd_ in enumerate((NGR_CMD, [sys.executable, str(NGR)])):
+        if os.path.exists(faq81д_):
+            os.remove(faq81д_)
+        tp_ = tmp / f'ідіома81д_{k_}.jsonl'
+        resf81д.append(subprocess.run([*cmd_, '--слід', str(tp_), '-e', qf81д_], capture_output=True, text=True, env=envd))
+        resf81д.append(subprocess.run([sys.executable, str(NGR), '--перевірити-слід', str(tp_)], capture_output=True,
+                                      text=True, env=envd).stdout)
+    check(resf81д[0].stdout == resf81д[2].stdout == '0\n【『「name」 「v」』】\n1\n1\n1\n0\n0\n0\n0\n1\n'
+          '【『「s」 「v」』 『「s」 1』 『「s」 0』】\n【『「z」 1』】\n'
+          and all('спроб поза правами немає' in v_ for v_ in (resf81д[1], resf81д[3])),
+          'SQLite: ідіома FAQ зі sqlite_temp_master — ✓ і в бд.читати, і в бд.писати: стовпець sql схеми temp — NULL, а не '
+          '«заборонено»; ALTER TABLE RENAME, RENAME COLUMN, DROP COLUMN працюють (огляд 0.8.1д)',
+          resf81д[0].stdout + resf81д[0].stderr + resf81д[1] + resf81д[2].stdout + resf81д[3])
     seal81 = tmp / 'печатка81'
     (seal81 / 'звіти').mkdir(parents=True, exist_ok=True)
     (seal81 / 'файл.ngr').write_text('🜂 「новий файл」 【「писати:звіти/нова.txt」】\n» 🜔писати 「звіти/нова.txt」 「x」\n',

@@ -339,11 +339,12 @@ struct AuthCtx {
     ours: Vec<String>,  // тимчасові тригери guard цього запиту: лише з них — службова функція (огляд 0.8.1в)
     svc: String,        // її назва — нова на кожен запит: ні схема бази, ні SQL програми її не знають (огляд 0.8.1г)
     altered: bool,      // ALTER TABLE: текст схеми temp переписує сам SQLite
+    vt: Vec<String>,    // віртуальні таблиці зʼєднання поза дозволеними (vtabs; огляд 0.8.1д)
 }
 
 fn auth_ctx(it: &Interp, write: bool) -> AuthCtx {
     AuthCtx { write, rand: db_rights(it).1, why: Vec::new(), careful: false, doubt: Vec::new(), ours: Vec::new(),
-              svc: String::new(), altered: false }
+              svc: String::new(), altered: false, vt: Vec::new() }
 }
 
 /// (годинник, жереб) SQLite: «час» і «жереб» без квоти (її не порахувати), як 🜔час і 🜔жереб (суд 9; «час≤N» — суд 9в).
@@ -767,29 +768,67 @@ fn service(ops: &[(String, Option<String>)]) -> bool {
 }
 
 const SVC_WHY: &str = "службова функція інтерпретатора (ngr_rowid) — її кличуть лише його тимчасові тригери";
-const TEMP_WHY: &str = "службові тригери інтерпретатора (текст схеми temp) — програма їх не читає";
+const SVC_NOTE: &str = "; у запиті її немає — її кличе схема бази (DEFAULT, CHECK, згенерований стовпець, індекс, тригер, VIEW чи тіньова таблиця)";
 
-/// Що знає попередній прохід: таблиці, у які запит пише (і системні), відмови authorizer і сумніви (db_doubts).
+/// db_vtabs: віртуальні таблиці SQLite, яких програма не бачить (огляд 0.8.1д, Н-1 Аудитора й Оркестратора: sqlite_stmt —
+/// перелік запитів зʼєднання з текстом, а в еталона й тимчасові тригери з назвою службової). Перелік дозволених: модулі
+/// зʼєднання, крім json_each, json_tree і таблиць-функцій PRAGMA; sqlite_… — завжди, решта — коли таблиці чи VIEW з
+/// такою назвою в самій базі немає. Назви — малими ASCII, як їх порівнює SQLite.
+fn vtabs(l: &Lib, db: *mut c_void) -> Result<Vec<String>, PyErr> {
+    exec(l, db, "SELECT lower(name) FROM pragma_module_list m WHERE lower(name) NOT IN ('json_each', 'json_tree') \
+                 AND substr(lower(name), 1, 7) <> 'pragma_' AND (substr(lower(name), 1, 7) = 'sqlite_' OR (NOT EXISTS \
+                 (SELECT 1 FROM main.sqlite_master s WHERE s.type IN ('table', 'view') AND lower(s.name) = lower(m.name)) \
+                 AND NOT EXISTS (SELECT 1 FROM temp.sqlite_master s WHERE s.type IN ('table', 'view') \
+                 AND lower(s.name) = lower(m.name))))", &[])
+}
+
+/// db_rtree: бд.читати — R-Tree (rtree, rtree_i32, geopoly) готує свої INSERT ще при підключенні таблиці, і authorizer
+/// читання давав «заборонено: INSERT» на чистому SELECT (огляд 0.8.1д, Новачок): підключаємо до authorizer (зʼєднання
+/// лише на читання — писати R-Tree не може). Інших модулів — ні.
+fn rtree(l: &Lib, db: *mut c_void) {
+    let Ok(names) = exec(l, db, "SELECT name FROM main.sqlite_master WHERE type = 'table' AND (lower(sql) GLOB \
+                                 'create virtual table * using rtree(*' OR lower(sql) GLOB 'create virtual table * using rtree_i32(*' \
+                                 OR lower(sql) GLOB 'create virtual table * using geopoly(*') ORDER BY name", &[]) else { return };
+    for t in names {
+        let _ = exec(l, db, &format!("SELECT 1 FROM main.\"{}\" LIMIT 0", t.replace('"', "\"\"")), &[]); // не підключилась — скаже запит
+    }
+}
+
+/// db_svc_note: службова без ngr_rowid у тексті запиту — її покликала схема бази (огляд 0.8.1д, Практик, Оркестратор,
+/// Мовознавець, Новачок).
+fn svc_note(why: &mut [String], sql: &str) {
+    if why.first().map_or(false, |w| w == SVC_WHY) && !sql.to_ascii_lowercase().contains("ngr_rowid") {
+        why[0].push_str(SVC_NOTE);
+    }
+}
+
+/// Що знає попередній прохід: таблиці, у які запит пише (і системні), відмови authorizer, сумніви (db_doubts) і чи
+/// EXPLAIN не скомпілювався.
 struct Pass {
     ins: Vec<String>,
     upd: Vec<String>,
     system: Vec<String>,
     denied: Vec<String>,
     doubt: Vec<String>,
+    failed: bool,
 }
 
 /// _db_written: таблиці main, у які запит може писати — і сам, і тригерами (EXPLAIN — без виконання); пише віртуальна
 /// таблиця — то й тіньові (FTS5 бере rowid сам, своїми запитами). Не скомпілювався — то всі таблиці (суд 9г: захист
 /// закритий, доки не доведено інше). Третє — системні таблиці, у які рядок допише сам SQLite: sqlite_schema — на CREATE,
 /// sqlite_sequence — на INSERT у будь-яку таблицю (AUTOINCREMENT authorizer не показує). Відмовив authorizer — відмовить
-/// і справжній: це одразу «заборонено», без тригерів і стану бази (огляд 0.8.1, Н-1 Скептика).
+/// і справжній: це одразу «заборонено», без тригерів і стану бази (огляд 0.8.1, Н-1 Скептика). Той самий прохід — і в
+/// правах без дії (квота, --сухо; огляд 0.8.1д, Мовознавець): службову в тексті схеми таблиць, у які запит пише, видно
+/// однаково на зʼєднанні запису й лише на читання (там SQLite не бере CHECK у схему, а тіньові таблиці R-Tree пише сам
+/// R-Tree; огляд 0.8.1д, Скептик, Практик, Мовознавець, Аудитор, Оркестратор).
 fn written(l: &Lib, db: *mut c_void, clock_ok: bool, sql: &str, args: &[Arg]) -> Result<Pass, PyErr> {
+    let vt = vtabs(l, db)?;
     let mut w = Written {
         ins: Vec::new(),
         upd: Vec::new(),
         reads: Vec::new(),
         auth: AuthCtx { write: true, rand: false, why: Vec::new(), careful: false, doubt: Vec::new(), ours: Vec::new(),
-                        svc: String::new(), altered: false },
+                        svc: String::new(), altered: false, vt },
     };
     (l.set_authorizer)(db, Some(on_record), &mut w as *mut Written as *mut c_void);
     // помилку запиту покаже його виконання, а захист стане на всі таблиці
@@ -797,7 +836,8 @@ fn written(l: &Lib, db: *mut c_void, clock_ok: bool, sql: &str, args: &[Arg]) ->
     let code = if ops.is_err() && w.auth.why.is_empty() { prepare_code(l, db, &db_explain(sql)) } else { None };
     (l.set_authorizer)(db, None, std::ptr::null_mut());
     let failed = ops.is_err();
-    let none = |denied: Vec<String>| Pass { ins: Vec::new(), upd: Vec::new(), system: Vec::new(), denied, doubt: Vec::new() };
+    let none = |denied: Vec<String>| Pass { ins: Vec::new(), upd: Vec::new(), system: Vec::new(), denied, doubt: Vec::new(),
+                                            failed };
     if !w.auth.why.is_empty() {
         return Ok(none(w.auth.why));
     }
@@ -811,10 +851,6 @@ fn written(l: &Lib, db: *mut c_void, clock_ok: bool, sql: &str, args: &[Arg]) ->
     if failed && (code.map_or(false, |c| c & 0xff == 1) || !compiles(l, db, sql, args)) {
         return Ok(none(Vec::new())); // не скомпілюється й сам — нічого не запише
     }
-    let doubt = match &ops {
-        Err(_) => vec!["запит не перевірено до виконання (EXPLAIN не скомпілювався)".to_string()],
-        Ok(ops) => doubts(clock_ok, false, ops, &pragma_tables(l, db, &w.reads)?),
-    };
     let names = exec(l, db, r"SELECT name FROM pragma_table_list WHERE schema = 'main' AND wr = 0 AND name NOT LIKE 'sqlite\_%' ESCAPE '\' ORDER BY name", &[])?;
     let types = exec(l, db, r"SELECT type FROM pragma_table_list WHERE schema = 'main' AND wr = 0 AND name NOT LIKE 'sqlite\_%' ESCAPE '\' ORDER BY name", &[])?;
     let sys = exec(l, db, r"SELECT name FROM pragma_table_list WHERE schema = 'main' AND wr = 0 AND type = 'table' AND name LIKE 'sqlite\_%' ESCAPE '\' ORDER BY name", &[])?;
@@ -838,9 +874,26 @@ fn written(l: &Lib, db: *mut c_void, clock_ok: bool, sql: &str, args: &[Arg]) ->
             }
         }
     }
+    // службова в тексті схеми таблиць, у які запит пише (сама таблиця, її індекси й тригери), — так само на будь-якому
+    // зʼєднанні; малі — самого SQLite (ASCII), як і в еталоні
+    let svc = "FROM main.sqlite_master WHERE instr(lower(sql), 'ngr_rowid') > 0";
+    if has_row(l, db, &format!("SELECT 1 {}", svc), &[])? {
+        let mut all: Vec<&String> = w.ins.iter().chain(w.upd.iter()).collect();
+        all.sort();
+        all.dedup();
+        for t in all {
+            if has_row(l, db, &format!("SELECT 1 {} AND tbl_name = ? COLLATE NOCASE", svc), &[Arg::Text(t.clone())])? {
+                return Ok(none(vec![SVC_WHY.into()]));
+            }
+        }
+    }
+    let doubt = match &ops {
+        Err(_) => vec!["запит не перевірено до виконання (EXPLAIN не скомпілювався)".to_string()],
+        Ok(ops) => doubts(clock_ok, false, ops, &pragma_tables(l, db, &w.reads)?),
+    };
     let ok = |t: &String| matches!(kind(t), Some("table") | Some("shadow"));
     Ok(Pass { ins: w.ins.into_iter().filter(ok).collect(), upd: w.upd.into_iter().filter(ok).collect(), system,
-              denied: Vec::new(), doubt })
+              denied: Vec::new(), doubt, failed })
 }
 
 /// _db_guard: без «час» — свої функції дат (дата з даних — як у SQLite; 'now', без часу, localtime/utc, CURRENT_* —
@@ -890,7 +943,7 @@ fn guard(l: &Lib, db: *mut c_void, it: &Interp, g: &mut Guard, write: bool, sql:
                 return Err(PyErr::Sql("Error creating function".into()));
             }
             add("ngr_rowid", 2, 4, g)?;
-            let Pass { ins, upd, system, denied, doubt } = written(l, db, clock_ok, sql, args)?;
+            let Pass { ins, upd, system, denied, doubt, .. } = written(l, db, clock_ok, sql, args)?;
             let a = unsafe { &mut *g.auth };
             if !denied.is_empty() {
                 // відмовив authorizer — так само відмовить і в запуску: одразу, без тригерів
@@ -985,7 +1038,7 @@ fn guard(l: &Lib, db: *mut c_void, it: &Interp, g: &mut Guard, write: bool, sql:
     Ok(())
 }
 
-const DENIED_WHY: [&str; 5] = ["load_", "годинник", "випадковість", "сирі сторінки", "службов"]; // у тексті помилки як є
+const DENIED_WHY: [&str; 6] = ["load_", "годинник", "випадковість", "сирі сторінки", "службов", "віртуальна таблиця"]; // як є
 
 /// db_refusal: текст відмови для програми — і в запуску, і в правах без дії (квота, --сухо; огляд 0.8.1в, Аудитор).
 fn db_refusal(why: &[String], write: bool) -> String {
@@ -1055,16 +1108,23 @@ extern "C" fn on_auth(ud: *mut c_void, action: c_int, a1: *const c_char, a2: *co
     if action == 26 {
         cx.altered = true;
     }
-    // текст схеми temp (там назва службової — 128 біт випадковості без права «жереб») програма не читає — крім самого
-    // ALTER TABLE, що переписує його сам (огляд 0.8.1г)
+    // текст схеми temp (там назва службової — 128 біт випадковості без права «жереб») програма читає як NULL
+    // (SQLITE_IGNORE, а не відмова: ідіома FAQ SQLite давала хибну тривогу; огляд 0.8.1д, Скептик, Практик,
+    // Мовознавець) — крім самого ALTER TABLE, що переписує його сам (огляд 0.8.1г)
     if action == 20 && db.as_deref() == Some("temp") && uni::lower(a2.as_deref().unwrap_or("")) == "sql" && !cx.altered {
-        cx.why.push(TEMP_WHY.into());
-        return 1;
+        return 2;
     }
     let t = uni::lower(a1.as_deref().unwrap_or(""));
     if t == "sqlite_dbpage" {
         // сирі сторінки файлу: вміст повз SQL, authorizer і тригери — клас writable_schema (огляд 0.8.1б)
         cx.why.push("сирі сторінки бази (sqlite_dbpage): вміст файлу повз SQL, authorizer і тригери".into());
+        return 1;
+    }
+    // віртуальні таблиці — перелік дозволених, а не заборонених (огляд 0.8.1д, Н-1 Аудитора й Оркестратора: sqlite_stmt);
+    // a1 — наявна таблиця лише в READ, INSERT, UPDATE, DELETE
+    if matches!(action, 20 | 18 | 23 | 9) && cx.vt.contains(&a1.as_deref().unwrap_or("").to_ascii_lowercase()) {
+        cx.why.push(format!("віртуальна таблиця SQLite «{}» — програмі лише json_each, json_tree і таблиці самої бази",
+                            uni::safe(a1.as_deref().unwrap_or(""))));
         return 1;
     }
     if !cx.rand && t.starts_with("sqlite_") && !SCHEMA_TABLES.contains(&t.as_str())
@@ -1211,20 +1271,12 @@ fn pragma(l: &Lib, db: *mut c_void, sql: &str) -> Result<Option<i64>, PyErr> {
     Ok(v)
 }
 
-pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<V> {
-    let l = load().expect("libsqlite3");
-    let pv = match &args[0].v {
-        Val::Str(s) => s.s.to_string(),
-        _ => show(&args[0], true)?,
-    };
-    let real = it.path_ok(tool, &args[0].v, pos, write)?;
-    let sql = match &args[1].v {
-        Val::Str(s) => s.s.to_string(),
-        _ => return ngr(format!("{}: запит має бути рядком", tool), pos),
-    };
-    let params = match &args[2].v {
+/// db_args: параметри запиту так, як їх привʼяже SQLite, — і в запуску, і в правах без дії (квота, --сухо: інакше запит з
+/// «?» там не компілювався, і random() поряд ховався за «вичерпано квоту»; огляд 0.8.1д, Оркестратор).
+fn bind(tool: &str, params: &V, pos: Pos) -> R<Vec<Arg>> {
+    let params = match &params.v {
         Val::List(l) => l.clone(),
-        _ => return ngr(format!("{}: параметри — список (для ? у запиті), а не {}", tool, kind(&args[2])), pos),
+        _ => return ngr(format!("{}: параметри — список (для ? у запиті), а не {}", tool, kind(params)), pos),
     };
     let mut bound = Vec::new();
     for x in params.iter() {
@@ -1253,6 +1305,21 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
             _ => return ngr(format!("{}: параметр — рядок, число, істинність чи ∅, а не {}", tool, kind(x)), pos),
         });
     }
+    Ok(bound)
+}
+
+pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<V> {
+    let l = load().expect("libsqlite3");
+    let pv = match &args[0].v {
+        Val::Str(s) => s.s.to_string(),
+        _ => show(&args[0], true)?,
+    };
+    let real = it.path_ok(tool, &args[0].v, pos, write)?;
+    let sql = match &args[1].v {
+        Val::Str(s) => s.s.to_string(),
+        _ => return ngr(format!("{}: запит має бути рядком", tool), pos),
+    };
+    let bound = bind(tool, &args[2], pos)?;
     static_ok(it, pos, tool, &pv, &sql)?;
     if !write && !pathx::isfile(&real) {
         return ngr(format!("{}: немає такого файлу: {}", tool, pv), pos);
@@ -1280,6 +1347,10 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
                 pragma(l, db, &format!("PRAGMA max_page_count = {}", 64 * 1024 * 1024 / page)).map_err(Ok)?;
             }
             guard(l, db, it, &mut grd, write, &sql, &bound).map_err(Ok)?; // до authorizer і лічби кроків: не запит програми
+            auth.vt = vtabs(l, db).map_err(Ok)?; // запису — ще в транзакції guard
+            if !write {
+                rtree(l, db);
+            }
             (l.set_authorizer)(db, Some(on_auth), &mut auth as *mut AuthCtx as *mut c_void);
             (l.progress)(db, 1000, Some(on_progress), &mut prog as *mut ProgCtx as *mut c_void);
             let before = (l.total_changes)(db);
@@ -1380,6 +1451,7 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
                 if std::time::Instant::now() > deadline {
                     return ngr(format!("{}: запит довший за 30 с", tool), pos);
                 }
+                svc_note(&mut auth.why, &sql);
                 // таблиця вже на межі чи системна біля неї — так у самій базі (суд 9д), — лише коли в запиті заборонених
                 // дій не знайдено (огляд 0.8.1, Н-1 Скептика)
                 let careful = auth.careful && auth.doubt.is_empty();
@@ -1434,7 +1506,8 @@ extern "C" fn on_stub(ctx: *mut c_void, _: c_int, _: *mut *mut c_void) {
     (load().expect("libsqlite3").result_null)(ctx);
 }
 
-/// _db_ok (права без дії, для вичерпаної квоти): шлях і authorizer на EXPLAIN.
+/// _db_ok (права без дії: вичерпана квота, --сухо): шлях і authorizer на EXPLAIN з тими самими параметрами, що й у
+/// запуску (огляд 0.8.1д, Оркестратор); бд.писати без «жереб» — той самий попередній прохід, що й у запуску (written).
 pub fn rights(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<()> {
     let l = load().expect("libsqlite3");
     let pv = match &args[0].v {
@@ -1447,50 +1520,74 @@ pub fn rights(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) ->
         _ => return ngr(format!("{}: запит має бути рядком", tool), pos),
     };
     static_ok(it, pos, tool, &pv, &sql)?;
+    let bound = bind(tool, &args[2], pos).unwrap_or_default(); // хибні параметри покаже запуск; тут — як без них
     let mut w = Written { ins: Vec::new(), upd: Vec::new(), reads: Vec::new(), auth: auth_ctx(it, write) };
     let uri = if pathx::isfile(&real) { format!("file:{}?mode=ro", quote(&real)) } else { ":memory:".into() };
     let db = match open(l, &uri) {
         Ok(db) => db,
         Err(_) => return Ok(()),
     };
+    it.db_unchecked = false;
     (l.limit)(db, 7, 0);
-    if write && !db_rights(it).1 {
+    match vtabs(l, db) {
+        Ok(vt) => w.auth.vt = vt,
+        Err(_) => {
+            it.db_unchecked = true; // схеми не прочитати — як і запит, що не скомпілювався
+            (l.close_v2)(db);
+            return Ok(());
+        }
+    }
+    if !write {
+        rtree(l, db);
+    }
+    let (clock_ok, rand_ok) = db_rights(it);
+    if write && !rand_ok {
         // приманка ngr_rowid — як у запуску: є, але SQL і схему програми з нею не пустить (огляд 0.8.1в, 0.8.1г)
         let c = CString::new("ngr_rowid").unwrap();
         (l.create_function)(db, c.as_ptr(), 2, 1 | 0x800, std::ptr::null_mut(), Some(on_stub), std::ptr::null(),
                             std::ptr::null(), std::ptr::null());
-    }
-    (l.set_authorizer)(db, Some(on_record), &mut w as *mut Written as *mut c_void);
-    // «;PRAGMA …» — та сама відмова, що й у запуску (суд 9г); не скомпілювався на нинішній базі — random, годинник
-    // без виконання не видно (--сухо так і позначає; огляд 0.8.1в, Практик)
-    let ops = match explain_ops(l, db, &db_explain(&sql), &[]) {
-        Ok(ops) => ops,
-        Err(PyErr::Sql(m)) => {
-            if !write && readonly(&m) {
-                w.auth.why.push("запис через бд.читати".into());
+        // той самий попередній прохід, що й у запуску: відмова authorizer, службова в байткоді чи в тексті схеми таблиць,
+        // у які запит пише, — та сама відмова; не скомпілювався — позначка; random, годинник і таблиці-функції PRAGMA в
+        // байткоді — «заборонено», бо без виконання їх не перевірити (огляд 0.8.1б)
+        let (denied, doubt, failed) = match written(l, db, clock_ok, &sql, &bound) {
+            Ok(p) => (p.denied, p.doubt, p.failed),
+            Err(_) => (Vec::new(), Vec::new(), true),
+        };
+        it.db_unchecked = failed && denied.is_empty();
+        w.auth.why.extend(if !denied.is_empty() { denied } else if failed { Vec::new() } else { doubt });
+    } else {
+        (l.set_authorizer)(db, Some(on_record), &mut w as *mut Written as *mut c_void);
+        // «;PRAGMA …» — та сама відмова, що й у запуску (суд 9г); не скомпілювався на нинішній базі — random, годинник
+        // без виконання не видно (--сухо так і позначає; огляд 0.8.1в, Практик)
+        let ops = match explain_ops(l, db, &db_explain(&sql), &bound) {
+            Ok(ops) => ops,
+            Err(PyErr::Sql(m)) => {
+                if !write && readonly(&m) {
+                    w.auth.why.push("запис через бд.читати".into());
+                }
+                it.db_unchecked = true;
+                Vec::new()
             }
-            it.db_unchecked = true;
-            Vec::new()
+            Err(_) => {
+                it.db_unchecked = true;
+                Vec::new()
+            }
+        };
+        // таблицю-функцію PRAGMA authorizer спитає лише в запуску (огляд 0.8.1, Скептик)
+        (l.set_authorizer)(db, None, std::ptr::null_mut());
+        if w.auth.why.is_empty() {
+            if let Ok(ts) = pragma_tables(l, db, &w.reads) {
+                w.auth.why.extend(ts.iter().map(|t| format!("PRAGMA {}", uni::safe(&uni::lower(&t[7..])))));
+            }
         }
-        Err(_) => {
-            it.db_unchecked = true;
-            Vec::new()
+        // random і годинник видно лише під час виконання — за байткодом, як на старій базі: інакше вичерпана квота
+        // ховала б спробу, а --сухо писав би «✓» (огляд 0.8.1б, Аудитор)
+        if w.auth.why.is_empty() {
+            w.auth.why.extend(if service(&ops) { vec![SVC_WHY.into()] } else { doubts(clock_ok, rand_ok, &ops, &[]) });
         }
-    };
-    // таблицю-функцію PRAGMA authorizer спитає лише в запуску (огляд 0.8.1, Скептик)
-    (l.set_authorizer)(db, None, std::ptr::null_mut());
-    if w.auth.why.is_empty() {
-        if let Ok(ts) = pragma_tables(l, db, &w.reads) {
-            w.auth.why.extend(ts.iter().map(|t| format!("PRAGMA {}", uni::safe(&uni::lower(&t[7..])))));
-        }
-    }
-    // random і годинник видно лише під час виконання — за байткодом, як на старій базі: інакше вичерпана квота ховала б
-    // спробу, а --сухо писав би «✓» (огляд 0.8.1б, Аудитор)
-    if w.auth.why.is_empty() {
-        let (clock_ok, rand_ok) = db_rights(it);
-        w.auth.why.extend(if service(&ops) { vec![SVC_WHY.into()] } else { doubts(clock_ok, rand_ok, &ops, &[]) });
     }
     (l.close_v2)(db);
+    svc_note(&mut w.auth.why, &sql);
     if let Some(why) = w.auth.why.first().cloned() {
         deny(it, tool, &pv, &sql, &format!("дія SQLite поза дозволеним: {}", why).chars().take(1000).collect::<String>())?;
         return ngr(format!("{}: {}", tool, db_refusal(&w.auth.why, write)), pos); // той самий текст, що й у запуску
