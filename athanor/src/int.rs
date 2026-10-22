@@ -144,7 +144,27 @@ impl Int {
 
     pub fn to_string(&self) -> String {
         match self {
-            Int::S(x) => x.to_string(),
+            Int::S(x) => {
+                // цифри — у буфер на стеку, рядок — рівно потрібної довжини (i64::to_string бере місце із запасом, і
+                // PStr::new потім перевиділяє памʼять під точну довжину)
+                let mut buf = [0u8; 20];
+                let mut i = buf.len();
+                let mut v = x.unsigned_abs();
+                loop {
+                    i -= 1;
+                    buf[i] = b'0' + (v % 10) as u8;
+                    v /= 10;
+                    if v == 0 {
+                        break;
+                    }
+                }
+                let mut s = String::with_capacity(buf.len() - i + (*x < 0) as usize);
+                if *x < 0 {
+                    s.push('-');
+                }
+                s.push_str(std::str::from_utf8(&buf[i..]).unwrap());
+                s
+            }
             Int::B(b) => {
                 let s = b.mag.to_dec();
                 if b.neg { format!("-{}", s) } else { s }

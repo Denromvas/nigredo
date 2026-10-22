@@ -139,7 +139,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                     let mut s = String::with_capacity(x.s.len() + y.s.len());
                     s.push_str(&x.s);
                     s.push_str(&y.s);
-                    return Ok(V::str(s));
+                    return Ok(V::new(Val::Str(Rc::new(PStr::owned(s, x.nch + y.nch))), 1.0));
                 }
                 (Val::List(x), Val::List(y)) => {
                     if a[0].n + a[1].n > it.max_size {
@@ -928,6 +928,21 @@ pub fn parse_py_int(t: &str) -> Option<Int> {
     Some(Int::from_dec(neg, if digits.is_empty() { "0" } else { digits }))
 }
 
+/// Мале число для Dec::small_exact: (знак, коефіцієнт, порядок) — як to_dec, без копії коефіцієнта.
+#[inline]
+fn small_dec(x: &Val) -> Option<(bool, u64, i64)> {
+    match x {
+        Val::Int(Int::S(i)) => Some((*i < 0, i.unsigned_abs(), 0)),
+        Val::Dec(d) => Some((d.neg, d.coef.to_u64()?, d.exp)),
+        _ => None,
+    }
+}
+
+/// Точне ＋ － × з десятковими над малими — без довгої арифметики (None — загальний шлях).
+pub fn small_exact(op: char, x: &Val, y: &Val) -> Option<Val> {
+    Some(Val::Dec(Rc::new(Dec::small_exact(op, small_dec(x)?, small_dec(y)?)?)))
+}
+
 fn exact_op(op: char, x: &Val, y: &Val, g: char, pos: Pos) -> R<Val> {
     if let (Val::Int(a), Val::Int(b)) = (x, y) {
         return Ok(Val::Int(match op {
@@ -935,6 +950,9 @@ fn exact_op(op: char, x: &Val, y: &Val, g: char, pos: Pos) -> R<Val> {
             '－' => a.sub(b),
             _ => a.mul(b),
         }));
+    }
+    if let Some(r) = small_exact(op, x, y) {
+        return Ok(r);
     }
     let (a, b) = (to_dec(x), to_dec(y));
     let ctx = dec::exact_ctx();
