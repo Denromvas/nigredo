@@ -24,9 +24,13 @@ pub struct Node {
     pub eff: u8,
     pub tt: u8,
     pub lv: Option<crate::value::V>, // значення літерала (готове: виконання лише ставить впевненість)
-    pub ints: u32,  // цілочислове дерево (＋ － × ‰ над іменами й цілими літералами): скільки вузлів; 0 — не таке
+    pub ints: u32,  // цілочислове дерево (＋ － × ‰ над іменами, цілими літералами й § імʼя ціле): скільки вузлів; 0 — не таке
     pub icmp: bool, // корінь такого дерева — порівняння (‹ › ≤ ≥ ＝ ≠): дає ●/○, тож не буває операндом
+    pub fast: u8,   // швидка доріжка вузла: F_TREE — int_tree (операція в корені), F_IDX — § імʼя ціле
 }
+
+pub const F_TREE: u8 = 1;
+pub const F_IDX: u8 = 2;
 
 #[derive(Debug)]
 pub enum Param {
@@ -155,7 +159,12 @@ impl Node {
             _ => None,
         };
         let (ints, icmp) = int_shape(&k, &lv);
-        Node { pos, k, eff, tt, lv, ints, icmp }
+        let fast = match &k {
+            K::Op('§', _) if ints == 3 => F_IDX,
+            _ if ints > 1 => F_TREE,
+            _ => 0,
+        };
+        Node { pos, k, eff, tt, lv, ints, icmp, fast }
     }
 
     pub fn is_lam(&self) -> bool {
@@ -179,6 +188,10 @@ fn int_shape(k: &K, lv: &Option<crate::value::V>) -> (u32, bool) {
     match k {
         K::Lit(_) => (matches!(lv, Some(v) if matches!(v.v, Val::Int(crate::int::Int::S(_)))) as u32, false),
         K::Var(..) => (1, false),
+        // § імʼя ціле (стан циклу — список, елемент за сталим номером): листок із трьох вузлів
+        K::Op('§', args) if args.len() == 2 && matches!(args[0].k, K::Var(..)) && args[1].ints == 1 && matches!(args[1].k, K::Lit(_)) => {
+            (3, false)
+        }
         K::Op(g, args) if args.len() == 2 && args.iter().all(|a| a.ints > 0 && !a.icmp) => {
             let n = 1 + args[0].ints + args[1].ints;
             match g {
