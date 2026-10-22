@@ -1,0 +1,9 @@
+🜂 「атака20: ті самі звичайні запити до схеми під бд.писати (тимчасові тригери є) — ідіома SQLite FAQ, назви temp, схема main」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE t(x)」
+» з 「CREATE TABLE лог(v)」
+» з 「INSERT INTO лог(v) SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name」
+» з 「INSERT INTO лог(v) SELECT name FROM (SELECT * FROM sqlite_master UNION ALL SELECT * FROM sqlite_temp_master) WHERE type = 'table' ORDER BY name」
+» з 「INSERT INTO лог(v) SELECT sql FROM sqlite_master WHERE name = 't'」
+» з 「INSERT INTO t(x) VALUES (1)」

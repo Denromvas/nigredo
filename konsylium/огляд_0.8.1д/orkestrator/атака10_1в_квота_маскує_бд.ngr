@@ -1,0 +1,11 @@
+🜂 「бд.читати ≤2: зміна через читання до і після вичерпання」 【「бд.читати:дані≤2」 「бд.писати:звіти≤1」】
+» ☂ ρ 🜔бд.читати 「база.db」 「CREATE TABLE зло (a)」 【】 λe ＋ 「до: 」 e
+» ☂ ρ 🜔бд.читати 「база.db」 「DELETE FROM sqlite_master」 【】 λe ＋ 「до: 」 e
+» ρ 🜔бд.читати 「база.db」 「SELECT 1 AS a」 【】
+» ☂ ρ 🜔бд.читати 「база.db」 「SELECT 2 AS a」 【】 λe ＋ 「SELECT 2: 」 e
+» ☂ ρ 🜔бд.читати 「база.db」 「CREATE TABLE зло (a)」 【】 λe ＋ 「після: 」 e
+» ☂ ρ 🜔бд.читати 「база.db」 「ATTACH DATABASE 'звіти/x.db' AS x」 【】 λe ＋ 「після: 」 e
+» ☂ ρ 🜔бд.читати 「база.db」 「SELECT load_extension('/tmp/x')」 【】 λe ＋ 「після: 」 e
+» 🜔бд.писати 「т.db」 「CREATE TABLE IF NOT EXISTS t (a)」 【】
+» ☂ 🜔бд.писати 「т.db」 「PRAGMA writable_schema=1」 【】 λe ＋ 「писати після: 」 e
+» ☂ 🜔бд.писати 「т.db」 「VACUUM INTO '/tmp/копія.db'」 【】 λe ＋ 「писати після: 」 e

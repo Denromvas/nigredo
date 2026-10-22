@@ -1,0 +1,2 @@
+🜂 「атака15: та сама бібліотека SQLite в Атанора й еталона? (README: libsqlite3 через dlopen)」 【「бд.читати:дані」】
+» 🜔бд.читати 「дані/база.db」 「/* к */ ; SELECT sqlite_version(), sqlite_source_id(), sqlite_compileoption_used('ENABLE_FTS5'), sqlite_compileoption_used('MAX_SQL_LENGTH=1000000000')」 【】

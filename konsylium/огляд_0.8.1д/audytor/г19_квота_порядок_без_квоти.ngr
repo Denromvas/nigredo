@@ -1,0 +1,11 @@
+🜂 「контроль до атака17_квота_порядок (аудитор, огляд 0.8.1г): ті самі запити без квоти — чи текст відмов той самий, що під квотою」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) VALUES (5)」
+» з 「ATTACH DATABASE 'звіти/квота_приєднана.db' AS y」
+» з 「INSERT INTO t(x) VALUES (random())」
+» з 「INSERT INTO t(x) VALUES (date('now'))」
+» з 「INSERT INTO t(x) SELECT file FROM pragma_database_list」
+» з 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, 1)」
+» з 「INSERT INTO t(x) VALUES (6)」
+» з 「INSERT INTO t(x) VALUES (date('2020-01-01'))」

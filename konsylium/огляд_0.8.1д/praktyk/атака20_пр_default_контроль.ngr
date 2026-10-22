@@ -1,0 +1,16 @@
+🜂 「атака20 (практик, контроль): ті самі запити на свіжій базі, але стовпці без службової функції в DEFAULT; лише бд.писати」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE d(a, b)」
+» з 「INSERT INTO d(rowid, a) VALUES (9223372036854775807, 1)」
+» з 「UPDATE d SET a = a WHERE rowid = 9223372036854775807」
+» з 「CREATE TABLE d9(a, b DEFAULT 9)」
+» з 「INSERT INTO d9(a) VALUES (1)」
+» з 「INSERT INTO d9(a, b) VALUES (2, 2)」
+» з 「CREATE TABLE слова(a, b DEFAULT 'немає')」
+» з 「INSERT INTO слова(rowid, a) VALUES (9223372036854775807, 1)」
+» з 「CREATE TABLE накладні(н INTEGER PRIMARY KEY, сума INTEGER, дата TEXT DEFAULT '2026-10-21', стан TEXT DEFAULT (upper('нова')))」
+» з 「INSERT INTO накладні(сума) VALUES (100)」
+» з 「INSERT INTO накладні(сума, стан) VALUES (250, 'проведена')」
+» з 「UPDATE накладні SET сума = сума + 1 WHERE н = 1」
+» з 「SELECT count(*) FROM накладні」

@@ -1,0 +1,13 @@
+🜂 「атака18 (аудитор): права без дії бачать байткод — чи всі форми random, дат і CURRENT_* після вичерпаної власної квоти ≤1 дають «заборонено», а не «квоту вичерпано»」 【「бд.писати:звіти≤1」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) VALUES (5)」
+» з 「INSERT INTO t(x) VALUES (randomblob(4))」
+» з 「INSERT INTO t(x) VALUES (CURRENT_TIMESTAMP)」
+» з 「INSERT INTO t(x) VALUES (julianday('now'))」
+» з 「INSERT INTO t(x) VALUES (strftime('%s', 'now'))」
+» з 「INSERT INTO t(x) VALUES ((SELECT random()))」
+» з 「WITH c(v) AS (SELECT random()) INSERT INTO t(x) SELECT v FROM c」
+» з 「UPDATE t SET x = random()」
+» з 「INSERT INTO t(x) VALUES (datetime('now', 'localtime'))」
+» з 「INSERT INTO t(x) VALUES (6)」

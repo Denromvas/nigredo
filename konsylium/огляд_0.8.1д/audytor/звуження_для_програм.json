@@ -1,0 +1,3 @@
+{"дозволено": ["читати:/root/ai-agents/Nigredo/konsylium/огляд_0.8.1д/audytor/дані", "взяти:127.0.0.1:28719"],
+ "для_програм": {"f6d898739697d378ea405fad44d0ea97fe49c18bf92de680959c42608ef1a7e4": ["писати:/root/ai-agents/Nigredo/konsylium/огляд_0.8.1д/audytor/схвалене"]},
+ "для_тек": {"/root/ai-agents/Nigredo/konsylium/огляд_0.8.1д/audytor": ["писати:/root/ai-agents/Nigredo/konsylium/огляд_0.8.1д/audytor/схвалене"]}}

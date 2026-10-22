@@ -1,0 +1,13 @@
+🜂 「контроль до атака18_квота_форми: ті самі запити без квоти — що дає звичайний шлях」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) VALUES (5)」
+» з 「INSERT INTO t(x) VALUES (randomblob(4))」
+» з 「INSERT INTO t(x) VALUES (CURRENT_TIMESTAMP)」
+» з 「INSERT INTO t(x) VALUES (julianday('now'))」
+» з 「INSERT INTO t(x) VALUES (strftime('%s', 'now'))」
+» з 「INSERT INTO t(x) VALUES ((SELECT random()))」
+» з 「WITH c(v) AS (SELECT random()) INSERT INTO t(x) SELECT v FROM c」
+» з 「UPDATE t SET x = random()」
+» з 「INSERT INTO t(x) VALUES (datetime('now', 'localtime'))」
+» з 「INSERT INTO t(x) VALUES (6)」

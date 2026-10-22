@@ -1,0 +1,15 @@
+🜂 「атака18: інші шляхи до sqlite_dbpage і сирого запису — лапки, регістр, схема, таблиця-функція, VIEW, тригер, VACUUM INTO, dbstat; поряд невинний запит」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「UPDATE sqlite_dbpage SET data = (SELECT data FROM sqlite_dbpage WHERE pgno = 2) WHERE pgno = 3」
+» з 「UPDATE "SQLITE_DBPAGE" SET data = data WHERE pgno = 2」
+» з 「UPDATE main.sqlite_dbpage SET data = data WHERE pgno = 2」
+» з 「INSERT INTO t(x) SELECT count(*) FROM sqlite_dbpage('main')」
+» з 「INSERT INTO t(x) SELECT length(data) FROM sqlite_dbpage WHERE pgno = 1」
+» з 「CREATE VIEW v_dbp AS SELECT pgno FROM sqlite_dbpage」
+» з 「CREATE TRIGGER tr_dbp AFTER INSERT ON t3 BEGIN UPDATE sqlite_dbpage SET data = data WHERE pgno = 2; END」
+» з 「INSERT INTO t3(x) VALUES (1)」
+» з 「INSERT INTO t(x) SELECT count(*) FROM dbstat」
+» з 「VACUUM INTO 'звіти/в18_вакуум.db'」
+» з 「VACUUM」
+» з 「INSERT INTO t(x) VALUES (7)」

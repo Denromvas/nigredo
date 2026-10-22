@@ -1,0 +1,15 @@
+Exception in thread Thread-1 (target):
+Traceback (most recent call last):
+  File "/usr/lib/python3.13/threading.py", line 1043, in _bootstrap_inner
+    self.run()
+    ~~~~~~~~^^
+  File "/usr/lib/python3.13/threading.py", line 994, in run
+    self._target(*self._args, **self._kwargs)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/ai-agents/Nigredo/interpreter/nigredo.py", line 6059, in target
+    result[0] = main(sys.argv[1:])
+                ~~~~^^^^^^^^^^^^^^
+  File "/root/ai-agents/Nigredo/interpreter/nigredo.py", line 5692, in main
+    opts['seed'] = int(next(it))
+                   ~~~^^^^^^^^^^
+ValueError: invalid literal for int() with base 10: '+-5'

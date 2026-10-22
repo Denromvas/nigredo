@@ -1,0 +1,8 @@
+🜂 「атака17: звичайна робота і похибка в безпечний бік — дата з даних, random у гілці, що не виконується, json_each, UPDATE, DELETE」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) VALUES (date('2020-01-01'))」
+» з 「INSERT INTO t(x) VALUES (CASE WHEN 1 = 0 THEN random() ELSE 5 END)」
+» з 「INSERT INTO t(x) SELECT value FROM json_each('[1,2]')」
+» з 「UPDATE t SET x = x + 0 WHERE x = 5」
+» з 「DELETE FROM t WHERE x = 2」

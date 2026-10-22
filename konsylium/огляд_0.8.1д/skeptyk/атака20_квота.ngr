@@ -1,0 +1,9 @@
+🜂 「атака20: DEFAULT зі службовою і rowid 2⁶³−1 під вичерпаною квотою бд.писати≤1 — заборонено чи квоту вичерпано」 【「бд.писати:звіти≤1」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE d(a, b DEFAULT (ngr_rowid('d', 0)))」
+» з 「INSERT INTO d(rowid, a) VALUES (9223372036854775807, 1)」
+» з 「INSERT INTO d(a) VALUES (2)」
+» з 「INSERT INTO d(a, b) VALUES (3, 3)」
+» з 「INSERT INTO d(a, b) VALUES (random(), 3)」
+» з 「INSERT INTO d(rowid, a, b) VALUES (9223372036854775807, 1, 1)」

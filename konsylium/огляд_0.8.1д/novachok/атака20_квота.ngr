@@ -1,0 +1,10 @@
+🜂 「атака20: квота жереб≤1 — після вичерпаної квоти: ngr_rowid у DEFAULT, random() і rowid 2⁶³−1」 【「бд.писати:звіти」 「жереб≤1」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» ☂ σ 🜔жереб 6 λп ＋ 「✗ 」 п
+» ☂ σ 🜔жереб 6 λп ＋ 「✗ 」 п
+» з 「CREATE TABLE d(a, b DEFAULT (ngr_rowid('d', 0)))」
+» з 「INSERT INTO d(a) VALUES (1)」
+» з 「CREATE TABLE r(a)」
+» з 「INSERT INTO r(a) VALUES (random())」
+» з 「INSERT INTO r(rowid, a) VALUES (9223372036854775807, 1)」

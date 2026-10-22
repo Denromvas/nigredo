@@ -1,0 +1,7 @@
+🜂 「атака17: чи запис у sqlite_dbpage справді змінює файл — сторінку 2 переписати поверх сторінки 3 (лише своя тестова копія); далі звичайний запит」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) SELECT count(*) FROM sqlite_dbpage」
+» з 「UPDATE sqlite_dbpage SET data = (SELECT data FROM sqlite_dbpage WHERE pgno = 2) WHERE pgno = 3」
+» з 「INSERT INTO t(x) VALUES (7)」
+» з 「INSERT INTO t3(x) VALUES (7)」
