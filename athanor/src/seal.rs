@@ -67,6 +67,13 @@ fn read_allowlist(path: &str, cwd: Option<&str>, prog: Option<&str>, approval: O
         Some(_) => return back("для_тек — не словник"),
     };
     let per_prog = per_programs(kv)?;
+    // «джерела_модулів» (модулі з git, §4.2): на програму без модулів з мережі не впливає, але криве значення — відмова
+    // еталона всім програмам; тут — лише список із «github.com» чи порожній, решта (дзеркало, вада) — до еталона
+    match get(kv, "джерела_модулів") {
+        None => {}
+        Some(P::Arr(xs)) if xs.len() <= 1 && xs.iter().all(|x| matches!(x, P::Str(s, false) if s == "github.com")) => {}
+        Some(_) => return back("джерела_модулів — еталон"),
+    }
     let mut writable = Vec::new();
     let mut all: Vec<String> = lst.clone();
     for (_, x) in per_dir.iter().chain(per_prog.iter()) {

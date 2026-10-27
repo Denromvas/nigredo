@@ -324,6 +324,11 @@ impl Parser {
             }
             _ => return back("⊃: імена — непорожній список"),
         };
+        // модуль з мережі (і все, що еталон читає як адресу, а не шлях): у v1a — кожну таку програму еталону (модулі з
+        // git, §11): сховище, чистота, слід і --отримати — лише там, тож розбіжностей немає за побудовою
+        if rel.contains('#') || rel.contains("://") || rel.starts_with("github.com/") || rel.starts_with("raw.githubusercontent.com/") {
+            return back("⊃ з мережі — еталон (модулі з git, §11)");
+        }
         let base = match &self.base {
             None => return back("⊃: модулі — лише в програмах із текою"),
             Some(b) => b.clone(),
