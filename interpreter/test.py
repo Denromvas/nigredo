@@ -2632,6 +2632,13 @@ def main():
           and gj_.get('довіра_з_першого_разу') is True and gj_.get('sha256') == sha(TEKST) and stored(th) == [f'{sha(TEKST)}.ngr'],
           '--отримати АДРЕСА без хешу — довіра з першого разу: sha256, імена, готовий рядок ⊃, застереження (§4.6)',
           got.stdout + got.stderr)
+    # АДРЕСА#sha256 модуля, що вже у сховищі, а вкладених немає, — без запиту за ним самим, вкладені отримано
+    ch_, cenv_ = owner('власник_вкладені', {'github.com': mbase})
+    store_fixtures(ch_, [A])
+    n_ = len(hits)
+    got = run(['--отримати', addr('lib/a.ngr', A)], cenv_)
+    check(got.returncode == 0 and stored(ch_) == want_ and len(hits) == n_ + 2 and 'sha256 збігся із закріпленим' in got.stdout,
+          '--отримати АДРЕСА#sha256: модуль уже у сховищі — по мережі лише вкладені (2 запити)', got.stdout + got.stderr)
     # проксі зі змінних оточення не діють: отримання йде лише туди, куди веде власник (§4.4)
     xh_, xenv_ = owner('власник_проксі', {'github.com': mbase})
     got = run(['--отримати', f'{LIB}/tekst.ngr'], dict(xenv_, http_proxy='http://127.0.0.1:9/', HTTP_PROXY='http://127.0.0.1:9/',
@@ -2791,6 +2798,42 @@ def main():
     check(got.returncode == 0 and got2.returncode == 3 and 'ви схвалюєте ТЕКСТ модулів' in appr_ and sha(TEKST) in appr_,
           '«для_програм» схвалює текст модулів: інший #sha256= — інший відбиток, прав немає (3); --схвалити — повні sha256',
           got.stderr + got2.stderr + appr_[-600:])
+    # граматика адреси (§2.2, §12.1; 171–176 — усі варіанти): кожна частина — своя помилка, код 2; контроль — та сама
+    # адреса без вади запускається
+    H_ = sha(TEKST)
+    for bad_a, wtxt_ in ((f'github.com/denromvas/ngr-lib@v1.2/tekst.ngr#sha256={H_}', 'гілка чи тег зсуваються'),
+                         (f'github.com/denromvas/ngr-lib@4b825dc/tekst.ngr#sha256={H_}', 'скорочений коміт «4b825dc» неоднозначний'),
+                         (f'raw.githubusercontent.com/denromvas/ngr-lib/{COMMIT}/tekst.ngr', f'мабуть: 「{LIB}/tekst.ngr」'),
+                         (f'GitHub.com/denromvas/ngr-lib@{COMMIT}/tekst.ngr#sha256={H_}', 'поки лише з «github.com/»'),
+                         (f'github.com:443/denromvas/ngr-lib@{COMMIT}/tekst.ngr#sha256={H_}', 'поки лише з «github.com/»'),
+                         (f'x@github.com/denromvas/ngr-lib@{COMMIT}/tekst.ngr#sha256={H_}', 'поки лише з «github.com/»'),
+                         (f'githսb.com/denromvas/ngr-lib@{COMMIT}/tekst.ngr#sha256={H_}', 'поки лише з «github.com/»'),
+                         (f'github.com.evil.net/denromvas/ngr-lib@{COMMIT}/tekst.ngr#sha256={H_}', 'поки лише з «github.com/»'),
+                         (f'github.com/Denromvas/ngr-lib@{COMMIT}/tekst.ngr#sha256={H_}', 'мабуть: 「github.com/denromvas/ngr-lib@…」'),
+                         (f'github.com/denromvas/..@{COMMIT}/tekst.ngr#sha256={H_}', 'власник і репозиторій'),
+                         (f'github.com/denromvas/ngr-lib.git@{COMMIT}/tekst.ngr#sha256={H_}', 'власник і репозиторій'),
+                         (f'{LIB}/./tekst.ngr#sha256={H_}', 'шлях у репозиторії'),
+                         (f'{LIB}/lib//tekst.ngr#sha256={H_}', 'шлях у репозиторії'),
+                         (f'{LIB}/%2e%2e/tekst.ngr#sha256={H_}', 'шлях у репозиторії'),
+                         (f'{LIB}/lib\\\\tekst.ngr#sha256={H_}', 'шлях у репозиторії'),
+                         (f'{LIB}/tekst.ngr?x=1#sha256={H_}', 'шлях у репозиторії'),
+                         (f'{LIB}/tekst.ngr/#sha256={H_}', 'шлях у репозиторії'),
+                         (f'{LIB}/и\u0306.ngr#sha256={H_}', 'у формі NFC'),
+                         (f'{LIB}/tek st.ngr#sha256={H_}', 'шлях у репозиторії'),
+                         (f'{LIB}/tekst.ngr#sha256={H_[:63]}', 'модуль з мережі — 「github.com/власник'),
+                         ('http://example.com/x.ngr', 'адреса, а не шлях у теці програми')):
+        got = run(['-e', f'🜂\n⊃ 「{bad_a}」 【「слова」】\n» слова 「А」'], env)
+        check(got.returncode == 2 and wtxt_ in got.stderr, f'адреса «{bad_a[:70]}…» — код 2, «{wtxt_}»', got.stderr)
+    for bad_a in (f'{LIB}/te\u200bkst.ngr#sha256={H_}', f'{LIB}/te\u202ekst.ngr#sha256={H_}'):
+        got = run(['-e', f'🜂\n⊃ 「{bad_a}」 【「слова」】\n» слова 「А」'], env)
+        check(got.returncode == 2 and 'невидим' in got.stderr, 'невидиме чи bidi в адресі — код 2', got.stderr)
+    got = run(['-e', f'🜂\n⊃ 「{LIB}/tekst.ngr#sha256={H_}」 【「слова」】\n» слова 「А Б」'], env)
+    check(got.returncode == 0 and got.stdout == '【「а」 「б」】\n', 'контроль: правильна адреса запускається', got.stderr)
+    got = run(['-e', f'🜂\n⊃ 「{LIB}/tekst.ngr」 【「слова」】\n» 1'], dict(env, NIGREDO_HOME=str(mh)))
+    got2 = run(['-e', '🜂\n⊃ 「GitHub.com/a/b@4b825dc/x.ngr」 【「f」】\n» 1'], env)
+    check(got.returncode == 2 and 'вміст має бути закріплено' in got.stderr and got2.returncode == 2
+          and 'якщо це модуль з мережі — потрібні «@КОМІТ» і «#sha256=…»' in got2.stderr,
+          'локальний шлях, схожий на адресу, якого немає, — підказка, як записати модуль з мережі (§2.5)', got.stderr + got2.stderr)
     # замок 1 — кожна дія без інструмента в тілі функції модуля з мережі — код 2 ще до запуску
     for g_, body_ in (('🜁', '🜁 「с」 【】 x'), ('🜄', '🜄 「к」 x'), ('🜃', '🜃 x'), ('≈', '≈ x 0.5'), ('⚗', '⚗ 【x】 0.5'),
                       ('🜍', '🜍 x λv ●'), ('»', '《 ← у λz » z ¦ x 》')):

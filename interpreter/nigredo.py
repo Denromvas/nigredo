@@ -7843,7 +7843,12 @@ def fetch_main(rest, opts, argv):
                 return sha
             if len(done) >= MOD_MAX:
                 raise FetchError(2, f'модулів з мережі понад {MOD_MAX}')
-            raw, where = obtain(bare, sha)
+            try:                                  # уже у сховищі — без мережі, але вкладені однаково перевірити
+                raw, where = (store_read(sha, None, bare) if sha else None), 'сховище'
+            except Tampered:
+                raw = None
+            if raw is None:
+                raw, where = obtain(bare, sha)
             sha = sha or hashlib.sha256(raw).hexdigest()
             if sum(x[3] for x in report) + len(raw) > MOD_TOTAL:
                 raise FetchError(2, f'модулі з мережі разом понад {MOD_TOTAL} байтів')
@@ -7874,12 +7879,6 @@ def fetch_main(rest, opts, argv):
         if is_addr:
             o, r, c, p, pin = parse_address(target, None, need_hash=False)
             current = f'github.com/{o}/{r}@{c}/{p}'
-            known = store_read(pin, None, target) if pin else None
-            if known is not None:
-                trace('модуль отримано', адреса=safe(f'{current}#sha256={pin}'), звідки='сховище', sha256=pin,
-                      байтів=len(known), стан='уже було')
-                report.append(('уже було', f'{current}#sha256={pin}', pin, len(known), 'сховище'))
-                done[pin] = 'уже було'
             sha = ensure(current, pin)
             address, _, mod, scope, _, _ = load_remote((o, r, c, p, sha), Net(), (), 0, None)
         else:
