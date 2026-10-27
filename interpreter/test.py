@@ -12,6 +12,7 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -110,6 +111,66 @@ class Redirect(http.server.BaseHTTPRequestHandler):
         pass
 
 
+MODS = ROOT / 'tests' / 'модулі_з_мережі'
+COMMIT = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'      # коміт — лише адреса (вигаданий), тотожність — sha256 вмісту
+LIB = f'github.com/denromvas/ngr-lib@{COMMIT}'
+
+
+def store_fixtures(home, files=None):
+    """Покласти модулі у сховище власника так, як це зробив би ngr --отримати: <sha256>.ngr (адресоване вмістом)."""
+    (home / 'модулі').mkdir(mode=0o700, exist_ok=True)
+    out = {}
+    for f in files or sorted(MODS.glob('*.ngr')):
+        raw = f.read_bytes() if isinstance(f, pathlib.Path) else f
+        h = hashlib.sha256(raw).hexdigest()
+        (home / 'модулі' / f'{h}.ngr').write_bytes(raw)
+        out[f.name if isinstance(f, pathlib.Path) else h] = h
+    return out
+
+
+class Mirror(http.server.BaseHTTPRequestHandler):
+    """Дзеркало github для --отримати (модулі з git, §16.2): «джерела_модулів»: {"github.com": "http://127.0.0.1:П/"};
+    у справжню мережу тести не ходять. files — шлях у репозиторії → байти; hits — усі запити (тест «0 запитів»)."""
+    files, hits = {}, []
+
+    def do_GET(self):
+        Mirror.hits.append(self.path)
+        parts = urllib.parse.unquote(self.path).lstrip('/').split('/', 3)
+        name = parts[3] if len(parts) == 4 else ''
+        if name == 'переадресація.ngr':          # на себе ж: навіть зламаний захист не вийде в справжню мережу
+            self.send_response(301)
+            self.send_header('Location', f'http://127.0.0.1:{self.server.server_address[1]}/denromvas/ngr-lib/{COMMIT}/tekst.ngr')
+            self.end_headers()
+            return
+        if name == 'збій.ngr':
+            self.send_response(503)
+            self.end_headers()
+            return
+        if name == 'капає.ngr':                # по байту на 0,2 с: жодна операція сокета не стоїть довше за строк
+            try:
+                self.send_response(200)
+                self.send_header('Content-Length', '40')
+                self.end_headers()
+                for _ in range(40):
+                    self.wfile.write(b'a')
+                    time.sleep(0.2)
+            except OSError:
+                pass
+            return
+        body = Mirror.files.get(name)
+        if body is None:
+            self.send_response(404)
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *a):
+        pass
+
+
 def type_sigs():
     import importlib.util
     spec = importlib.util.spec_from_file_location('nigredo_сиг', ROOT / 'interpreter' / 'nigredo.py')
@@ -135,6 +196,7 @@ def main():
     wide.write_text(json.dumps({'дозволено': ['файл.читати:/']}, ensure_ascii=False))
     env = dict(os.environ, NIGREDO_HOME=str(home))
     failed = 0
+    store_fixtures(home)           # модулі з мережі для tests/помилки/167–190 — у сховищі тимчасового власника
 
     def check(ok, name, detail=''):
         nonlocal failed
@@ -2410,6 +2472,372 @@ def main():
           and all(o9.returncode == 3 and 'лежить у теці' in o9.stderr and o9.stdout == '' for o9 in outs9),
           '--слід у теці бд.* з печатки — відмова до запуску (і в REPL), файлів сліду немає (суд 9в)',
           str(ans) + outs9[0].stderr + outs9[1].stderr)
+
+    # ------------------------------------------------------------------ модулі з git за хешем (spec/пропозиції/модулі_git.md)
+    # Тека власника — своя на кожен випадок; «джерела_модулів» — дзеркало на локальному сервері (Mirror): у справжню
+    # мережу тести не ходять. Кожна межа — з негативним тестом і контролем.
+    msrv = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Mirror)
+    threading.Thread(target=msrv.serve_forever, daemon=True).start()
+    mbase = f'http://127.0.0.1:{msrv.server_address[1]}/'
+    hits = Mirror.hits
+
+    def owner(name, sources=None, extra=None, fixtures=False):
+        h_ = tmp / name
+        h_.mkdir(exist_ok=True)
+        data = {'дозволено': ['оракул'], **({} if sources is None else {'джерела_модулів': sources}), **(extra or {})}
+        (h_ / 'дозволи.json').write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+        if fixtures:
+            store_fixtures(h_)
+        return h_, dict(env, NIGREDO_HOME=str(h_), NIGREDO_TRACE_PATH_FILE=str(tmp / f'{name}.слід'))
+
+    def last(e):
+        return pathlib.Path(pathlib.Path(e['NIGREDO_TRACE_PATH_FILE']).read_text(encoding='utf-8'))
+
+    def recs_of(tp):
+        return [json.loads(x) for x in tp.read_text(encoding='utf-8').splitlines()]
+
+    def sha(b):
+        return hashlib.sha256(b).hexdigest()
+
+    def addr(path, raw):
+        return f'{LIB}/{path}#sha256={sha(raw)}'
+
+    def stored(h_):
+        return sorted(p_.name for p_ in (h_ / 'модулі').iterdir()) if (h_ / 'модулі').exists() else []
+    mp = tmp / 'програми_модулі'
+    mp.mkdir()
+
+    def prog(name, text):
+        (mp / name).write_text(text, encoding='utf-8')
+        return str(mp / name)
+    TEKST = (MODS / 'tekst.ngr').read_bytes()
+    B = '🜂\n← подвоїти λx × x 2\n'.encode()
+    A = (f'🜂 「бібліотека」\n⊃ 「util/b.ngr#sha256={sha(B)}」 【「подвоїти」】\n⊃ 「{addr("tekst.ngr", TEKST)}」 【「слова」】\n'
+         '← обидва λx 【подвоїти ρ слова x  ρ слова x】\n').encode()
+    Mirror.files = {'tekst.ngr': TEKST, 'lib/util/b.ngr': B, 'lib/a.ngr': A, 'інший.ngr': B, 'з_друком.ngr':
+                    (MODS / 'z_drukom.ngr').read_bytes(), 'великий.ngr': b'\xf0\x9f\x9c\x82\n' + b'a' * 1_000_000,
+                    'lfs.ngr': b'version https://git-lfs.github.com/spec/v1\noid sha256:' + b'0' * 64 + b'\nsize 10\n'}
+    romb = prog('ромб.ngr', f'🜂 「ромб»\n'.replace('»', '」') + f'⊃ 「{addr("lib/a.ngr", A)}」 【「обидва」】\n'
+                f'⊃ 「{addr("tekst.ngr", TEKST)}」 【「слова」】\n» обидва 「a b c」\n» слова 「X Y」\n')
+    # немає джерела ([] у власника) — код 3 до будь-якого запиту: сервер не отримав нічого; слід — «відмова»
+    nh, nenv = owner('власник_без_джерел', [])
+    del hits[:]
+    got = run(['--отримати', romb], nenv)
+    vr_ = run(['--перевірити-слід', str(last(nenv))], nenv).stdout
+    check(got.returncode == 3 and 'власник не дозволив модулів з «github.com»' in got.stderr and hits == []
+          and vr_.startswith('✓ слід цілий і завершений (відмова)') and stored(nh) == [],
+          '--отримати без джерела власника — код 3, 0 запитів до сервера, слід «відмова» (модулі з git, §4.2)',
+          got.stderr + str(hits) + vr_)
+    # під час запуску й до нього мережі немає взагалі: бракує модуля — код 2 «ще не отримано», сервер не бачить запитів
+    mh, menv = owner('власник_модулі', {'github.com': mbase})
+    outs_ = [run([*m_, romb], menv) for m_ in ([], ['--печатка'], ['--перевірити'], ['--розбір'], ['--сухо'])]
+    js_ = json.loads(run(['--печатка', '--json', romb], menv).stdout)
+    jv_ = json.loads(run(['--перевірити', '--json', romb], menv).stdout)
+    check(all(o_.returncode == 2 and 'ще не отримано' in o_.stdout + o_.stderr for o_ in outs_) and hits == []
+          and [x['адреса'] for x in js_.get('бракує_модулів', [])] == [f'{LIB}/lib/a.ngr', f'{LIB}/tekst.ngr']
+          and js_.get('печатка_без_модулів', {}).get('в_межах_власника') is True and len(jv_.get('бракує_модулів', [])) == 2
+          and 'ПЕЧАТКА БЕЗ НИХ — верхня межа' in outs_[1].stdout,
+          'модуль з мережі, якого немає: запуск, --печатка, --перевірити, --розбір, --сухо — код 2 без мережі; '
+          '--печатка --json — «бракує_модулів» (усі за прохід) і «печатка_без_модулів» (§10.2)',
+          ''.join(o_.stdout + o_.stderr for o_ in outs_)[:900] + str(hits) + json.dumps(js_, ensure_ascii=False)[:600])
+    # успіх: модуль → закріплений відносний + модуль з мережі (ромб); повтор — «уже було», без запитів
+    got = run(['--отримати', romb], menv)
+    ftr = last(menv)
+    vr_, vj_ = run(['--перевірити-слід', str(ftr)], menv), json.loads(run(['--перевірити-слід', str(ftr), '--json'], menv).stdout)
+    rp_ = run(['--повторити', str(ftr)], menv)
+    want_ = sorted(f'{sha(x)}.ngr' for x in (A, B, TEKST))
+    check(got.returncode == 0 and '3 отримано, 0 уже було' in got.stdout and len(hits) == 3 and stored(mh) == want_
+          and vr_.returncode == 0 and 'ОТРИМАННЯ МОДУЛІВ: 3 отримано, 0 уже було — жодна програма не виконувалась' in vr_.stdout
+          and vj_.get('режим') == 'отримання' and rp_.returncode == 1 and 'слід отримання' in rp_.stderr,
+          '--отримати: замикання (закріплений відносний, ромб) — 3 файли у сховищі, 3 запити; слід «отримання» ✓; '
+          'такий слід не повторюється', got.stdout + got.stderr + vr_.stdout + str(hits) + str(stored(mh)))
+    mt_ = {p_.name: p_.stat().st_mtime_ns for p_ in (mh / 'модулі').iterdir()}
+    got = run(['--отримати', romb], menv)
+    check(got.returncode == 0 and '0 отримано, 3 уже було' in got.stdout and len(hits) == 3
+          and mt_ == {p_.name: p_.stat().st_mtime_ns for p_ in (mh / 'модулі').iterdir()},
+          '--отримати вдруге — «уже було», сховище не змінено, жодного запиту', got.stdout + got.stderr + str(hits))
+    got = run([romb], menv)
+    tr_ = last(menv)
+    mods_ = [r_ for r_ in recs_of(tr_) if r_['подія'] == 'модуль']
+    data_ = [json.loads(x) for x in pathlib.Path(str(tr_) + '.дані').read_text(encoding='utf-8').splitlines()]
+    vr_ = run(['--перевірити-слід', str(tr_), romb], menv).stdout
+    check(got.returncode == 0 and got.stdout == '【6 3】\n【「x」 「y」】\n' and len(mods_) == 3
+          and sorted(r_['sha256'] for r_ in mods_) == sorted(sha(x) for x in (A, B, TEKST))
+          and all(r_['шлях'].startswith(LIB) and r_['файл'] == str(mh / 'модулі' / f'{r_["sha256"]}.ngr') for r_ in mods_)
+          and sorted(d_['sha256'] for d_ in data_ if 'модуль' in d_) == sorted(sha(x) for x in (A, B, TEKST))
+          and all(d_['модуль'].encode() == {sha(x): x for x in (A, B, TEKST)}[d_['sha256']] for d_ in data_ if 'модуль' in d_)
+          and vr_.startswith('✓') and 'модулі: 3 (з мережі: 3, sha256 повністю)' in vr_,
+          'запуск: ромб виконано раз (3 записи «модуль» на 3 вмісти), текст кожного модуля з мережі — у СЛІД.дані (§9.2)',
+          got.stdout + got.stderr + vr_)
+    # --повторити й --перевірити-слід без сховища — з СЛІД.дані; без СЛІД.дані — ✗ з порадою; змінений текст — ✗
+    hidden_ = tmp / 'сховище_сховане'
+    shutil.move(str(mh / 'модулі'), str(hidden_))
+    rp_ = run(['--повторити', str(tr_)], menv)
+    vr_ = run(['--перевірити-слід', str(tr_), romb], menv).stdout
+    vj_ = json.loads(run(['--перевірити-слід', str(tr_), romb, '--json'], menv).stdout)
+    dpath_ = pathlib.Path(str(tr_) + '.дані')
+    dtext_ = dpath_.read_text(encoding='utf-8')
+    dpath_.rename(str(dpath_) + '.x')
+    vr2_ = run(['--перевірити-слід', str(tr_), romb], menv).stdout
+    rp2_ = run(['--повторити', str(tr_)], menv)
+    dpath_.write_text(dtext_.replace('× x 2', '× x 3'), encoding='utf-8')
+    rp3_ = run(['--повторити', str(tr_)], menv)
+    vr3_ = run(['--перевірити-слід', str(tr_), romb], menv).stdout
+    dpath_.write_text(dtext_, encoding='utf-8')
+    pathlib.Path(str(dpath_) + '.x').unlink()
+    shutil.move(str(hidden_), str(mh / 'модулі'))
+    check(rp_.returncode == 0 and '✓ повтор збігся' in rp_.stderr and rp_.stdout == '【6 3】\n【「x」 「y」】\n'
+          and vr_.startswith('✓') and '[СЛІД.дані]' in vr_ and {m_.get('джерело') for m_ in vj_.get('модулі', [])} == {'СЛІД.дані'}
+          and vr2_.startswith('✗') and 'ngr --отримати ПРОГРАМА' in vr2_ and rp2_.returncode == 1
+          and rp3_.returncode == 1 and 'текст модуля не збігається' in rp3_.stderr and vr3_.startswith('✗'),
+          '--повторити і --перевірити-слід СЛІД ПРОГРАМА без сховища — з СЛІД.дані ✓; без СЛІД.дані — ✗ з порадою '
+          '--отримати; змінений текст у СЛІД.дані — ✗ (§9.3)', rp_.stderr + vr_ + vr2_ + rp2_.stderr + rp3_.stderr + vr3_)
+    # вміст не збігся — код 3, тривога в сліді, у сховищі нічого (ні запису, ні тимчасового)
+    before_ = stored(mh)
+    bad_ = prog('підміна.ngr', f'🜂\n⊃ 「{LIB}/інший.ngr#sha256={sha(TEKST)}」 【「слова」】\n» слова 「a」\n')
+    store_ = mh / 'модулі' / f'{sha(TEKST)}.ngr'
+    store_.chmod(0o600)
+    store_.unlink()
+    got = run(['--отримати', bad_], menv)
+    vr_ = run(['--перевірити-слід', str(last(menv))], menv).stdout
+    check(got.returncode == 3 and f'сервер віддав вміст із sha256 {sha(B)}, а програма закріпила {sha(TEKST)}' in got.stderr
+          and 'у сховище НЕ покладено' in got.stderr and stored(mh) == sorted(set(before_) - {store_.name})
+          and vr_.startswith('✓') and '⚠ вміст не збігся: 1 (можлива підміна)' in vr_ and 'ВМІСТ НЕ ЗБІГСЯ' in vr_,
+          '--отримати: сервер віддав інший вміст — код 3, «вміст не збігся» у сліді, у сховищі нічого (§4.4)',
+          got.stderr + vr_ + str(stored(mh)))
+    store_fixtures(mh)
+    # мережа: 404, переадресація, 503, LFS, понад 1 МБ — код 1; не модуль з мережі (друк) — код 2, не покладено
+    for name_, code_, wtxt_ in (('нема.ngr', 1, '(404)'), ('переадресація.ngr', 1, 'переадресацію на «http://127.0.0.1:'), ('збій.ngr', 1, 'сервер відповів 503'), ('lfs.ngr', 1, 'вказівник git LFS'),
+                                ('великий.ngr', 1, 'понад 1000000 байтів — не модуль'),
+                                ('з_друком.ngr', 2, 'але це не модуль з мережі: у модулі')):
+        n_ = len(stored(mh))
+        got = run(['--отримати', f'{LIB}/{name_}'], menv)
+        check(got.returncode == code_ and wtxt_ in got.stderr and len(stored(mh)) == n_
+              and not any(x_.startswith('.тимч') for x_ in stored(mh)),
+              f'--отримати «{name_}» — код {code_}, «{wtxt_}», у сховищі нічого', got.stdout + got.stderr)
+    # строк на весь файл: сервер капає по байту на 0,2 с — зупинено (FETCH_TIME = 1 у підпроцесі з еталоном)
+    t0 = time.monotonic()
+    got = subprocess.run([sys.executable, '-c', 'import sys; sys.path.insert(0, sys.argv[1]); import nigredo as n\n'
+                          'n.FETCH_TIME = 1\nsys.exit(n.main(sys.argv[2:]))', str(ROOT / 'interpreter'),
+                          '--отримати', f'{LIB}/капає.ngr'], capture_output=True, text=True, env=menv)
+    took = time.monotonic() - t0
+    check(got.returncode == 1 and 'не отримано за 1 с' in got.stderr and took < 6,
+          f'--отримати: сервер капає по байту — зупинено за строком на весь файл ({took:.1f} с при строку 1 с)', got.stderr)
+    # TOFU: адреса без хешу — sha256 того, що віддано зараз, і готовий рядок ⊃; з хешем — «збігся»
+    th, tenv = owner('власник_tofu', {'github.com': mbase})
+    got = run(['--отримати', f'{LIB}/tekst.ngr'], tenv)
+    gj_ = json.loads(run(['--отримати', '--json', f'{LIB}/tekst.ngr'], tenv).stdout)
+    check(got.returncode == 0 and f'⊃ 「{addr("tekst.ngr", TEKST)}」 【「слова」】' in got.stdout
+          and '⚠ sha256 узято з того, що сервер віддав ЗАРАЗ' in got.stdout and 'імена: слова (1 аргумент(и))' in got.stdout
+          and gj_.get('довіра_з_першого_разу') is True and gj_.get('sha256') == sha(TEKST) and stored(th) == [f'{sha(TEKST)}.ngr'],
+          '--отримати АДРЕСА без хешу — довіра з першого разу: sha256, імена, готовий рядок ⊃, застереження (§4.6)',
+          got.stdout + got.stderr)
+    # проксі зі змінних оточення не діють: отримання йде лише туди, куди веде власник (§4.4)
+    xh_, xenv_ = owner('власник_проксі', {'github.com': mbase})
+    got = run(['--отримати', f'{LIB}/tekst.ngr'], dict(xenv_, http_proxy='http://127.0.0.1:9/', HTTP_PROXY='http://127.0.0.1:9/',
+                                                       no_proxy='', NO_PROXY=''))
+    check(got.returncode == 0 and stored(xh_) == [f'{sha(TEKST)}.ngr'], '--отримати не бере проксі зі змінних оточення',
+          got.stdout + got.stderr)
+    # два паралельні --отримати того самого — один файл на вміст, жодного часткового
+    ph, penv2 = owner('власник_паралельно', {'github.com': mbase})
+    ps_ = [subprocess.Popen([*NGR_CMD, '--отримати', romb], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=penv2)
+           for _ in range(2)]
+    rc_ = [p_.wait(timeout=120) for p_ in ps_]
+    for p_ in ps_:
+        p_.stdout.close()
+        p_.stderr.close()
+    check(rc_ == [0, 0] and stored(ph) == want_, 'два паралельні --отримати — один файл на вміст, без часткових (атомарний '
+          'rename)', str(rc_) + str(stored(ph)))
+    # --з-теки: копія сховища іншого агента (без мережі); клон, де проміжна тека — посилання назовні; тека власника
+    zh, zenv = owner('власник_з_теки', [])
+    copy_ = tmp / 'копія_сховища'
+    shutil.copytree(str(mh / 'модулі'), str(copy_))
+    (copy_ / f'{sha(TEKST)}.ngr').write_bytes(TEKST)
+    n_ = len(hits)
+    got = run(['--отримати', romb, '--з-теки', str(copy_)], zenv)
+    clone_, outside_ = tmp / 'клон', tmp / 'поза_клоном'
+    clone_.mkdir()
+    outside_.mkdir()
+    (outside_ / 'a.ngr').write_bytes(A)
+    (clone_ / 'lib').symlink_to(outside_)
+    zh2, zenv2 = owner('власник_з_теки2', [])
+    got2 = run(['--отримати', romb, '--з-теки', str(clone_)], zenv2)
+    got3 = run(['--отримати', romb, '--з-теки', str(zh2)], zenv2)
+    other_ = tmp / 'інша_версія'
+    (other_ / 'lib').mkdir(parents=True)
+    (other_ / 'lib' / 'a.ngr').write_bytes(A + b'\n')
+    got4 = run(['--отримати', romb, '--з-теки', str(other_)], zenv2)
+    check(got.returncode == 0 and stored(zh) == want_ and len(hits) == n_
+          and got2.returncode == 1 and 'веде за межі теки' in got2.stderr and got3.returncode == 3
+          and 'зачіпає теку власника' in got3.stderr and got4.returncode == 1 and 'але sha256 інший' in got4.stderr
+          and stored(zh2) == [], '--з-теки: копія сховища — без мережі й без джерел; посилання з клону назовні — не взято; '
+          'тека власника — 3; інша версія — 1 (§4.5)', got.stderr + got2.stderr + got3.stderr + got4.stderr)
+    # вимикач власника під час запуску: модуль уже у сховищі, а джерел немає — код 3, «відмова» в сліді (§4.2, б)
+    t1_ = prog('текст.ngr', f'🜂 「текст」\n⊃ 「{addr("tekst.ngr", TEKST)}」 【「слова」】\n» слова 「Раз Два」\n')
+    sh_, senv = owner('власник_вимкнув', [], fixtures=True)
+    got, seal_ = run([t1_], senv), run(['--печатка', t1_], senv)
+    ok_ = run([t1_], menv)
+    check(got.returncode == 3 and 'модуль з мережі «' in got.stderr and 'власник не дозволив модулів з «github.com»' in got.stderr
+          and recs_of(last(senv))[-1]['подія'] == 'відмова' and seal_.returncode == 3 and ok_.returncode == 0
+          and ok_.stdout == '【「раз」 「два」】\n', 'джерела_модулів: [] — уже отриманий модуль не запускається (код 3, '
+          '«відмова»); з дозволеним джерелом — запускається', got.stderr + seal_.stdout + ok_.stdout + ok_.stderr)
+    # «джерела_модулів» лише відомої форми: інакше — помилка читання дозволів (код 3) для будь-якої програми
+    for i_, bad_src in enumerate((['gitlab.com'], ['github.com', 'github.com'], {'github.com': 'ftp://x/'},
+                                  {'github.com': 'http://u@x/'}, {'github.com': 'http://x/a'}, 'github.com')):
+        _, benv = owner(f'власник_кривий_{i_}', bad_src)
+        got = run(['-e', '🜂\n» 1'], benv)
+        check(got.returncode == 3 and 'джерела_модулів' in got.stderr and got.stdout == '',
+              f'«джерела_модулів»: {bad_src!r} — код 3 для будь-якої програми (обома виконавцями)', got.stdout + got.stderr)
+    _, genv = owner('власник_github', ['github.com'], fixtures=True)
+    got = run([t1_], genv)
+    check(got.returncode == 0 and got.stdout == '【「раз」 「два」】\n', '«джерела_модулів»: ["github.com"] — модуль запускається',
+          got.stderr)
+    # тека запису власника охоплює сховище (файл.писати:/) — модуль з мережі запускається; локальний у теці запису — 3
+    wh, wenv = owner('власник_пише_всюди', {'github.com': mbase}, {'дозволено': ['оракул', f'файл.писати:{tmp}']},
+                     fixtures=True)
+    (mp / 'лок.ngr').write_text('🜂\n← f λx x\n', encoding='utf-8')
+    loc_ = prog('з_локальним.ngr', '🜂\n⊃ 「лок.ngr」 【「f」】\n» f 1\n')
+    got, got2 = run([t1_], wenv), run([loc_], wenv)
+    check(got.returncode == 0 and got2.returncode == 3 and 'дозволено писати' in got2.stderr,
+          'тека запису власника охоплює сховище — модуль з мережі запускається (§5.3); локальний модуль у теці запису — 3',
+          got.stderr + got2.stderr)
+    # сховище змінено поза ngr: інший вміст, посилання (навіть на правильний вміст), тека, FIFO — код 3, без зависання
+    xh, xenv = owner('власник_зіпсоване', {'github.com': mbase})
+    (xh / 'модулі').mkdir()
+    ent_ = xh / 'модулі' / f'{sha(TEKST)}.ngr'
+    ent_.write_bytes(B)
+    got = run([t1_], xenv)
+    check(got.returncode == 3 and f'не той (вміст має sha256 {sha(B)})' in got.stderr,
+          'запис сховища з іншим вмістом — код 3 «сховище змінено поза ngr» (хеш на кожному розборі)', got.stderr)
+    got = run(['--отримати', t1_], xenv)
+    got2 = run([t1_], xenv)
+    check(got.returncode == 0 and 'замінено пошкоджений' in got.stdout + got.stderr and got2.returncode == 0,
+          '--отримати замінює пошкоджений запис справжнім', got.stdout + got.stderr + got2.stderr)
+    good_ = tmp / 'правильний_поза_сховищем.ngr'
+    good_.write_bytes(TEKST)
+    ent_.unlink()
+    ent_.symlink_to(good_)
+    got = run([t1_], xenv)
+    ent_.unlink()
+    ent_.mkdir()
+    got2 = run([t1_], xenv)
+    ent_.rmdir()
+    os.mkfifo(ent_)
+    try:
+        got3 = subprocess.run([*NGR_CMD, t1_], capture_output=True, text=True, env=xenv, timeout=30)
+    except subprocess.TimeoutExpired:
+        got3 = subprocess.CompletedProcess([], 99, '', 'завис на FIFO')
+    ent_.unlink()
+    alien_ = tmp / 'чужий_файл.txt'                 # запис — посилання на чужий файл: --отримати замінює саме посилання
+    alien_.write_bytes('не чіпати'.encode())
+    ent_.symlink_to(alien_)
+    got5 = run(['--отримати', t1_], xenv)
+    check(got5.returncode == 0 and alien_.read_bytes() == 'не чіпати'.encode() and not ent_.is_symlink()
+          and ent_.read_bytes() == TEKST, '--отримати замінює запис-посилання, а не пише крізь нього (O_EXCL|O_NOFOLLOW і rename)',
+          got5.stdout + got5.stderr)
+    ent_.unlink()
+    big_ = '🜂\n※ '.encode() + b'x' * 1_000_001
+    (xh / 'модулі' / f'{sha(big_)}.ngr').write_bytes(big_)
+    got4 = run(['-e', f'🜂\n⊃ 「{LIB}/великий.ngr#sha256={sha(big_)}」 【「x」】\n» 1'], xenv)
+    check(all(g_.returncode == 3 and 'не звичайний файл (посилання, тека, пристрій) чи понад 1000000 байтів' in g_.stderr
+              for g_ in (got, got2, got3, got4)),
+          'запис сховища — посилання (навіть на правильний вміст), тека, FIFO, понад 1 МБ — код 3, без зависання (§5.2)',
+          got.stderr + got2.stderr + got3.stderr + got4.stderr)
+    # шлях у сховище як локальний модуль — «поза текою програми» (наявне правило), і локальне посилання на запис
+    store_fixtures(mh)
+    rel_ = os.path.relpath(mh / 'модулі' / f'{sha(TEKST)}.ngr', mp)
+    p1_ = prog('до_сховища.ngr', f'🜂\n⊃ 「{rel_}」 【「слова」】\n» 1\n')
+    (mp / 'лінк.ngr').symlink_to(mh / 'модулі' / f'{sha(TEKST)}.ngr')
+    p2_ = prog('лінк_у_сховище.ngr', '🜂\n⊃ 「лінк.ngr」 【「слова」】\n» 1\n')
+    got, got2 = run([p1_], menv), run([p2_], menv)
+    check(got.returncode == 2 and 'поза текою програми' in got.stderr and got2.returncode == 2
+          and 'поза текою програми' in got2.stderr, 'запис сховища шляхом чи посиланням як локальний модуль — поза текою '
+          'програми (2)', got.stderr + got2.stderr)
+    # межі розбору: 65 різних модулів, вкладеність 17, разом понад 8 МБ — код 2; рівно на межі — контроль
+    lh, lenv = owner('власник_межі', {'github.com': mbase})
+
+    def word(i):
+        return 'н' + ''.join(chr(0x430 + int(d_)) for d_ in str(i))
+    many_ = [f'🜂\n← {word(i)} {i}\n'.encode() for i in range(65)]
+    store_fixtures(lh, many_)
+    imp_ = ''.join(f'⊃ 「{addr(f"m{i}.ngr", m_)}」 【「{word(i)}」】\n' for i, m_ in enumerate(many_))
+    got = run(['-e', '🜂\n' + imp_ + '» 1'], lenv)
+    got2 = run(['-e', '🜂\n' + ''.join(imp_.splitlines(True)[:64]) + f'» ＋ {word(0)} {word(63)}'], lenv)
+    chain_ = [b'\xf0\x9f\x9c\x82\n\xe2\x86\x90 f \xce\xbbx x\n']    # 🜂 / ← f λx x
+    for k_ in range(16):
+        chain_.append(f'🜂\n⊃ 「{addr(f"r{k_}.ngr", chain_[-1])}」 【「f」】\n'.encode())
+    store_fixtures(lh, chain_)
+    got3 = run(['-e', f'🜂\n⊃ 「{addr("r16.ngr", chain_[-1])}」 【「f」】\n» f 1'], lenv)
+    got4 = run(['-e', f'🜂\n⊃ 「{addr("r15.ngr", chain_[-2])}」 【「f」】\n» f 1'], lenv)
+    fat_ = [f'🜂\n※ {"x" * 950_000}\n← {word(i)} {i}\n'.encode() for i in range(9)]
+    store_fixtures(lh, fat_)
+    imp_ = ''.join(f'⊃ 「{addr(f"f{i}.ngr", m_)}」 【「{word(i)}」】\n' for i, m_ in enumerate(fat_))
+    got5 = run(['-e', '🜂\n' + imp_ + '» 1'], lenv)
+    got6 = run(['-e', '🜂\n' + ''.join(imp_.splitlines(True)[:8]) + '» 1'], lenv)
+    check(got.returncode == 2 and 'модулів з мережі понад 64' in got.stderr and got2.stdout == '63\n'
+          and got3.returncode == 2 and 'вкладеність модулів з мережі понад 16' in got3.stderr and got4.stdout == '1\n'
+          and got5.returncode == 2 and 'модулі з мережі разом понад 8000000 байтів' in got5.stderr and got6.stdout == '1\n',
+          'межі розбору: 65 модулів, вкладеність 17, разом понад 8 МБ — код 2; 64, 16, 7,6 МБ — так (§7)',
+          got.stderr[-300:] + got2.stderr[-300:] + got3.stderr[-300:] + got4.stderr[-300:] + got5.stderr[-300:] + got6.stderr[-300:])
+    # «для_програм»: інший #sha256= — інший відбиток, права зникають
+    ah, aenv = owner('власник_схвалив', {'github.com': mbase}, fixtures=True)
+    ap1 = prog('схвалена.ngr', f'🜂 【「читати:{DATA}」】\n⊃ 「{addr("tekst.ngr", TEKST)}」 【「слова」】\n» ρ 🜔читати 「продажі.json」\n')
+    fp_ = json.loads(run(['--печатка', '--json', ap1], aenv).stdout)['відбиток']
+    store_fixtures(ah, [B])
+    ap2 = prog('схвалена2.ngr', f'🜂 【「читати:{DATA}」】\n⊃ 「{addr("tekst.ngr", B)}」 【「подвоїти」】\n» ρ 🜔читати 「продажі.json」\n')
+    (ah / 'дозволи.json').write_text(json.dumps({'дозволено': ['оракул'], 'для_програм': {fp_: [f'файл.читати:{DATA}']}},
+                                                ensure_ascii=False), encoding='utf-8')
+    got, got2, appr_ = run([ap1], aenv), run([ap2], aenv), run(['--схвалити', ap1], aenv).stdout
+    check(got.returncode == 0 and got2.returncode == 3 and 'ви схвалюєте ТЕКСТ модулів' in appr_ and sha(TEKST) in appr_,
+          '«для_програм» схвалює текст модулів: інший #sha256= — інший відбиток, прав немає (3); --схвалити — повні sha256',
+          got.stderr + got2.stderr + appr_[-600:])
+    # замок 1 — кожна дія без інструмента в тілі функції модуля з мережі — код 2 ще до запуску
+    for g_, body_ in (('🜁', '🜁 「с」 【】 x'), ('🜄', '🜄 「к」 x'), ('🜃', '🜃 x'), ('≈', '≈ x 0.5'), ('⚗', '⚗ 【x】 0.5'),
+                      ('🜍', '🜍 x λv ●'), ('»', '《 ← у λz » z ¦ x 》')):
+        m_ = f'🜂\n← f λx {body_}\n'.encode()
+        store_fixtures(lh, [m_])
+        got = run(['-e', f'🜂\n⊃ 「{addr("дія.ngr", m_)}」 【「f」】\n» f 「a」'], lenv)
+        check(got.returncode == 2 and f'модуль з мережі лише обчислює — «{g_}»' in got.stderr and 'заборонено й у функціях' in got.stderr,
+              f'замок 1: «{g_}» у функції модуля з мережі — код 2 (§6.2)', got.stderr)
+    vg_ = (MODS / 'vgoru.ngr').read_bytes()
+    got = run(['-e', f'🜂\n⊃ 「{addr("lib/vgoru.ngr", vg_)}」 【「f」】\n» f 1'], env)
+    check(got.returncode == 2 and 'лише вглиб від теки модуля; вище — повною адресою' in got.stderr,
+          'закріплений відносний модуль із «..» — помилка (лише вглиб, §2.3)', got.stderr)
+    # замок 2 — λ того, хто кличе, викликана в модулі з мережі, і замикання, яке модуль повернув: дії — «заборонено»
+    zz_ = f'⊃ 「{LIB}/zastosuvaty.ngr#sha256={sha((MODS / "zastosuvaty.ngr").read_bytes())}」 【「застосувати」 「обгортка」】\n'
+    for g_, body_ in (('»', '» q'), ('🜄', '🜄 「к」 q'), ('🜃', '🜃 q'), ('≈', '≈ q 0.5'), ('⚗', '⚗ 【q】 0.5'),
+                      ('🜍', '🜍 q λv ●'), ('🜁', '🜁 「с」 【】 q')):
+        for how_, call_ in (('у функції', f'» застосувати λq {body_} 「x」'), ('у замиканні', f'← g обгортка λq {body_}\n» ► g 「x」')):
+            got = run(['-e', f'🜂\n{zz_}{call_}'], dict(env, NIGREDO_TRACE_PATH_FILE=str(tmp / 'замок2.слід')))
+            den_ = [r_ for r_ in recs_of(pathlib.Path((tmp / 'замок2.слід').read_text(encoding='utf-8')))
+                    if r_['подія'] == 'заборонено']
+            check(got.returncode == 1 and f'модуль з мережі лише обчислює: «{g_}» тут неможливий' in got.stderr
+                  and got.stdout == '' and len(den_) == 1 and den_[0]['причина'] == 'модуль з мережі лише обчислює',
+                  f'замок 2: «{g_}» у λ того, хто кличе, {how_} модуля з мережі — «заборонено» в сліді, код 1', got.stderr)
+    got = run(['-e', f'🜂\n{zz_}» застосувати λq ＋ q 1 41'], env)
+    seal_ = run(['--печатка', str(ROOT / 'tests' / 'помилки' / '184_modul_merezhi_zvorotnyi_vyklyk.ngr')], env)
+    got2 = run([str(ROOT / 'tests' / 'помилки' / '185_modul_merezhi_parasolka.ngr')], dict(env, NIGREDO_TRACE_PATH_FILE=str(tmp / 'п185.слід')))
+    vr_ = run(['--перевірити-слід', (tmp / 'п185.слід').read_text(encoding='utf-8')], env).stdout   # той самий власник
+    check(got.stdout == '42\n' and '⚠ λ з 🜔оракул передано у «застосувати» з модуля з мережі — там прав немає' in seal_.stdout
+          and got2.stdout == 'перехоплено\n' and '«заборонено»): 1' in vr_ and 'перехоплено помилок (☂): 1' in vr_,
+          'чиста λ у модулі з мережі — так; λ з 🜔 — попередження в --печатка; ☂ у модулі: «заборонено» й «перехоплено» '
+          'видно в підсумку сліду (§6.3, §6.4)', got.stdout + got.stderr + seal_.stdout + got2.stdout + vr_)
+    # -e і REPL: модуль з мережі не залежить від теки програми (§2.4); --розбір — тіло модуля з sha256 повністю
+    rc, ans, tr_ = repl([j(f'🜂\n⊃ 「{addr("tekst.ngr", TEKST)}」 【「слова」】'), j('» слова 「Б В」')])
+    ex_ = run(['--розбір', t1_], menv).stdout
+    check(rc == 0 and ans[-1].get('вивід') == '【「б」 「в」】\n'
+          and f'з модуля з мережі «{LIB}/tekst.ngr» (sha256 {sha(TEKST)}; лише обчислює; адреса — слова автора)' in ex_,
+          '--repl із модулем з мережі; --розбір перекладає й тіло модуля з мережі (§10.3)', str(ans) + ex_)
+    # Атанор v1a: кожну програму з модулем з мережі віддає еталону — вивід, код і слід ті самі
+    if os.environ.get('NGR_TEST_BIN'):
+        got = run([romb], dict(menv, ATHANOR_WHY='1'))
+        ev1 = [r_['подія'] for r_ in recs_of(last(menv))]
+        ref_ = subprocess.run([sys.executable, str(NGR), romb], capture_output=True, text=True, env=menv)
+        ev2 = [r_['подія'] for r_ in recs_of(last(menv))]
+        check('атанор → еталон: ⊃ з мережі — еталон (модулі з git, §11)' in got.stderr and got.stdout == ref_.stdout
+              and got.returncode == ref_.returncode == 0 and ev1 == ev2,
+              'Атанор v1a: програму з модулем з мережі віддано еталону (явна причина), вивід і слід ті самі', got.stderr)
+    msrv.shutdown()
 
     sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',
