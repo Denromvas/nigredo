@@ -49,15 +49,15 @@ Same tasks in both languages (`bench/`), models writing both from the same task 
 | Real bugs caught before running (14) | 9 | 3 with pyflakes |
 | Models right on the first try, held-out tasks (3 runs × 10) | Sonnet 27/30, Haiku 21/30 | Sonnet 27/30, Haiku 23/30 |
 | Speed, 12 small agent tasks (median wall time) | **0.44×** | 1× |
-| Speed, 200k words / 200k-step loop / 25k-record JSON (CPU time) | **0.64× / 0.47× / 0.88×** | 1× |
-| Speed, the loop through a named function / with `¿` in it (CPU time) | **0.32× / 0.49×** | 1× |
-| Speed, exact decimals (Python: `Decimal`) / building strings / a `↻` loop with list state (CPU time) | 0.97× / 1.04× / **1.73×** | 1× |
+| Speed, 200k words / 200k-step loop / 25k-record JSON (CPU time) | **0.67× / 0.42× / 0.91×** | 1× |
+| Speed, the loop through a named function / with `¿` in it (CPU time) | **0.35× / 0.47×** | 1× |
+| Speed, exact decimals (Python: `Decimal`) / building strings / a `↻` loop with list state (CPU time) | **0.65× / 0.89× / 0.67×** | 1× |
 | The owner knows what a program may do and did | seal, signed trace, replay, dry run | — |
 
 Measured on a phone (Termux); Nigredo's numbers include its own trace and replay store. Small tasks are mostly
 interpreter start-up; the two tasks that use the network are handed to the reference and are slower than Python;
-the 200k-step loop is a shape Athanor has a fast path for; exact decimals and string building are on par with Python,
-and a `↻` loop that builds a new list every step is 1.7× slower. On a quiet phone the spread between runs is ~10–20 %;
+the 200k-step loop is a shape Athanor has a fast path for; a `↻` loop that builds a new list every step was 1.7×
+slower until 2026-10-27, now all eight large-data tasks are faster than Python. On a quiet phone the spread between runs is ~10–20 %;
 on a loaded one (judges measured while other judges ran) absolute times were 1.4–2.8× higher for Athanor and
 1.4–1.7× for the reference — the ratios above are from a quiet run.
 
@@ -120,6 +120,10 @@ precautionary: now only the interpreter's own temporary triggers can call it; an
 the query itself now run in one write transaction, so another process can no longer change the schema in between. The
 fourth (5:2 “A”) confirmed it; two judges found the database schema itself (a column `DEFAULT`) could still call that
 function, so it now gets a fresh random name for every query, and the old name is a decoy that is always refused. The
+fifth (5:2 “A”) confirmed that; two judges found the reference interpreter let a program read that random name
+through SQLite's `sqlite_stmt` virtual table, so virtual tables are now an allowlist (`json_each`, `json_tree` and the
+database's own tables), and the run, an exhausted quota and `--сухо` now share one pre-check. Network tools no longer
+truncate silently: a response over 1 MB, cut short or not UTF-8 is an error, and 30 s bounds the whole request. The
 latest comparison report is
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols — [`konsylium/`](konsylium/).
 
@@ -187,15 +191,15 @@ by Claude (Anthropic) as an agent; the project owner is Denis Romaniuk. MIT lice
 | Справжніх помилок спіймано до запуску (14) | 9 | 3 з pyflakes |
 | Моделі правильно з першої спроби, відкладені задачі (3 прогони × 10) | Sonnet 27/30, Haiku 21/30 | Sonnet 27/30, Haiku 23/30 |
 | Швидкість, 12 малих задач агента (медіана реального часу) | **0,44×** | 1× |
-| Швидкість, 200 тис. слів / цикл на 200 тис. кроків / JSON на 25 тис. записів (процесорний час) | **0,64× / 0,47× / 0,88×** | 1× |
-| Швидкість, той самий цикл через іменовану функцію / з `¿` у ній (процесорний час) | **0,32× / 0,49×** | 1× |
-| Швидкість, точні дроби (у Python — `Decimal`) / складання рядків / цикл `↻` зі станом-списком (процесорний час) | 0,97× / 1,04× / **1,73×** | 1× |
+| Швидкість, 200 тис. слів / цикл на 200 тис. кроків / JSON на 25 тис. записів (процесорний час) | **0,67× / 0,42× / 0,91×** | 1× |
+| Швидкість, той самий цикл через іменовану функцію / з `¿` у ній (процесорний час) | **0,35× / 0,47×** | 1× |
+| Швидкість, точні дроби (у Python — `Decimal`) / складання рядків / цикл `↻` зі станом-списком (процесорний час) | **0,65× / 0,89× / 0,67×** | 1× |
 | Власник знає, що програмі дозволено й що вона зробила | печатка, підписаний слід, повтор, сухий прогін | — |
 
 Виміряно на телефоні (Termux); у числах Nigredo — і її власні слід та сховище повтору. Малі задачі — здебільшого
 запуск інтерпретатора; дві задачі з мережею Атанор віддає еталону, і там він повільніший за Python; цикл на 200 тис.
-кроків — форма зі швидкою доріжкою Атанора; точні дроби й рядки — нарівні з Python, а `↻`, що щокроку будує новий
-список, — у 1,7 раза повільніший. На спокійному телефоні розкид між прогонами — ~10–20 %; на навантаженому (судді
+кроків — форма зі швидкою доріжкою Атанора; `↻`, що щокроку будує новий список, до 2026-10-27 був у 1,7 раза
+повільніший, тепер усі вісім задач на великих даних — швидші за Python. На спокійному телефоні розкид між прогонами — ~10–20 %; на навантаженому (судді
 міряли, поки працювали інші) абсолютний час Атанора був у 1,4–2,8 раза більший, еталона — у 1,4–1,7: відношення
 вище — зі спокійного прогону.
 
@@ -256,7 +260,11 @@ claude mcp add nigredo -- python3 mcp/nigredo_mcp.py   # дати мову бу�
 лише тимчасові тригери самого інтерпретатора; а попередня перевірка, тригери захисту й сам запит тепер ідуть в одній
 транзакції запису, тож інший процес між ними схеми не змінить. Четвертий (5:2 «А») це підтвердив; двоє суддів знайшли,
 що функцію ще могла покликати сама схема бази (`DEFAULT` стовпця), тож тепер вона щоразу має нову випадкову назву, а
-стара назва — приманка, на яку завжди відмова. Останній звіт звірки —
+стара назва — приманка, на яку завжди відмова. П'ятий (5:2 «А») це підтвердив; двоє суддів знайшли, що еталон давав
+програмі прочитати цю випадкову назву через віртуальну таблицю SQLite `sqlite_stmt`, тож віртуальні таблиці тепер —
+перелік дозволених (`json_each`, `json_tree` і таблиці самої бази), а запуск, вичерпана квота й `--сухо` мають один
+попередній прохід. Мережа більше не обрізає мовчки: відповідь понад 1 МБ, обірвана чи не UTF-8 — помилка, а 30 с —
+на весь запит. Останній звіт звірки —
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); історія й протоколи — [`konsylium/`](konsylium/).
 
 **Чесно про межі:** Nigredo — інструмент прозорості й аудиту, **не пісочниця ОС**: агент із доступом до shell може
