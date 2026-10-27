@@ -12,6 +12,7 @@ import hmac
 import json
 import os
 import random
+import stat
 import sys
 import threading
 import unicodedata
@@ -39,6 +40,14 @@ OWNER_HOME = os.path.realpath(os.path.expanduser(os.environ.get('NIGREDO_HOME', 
 # реєстр агентів для інструмента «агент»: {"agents": [{"name": …, "path": …}]}
 AGENTS_REGISTRY = os.environ.get('NIGREDO_AGENTS', os.path.join(OWNER_HOME, 'агенти.json'))
 DEFAULT_ALLOWED = ['оракул', 'жереб', 'час']
+# модулі з git за хешем (spec/пропозиції/модулі_git.md): сховище пласке, назва файлу — sha256 вмісту
+MOD_STORE = os.path.join(OWNER_HOME, 'модулі')
+RAW_GITHUB = 'https://raw.githubusercontent.com/'
+DEFAULT_SOURCES = {'github.com': RAW_GITHUB}   # без «джерела_модулів» у власника github.com дозволено (рішення Дениса,
+#                                               2026-10-27): ключ лише звужує — [] вимикає, словник веде на дзеркало
+MOD_CAP = 1_000_000       # байтів в одному модулі з мережі (у сховищі й під час отримання)
+MOD_MAX, MOD_NEST, MOD_TOTAL = 64, 16, 8_000_000   # на один розбір: різних адрес, вкладеність, байтів разом (§7)
+FETCH_SOCK, FETCH_TIME = 15, 60   # --отримати: тайм-аут операції сокета і строк на весь файл, с (§4.4)
 
 
 
@@ -60,6 +69,21 @@ class StaticError(NgrError):
 
 class Refused(NgrError):
     """Печатка просить більше, ніж дозволив власник."""
+
+
+class Tampered(StaticError):
+    """Запис сховища модулів не той (інший вміст, не звичайний файл, понад MOD_CAP): сховище змінено поза ngr — код 3
+    (модулі з git, §5.2), а не помилка програми."""
+    code = 3
+
+
+class Missing(StaticError):
+    """Модуля з мережі ще немає у сховищі (модулі з git, §4.4): --отримати бере його й розбирає знову; обгортка «у модулі
+    «…»:» лишає тип і поля (адреса, sha256)."""
+
+    def __init__(self, msg, pos, address, sha):
+        super().__init__(msg, pos)
+        self.address, self.sha = address, sha
 
 
 class Fatal(NgrError):
@@ -1014,10 +1038,250 @@ def param_text(params):
     return ', '.join(f'【{", ".join(p[2])}】' if isinstance(p, tuple) else p for p in params)
 
 
+# ------------------------------------------------------------------ модулі з git за хешем (spec/пропозиції/модулі_git.md)
+# Тотожність модуля з мережі — sha256 байтів його файлу; коміт — лише адреса, звідки взяти (§3). Під час розбору й запуску
+# мережі немає: байти — лише зі сховища ~/.nigredo/модулі/<sha256>.ngr, і на кожному розборі вони хешуються заново (§5).
+# Мережа — лише в окремому кроці ngr --отримати (fetch_main).
+
+ADDR_FORM = '「github.com/власник/репо@КОМІТ/шлях/назва.ngr#sha256=ВМІСТ」'
+ADDR_PATH_BAD = set('\\%?#@: 「」')
+
+
+def addr_page(text):
+    """Адреса сторінки GitHub чи raw → рядок для ⊃ без хешу (підказка, §12.1), або None."""
+    m = (re.match(r'(?:https?://)?(?:www\.)?github\.com/([^/@#?]+)/([^/@#?]+)/(?:blob|raw)/([0-9a-fA-F]{40})/([^#?]+)', text)
+         or re.match(r'(?:https?://)?raw\.githubusercontent\.com/([^/@#?]+)/([^/@#?]+)/([0-9a-fA-F]{40})/([^#?]+)', text))
+    return f'github.com/{m[1].lower()}/{m[2].lower().removesuffix(".git")}@{m[3].lower()}/{m[4]}' if m else None
+
+
+def parse_address(text, pos, need_hash=True):
+    """Адреса модуля з мережі (модулі з git, §2.2): github.com/ВЛАСНИК/РЕПО@КОМІТ/ШЛЯХ#sha256=ВМІСТ — рівно одне
+    написання. Ділиться першим «@» і першим «#»; кожна частина перевіряється окремо, щоб помилка називала саме її й
+    пропонувала виправлений рядок (типові промахи моделей, §12.1). Повертає (власник, репо, коміт, шлях, sha256|None)."""
+    def err(msg):
+        return StaticError(f'⊃: {msg}', pos)
+    general = (f'модуль з мережі — {ADDR_FORM}: КОМІТ — 40 шістнадцяткових цифр, ВМІСТ — sha256 файлу (64), усе малими')
+    if not text.startswith('github.com/'):
+        raise err('модулі з мережі — поки лише з «github.com/» (рівно так: без www., порту, логіна, великих літер)')
+    if len(text.encode()) > 1024:
+        raise err('адреса модуля з мережі — до 1024 байтів')
+    head, at, after = text[len('github.com/'):].partition('@')
+    if not at:
+        raise err(general)
+    owner, slash, repo = head.partition('/')
+    if not (slash and re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?', owner)
+            and re.fullmatch(r'[a-z0-9._-]{1,100}', repo) and repo not in ('.', '..') and not repo.endswith('.git')):
+        o2, r2 = owner.lower(), repo.lower().removesuffix('.git')
+        guess = (slash and re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?', o2) and re.fullmatch(r'[a-z0-9._-]{1,100}', r2)
+                 and r2 not in ('.', '..'))
+        raise err('власник і репозиторій — малими латинськими (a-z 0-9 -, у репозиторії ще . _; не «.» і «..», без «.git» у '
+                  'кінці): GitHub не розрізняє регістру, а відбиток розрізняє' + (f'; мабуть: 「github.com/{o2}/{r2}@…」' if guess else ''))
+    commit, slash, tail = after.partition('/')
+    path, mark, hpart = tail.partition('#')
+    val = hpart[len('sha256='):] if hpart.startswith('sha256=') else hpart
+    if not re.fullmatch(r'[0-9a-f]{40}', commit):
+        if re.fullmatch(r'[0-9a-fA-F]{40}', commit):
+            raise err(f'хеші — малими: мабуть 「github.com/{owner}/{repo}@{commit.lower()}/{path}'
+                      + (f'#sha256={val.lower()}' if mark else '') + '」')
+        if re.fullmatch(r'[0-9a-fA-F]{64}', commit):
+            raise err(f'коміт із 64 цифр — GitHub не має репозиторіїв SHA-256 git; якщо це sha256 вмісту, його місце після '
+                      f'«#sha256=»')
+        if re.fullmatch(r'[0-9a-fA-F]{4,39}', commit):
+            raise err(f'скорочений коміт «{commit}» неоднозначний — потрібні всі 40 цифр')
+        raise err(f'«@{safe(commit)}» — гілка чи тег зсуваються; потрібен повний коміт (40 шістнадцяткових цифр)')
+    parts = path.split('/')
+    if not (slash and path.endswith('.ngr') and all(p and p not in ('.', '..') and len(p.encode()) <= 255
+                                                    and not set(p) & ADDR_PATH_BAD for p in parts)
+            and not hidden(path, '') and unicodedata.normalize('NFC', path) == path):
+        raise err('шлях у репозиторії — частини через «/», непорожні, не «.» і не «..», без «\\ % ? # @ :», пробілів і '
+                  'невидимих, у формі NFC, на .ngr')
+    if not mark:
+        if need_hash:
+            raise err(f'модуль з мережі без «#sha256=…» — вміст має бути закріплено: ngr --отримати 「{safe(text)}」 '
+                      f'отримає його й надрукує готовий рядок ⊃')
+        return owner, repo, commit, path, None
+    if hpart.startswith('sha256=') and re.fullmatch(r'[0-9a-f]{64}', val):
+        return owner, repo, commit, path, val
+    fixed = f'github.com/{owner}/{repo}@{commit}/{path}#sha256='
+    if re.fullmatch(r'[0-9a-fA-F]{64}', val):
+        if hpart.startswith('sha256='):
+            raise err(f'хеші — малими: мабуть 「{fixed}{val.lower()}」')
+        raise err(f'перед sha256 потрібна мітка «#sha256=» — мабуть: 「{fixed}{val.lower()}」')
+    if re.fullmatch(r'[0-9a-fA-F]{40}', val):
+        raise err('після «#sha256=» — 64 цифри sha256 файлу; 40 цифр схожі на коміт git (його місце після «@»)')
+    if hpart.lower().startswith('sha256=') and re.fullmatch(r'[0-9a-fA-F]{64}', hpart[7:]):
+        raise err(f'мітка й хеші — малими: мабуть 「{fixed}{hpart[7:].lower()}」')
+    raise err(general)
+
+
+def read_regular(path):
+    """Одне читання файлу без посилань і FIFO (модулі з git, §5.2): O_NOFOLLOW|O_NONBLOCK — посилання не відкриється,
+    FIFO не повісить процес; fstat — лише звичайний файл до MOD_CAP байтів; читається до MOD_CAP + 1. Немає — None;
+    посилання, тека, пристрій, FIFO, понад MOD_CAP — OSError (сховище чи тека змінені поза ngr)."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_size > MOD_CAP:
+            raise OSError('не звичайний файл')
+        chunks, n = [], 0
+        while n <= MOD_CAP:
+            b = os.read(fd, MOD_CAP + 1 - n)
+            if not b:
+                break
+            chunks.append(b)
+            n += len(b)
+    finally:
+        os.close(fd)
+    if n > MOD_CAP:
+        raise OSError('понад межу')
+    return b''.join(chunks)
+
+
+def store_read(sha, pos, address=None):
+    """Запис сховища <sha256>.ngr: байти, що мають саме цей sha256; немає — None. Не той вміст, не звичайний файл чи
+    понад MOD_CAP — Tampered (код 3): агент із shell може видалити чи підкласти файл, але не змусити виконати чужий
+    вміст (§5.2)."""
+    path = os.path.join(MOD_STORE, sha + '.ngr')
+    try:
+        raw = read_regular(path)
+    except OSError:
+        e = Tampered(f'⊃: запис сховища «{safe(path)}» — не звичайний файл (посилання, тека, пристрій) чи понад {MOD_CAP} '
+                     f'байтів: сховище змінено поза ngr; ngr --отримати ПРОГРАМА покладе справжній', pos)
+        e.address, e.sha = address, sha
+        raise e
+    if raw is None:
+        return None
+    got = hashlib.sha256(raw).hexdigest()
+    if got != sha:
+        e = Tampered(f'⊃: запис сховища {sha}.ngr не той (вміст має sha256 {got}) — сховище змінено поза ngr; '
+                     f'ngr --отримати ПРОГРАМА покладе справжній', pos)
+        e.address, e.sha = address, sha
+        raise e
+    return raw
+
+
+class Net:
+    """Модулі з мережі на один розбір (§7): спільна мапа «адреса → sha256» (та сама адреса з двома хешами — помилка),
+    межі MOD_MAX / MOD_NEST / MOD_TOTAL, розібрані модулі за адресою (ромб розбирається раз), звідки брати байти.
+    sources — [(назва, словник sha256 → байти чи None — сховище)]: звичайно лише сховище; --повторити й --перевірити-слід
+    додають файл зі сліду й СЛІД.дані, --отримати — щойно отримане. Кожне джерело звіряється з sha256."""
+
+    def __init__(self, sources=None, log=None):
+        self.pins, self.sizes, self.cache = {}, {}, {}
+        self.sources = sources or [('сховище', None)]
+        self.log = log if log is not None else {}     # адреса → sha256 усіх модулів з мережі, що розібрано
+
+    def bytes_of(self, address, sha, pos):
+        for name, got in self.sources:
+            raw = store_read(sha, pos, address) if got is None else got.get(sha)
+            if raw is not None and (got is None or hashlib.sha256(raw).hexdigest() == sha):
+                return raw
+        raise Missing(f'⊃: модуль 「{address.partition("#")[0]}」 (sha256 {sha}) ще не отримано — ngr --отримати ПРОГРАМА (мережа — лише в '
+                      f'цьому кроці; власник може звузити її «джерела_модулів»; без мережі: --з-теки ТЕКА)', pos, address, sha)
+
+
+def pure_remote(node):
+    """Замок 1 (§6.2): модуль з мережі лише обчислює — увесь його код, разом із тілами λ: жодного інструмента, субагента,
+    друку, памʼяті, ≈, ⚗, 🜍. Перша дія — StaticError, інакше None. Вкладені модулі перевіряє їхній власний розбір."""
+    todo = [node]
+    while todo:
+        n = todo.pop()
+        if isinstance(n, tuple) and n and isinstance(n[0], str):
+            k = n[0]
+            if k == 'tool':
+                return StaticError(f'модуль з мережі лише обчислює — «🜔{n[2]}» (інструмент) заборонено й у функціях', n[1])
+            if k == 'deleg':
+                return StaticError('модуль з мережі лише обчислює — «🜁» (субагент) заборонено й у функціях', n[1])
+            if k == 'op' and n[2] in REMOTE_BANNED:
+                return StaticError(f'модуль з мережі лише обчислює — «{n[2]}» ({REMOTE_BANNED[n[2]]}) заборонено й у функціях',
+                                   n[1])
+            if k == 'import':
+                continue
+            todo.extend(reversed(n))
+        elif isinstance(n, (tuple, list)):
+            todo.extend(reversed(n))
+    return None
+
+
+REMOTE_BANNED = {'»': 'друк', '🜄': 'памʼять', '🜃': 'памʼять', '≈': 'впевненість', '⚗': 'відсів', '🜍': 'перевірка'}
+
+
+def rewrap(e, msg, pos):
+    """Помилка з модуля — з префіксом «у модулі «…»:» і місцем ⊃; тип і поля (Missing, Tampered) лишаються, щоб
+    --отримати й код виходу бачили, що саме сталося глибше."""
+    e.msg, e.pos, e.args = msg, pos, (msg,)
+    return e
+
+
+def load_remote(parsed, net, stack, depth, pos):
+    """Модуль з мережі за (власник, репо, коміт, шлях, sha256) — для ⊃ і для --отримати (той самий шлях коду, §4.4):
+    мапа «адреса → sha256» (§7), межі, байти зі сховища (Net.bytes_of), розбір із module=True і remote, типи, гола
+    печатка, глибока чистота (замок 1). Ромб (та сама адреса двічі) — з кешу. Повертає (адреса з #sha256=, sha256,
+    дерево, імена верхнього рівня з арностями, текст, висота)."""
+    o, r, c, p, sha = parsed
+    bare = f'github.com/{o}/{r}@{c}/{p}'
+    address = f'{bare}#sha256={sha}'
+    first = net.pins.setdefault(bare, sha)
+    if first != sha:
+        raise StaticError(f'⊃: «{bare}» закріплено двома різними sha256 ({first} і {sha}) — той самий файл коміту має '
+                          f'один вміст', pos)
+    if len(net.pins) > MOD_MAX:
+        raise StaticError(f'⊃: модулів з мережі понад {MOD_MAX}', pos)
+    if depth + 1 > MOD_NEST:
+        raise StaticError(f'⊃: вкладеність модулів з мережі понад {MOD_NEST}', pos)
+    hit = net.cache.get(address)
+    if hit is None:
+        real = os.path.join(MOD_STORE, sha + '.ngr')
+        if real in stack:                      # за ланцюжком Меркла неможливо; другий замок
+            raise StaticError(f'⊃: циклічний імпорт «{address}»', pos)
+        raw = net.bytes_of(address, sha, pos)
+        if sha not in net.sizes:
+            net.sizes[sha] = len(raw)
+            if sum(net.sizes.values()) > MOD_TOTAL:
+                raise StaticError(f'⊃: модулі з мережі разом понад {MOD_TOTAL} байтів', pos)
+        try:
+            try:
+                text = raw.decode('utf-8')
+            except UnicodeDecodeError:
+                raise StaticError('модуль не UTF-8', (1, 1))
+            toks = lex(text)
+            check_twins(toks)
+            sub = Parser(toks, None, None, stack + (real,), module=True, remote=(o, r, c, p.rpartition('/')[0]), net=net,
+                         depth=depth + 1)
+            mod = sub.program()
+            errs = type_errors(mod)
+            if errs:
+                raise errs[0]
+        except StaticError as e:
+            raise rewrap(e, f'у модулі «{address}»: {e}', pos)
+        caps = mod[2][0][3]
+        if caps:
+            t, scopes = next(iter(caps.items()))
+            raise StaticError(f'модуль з мережі «{address}» просить «{t}{":" + scopes[0] if scopes else ""}» — модулі з '
+                              f'мережі лише обчислюють (гола 🜂 чи 🜂 「намір」); дії — у програмі, що його бере (або '
+                              f'скопіюйте модуль у теку програми й беріть локально: його печатка ⊆ вашої)', pos)
+        bad = pure_remote(mod)
+        if bad:
+            raise rewrap(bad, f'у модулі «{address}»: {bad}', pos)
+        hit = net.cache[address] = (mod, sub.scopes[0], text, sub.height + 1)
+    mod, scope, text, height = hit
+    if depth + height > MOD_NEST:
+        raise StaticError(f'⊃: вкладеність модулів з мережі понад {MOD_NEST}', pos)
+    net.log[address] = sha
+    return address, sha, mod, scope, text, height
+
+
 class Parser:
-    def __init__(self, toks, base=None, root=None, stack=(), module=False):
+    def __init__(self, toks, base=None, root=None, stack=(), module=False, remote=None, net=None, depth=0):
         self.t, self.i = toks, 0
         self.base, self.root, self.stack, self.module = base, root or base, stack, module   # для ⊃
+        self.remote = remote        # модуль з мережі, що розбирається: (власник, репо, коміт, тека в репозиторії) — §2.3
+        self.net = net or Net()     # спільне на весь розбір: адреса → sha256, межі, звідки байти (модулі з git, §7)
+        self.depth = depth          # вкладеність модулів з мережі над цим кодом
+        self.height = 0             # найглибша вкладеність модулів з мережі під цим кодом (для ромба з кешу)
         self.scopes = [{}]          # імʼя → арність функції або 0 для значення
         self.cap_stack = []         # дозволи найближчої печатки / субагента: {інструмент: [обмеження]}
         self.agent_names = {skeleton("головний"): "головний"}   # скелет імені субагента → імʼя
@@ -1301,7 +1565,8 @@ class Parser:
         return ('lam', pos, params, body, h)
 
     def import_(self, pos):
-        """⊃ 「шлях.ngr」 【「імʼя」 …】: розібрати модуль зараз (щоб знати арності), перевірити його печатку."""
+        """⊃ 「шлях.ngr」 【「імʼя」 …】: розібрати модуль зараз (щоб знати арності), перевірити його печатку.
+        ⊃ 「github.com/в/р@КОМІТ/шлях.ngr#sha256=ВМІСТ」 — модуль з мережі: байти лише зі сховища (модулі з git, §2)."""
         if self.i - 1 != self.head or len(self.scopes) != 1:
             raise StaticError('⊃ — лише на початку інструкції верхнього рівня (не у функції чи блоці)', pos)
         path, names = self.expr(), self.expr()
@@ -1310,6 +1575,30 @@ class Parser:
         if names[0] != 'list' or not names[2] or any(e[0] != 'lit' or not isinstance(e[2], str) for e in names[2]):
             raise StaticError('⊃: імена — непорожній буквальний список рядків 【「імʼя」 …】', pos)
         rel = path[2]
+        if '://' in rel or rel.startswith('raw.githubusercontent.com/'):       # адреса сторінки — не модуль (§12.1)
+            hint = addr_page(rel)
+            if hint or 'github' in rel.lower():
+                raise StaticError(f'⊃: «{safe(clip(rel, 160))}» — це адреса сторінки, а не модуля; пишіть {ADDR_FORM}'
+                                  + (f' — мабуть: 「{hint}」 + «#sha256=…» (ngr --отримати 「{hint}」 надрукує)' if hint else ''), pos)
+            raise StaticError(f'⊃: «{safe(clip(rel, 160))}» — адреса, а не шлях у теці програми; модуль з мережі: {ADDR_FORM}', pos)
+        if self.remote is not None:            # у модулі з мережі — лише закріплені модулі з мережі (§2.3, §7)
+            if rel.startswith('github.com/'):
+                return self.import_remote(parse_address(rel, pos), names, pos)
+            if '#' not in rel:
+                raise StaticError(f'⊃ «{safe(rel)}» без «#sha256=» — модуль з мережі бере інші модулі лише закріпленими', pos)
+            if '..' in rel.partition('#')[0].split('/'):
+                raise StaticError(f'⊃ «{safe(rel)}» — лише вглиб від теки модуля; вище — повною адресою', pos)
+            o, r, c, d = self.remote             # той самий репозиторій і коміт, шлях — від теки модуля (рядком)
+            return self.import_remote(parse_address(f'github.com/{o}/{r}@{c}/{d + "/" if d else ""}{rel}', pos), names, pos)
+        if rel.startswith('github.com/') and '#' in rel:
+            return self.import_remote(parse_address(rel, pos), names, pos)
+        if '#sha256=' in rel:
+            head = rel.split('/', 1)[0]
+            if '/' in rel and any(ch in head for ch in '.:@'):
+                raise StaticError('⊃: модулі з мережі — поки лише з «github.com/» (рівно так: без www., порту, логіна, '
+                                  'великих літер)', pos)
+            raise StaticError('⊃: закріплений відносний модуль — поки лише всередині модуля з мережі (там це файл того '
+                              'самого коміту)', pos)
         if self.base is None:
             raise StaticError('⊃: модулі — лише в програмах із текою', pos)
         if not rel.endswith('.ngr') or os.path.isabs(rel):
@@ -1324,17 +1613,22 @@ class Parser:
             raw = open(real, 'rb').read()
             src = raw.decode('utf-8')
         except (OSError, UnicodeDecodeError) as e:
-            raise StaticError(f'⊃: модуль «{safe(rel)}» не прочитати: {getattr(e, "strerror", None) or e}', pos)
+            if rel.startswith('github.com/') and isinstance(e, OSError):      # схоже на адресу: локального файлу немає
+                parse_address(rel, pos)        # кидає помилку саме тієї частини, що хибна (найчастіше — без #sha256=)
+            hint = (' (якщо це модуль з мережі — потрібні «@КОМІТ» і «#sha256=…»)'
+                    if re.search(r'@[0-9a-fA-F]{7,64}(/|$)', rel) or rel.lower().startswith(('github', 'www.github')) else '')
+            raise StaticError(f'⊃: модуль «{safe(rel)}» не прочитати: {getattr(e, "strerror", None) or e}{hint}', pos)
         try:
             toks = lex(src)
             check_twins(toks)
-            sub = Parser(toks, os.path.dirname(real), self.root, self.stack + (real,), module=True)
+            sub = Parser(toks, os.path.dirname(real), self.root, self.stack + (real,), module=True, net=self.net)
             mod = sub.program()
             errs = type_errors(mod)
             if errs:
                 raise errs[0]
         except StaticError as e:
-            raise StaticError(f'у модулі «{safe(rel)}»: {e}', pos)
+            raise rewrap(e, f'у модулі «{safe(rel)}»: {e}', pos)
+        self.height = max(self.height, sub.height)
         mcaps = mod[2][0][3]
         parent = self.cap_stack[-1]
         for t, scopes in mcaps.items():
@@ -1343,15 +1637,27 @@ class Parser:
             for sc in scopes:
                 if parent[t] and sc not in parent[t] and not any(narrower(t, sc, ps) for ps in parent[t]):
                     raise StaticError(f'модуль «{safe(rel)}» просить «{t}:{sc}» — ширше, ніж у печатці програми', pos)
+        self.bind_names(names, sub.scopes[0], rel)
+        return ('import', pos, os.path.relpath(real, self.root), [e[2] for e in names[2]], mod,
+                hashlib.sha256(raw).hexdigest(), real)
+
+    def bind_names(self, names, scope, rel):
         for e in names[2]:
             nm = e[2]
-            if nm not in sub.scopes[0]:
+            if nm not in scope:
                 raise StaticError(f'у модулі «{safe(rel)}» немає «{safe(nm)}»', e[1])
             if nm in self.scopes[0]:
                 raise StaticError(f'«{nm}» уже назване тут — значення в Nigredo не перепризначаються', e[1])
-            self.scopes[0][nm] = sub.scopes[0][nm]
-        return ('import', pos, os.path.relpath(real, self.root), [e[2] for e in names[2]], mod,
-                hashlib.sha256(raw).hexdigest(), real)
+            self.scopes[0][nm] = scope[nm]
+
+    def import_remote(self, parsed, names, pos):
+        """Модуль з мережі (§5–§7): байти — зі сховища за sha256 (кожен розбір хешує заново), розбір тим самим Parser,
+        гола печатка й глибока чистота (замок 1), спільна мапа «адреса → sha256» і межі на весь розбір. Вузол — той
+        самий, що в локального, плюс текст модуля (для СЛІД.дані): n[2] — адреса з #sha256=, n[6] — запис сховища."""
+        address, sha, mod, scope, text, height = load_remote(parsed, self.net, self.stack, self.depth, pos)
+        self.height = max(self.height, height)
+        self.bind_names(names, scope, address)
+        return ('import', pos, address, [e[2] for e in names[2]], mod, sha, os.path.join(MOD_STORE, sha + '.ngr'), text)
 
     def caps_literal(self, what, pos, inherit=False):
         node = self.expr()
@@ -1789,11 +2095,12 @@ def type_errors(prog):
     return errs
 
 
-def parse(src, base=None, path=None, all_errors=None):
-    """Розібрати й перевірити типи; перша помилка — StaticError. all_errors (список) — зібрати всі помилки типів."""
+def parse(src, base=None, path=None, all_errors=None, net=None):
+    """Розібрати й перевірити типи; перша помилка — StaticError. all_errors (список) — зібрати всі помилки типів.
+    net — звідки брати модулі з мережі (типово лише сховище; Net)."""
     toks = lex(src)
     check_twins(toks)
-    p = Parser(toks, base, stack=(os.path.realpath(path),) if path else ())
+    p = Parser(toks, base, stack=(os.path.realpath(path),) if path else (), net=net)
     try:
         prog = p.program()
         errs = type_errors(prog)
@@ -1807,7 +2114,7 @@ def parse(src, base=None, path=None, all_errors=None):
 
 
 
-def all_static_errors(src, base=None, path=None, limit=50):
+def all_static_errors(src, base=None, path=None, limit=50, log=None):
     """--перевірити: не лише перша помилка розбору (суд 8б: «знайти ВСІ» давало одну). Після кожної — пропустити її
     дозвіл 「…」 (печатка) чи рядок інструкції з глибшими продовженнями й розбирати далі, до limit помилок. Пізніші
     позначено after_skip — можуть бути наслідком пропуску; про імена з пропущених рядків «←» — не повідомляти. Порядок —
@@ -1824,7 +2131,7 @@ def all_static_errors(src, base=None, path=None, limit=50):
             break
         errs = []
         try:
-            parse('\n'.join(lines), base, path, errs)
+            parse('\n'.join(lines), base, path, errs, Net(log=log) if log is not None else None)
         except StaticError as e:
             if any(e.msg == x.msg and e.pos == x.pos for x in errors) or not e.pos or e.file:   # e.file — у модулі
                 break
@@ -1894,6 +2201,20 @@ class Trace:
         if event != 'початок':      # «початок» не рахуємо: у ньому поле «інтерпретатор», різне у виконавців
             self.bytes += len(line.encode())
         for o in self.outs:
+            o.write(line)
+            o.flush()
+
+    def keep_module(self, sha, text):
+        """Текст модуля з мережі — у СЛІД.дані, раз на вміст (модулі з git, §9.2): власник прочитає код, що виконався, і
+        коли репозиторій видалено, а сховище почищено; --повторити й --перевірити-слід беруть його звідти без мережі."""
+        if ('модуль', sha) in self.kept or not self.stores:
+            return
+        self.kept.add(('модуль', sha))
+        line = json.dumps({'sha256': sha, 'модуль': text}, ensure_ascii=False) + '\n'
+        self.bytes += len(line.encode())
+        if self.bytes > self.limit:
+            raise Fatal(f'слід перевищив {self.limit} байтів (--слід-розмір) — програму зупинено')
+        for o in self.stores:
             o.write(line)
             o.flush()
 
@@ -1991,6 +2312,40 @@ def _summarized(x):
     return 0
 
 
+def trace_modules(tpath):
+    """Тексти модулів з мережі із СЛІД.дані (записи {"sha256", "модуль"}): sha256 → байти; лише ті, чий текст справді
+    має цей sha256 (змінений текст не дістанеться нікому)."""
+    out = {}
+    try:
+        with open(tpath + '.дані', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(r, dict) and isinstance(r.get('модуль'), str) and not _bad_str(r['модуль']):
+                    raw = r['модуль'].encode()
+                    if hashlib.sha256(raw).hexdigest() == r.get('sha256'):
+                        out[r['sha256']] = raw
+    except (OSError, UnicodeDecodeError):
+        pass
+    return out
+
+
+def module_copy(sha, file_hint, tpath, texts=None):
+    """Байти модуля з мережі для перевірки сліду й повтору (модулі з git, §9.3), по черзі: «файл» зі сліду, сховище
+    поточного власника, запис «модуль» у СЛІД.дані — на кожному кроці звіряється sha256. → (байти, джерело) чи (None, None)."""
+    for where, path in (('файл', file_hint), ('сховище', os.path.join(MOD_STORE, f'{sha}.ngr'))):
+        try:
+            raw = read_regular(path) if isinstance(path, str) and path else None
+        except OSError:
+            raw = None
+        if raw is not None and hashlib.sha256(raw).hexdigest() == sha:
+            return raw, where
+    raw = (trace_modules(tpath) if texts is None else texts).get(sha)
+    return (raw, 'СЛІД.дані') if raw is not None else (None, None)
+
+
 def verify_trace(path, program=None, as_json=False):
     """Перевірка сліду; з as_json — словник для машин. Див. _verify."""
     msg, info = _verify(path, program)
@@ -2004,9 +2359,10 @@ def _verify(path, program=None):
     завершено («кінець», «помилка» або «відмова» на старті); якщо дано програму — її sha256 збігається.
     Підсумок цілого сліду каже й те, що отримувачу важливо без читання сліду: спроби поза правами («заборонено»),
     перехоплені помилки, підсумовані (не повністю записані) значення, теку й аргументи запуску."""
-    key, prev, n, last, head = owner_key(), '0' * 16, 0, None, None
+    key, prev, n, last, head, path_ = owner_key(), '0' * 16, 0, None, None, path
     denied, caught, summed, modules, dry, raised, quota_hits, careful = [], 0, 0, [], False, 0, [], []
     chunks, events, rejected, running = {'виконується': 0, 'відкинуто': 0, 'помилка частини': 0}, [], [], False
+    fetched, mismatched = {'отримано': 0, 'уже було': 0, 'замінено пошкоджений': 0}, []   # слід --отримати (§4.7)
     info = {}
     try:
         st = os.stat(path)
@@ -2050,6 +2406,11 @@ def _verify(path, program=None):
             raised += 1
         if rec.get('подія') == 'модуль':
             modules.append((rec.get('шлях'), rec.get('файл'), rec.get('sha256')))
+        if rec.get('подія') == 'модуль отримано' and rec.get('стан') in fetched:
+            fetched[rec['стан']] += 1
+        if rec.get('подія') == 'вміст не збігся':
+            mismatched.append(f'{clip(safe(str(rec.get("адреса"))), 200)}: чекали {rec.get("чекали")}, отримано '
+                              f'{rec.get("отримано")} ({safe(str(rec.get("звідки")))})')
         if rec.get('подія') == 'код' and rec.get('стан') in chunks:
             chunks[rec['стан']] += 1
             if rec['стан'] == 'відкинуто':
@@ -2068,11 +2429,12 @@ def _verify(path, program=None):
         return f'✗ слід обірвано: {n} записів, останній — «{last}», а не кінець/помилка/відмова на старті', info
     if not head or head.get('подія') != 'початок':
         return '✗ слід не починається з «початок»', info
-    about = (('сеанс REPL' if head.get('repl') else
+    about = (('сеанс REPL' if head.get('repl') else f'адреса {safe(str(head.get("адреса")))}' if 'адреса' in head else
               f'програма {safe(str(head.get("програма")))}, sha256 {str(head.get("sha256"))[:16]}…') +
              f', час {head.get("час", "—")}, запуск {head.get("запуск", "—")}')
     if 'час' not in head or 'запуск' not in head:
         return f'⚠ слід цілий, але старого формату (без часу й запуску): не доводить, коли і котрий це запуск; {about}' , info
+    sources = {}                                     # sha256 модуля з мережі → звідки взято для перевірки
     if program is not None and head.get('repl'):     # суд 9: сеанс — не програма-файл; його код — у записах «код»
         return (f'✗ слід цілий, але це СЕАНС REPL ({about}): програми-файлу в ньому немає — код сеансу в записах '
                 f'«код»; перевіряйте слід без програми', info)
@@ -2083,7 +2445,16 @@ def _verify(path, program=None):
             return f'✗ не прочитати програму: {e}', info
         if not real.startswith(str(head.get('sha256'))):
             return f'✗ слід цілий, але від ІНШОЇ програми ({about})', info
+        texts = None
         for rel, path, sha in modules:              # програма — це й усі її модулі
+            if str(rel).startswith('github.com/'):  # модуль з мережі: файл сліду, сховище, СЛІД.дані (модулі з git, §9.3)
+                if texts is None:
+                    texts = trace_modules(path_)
+                raw, sources[sha] = module_copy(str(sha), path, path_, texts)
+                if raw is None:
+                    return (f'✗ слід цілий, але модуля з мережі «{safe(str(rel))}» немає ні у сховищі, ні в СЛІД.дані '
+                            f'(sha256 {sha}) — ngr --отримати ПРОГРАМА і перевірте знову (повтор сам у мережу не ходить)', info)
+                continue
             try:
                 now = hashlib.sha256(open(path, 'rb').read()).hexdigest() if path else None
             except OSError:
@@ -2091,13 +2462,20 @@ def _verify(path, program=None):
             if now != sha:
                 return (f'✗ слід цілий, але модуль «{safe(str(rel))}» тепер ІНШИЙ (у сліді sha256 {str(sha)[:16]}…, '
                         f'зараз {"немає файлу" if now is None else now[:16] + "…"}) — виконано не той код, що зараз', info)
-    info.update({'модулі': [{'шлях': r, 'sha256': h} for r, _, h in modules],
+    remote = [h for r, _, h in modules if str(r).startswith('github.com/')]
+    info.update({'модулі': [{'шлях': r, 'sha256': h, **({'з_мережі': True} if str(r).startswith('github.com/') else {}),
+                             **({'джерело': sources[h]} if h in sources else {})}
+                            for r, _, h in modules],
                  'інтерпретатор': head.get('інтерпретатор'),
                  'записів': n, 'останній': last, 'заборонено': denied, 'квоту_вичерпано': quota_hits,
                  'запобіжні_відмови': careful,
                  'перехоплено_помилок': caught,
                  'підсумовано_значень': summed, 'тека': head.get('тека'), 'аргументи': head.get('аргументи'),
-                 'режим': 'повтор' if head.get('повтор') else 'сухо' if dry else 'repl' if head.get('repl') else 'звичайний'})
+                 'режим': 'повтор' if head.get('повтор') else 'сухо' if dry else 'repl' if head.get('repl') else
+                 'отримання' if head.get('отримання') else 'звичайний'})
+    if head.get('отримання'):
+        info['отримання'] = {'отримано': fetched['отримано'], 'уже_було': fetched['уже було'],
+                             'замінено_пошкоджений': fetched['замінено пошкоджений'], 'не_збіглося': mismatched}
     engine = 'Атанор' if str(head.get('інтерпретатор', '')).startswith('атанор:') else 'еталон'
     notes = [f'виконавець: {engine} (' + ('sha256 джерел ' if engine == 'Атанор' else 'sha256 nigredo.py ')
              + str(head.get('інтерпретатор', '')).removeprefix('атанор:')[:16] + '…; ngr --відбиток — для порівняння)', f'тека {safe(str(head.get("тека", "—")))}',
@@ -2124,7 +2502,10 @@ def _verify(path, program=None):
                      f'дав би запит SQLite, без виконання не перевірити): {len(quota_hits)} — '
                      + '; '.join(quota_hits[:5]) + (' …' if len(quota_hits) > 5 else ''))
     if modules:
-        notes.append('модулі: ' + ', '.join(f'{safe(str(r))} (sha256 {str(h)[:16]}…)' for r, _, h in modules)
+        notes.append('модулі: ' + (f'{len(modules)} (з мережі: {len(remote)}, sha256 повністю): ' if remote else '')
+                     + ', '.join(safe(str(r)) + ('' if str(r).startswith('github.com/') else f' (sha256 {str(h)[:16]}…)')
+                                 + (f' [{sources.get(h)}]' if program is not None and str(r).startswith('github.com/') else '')
+                                 for r, _, h in modules)
                      + ('' if program is not None else ' — модуль, змінений посеред сеансу, сеанс відхиляє сам'
                         if head.get('repl') else ' — щоб звірити з файлами, перевірте слід разом із програмою'))
     if caught:
@@ -2142,7 +2523,14 @@ def _verify(path, program=None):
         notes.insert(0, '⚠ ВНУТРІШНЯ ПОМИЛКА інтерпретатора (код 4): вада мови, а не програми; останній виклик інструмента '
                         '(якщо був) — у записі «помилка»')
         info['внутрішня_помилка'] = True
-    mode = (f' — ПОВТОР сліду {safe(str(head.get("повтор")))}: жоден інструмент не діяв, «інструмент» — записані значення'
+    if mismatched:
+        notes.insert(0, f'⚠ ВМІСТ НЕ ЗБІГСЯ: {len(mismatched)} (можлива підміна; у сховище не покладено) — '
+                        + '; '.join(mismatched[:5]) + (' …' if len(mismatched) > 5 else ''))
+    mode = (f' — ОТРИМАННЯ МОДУЛІВ: {fetched["отримано"]} отримано, {fetched["уже було"]} уже було'
+            + (f', {fetched["замінено пошкоджений"]} замінено пошкоджений' if fetched['замінено пошкоджений'] else '')
+            + (f'; ⚠ вміст не збігся: {len(mismatched)} (можлива підміна)' if mismatched else '')
+            + ' — жодна програма не виконувалась' if head.get('отримання') else
+            f' — ПОВТОР сліду {safe(str(head.get("повтор")))}: жоден інструмент не діяв, «інструмент» — записані значення'
             if head.get('повтор') else ' — СУХИЙ ПРОГІН: записи, надсилання, процеси й агенти НЕ виконувалися, їхні '
             '«інструмент» — заглушки з впевненістю 0' if dry else ' — СЕАНС REPL: код надходив частинами, кожен рядок '
             'входу — у записі «код»' if head.get('repl') else '')
@@ -4393,6 +4781,7 @@ def read_allowlist(path, cwd=None, prog=None, approval=None):
             if not isinstance(extra, list):
                 raise ValueError(f'«для_тек» → «{d}»: потрібен список')
         per_prog = per_programs(data)
+        sources_of(data, {})                 # «джерела_модулів» — лише відомої форми (модулі з git, §4.2)
         # теки запису — з УСІХ записів власника, а не лише цієї теки (суд 8в: програма з теки C, якій дано писати в
         # A/вхідні, клала туди програму — і та діставала права теки A); схвалені програми — теж записи власника
         writable = [split_quota(e)[0].partition(':')[2].strip()
@@ -4455,6 +4844,51 @@ def dec_why(e):
     return 'порядок числа поза межами'
 
 
+def mirror_ok(base):
+    """Дзеркало у «джерела_модулів»: http(s)://хост[:порт]/шлях/ — з «/» у кінці, без логіна, «?», «#» і невидимого."""
+    import urllib.parse
+    if not isinstance(base, str) or hidden(base, '') or ' ' in base or '?' in base or '#' in base or not base.endswith('/'):
+        return False
+    try:
+        u = urllib.parse.urlsplit(base)
+        u.port
+    except ValueError:
+        return False
+    return u.scheme in ('http', 'https') and bool(u.hostname) and '@' not in u.netloc
+
+
+def sources_of(data, default):
+    """«джерела_модулів» з дозволів (модулі з git, §4.2): хост → база адрес. Немає ключа — default (у власника github.com
+    дозволено й так: ключ лише звужує); список — хости (github.com → raw.githubusercontent.com), [] — жодних; словник —
+    хост → дзеркало власника (тести, офлайн). У v1 хост — лише github.com; будь-що інше — помилка читання дозволів."""
+    if not isinstance(data, dict) or 'джерела_модулів' not in data:
+        return dict(default)
+    v = data['джерела_модулів']
+    if isinstance(v, list):
+        if any(h != 'github.com' for h in v):
+            raise ValueError('«джерела_модулів»: у v1 хост — лише «github.com» (список хостів або словник хост → дзеркало)')
+        if len(v) > 1:
+            raise ValueError('«джерела_модулів»: «github.com» двічі')
+        return {h: RAW_GITHUB for h in v}
+    if isinstance(v, dict):
+        for h, base in v.items():
+            if h != 'github.com':
+                raise ValueError('«джерела_модулів»: у v1 хост — лише «github.com» (список хостів або словник хост → дзеркало)')
+            if not mirror_ok(base):
+                raise ValueError(f'«джерела_модулів» → «github.com»: дзеркало — http(s)://хост[:порт]/шлях/ («/» у кінці, без '
+                                 f'логіна, «?» і «#»), а не «{safe(str(base))}»')
+        return dict(v)
+    raise ValueError('«джерела_модулів» має бути списком хостів або словником хост → дзеркало')
+
+
+def sources_text(sources):
+    """Джерела модулів для людини: github.com (raw.githubusercontent.com) / github.com → дзеркало …; [] — жодних."""
+    if not sources:
+        return 'жодних («джерела_модулів»: []) — модулі з мережі не запустяться й не отримаються'
+    return ', '.join(f'{h} (raw.githubusercontent.com)' if b == RAW_GITHUB else f'{h} → дзеркало {safe(b)}'
+                     for h, b in sources.items())
+
+
 def per_programs(data):
     """«для_програм» з дозволів власника: відбиток (малими літерами) → список дозволів."""
     per_prog = data.get('для_програм', {})
@@ -4503,10 +4937,13 @@ def _load_allowlist(narrow, cwd, prog, approval=None):
     if os.path.exists(path):
         owner = read_allowlist(path, cwd, prog, approval)
         source = f'{path} (sha256 {hashlib.sha256(open(path, "rb").read()).hexdigest()[:16]})'
-        if approval and approval in per_programs(json.load(open(path, encoding='utf-8'))):
+        data = json.load(open(path, encoding='utf-8'))
+        if approval and approval in per_programs(data):
             source += f'; схвалено власником: програма {approval[:16]}…'
+        sources = sources_of(data, DEFAULT_SOURCES)
     else:
         owner, source = list(DEFAULT_ALLOWED), '(файлу власника немає: лише іграшкові інструменти)'
+        sources = dict(DEFAULT_SOURCES)
     quotas, full = owner_quotas(owner), list(owner)
     if narrow:                         # звуження: права — спільні; квоти власника лишаються, свої — додаються (суд 8)
         extra = read_allowlist(narrow)
@@ -4514,7 +4951,14 @@ def _load_allowlist(narrow, cwd, prog, approval=None):
         quotas += owner_quotas(kept)
         owner = [split_quota(a)[0] for a in kept]
         source += f'; звужено {narrow}'
-    return Allowed(owner, quotas, full), source
+        try:                           # джерела модулів — лише спільні; база — власника (звуження не веде деінде)
+            narrow_src = sources_of(json.load(open(narrow, encoding='utf-8')), {})
+        except (OSError, ValueError) as e:
+            raise Refused(f'не вдалося прочитати дозволи {narrow}: {e}')
+        sources = {h: b for h, b in sources.items() if h in narrow_src}
+    allowed = Allowed(owner, quotas, full)
+    allowed.sources = sources
+    return allowed, source
 
 
 class Allowed(list):
@@ -4524,6 +4968,7 @@ class Allowed(list):
         super().__init__(items)
         self.quotas = list(quotas)
         self.full = list(items if full is None else full)
+        self.sources = dict(DEFAULT_SOURCES)    # «джерела_модулів» після звуження (модулі з git, §4.2)
 
 
 def owner_quotas(allowed):
@@ -4634,7 +5079,13 @@ def check_program(prog, allowed, cwd):
         found = resolve_cmd(sc.split(' ')[0])
         if found and any(inside(x, w) for x in found for w in writable):
             missing.append(f'процес:{sc} ({safe(found[0])} чи його ціль лежить у теці, куди програмам дозволено писати)')
+    sources = getattr(allowed, 'sources', DEFAULT_SOURCES)
     for m in walk_imports(prog):    # код, який могла написати програма, — не модуль (як «права теки» для теки запису)
+        if len(m) > 7:              # модуль з мережі: вимикач власника діє й на вже отримане (модулі з git, §4.2)
+            if 'github.com' not in sources:
+                missing.append(f'модуль з мережі «{safe(m[2])}»: власник не дозволив модулів з «github.com» '
+                               f'(«джерела_модулів» у дозволах власника)')
+            continue                # сховище — не «тека запису»: байти визначає sha256 у тексті імпортера (§5.3)
         if any(inside(m[6], w) for w in writable):
             missing.append(f'модуль {safe(m[2])} лежить у теці, куди програмам дозволено писати')
     for parent, child, name in delegations(prog):
@@ -4718,6 +5169,7 @@ class Interp:
         self.quota_lock = threading.Lock()
         self.replay = None      # --повторити: (записи «інструмент», сховище значень)
         self.dry = None         # --сухо: список придушених дій (записи, надсилання, процеси, агенти)
+        self.pure = False       # замок 2 (модулі з git, §6.2): виконується код з функції модуля з мережі — лише обчислення
 
     def tool_begin(self, name, args, pos):
         """Перевірка прав, впевненість аргументів і запис «виклик» — до дії (для ‖ — по черзі, до паралельних дій)."""
@@ -5068,10 +5520,12 @@ class Interp:
         if fn.c < 1:
             self.taint_effects((f.body,), fn.c)
             self.halt_risk(fn.c, f.body)
-        saved_caps = self.caps
+        saved_caps, saved_pure = self.caps, self.pure
         mod_q = f.mod is not None and bool(getattr(f.mod[1], 'quotas', None))
         if f.mod is not None:          # печатка модуля діє: права — перетин прав агента й печатки модуля
-            self.caps = intersect_caps(self.caps, f.mod[1], self.cwd)
+            self.caps = intersect_caps(self.caps, f.mod[1], self.cwd)    # модуль з мережі: печатка гола — прав немає
+            if f.mod[2]:               # і жодних дій без інструментів — до кінця виклику, і в λ того, хто кличе (§6.2)
+                self.pure = True
             if mod_q:                  # і квоти модуля — на весь запуск, усі виклики його функцій (суд 8)
                 self.quota_stack.append((f'модуль {f.mod[0]}', f.mod[1], id(f.mod[1])))
         try:
@@ -5096,7 +5550,7 @@ class Interp:
         finally:
             if mod_q:
                 self.quota_stack.pop()
-            self.caps = saved_caps
+            self.caps, self.pure = saved_caps, saved_pure
             self.pc = saved
             self.depth -= 1
             self.wdepth -= f.h
@@ -5304,10 +5758,19 @@ class Interp:
             path, names, mod, sha, real = node[2], node[3], node[4], node[5], node[6]
             menv = self.modules.get(real)
             if menv is None:
+                remote = len(node) > 7            # модуль з мережі: адреса, текст — у СЛІД.дані (модулі з git, §9)
                 self.trace('модуль', агент=self.agent, шлях=safe(path), файл=safe(real), sha256=sha, дозволи=mod[2][0][3])
-                menv = self.modules[real] = {'\0модуль': (safe(os.path.relpath(real, self.cwd)), mod[2][0][3])}
-                for st in mod[2][1:]:          # печатку модуля НЕ виконуємо: права агента вона не змінює
-                    self.eval(st, menv)
+                if remote:
+                    self.trace.keep_module(sha, node[7])
+                menv = self.modules[real] = {'\0модуль': (safe(path) if remote else safe(os.path.relpath(real, self.cwd)),
+                                                          mod[2][0][3], remote)}
+                saved = self.pure
+                self.pure = saved or remote
+                try:
+                    for st in mod[2][1:]:          # печатку модуля НЕ виконуємо: права агента вона не змінює
+                        self.eval(st, menv)
+                finally:
+                    self.pure = saved
             for nm in names:
                 env[nm] = menv[nm]
             return V(None)
@@ -5345,8 +5808,16 @@ class Interp:
                     over.append(f'{t}:{sc}')
         return over
 
+    def pure_deny(self, g, pos):
+        """Замок 2 (модулі з git, §6.2): у коді з функції модуля з мережі (і в λ того, хто кличе, викликаній там, і в
+        замиканні, яке модуль повернув) немає друку, памʼяті, ≈, ⚗, 🜍, 🜁 — «заборонено» в слід, потім помилка."""
+        self.trace('заборонено', агент=self.agent, назва=g, причина='модуль з мережі лише обчислює')
+        raise NgrError(f'модуль з мережі лише обчислює: «{g}» тут неможливий', pos)
+
     def delegate(self, node, env):
         _, pos, name, intent, caps, body = node
+        if self.pure:
+            self.pure_deny('🜁', pos)
         over = self.exceeds(caps)
         if over:              # функцію з 🜁 викликав агент з меншими правами — субагент не може мати більше за нього
             self.trace('заборонено', агент=self.agent, субагент=name, дозволи=caps, бракує=over,
@@ -5541,6 +6012,8 @@ class Interp:
 
     def strict(self, g, args, pos):
         """Гліф з обчисленими аргументами: межі, сама дія, канал завершення, впевненість результату."""
+        if self.pure and g in REMOTE_BANNED:
+            self.pure_deny(g, pos)
         amin = min([1.0] + [a.c for a in args])
         self.taint(amin)                          # будь-яка операція може впасти — це видно ☂
         if g in HEAVY:
@@ -5982,6 +6455,9 @@ def explain(node, ind=0):
     if k == 'import':
         caps = '; '.join(t + (f' [{", ".join(s)}]' if s else '') for t, s in node[4][2][0][3].items()) or 'жодних'
         body = '\n'.join('  ' * (ind + 1) + explain(st, ind + 1) for st in node[4][2][1:])
+        if len(node) > 7:            # модуль з мережі (модулі з git, §10.3)
+            return (f'з модуля з мережі {quote(node[2].partition("#")[0])} (sha256 {node[5]}; лише обчислює; адреса — '
+                    f'слова автора) взяти: {", ".join(node[3])}; модуль:\n{body}')
         qs = quota_list(node[4][2][0][3])
         caps += f'; КВОТА на весь запуск: {quota_text(qs)}' if qs else ''
         return (f'з модуля {quote(node[2])} (sha256 {node[5][:16]}…, дозволи: {caps}) взяти: '
@@ -6086,6 +6562,52 @@ def seal_warnings(prog, cwd):
             for x in n:
                 walk(x, caps)
     walk(prog[2][1:] if prog[2] else [], seal)
+    out.extend(callback_warnings(prog))
+    return out
+
+
+def callback_warnings(prog):
+    """λ з дією, передана у функцію модуля з мережі (модулі з git, §6.4): там прав немає й дій немає — виклик дасть
+    «заборонено». Найкраще, що можна до запуску: буквальна λ чи імʼя, звʼязане з λ, в аргументі виклику імені з
+    модуля з мережі."""
+    stmts = prog[2][1:] if prog[2] else []
+    remote = {nm for st in stmts if st[0] == 'import' and len(st) > 7 for nm in st[3]}
+    if not remote:
+        return []
+    lams = {st[2]: st[3] for st in stmts if st[0] == 'bind' and st[3][0] == 'lam'}
+
+    def effect(n):
+        todo = [n]
+        while todo:
+            x = todo.pop()
+            if isinstance(x, tuple) and x and isinstance(x[0], str):
+                if x[0] == 'tool':
+                    return f'🜔{x[2]}', True
+                if x[0] == 'deleg':
+                    return '🜁', False
+                if x[0] == 'op' and x[2] in REMOTE_BANNED:
+                    return x[2], False
+                todo.extend(x)
+            elif isinstance(x, (tuple, list)):
+                todo.extend(x)
+        return None
+    out, todo = [], list(stmts)
+    while todo:
+        n = todo.pop(0)
+        if isinstance(n, tuple) and n and isinstance(n[0], str):
+            if n[0] == 'import':
+                continue
+            if n[0] == 'call' and n[2] in remote:
+                for a in n[3]:
+                    lam = a if a[0] == 'lam' else lams.get(a[2]) if a[0] == 'var' else None
+                    got = effect(lam) if lam else None
+                    if got:
+                        msg = (f'λ з {got[0]} передано у «{n[2]}» з модуля з мережі — там ' + ('прав немає' if got[1] else
+                               'модуль лише обчислює') + ' (виклик дасть «заборонено»)')
+                        out.extend([msg] if msg not in out else [])
+            todo.extend(x for x in n if isinstance(x, (tuple, list)))
+        elif isinstance(n, list):
+            todo.extend(n)
     return out
 
 
@@ -6108,6 +6630,10 @@ def seal_info(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
                 mods.append({'шлях': safe(n[2]), 'sha256': n[5], 'намір': safe(n[4][2][0][2]), 'імена': n[3],
                              'дозволи': {t: scopes(t, sc) for t, sc in n[4][2][0][3].items()},
                              'квоти': quota_list(n[4][2][0][3])})
+                if len(n) > 7:          # модуль з мережі (модулі з git, §10.1): sha256 повністю — це його тотожність
+                    bare = n[2].partition('#')[0]
+                    mods[-1].update({'з_мережі': True, 'адреса': safe(bare), 'коміт': bare.partition('@')[2][:40],
+                                     'файл': safe(n[6]), 'у_сховищі': os.path.isfile(n[6]), 'чистий': True})
             if n[0] == 'deleg':
                 subs.append({'імʼя': safe(n[2]), 'намір': safe(n[3]), 'усередині': owner,
                              'дозволи': {t: scopes(t, sc) for t, sc in n[4].items()}, 'квоти': quota_list(n[4])})
@@ -6126,7 +6652,9 @@ def seal_info(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
             'квоти_власника': [{'інструмент': t, 'обмеження': safe(sc), 'не_більше': n} for t, sc, n in owner_quotas(allowed)],
             'права_теки': [safe(x) for x in dir_extra] if dir_extra is not None else None,
             'права_схвалення': [safe(x) for x in prog_extra or []], 'тека': safe(cwd), 'в_межах': not missing,
-            'бракує': missing, 'попередження': seal_warnings(prog, cwd)}
+            'бракує': missing, 'попередження': seal_warnings(prog, cwd),
+            **({'джерела_модулів_власника': sources_text(getattr(allowed, 'sources', DEFAULT_SOURCES))}
+               if any(m.get('з_мережі') for m in mods) else {})}
 
 
 def seal_report(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
@@ -6149,12 +6677,22 @@ def seal_report(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
                      + (f'; КВОТА на кожен запуск: {quota_text(d["квоти"])}' if d['квоти'] else '')
                      + (f'; намір 「{d["намір"]}」' if d['намір'] else ''))
     for m in i['модулі']:
+        if m.get('з_мережі'):
+            lines += [f'  модуль З МЕРЕЖІ 「{m["адреса"]}」',
+                      f'      sha256 {m["sha256"]} (' + ('у сховищі ✓' if m['у_сховищі'] else 'не зі сховища') + ')',
+                      f'      бере {", ".join(m["імена"])}; ЧИСТИЙ: дозволів, друку, памʼяті, ≈, 🜍 немає; '
+                      + (f'намір 「{m["намір"]}」' if m['намір'] else 'намір не вказано'),
+                      '      ⚠ адреса — слова автора програми: GitHub віддає за нею й коміти з форків, тож авторства вона не '
+                      'доводить;', '        що виконується, визначає лише sha256 у тексті програми']
+            continue
         caps = '; '.join(t + (f' → {q(sc)}' if sc else '') for t, sc in m['дозволи'].items()) or 'жодних'
         lines.append(f'  модуль 「{m["шлях"]}」 (sha256 {m["sha256"][:16]}…): бере {", ".join(m["імена"])}; дозволи: {caps}; '
                      + (f'КВОТА на весь запуск: {quota_text(m["квоти"])}; ' if m['квоти'] else '') + f'намір 「{m["намір"]}」')
     if i['явні_зміни_впевненості']:
         lines.append(f'  явні зміни впевненості ≈: {i["явні_зміни_впевненості"]} (кожна — у сліді)')
     lines.append(f'  дозволи власника: {i["дозволи_власника"]}')
+    if 'джерела_модулів_власника' in i:
+        lines.append(f'  джерела модулів власника: {i["джерела_модулів_власника"]}')
     if i['квоти_власника']:
         lines.append(f'  КВОТИ власника{" і звуження" if "звужено" in i["дозволи_власника"] else ""} (на весь запуск): '
                      f'{quota_text(i["квоти_власника"])}')
@@ -6209,6 +6747,13 @@ def approval_report(prog, approval, allowed, source, cwd, dir_extra, prog_extra,
     path = os.path.join(OWNER_HOME, 'дозволи.json')
     out = [f'ВІДБИТОК {approval}{about}', '', seal_report(prog, allowed, source, cwd, dir_extra, prog_extra), '',
            'ПЕРЕКЛАД', explained, '']
+    remote = [m for m in mods if len(m) > 7]
+    if remote:                         # модулі з мережі (модулі з git, §10.4): схвалюється ТЕКСТ, а не адреса
+        out.append('модулі з мережі (схвалення діє лише з цими sha256; ви схвалюєте ТЕКСТ модулів — ngr --розбір вище, — '
+                   'а не адресу):')
+        out += [f'  {safe(m[2].partition("#")[0])} sha256 {m[5]}' for m in remote]
+        out.append(f'джерела модулів власника: {sources_text(getattr(allowed, "sources", DEFAULT_SOURCES))}; без них '
+                   f'програма не запуститься')
     if uses_args(prog):
         out.append('⚠ програма бере аргументи запуску (⌂): що читати, куди писати чи що слати, вирішує той, хто запускає, '
                    '— відбиток аргументів не охоплює')
@@ -6477,6 +7022,18 @@ def cheatsheet():
            '  функції (`← f λ…`) і сталі (без викликів), дії — лише у функціях. Функцію модуля кличуть за імʼям (`f x`); вона',
            '  діє з **перетином** прав того, хто кличе, і печатки модуля. Шляхи в модулі — від теки програми. Модуль із теки,',
            '  куди програмам дозволено писати, — відмова. `--перевірити-слід СЛІД ПРОГРАМА` звіряє й sha256 кожного модуля.',
+           '- **Модулі з мережі:** `⊃ 「github.com/власник/репо@КОМІТ/шлях.ngr#sha256=ВМІСТ」 【「f」】` — КОМІТ — 40 hex,',
+           '  ВМІСТ — sha256 файлу (64 hex), усе малими; рядок не пишіть руками: `ngr --отримати 「github.com/в/р@КОМІТ/шлях.ngr」`',
+           '  друкує готовий (прочитайте модуль `ngr --розбір` до того, як вписати). Що виконується, визначає лише sha256;',
+           '  **адреса — слова автора**: GitHub віддає за нею й коміти з форків, авторства вона не доводить. Під час запуску мережі',
+           '  немає — байти лише зі сховища `~/.nigredo/модулі/<sha256>.ngr`, sha256 звіряється на кожному розборі. Мережа — лише',
+           '  `ngr --отримати ПРОГРАМА` (github.com дозволено; власник може звузити — «джерела_модулів»; без мережі — `--з-теки',
+           '  ТЕКА`). **Модуль з мережі лише обчислює. Дії робить програма:** гола печатка, жодних 🜔 🜁 » 🜄 🜃 ≈ ⚗ 🜍 навіть у',
+           '  функціях; **λ з дією, передана в модуль з мережі, прав не має** («заборонено» в сліді). Інші модулі він бере лише',
+           '  закріпленими: повною адресою чи `「util/x.ngr#sha256=…」` (той самий коміт, лише вглиб). Отримувачу: `--печатка',
+           '  --json` дає «бракує_модулів» і «печатка_без_модулів» (верхня межа) → `ngr --отримати ПРОГРАМА` → знову',
+           '  `--печатка --json`; «вміст не збігся» в сліді отримання — повідомте власника. Текст модуля — у `СЛІД.дані`:',
+           '  `--повторити` і `--перевірити-слід` — без мережі.',
            '- **Кожне значення має впевненість** (типово 1). Усе, що обчислено з даних, не впевненіше за них —',
            '  і через операції, і через **керування**: значення, створене під сумнівною умовою `¿`, у циклі `↻`,',
            '  у функції, обраній сумнівно, після сумнівної перевірки `🜍` чи в `☂`, несе цю сумнівність.',
@@ -6636,7 +7193,7 @@ def cheatsheet():
             '- `оракул` — імітація; `агент` — справжній виклик Claude (коштує грошей і часу).',
             '- Порівняно з Python: без печатки — приблизно стільки ж токенів; печатка додає фіксовану ціну.',
             '- `ngr` — нативний Атанор: той самий вивід і слід, що в еталона (`interpreter/ngr.py`); чого не вміє (мережа,',
-            '  процес, агент, `‖`, режими, крім `--сухо`), віддає еталону ще до будь-якої дії. `--сухо` і `--тести`',
+            '  процес, агент, `‖`, модулі з мережі, режими, крім `--сухо`), віддає еталону ще до будь-якої дії. `--сухо` і `--тести`',
             '  виконує той самий виконавець, що й справжній запуск; розбіжність виконавців — вада мови.',
             '',
             '## Прозорість', '',
@@ -6659,6 +7216,8 @@ def cheatsheet():
             '  і `≈` (суворіше за `☂`). Впевненість показаного значення агента не переживає: впишете його літералом —',
             '  це ваше слово з ±1. `--сухо` з `--repl` — помилка (частини діють по-справжньому).',
             '- `ngr --формат файл.ngr` — канонічний текст (ті самі токени й дерево розбору); форматуйте **до** схвалення.',
+            '- `ngr --отримати ПРОГРАМА` — єдиний крок із мережею: модулі з мережі (лише названі файли, sha256 звірено, нічого не',
+            '  виконується) — у сховище; свій підписаний слід («ОТРИМАННЯ МОДУЛІВ» у `--перевірити-слід`).',
             '']
     return '\n'.join(out)
 
@@ -6678,6 +7237,8 @@ def cheatsheet_short():
              'До запуску ловляться: типи (＋ рядка й числа, умова не ●/○…), невідомі імена, арність, небезпечні регулярки.',
              'Модуль: ⊃ 「мод.ngr」 【「f」】 (верхній рівень); f кличуть за імʼям; печатка модуля ⊆ програми й діє (перетин прав);',
              'у модулі на верхньому рівні — лише функції й сталі.',
+             'Модуль з мережі: ⊃ 「github.com/в/р@КОМІТ40/шлях.ngr#sha256=ВМІСТ64」 【「f」】 — лише обчислює (дії — у програмі);',
+             'рядок друкує ngr --отримати 「github.com/в/р@КОМІТ/шлях.ngr」; бракує — ngr --отримати ПРОГРАМА; адреса — слова автора.',
              'Шаблон 〔текст {вираз} текст〕 — як f-рядок (у {} один вираз): 〔{k}: {⌗ v 2}〕. Регулярки ⌕ ≋ — синтаксис re;',
              'Регулярки — рушій без відкатів (лінійний, кроки з --кроки); \\1 у шаблоні, (?=…), (?>…), (a?)+ — помилка.',
              '⇅ стабільне, ключ-список — складений: ⇅ п λp 【－0 §p 1 §p 0】 (спадання числа, потім абетка).',
@@ -6734,6 +7295,9 @@ USAGE = f"""Nigredo {VERSION}
   ngr --тести --печатка [ТЕКА …]   лише печатки тестів і чи в межах дозволів власника — без запуску
   ngr --повторити СЛІД [ПРОГРАМА]   виконати знову без дій у світі: інструменти повертають записане (СЛІД.дані);
                            ті самі аргументи, тека, зерно; наприкінці — чи збігся вивід і завершення
+  ngr --отримати ПРОГРАМА | 「github.com/в/р@КОМІТ/шлях.ngr[#sha256=…]」 [--з-теки ТЕКА] [--json]
+                           модулі з мережі — у сховище {MOD_STORE} (єдиний крок із мережею; нічого не
+                           виконує; sha256 звірено; без хешу — друкує готовий рядок ⊃); свій слід
   ngr --памʼятка           згенерувати памʼятку для агентів
 """
 
@@ -6888,11 +7452,18 @@ def load_replay(tpath, program=None):
     recs = [json.loads(line) for line in open(tpath, encoding='utf-8', newline='').read().split('\n') if line]
     if recs and recs[0].get('repl'):
         return None, '✗ сеанс --repl не повторюється цілим (код надходив частинами — у записах «код»)'
-    store = {}
+    if recs and recs[0].get('отримання'):
+        return None, '✗ слід отримання модулів не повторюється — жодна програма тоді не виконувалась'
+    store, mods = {}, {}
     try:
         with open(tpath + '.дані', encoding='utf-8') as f:
             for line in f:
                 r = json.loads(line)
+                if 'модуль' in r:              # текст модуля з мережі (модулі з git, §9.2)
+                    if not isinstance(r['модуль'], str) or hashlib.sha256(r['модуль'].encode()).hexdigest() != r['sha256']:
+                        return None, '✗ сховище значень (СЛІД.дані) змінено: текст модуля не збігається з хешем'
+                    mods[r['sha256']] = r['модуль'].encode()
+                    continue
                 if enc_hash(r['значення']) != r['sha256']:
                     return None, '✗ сховище значень (СЛІД.дані) змінено: вміст не збігається з хешем'
                 store[r['sha256']] = r['значення']
@@ -6909,8 +7480,15 @@ def load_replay(tpath, program=None):
     if lost:
         return None, (f'✗ повторити неможливо: для викликів №{", ".join(map(str, lost[:5]))} немає значень '
                       f'(слід записано без СЛІД.дані або старою версією)')
+    files = {}                          # модулі з мережі — за «файл» зі сліду (теж звірено з sha256)
+    for r in recs:
+        if r.get('подія') == 'модуль' and str(r.get('шлях')).startswith('github.com/'):
+            raw, _ = module_copy(str(r.get('sha256')), r.get('файл'), tpath, {})
+            if raw is not None:
+                files[r['sha256']] = raw
     return {'початок': recs[0], 'інструменти': tools, 'сховище': store, 'вивід': [r.get('текст') for r in recs
-            if r.get('подія') == 'вивід'], 'кінець': recs[-1]}, None
+            if r.get('подія') == 'вивід'], 'кінець': recs[-1],
+            'модулі': Net([('файл', files), ('СЛІД.дані', mods), ('сховище', None)])}, None
 
 
 def dry_report(done, decided=1.0):
@@ -6974,6 +7552,429 @@ def replay_report(replay, new_trace, ends):
     return 0
 
 
+# ------------------------------------------------------------------ модулі з мережі: печатка без них і --отримати
+
+
+def seal_only(src):
+    """Лише печатка програми — перший вираз; нічого не читає, крім тексту (модулі з git, §10.2): верхня межа прав ще до
+    --отримати (модулі з мережі лише обчислюють, тож до неї нічого не додають)."""
+    p = Parser(lex(src))
+    p.skip_nl()
+    tok = p.peek()
+    if tok[0] != 'glyph' or tok[1] != '🜂':
+        raise StaticError('програма має починатися з печатки: 🜂 「намір」 【дозволи】', tok[2])
+    p.head = p.i
+    p.ctx.append(('stmt', tok[2][1] - 1))
+    return p.expr()
+
+
+def lacking(errors):
+    """Модулі з мережі, яких бракує у сховищі, з помилок розбору: [{адреса, sha256}] без повторів."""
+    out = []
+    for e in errors:
+        if isinstance(e, Missing) and not any(x['sha256'] == e.sha for x in out):
+            out.append({'адреса': e.address.partition('#')[0], 'sha256': e.sha})
+    return out
+
+
+def missing_report(src, base, path, allowed):
+    """--печатка, коли модулів з мережі ще немає (§10.2): усі, яких бракує (верхній рівень — за один прохід), і печатка
+    без них — верхня межа: що просить сама програма й чи в межах власника."""
+    errs, _ = all_static_errors(src, base, path)
+    out = {'бракує_модулів': lacking(errs),
+           'джерела_модулів_власника': sources_text(getattr(allowed, 'sources', DEFAULT_SOURCES))}
+    try:
+        seal = seal_only(src)
+    except StaticError:
+        return out
+    caps = seal[3]
+    out['печатка_без_модулів'] = {
+        'намір': safe(seal[2]),
+        'дозволи': {t: [safe(os.path.realpath(os.path.join(base, x)) if TOOLS[t][4] == 'тека' else x) for x in sc]
+                    for t, sc in caps.items()},
+        'в_межах_власника': not check_allowlist(caps, allowed, base),
+        'примітка': 'верхня межа: модулі з мережі нічого до неї не додають (лише обчислюють)'}
+    return out
+
+
+def upper_text(info):
+    """Те саме для людини (--печатка без --json)."""
+    lines = ['БРАКУЄ МОДУЛІВ З МЕРЕЖІ (ngr --отримати ПРОГРАМА; запуск, --печатка й --розбір — лише після нього):']
+    lines += [f'  「{x["адреса"]}」 sha256 {x["sha256"]}' for x in info['бракує_модулів']]
+    up = info.get('печатка_без_модулів')
+    if up:
+        lines.append('ПЕЧАТКА БЕЗ НИХ — верхня межа (модулі з мережі лише обчислюють і нічого до неї не додають):')
+        lines.append(f'  намір (слова автора): 「{up["намір"]}」' if up['намір'] else '  намір: не вказано автором')
+        lines += [f'  {t}' + (f' → {", ".join(f"「{x}」" for x in sc)}' if sc else '') for t, sc in up['дозволи'].items()] \
+            or ['  дозволів жодних — програма лише обчислює']
+        lines.append('  ✓ у межах дозволів власника' if up['в_межах_власника'] else '  ✗ поза дозволами власника')
+    lines.append(f'  джерела модулів власника: {info["джерела_модулів_власника"]}')
+    return '\n'.join(lines)
+
+
+class FetchError(Exception):
+    """Невдача --отримати з кодом виходу (§4.8): 1 — мережа, HTTP, розмір, LFS, інший вміст у теці (можна повторити);
+    2 — крива адреса, не модуль, межі; 3 — власник не дозволив, вміст не збігся (тривога), сховище не записати."""
+
+    def __init__(self, code, msg, refusal=False):
+        super().__init__(msg)
+        self.code, self.msg, self.refusal = code, msg, refusal
+
+
+def _fetch_bytes(url):
+    """GET для --отримати (§4.4): без переадресацій, проксі зі змінних оточення, cookie й логіна; FETCH_SOCK с на
+    операцію сокета і FETCH_TIME с на весь файл (зʼєднання, заголовки, тіло — сервер, що капає по байту, отримання не
+    втримає: по строку зʼєднання обривається, як у мережа.взяти). → (статус, тіло до MOD_CAP + 1 байта, скільки бракує
+    до Content-Length)."""
+    import socket
+    import time
+    import urllib.error
+    import urllib.request
+    lock, live, stop, got, done = threading.Lock(), [], [], {}, threading.Event()
+
+    def connect(*a, **k):
+        sock = socket.create_connection(*a, **k)
+        with lock:
+            if stop:
+                sock.close()
+                raise TimeoutError('timed out')
+            live.append(sock.dup())
+        return sock
+
+    class Watched:
+        def do_open(self, cls, req, **kw):
+            def conn(*a, **k):
+                h = cls(*a, **k)
+                h._create_connection = connect
+                return h
+            return super().do_open(conn, req, **kw)
+
+    class Http(Watched, urllib.request.HTTPHandler):
+        pass
+
+    class Https(Watched, urllib.request.HTTPSHandler):
+        pass
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            raise FetchError(1, f'переадресацію на «{safe(newurl)}» заборонено (репозиторій перейменовано?) — напишіть у ⊃ '
+                                f'нову адресу; sha256 лишиться той самий')
+
+    def work():
+        try:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect, Http, Https)
+            req = urllib.request.Request(url, headers={'User-Agent': f'nigredo/{VERSION}'})
+            with opener.open(req, timeout=FETCH_SOCK) as r:
+                raw = r.read(MOD_CAP + 1)
+                got['статус'], got['тіло'], got['бракує'] = r.status, raw, r.length if len(raw) <= MOD_CAP else None
+        except urllib.error.HTTPError as e:
+            got['статус'] = e.code
+        except BaseException as e:        # noqa: BLE001 — і FetchError переадресації: віддасть потік виклику
+            got['помилка'] = e
+        finally:
+            with lock:
+                for d in live:
+                    d.close()
+            done.set()
+    deadline = time.monotonic() + FETCH_TIME
+    threading.Thread(target=work, daemon=True).start()
+    if not done.wait(max(0.0, deadline - time.monotonic())) or ('помилка' in got and time.monotonic() > deadline):
+        with lock:
+            stop.append(1)
+            for d in live:
+                try:
+                    d.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+        raise FetchError(1, f'не отримано за {FETCH_TIME} с')
+    e = got.get('помилка')
+    if isinstance(e, FetchError):
+        raise e
+    if e is not None:
+        raise FetchError(1, f'мережа: {safe(str(e))}')
+    return got['статус'], got.get('тіло'), got.get('бракує')
+
+
+def store_put(sha, raw):
+    """Атомарний запис у сховище (§4.4, крок 6): тимчасовий файл (O_EXCL|O_NOFOLLOW, 0400), fsync, rename у <sha256>.ngr —
+    часткового запису не видно ніколи, два паралельні отримання дають один файл. Правильний запис не чіпає («уже було»);
+    пошкоджений (інший вміст, не звичайний файл) замінює. Тека сховища — 0700."""
+    os.makedirs(OWNER_HOME, mode=0o700, exist_ok=True)
+    os.makedirs(MOD_STORE, mode=0o700, exist_ok=True)
+    try:
+        if store_read(sha, None) is not None:
+            return 'уже було'
+        state = 'отримано'
+    except Tampered:
+        state = 'замінено пошкоджений'
+    tmp = os.path.join(MOD_STORE, f'.тимч-{os.getpid()}-{os.urandom(8).hex()}')
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o400)
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(raw)
+            f.flush()
+            os.fsync(f.fileno())
+        os.rename(tmp, os.path.join(MOD_STORE, sha + '.ngr'))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return state
+
+
+FETCH_USAGE = '✗ ngr --отримати ПРОГРАМА.ngr | 「github.com/в/р@КОМІТ/шлях.ngr[#sha256=…]」 [--з-теки ТЕКА] [--json]'
+
+
+def fetch_main(rest, opts, argv):
+    """ngr --отримати (модулі з git, §4): єдиний крок, що ходить у мережу, — і лише по названі файли, з джерел власника
+    (github.com за замовчуванням; «джерела_модулів» лише звужує). Нічого не виконує: байти, sha256, той самий розбір,
+    що й --печатка (Missing → отримати → розібрати знову), атомарний запис. Свій підписаний слід (режим «отримання»)."""
+    target, from_dir, as_json, narrow = None, None, opts['json'], opts['allow']
+    it = iter(rest)
+    for a in it:
+        if a in ('--з-теки', '--дозволи'):
+            v = next(it, None)
+            if v is None:
+                print(f'✗ {a}: бракує значення', file=sys.stderr)
+                return 2
+            from_dir, narrow = (v, narrow) if a == '--з-теки' else (from_dir, v)
+        elif a == '--json':
+            as_json = True
+        elif target is None:
+            target = a
+        else:
+            print(f'✗ зайвий аргумент «{safe(a)}»\n{FETCH_USAGE}', file=sys.stderr)
+            return 2
+    if target is None:
+        print(FETCH_USAGE, file=sys.stderr)
+        return 2
+    is_addr = target.startswith('github.com/')
+    if is_addr:
+        cwd, raw_prog, src, prog_path = os.getcwd(), None, None, None
+    else:
+        try:
+            raw_prog = open(target, 'rb').read()
+            src = raw_prog.decode('utf-8')
+        except (OSError, UnicodeDecodeError) as e:
+            print(f'✗ {safe(target)}: {getattr(e, "strerror", None) or e}', file=sys.stderr)
+            return 2
+        prog_path, cwd = os.path.realpath(target), os.path.dirname(os.path.abspath(target))
+    try:
+        allowed, source = load_allowlist(narrow)
+    except Refused as e:
+        print(e, file=sys.stderr)
+        return 3
+    sources = allowed.sources
+    key = owner_key()
+    os.makedirs(os.path.join(OWNER_HOME, 'сліди'), mode=0o700, exist_ok=True)
+    sha_prog = hashlib.sha256(raw_prog if raw_prog is not None else target.encode()).hexdigest()
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
+    tpath = os.path.join(OWNER_HOME, 'сліди', f'{stamp}-{sha_prog[:8]}-{os.getpid()}.jsonl')
+    out = open(tpath, 'x', encoding='utf-8')
+    trace = Trace([out] + ([sys.stderr] if opts['trace'] == '-' else []), key)
+    done, report, current = {}, [], None   # sha256 → стан; [(стан, адреса, sha256, байтів, звідки)]; що отримуємо
+    try:
+        trace('початок', версія=VERSION, інтерпретатор=INTERP_SHA, отримання=True,
+              **({'адреса': safe(target)} if is_addr else {'програма': safe(prog_path), 'sha256': sha_prog}),
+              аргументи=[safe(a) for a in argv], час=datetime.now(timezone.utc).isoformat(timespec='seconds'),
+              запуск=os.urandom(6).hex(), тека=safe(cwd), дозволи_власника=safe(source), джерела=sources,
+              **({'з_теки': safe(os.path.realpath(from_dir))} if from_dir else {}))
+        root = None
+        if from_dir:
+            root = os.path.realpath(from_dir)
+            if inside(root, OWNER_HOME) or inside(OWNER_HOME, root):
+                raise FetchError(3, f'--з-теки: тека «{safe(root)}» зачіпає теку власника — неможливо', refusal=True)
+            if not os.path.isdir(root):
+                raise FetchError(1, f'--з-теки: «{safe(root)}» — не тека')
+
+        def obtain(bare, sha):
+            """Байти одного файлу: з ТЕКИ (копія сховища чи клон) або з джерела власника — і звірка з sha256."""
+            o, r, c, p, _ = parse_address(bare, None, need_hash=False)
+            if root is not None:
+                for cand in ([os.path.join(root, f'{sha}.ngr')] if sha else []) + [os.path.join(root, p)]:
+                    if not inside(os.path.realpath(cand), root):     # посилання на проміжну теку назовні
+                        raise FetchError(1, f'--з-теки: «{safe(os.path.relpath(cand, root))}» веде за межі теки — не взято')
+                    try:
+                        raw = read_regular(cand)
+                    except OSError:
+                        raise FetchError(1, f'--з-теки: «{safe(os.path.relpath(cand, root))}» — не звичайний файл чи '
+                                            f'понад {MOD_CAP} байтів — не взято')
+                    if raw is None:
+                        continue
+                    got = hashlib.sha256(raw).hexdigest()
+                    if sha and got != sha:
+                        raise FetchError(1, f'--з-теки: у теці є «{safe(os.path.relpath(cand, root))}», але sha256 інший '
+                                            f'({got}) — не взято')
+                    return raw, f'тека {cand}'
+                raise FetchError(1, f'--з-теки: у теці «{safe(root)}» немає ні «{sha}.ngr», ні «{safe(p)}» — не взято'
+                                 if sha else f'--з-теки: у теці «{safe(root)}» немає «{safe(p)}» — не взято')
+            if 'github.com' not in sources:       # до будь-якого запиту (§4.2, а)
+                raise FetchError(3, f'власник не дозволив модулів з «github.com» — «джерела_модулів» у '
+                                    f'{os.path.join(OWNER_HOME, "дозволи.json")} цього не містять (змінює лише власник); без '
+                                    f'мережі: ngr --отримати ПРОГРАМА --з-теки ТЕКА', refusal=True)
+            import urllib.parse
+            q = urllib.parse.quote
+            url = f'{sources["github.com"]}{q(o, safe="")}/{q(r, safe="")}/{c}/{q(p, safe="/")}'
+            status, raw, short = _fetch_bytes(url)
+            if status == 404:
+                raise FetchError(1, f'на коміті {c[:8]}… немає «{safe(p)}» (404): коміт, шлях чи репозиторій хибні, '
+                                    f'репозиторій приватний чи видалений, або шлях у підмодулі (підмодулі не підтримуються)')
+            if status != 200:
+                raise FetchError(1, f'сервер відповів {status}')
+            if len(raw) > MOD_CAP:
+                raise FetchError(1, f'понад {MOD_CAP} байтів — не модуль')
+            if short:
+                raise FetchError(1, f'відповідь обірвано — бракує {short} байтів до Content-Length')
+            if raw.startswith(b'version https://git-lfs.github.com/spec/v1'):
+                raise FetchError(1, 'це вказівник git LFS, а не код — модулі з мережі лише звичайними файлами git')
+            got = hashlib.sha256(raw).hexdigest()
+            if sha and got != sha:
+                trace('вміст не збігся', адреса=safe(bare), звідки=safe(url), чекали=sha, отримано=got, байтів=len(raw))
+                raise FetchError(3, f'сервер віддав вміст із sha256 {got}, а програма закріпила {sha} — у сховище НЕ '
+                                    f'покладено (підміна, помилка в програмі чи переплутано коміт)')
+            return raw, url
+
+        def ensure(bare, sha):
+            """Один модуль і все, що він бере: отримати, розібрати тим самим Parser (бракує вкладеного — спершу його),
+            покласти. Не розбирається чи не чистий — не кладеться."""
+            if sha in done:
+                return sha
+            if len(done) >= MOD_MAX:
+                raise FetchError(2, f'модулів з мережі понад {MOD_MAX}')
+            raw, where = obtain(bare, sha)
+            sha = sha or hashlib.sha256(raw).hexdigest()
+            if sum(x[3] for x in report) + len(raw) > MOD_TOTAL:
+                raise FetchError(2, f'модулі з мережі разом понад {MOD_TOTAL} байтів')
+            for _ in range(MOD_MAX + 2):
+                try:
+                    load_remote(parse_address(f'{bare}#sha256={sha}', None), Net([('отримано', {sha: raw}), ('сховище', None)]),
+                                (), 0, None)
+                    break
+                except (Missing, Tampered) as m:
+                    if m.sha in done or m.sha == sha or not m.address:   # те саме знову — не по колу
+                        raise FetchError(3, f'сховище змінено під час отримання ({m.sha}.ngr)')
+                    ensure(m.address.partition('#')[0], m.sha)
+                except StaticError as e:
+                    raise FetchError(2, f'отримано (sha256 збігся), але це не модуль з мережі: {e.msg} — не покладено')
+            try:
+                state = store_put(sha, raw)
+            except OSError as e:
+                raise FetchError(3, f'сховище {safe(MOD_STORE)} не записати: {e}')
+            if state == 'замінено пошкоджений':
+                print(f'⚠ запис сховища {sha}.ngr був пошкоджений (змінено поза ngr) — замінено справжнім', file=sys.stderr)
+            trace('модуль отримано', адреса=safe(f'{bare}#sha256={sha}'), звідки=safe(where), sha256=sha, байтів=len(raw),
+                  стан=state)
+            done[sha] = state
+            report.append((state, f'{bare}#sha256={sha}', sha, len(raw), where))
+            return sha
+
+        others = []
+        if is_addr:
+            o, r, c, p, pin = parse_address(target, None, need_hash=False)
+            current = f'github.com/{o}/{r}@{c}/{p}'
+            known = store_read(pin, None, target) if pin else None
+            if known is not None:
+                trace('модуль отримано', адреса=safe(f'{current}#sha256={pin}'), звідки='сховище', sha256=pin,
+                      байтів=len(known), стан='уже було')
+                report.append(('уже було', f'{current}#sha256={pin}', pin, len(known), 'сховище'))
+                done[pin] = 'уже було'
+            sha = ensure(current, pin)
+            address, _, mod, scope, _, _ = load_remote((o, r, c, p, sha), Net(), (), 0, None)
+        else:
+            log = {}
+            for _ in range(MOD_MAX + 2):
+                errs, _ = all_static_errors(src, cwd, prog_path, log=log)
+                lacks = {}
+                for e in errs:
+                    if isinstance(e, (Missing, Tampered)) and getattr(e, 'address', None):
+                        lacks.setdefault(e.sha, e.address.partition('#')[0])
+                if not lacks:
+                    others = [e for e in errs if not isinstance(e, (Missing, Tampered))]
+                    break
+                if all(s_ in done for s_ in lacks):
+                    raise FetchError(3, 'сховище змінено під час отримання')
+                for s_, bare in lacks.items():
+                    current = bare
+                    ensure(bare, s_)
+            else:
+                raise FetchError(2, f'понад {MOD_MAX + 1} повторів розбору')
+            for addr, s_ in log.items():
+                if s_ not in done:
+                    done[s_] = 'уже було'
+                    size = len(store_read(s_, None) or b'')
+                    trace('модуль отримано', адреса=safe(addr), звідки='сховище', sha256=s_, байтів=size, стан='уже було')
+                    report.append(('уже було', addr, s_, size, 'сховище'))
+        n_new = sum(1 for x in report if x[0] != 'уже було')
+        n_old = len(report) - n_new
+        trace('кінець', отримано=n_new, уже_було=n_old, не_збіглося=0)
+    except FetchError as e:
+        what = f' «{safe(current)}»' if current else ''
+        if e.refusal and trace.n == 1:
+            trace('відмова', причина=safe(e.msg))
+        else:
+            trace('помилка', повідомлення=safe(f'✗ --отримати{what}: {e.msg}'))
+        if as_json:
+            print(json.dumps({'гаразд': False, 'код': e.code, 'помилка': safe(f'✗ --отримати{what}: {e.msg}'),
+                              'модулі': [{'стан': x[0], 'адреса': x[1], 'sha256': x[2], 'байтів': x[3], 'звідки': safe(x[4])}
+                                         for x in report], 'слід': tpath}, ensure_ascii=False, indent=1))
+        print(f'✗ --отримати{what}: {e.msg}', file=sys.stderr)
+        return e.code
+    except StaticError as e:                 # крива адреса в командному рядку
+        trace('помилка', повідомлення=safe(f'✗ --отримати: {e.msg}'))
+        if as_json:
+            print(json.dumps({'гаразд': False, 'код': 2, 'помилка': safe(f'✗ --отримати: {e.msg}'), 'модулі': [],
+                              'слід': tpath}, ensure_ascii=False, indent=1))
+        print(f'✗ --отримати: {e.msg}', file=sys.stderr)
+        return getattr(e, 'code', 2)
+    except Exception as e:                   # вада інтерпретатора: чесно, без трасування Python, із записом у слід
+        trace('помилка', внутрішня=True, повідомлення=f'{type(e).__name__}: {e}')
+        print(f'✗ внутрішня помилка інтерпретатора Nigredo ({type(e).__name__}: {e}) — це вада мови; слід: {tpath}',
+              file=sys.stderr)
+        return 4
+    finally:
+        out.close()
+        if os.environ.get('NIGREDO_TRACE_PATH_FILE'):
+            try:
+                with open(os.environ['NIGREDO_TRACE_PATH_FILE'], 'w', encoding='utf-8') as f:
+                    f.write(tpath)
+            except OSError:
+                pass
+    warn = [] if 'github.com' in sources else [
+        '⚠ власник не дозволив модулів з «github.com» («джерела_модулів»): програма з ними не запуститься (код 3)']
+    if others:
+        warn.append(f'⚠ у програмі є й інші помилки до запуску — ngr --перевірити: {safe(others[0].msg)[:200]}')
+    line = None
+    if is_addr:
+        binds = [st[2] for st in mod[2][1:] if st[0] == 'bind']
+        line = f'⊃ 「{address}」 【{" ".join(f"「{nm}」" for nm in binds)}】'
+    if as_json:
+        print(json.dumps({'гаразд': True, 'код': 0, 'модулі': [{'стан': x[0], 'адреса': x[1], 'sha256': x[2], 'байтів': x[3],
+                                                                'звідки': safe(x[4])} for x in report],
+                          **({'рядок': line, 'sha256': sha, 'довіра_з_першого_разу': pin is None} if is_addr else {}),
+                          'попередження': warn, 'слід': tpath}, ensure_ascii=False, indent=1))
+        return 0
+    if is_addr:
+        seal = mod[2][0]
+        names = ', '.join(f'{nm} (' + (f'{scope[nm]} аргумент(и)' if scope[nm] else 'значення') + ')' for nm in binds)
+        lines = [f'✓ отримано {current} ({len(report)} файл(и), {sum(x[3] for x in report)} байтів)', f'  sha256: {sha}',
+                 '  печатка: лише обчислює' + (f'; намір (слова автора модуля): 「{safe(seal[2])}」' if seal[2] else ''),
+                 f'  імена: {names or "жодних"}']
+        if pin is None:
+            lines += ['  ⚠ sha256 узято з того, що сервер віддав ЗАРАЗ; адреса не доводить авторства (коміти з форків).',
+                      '    Прочитайте код перед тим, як вписати: ngr --розбір програми з цим рядком']
+        else:
+            lines.append('  sha256 збігся із закріпленим')
+        lines += ['  рядок для програми:', f'    {line}']
+    else:
+        lines = [f'✓ --отримати: модулі програми — у сховищі ({sum(1 for x in report if x[0] != "уже було")} отримано, '
+                 f'{sum(1 for x in report if x[0] == "уже було")} уже було); нічого не виконано']
+        lines += [f'  {x[0]} {x[1]} — {x[3]} байтів' + (f' з {safe(x[4])}' if x[0] != 'уже було' else '') for x in report]
+    print('\n'.join(lines + [f'  {w}' for w in warn] + [f'  слід: {tpath}']))
+    return 0
+
+
 def main(argv):
     decimal.setcontext(DEC_CTX.copy())
     opts = {'mode': 'run', 'trace': None, 'allow': None, 'seed': 0, 'steps': DEFAULT_STEPS, 'size': MAX_SIZE,
@@ -7029,6 +8030,8 @@ def _main(argv, opts, it, value):
             msg = verify_trace(tpath, rest[0] if rest else None)
             print(verify_trace(tpath, rest[0] if rest else None, True) if js else msg)
             return 0 if msg.startswith('✓') else 1
+        if a == '--отримати':              # модулі з мережі — єдиний крок із мережею (модулі з git, §4)
+            return fetch_main(list(it), opts, argv)
         if a == '--відбиток':              # ідентичність виконавця (Атанор друкує sha256 свого бінарника)
             print(f'еталон {os.path.realpath(__file__)}\n  sha256 nigredo.py (поле «інтерпретатор» сліду) {INTERP_SHA}')
             return 0
@@ -7141,7 +8144,7 @@ def _main(argv, opts, it, value):
         dir_rights = True
     errors, more = [], False
     try:
-        prog, perr = parse(src, cwd, None if path == '<-e>' else path, errors), None
+        prog, perr = parse(src, cwd, None if path == '<-e>' else path, errors, replay['модулі'] if replay else None), None
         perr = errors[0] if errors else None
     except StaticError as e:
         prog, perr, errors = None, e, [e]
@@ -7170,7 +8173,8 @@ def _main(argv, opts, it, value):
                                            **({'після_пропуску': True} if getattr(e, 'after_skip', False) else {})}
                                           for e in errors],
                               'обрізано': more,
-                              'печатка': {'в_межах': not missing, 'бракує': missing, 'попередження': warnings} if prog else None},
+                              'печатка': {'в_межах': not missing, 'бракує': missing, 'попередження': warnings} if prog else None,
+                              **({'бракує_модулів': lacks} if (lacks := lacking(errors)) else {})},
                              ensure_ascii=False, indent=1))
         else:
             for e in errors:
@@ -7184,25 +8188,29 @@ def _main(argv, opts, it, value):
                 print(f'⚠ {w}')
             if not errors and not missing:
                 print('✓ помилок до запуску не знайдено; печатка в межах дозволів власника')
-        return 2 if errors else 3 if missing else 0
+        return max(getattr(e, 'code', 2) for e in errors) if errors else 3 if missing else 0
     if opts['mode'] == 'формат':
         if prog is None:                     # не розбирається — форматувати нічого; помилки типів — не перешкода
             print(perr, file=sys.stderr)
-            return 2
+            return getattr(perr, 'code', 2)
         sys.stdout.write(format_source(src, cwd, None if path == '<-e>' else path))
         return 0
     if opts['mode'] == 'схвалити':
         if perr:
             print(perr, file=sys.stderr)
-            return 2
+            return getattr(perr, 'code', 2)
         print(approval_report(prog, approval, allowed, source, cwd, dir_extra, prog_extra, by_dir))
         return 0
     if opts['mode'] in ('розбір', 'печатка'):
         if perr:
+            upper = (missing_report(src, cwd, None if path == '<-e>' else path, allowed)
+                     if isinstance(perr, Missing) and opts['mode'] == 'печатка' else {})
             if opts['json']:
-                print(json.dumps({'в_межах': False, 'помилка_розбору': safe(str(perr))}, ensure_ascii=False, indent=1))
+                print(json.dumps({'в_межах': False, 'помилка_розбору': safe(str(perr)), **upper}, ensure_ascii=False, indent=1))
+            elif upper:
+                print(upper_text(upper))
             print(perr, file=sys.stderr)
-            return 2
+            return getattr(perr, 'code', 2)
         if opts['mode'] == 'розбір':
             try:
                 print(explain_program(prog))
@@ -7275,7 +8283,7 @@ def _main(argv, opts, it, value):
         if perr:
             trace('відмова', причина='помилка до запуску', повідомлення=safe(str(perr)))
             print(perr, file=sys.stderr)
-            return replay_report(replay, main_trace, 0) if replay else 2
+            return replay_report(replay, main_trace, 0) if replay else getattr(perr, 'code', 2)
         if missing:
             trace('відмова', бракує=missing)
             print(f'✗ печатка просить більше, ніж дозволив власник: {", ".join(missing)}\n'
