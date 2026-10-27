@@ -183,26 +183,29 @@ fn env_up(env: &Rc<Env>, hops: u32) -> Option<&Env> {
     Some(e)
 }
 
-/// Вузол F_IDX (`§ імʼя ціле`): f від елемента, якщо імʼя — певний список певної будови, а номер у межах (як швидкий §
-/// у strict_); інакше None.
-#[inline(always)]
-fn index_leaf_with<T>(n: &Node, env: &Rc<Env>, f: impl FnOnce(&V) -> Option<T>) -> Option<T> {
-    let K::Op(_, args) = &n.k else { return None };
-    let (K::Var(_, hops, slot), Some(V { v: Val::Int(Int::S(i)), .. })) = (&args[0].k, &args[1].lv) else { return None };
-    let vars = env_up(env, *hops)?.vars.borrow();
-    let V { v: Val::List(l), c, s, .. } = vars.get(*slot as usize)? else { return None };
-    if *c < 1.0 || *s < 1.0 {
-        return None;
-    }
-    let len = l.len() as i64;
-    if !(-len <= *i && *i < len) {
-        return None;
-    }
-    f(&l[if *i < 0 { (*i + len) as usize } else { *i as usize }])
-}
-
-fn index_leaf(n: &Node, env: &Rc<Env>) -> Option<V> {
-    index_leaf_with(n, env, |e| Some(e.clone()))
+/// Вузол F_IDX (`§ імʼя ціле`): $body з $e — елементом, якщо імʼя — певний список певної будови, а номер у межах
+/// (як швидкий § у strict_); інакше None. Макрос, а не функція із замиканням: на гарячому шляху — без викликів.
+macro_rules! index_leaf {
+    ($n:expr, $env:expr, |$e:ident| $body:expr) => {
+        'leaf: {
+            let K::Op(_, args) = &$n.k else { break 'leaf None };
+            let (K::Var(_, hops, slot), Some(V { v: Val::Int(Int::S(i)), .. })) = (&args[0].k, &args[1].lv) else {
+                break 'leaf None;
+            };
+            let Some(e0) = env_up($env, *hops) else { break 'leaf None };
+            let vars = e0.vars.borrow();
+            let Some(V { v: Val::List(l), c, s, .. }) = vars.get(*slot as usize) else { break 'leaf None };
+            if *c < 1.0 || *s < 1.0 {
+                break 'leaf None;
+            }
+            let len = l.len() as i64;
+            if !(-len <= *i && *i < len) {
+                break 'leaf None;
+            }
+            let $e = &l[if *i < 0 { (*i + len) as usize } else { *i as usize }];
+            $body
+        }
+    };
 }
 
 impl Interp {
@@ -373,7 +376,7 @@ impl Interp {
                                 return Ok(r);
                             }
                         }
-                    } else if let Some(e) = index_leaf(n, env) {
+                    } else if let Some(e) = index_leaf!(n, env, |e| Some(e.clone())) {
                         // § імʼя ціле: ті самі три кроки (§, імʼя, номер) і sized елемента, що й eval_var + eval_lit +
                         // швидкий § у strict_ (певний список і будова, номер у межах) — без значень-посередників
                         self.steps_left -= 3;
@@ -432,8 +435,11 @@ impl Interp {
     /// (невпевнене, велике, переповнення, ‰ 0, межа alloc) — None, і вузол рахує звичайний eval (тут нічого не змінено).
     /// Листок `§ імʼя ціле` — те саме, що eval + швидкий § у strict_ + sized: певний список (і будова), номер у межах,
     /// елемент — певне мале ціле; sized елемента додає його розмір до alloc (n ≤ 22 ≤ --розмір: work — нуль кроків).
+    #[inline(always)]
     fn int_tree(&mut self, n: &Node, env: &Rc<Env>) -> Option<V> {
-        fn go(n: &Node, env: &Rc<Env>, alloc: &mut u64) -> Option<i64> {
+        // операнд: листок — на місці, операція — go (виклик лише на внутрішній вузол, не на кожен)
+        #[inline(always)]
+        fn arg(n: &Node, env: &Rc<Env>, alloc: &mut u64) -> Option<i64> {
             match &n.k {
                 K::Lit(_) => match &n.lv {
                     Some(V { v: Val::Int(Int::S(x)), .. }) => Some(*x),
@@ -443,7 +449,7 @@ impl Interp {
                     V { v: Val::Int(Int::S(x)), c, .. } if *c >= 1.0 => Some(*x),
                     _ => None,
                 },
-                K::Op('§', _) => index_leaf_with(n, env, |e| match e {
+                K::Op('§', _) => index_leaf!(n, env, |e| match e {
                     V { v: Val::Int(Int::S(x)), c, n, .. } if *c >= 1.0 && *n <= 22 => {
                         if *n > 1 {
                             *alloc += *n;
@@ -452,32 +458,33 @@ impl Interp {
                     }
                     _ => None,
                 }),
-                K::Op(g, args) => {
-                    let x = go(&args[0], env, alloc)?;
-                    let y = go(&args[1], env, alloc)?;
-                    let r = match g {
-                        '＋' => x.checked_add(y)?,
-                        '－' => x.checked_sub(y)?,
-                        '×' => x.checked_mul(y)?,
-                        _ => {
-                            let r = x.checked_rem(y)?;
-                            if r != 0 && ((r < 0) != (y < 0)) { r + y } else { r }
-                        }
-                    };
-                    let nn = 1 + (64 - r.unsigned_abs().leading_zeros() as u64) / 3;
-                    if nn > 1 {
-                        *alloc += nn;
-                    }
-                    Some(r)
-                }
-                _ => None,
+                _ => go(n, env, alloc),
             }
+        }
+        fn go(n: &Node, env: &Rc<Env>, alloc: &mut u64) -> Option<i64> {
+            let K::Op(g, args) = &n.k else { return None };
+            let x = arg(&args[0], env, alloc)?;
+            let y = arg(&args[1], env, alloc)?;
+            let r = match g {
+                '＋' => x.checked_add(y)?,
+                '－' => x.checked_sub(y)?,
+                '×' => x.checked_mul(y)?,
+                _ => {
+                    let r = x.checked_rem(y)?;
+                    if r != 0 && ((r < 0) != (y < 0)) { r + y } else { r }
+                }
+            };
+            let nn = 1 + (64 - r.unsigned_abs().leading_zeros() as u64) / 3;
+            if nn > 1 {
+                *alloc += nn;
+            }
+            Some(r)
         }
         let mut alloc = 0u64;
         let res = if n.icmp {
             let K::Op(g, args) = &n.k else { return None };
-            let x = go(&args[0], env, &mut alloc)?;
-            let y = go(&args[1], env, &mut alloc)?;
+            let x = arg(&args[0], env, &mut alloc)?;
+            let y = arg(&args[1], env, &mut alloc)?;
             V::b(match g {
                 '‹' => x < y,
                 '›' => x > y,
