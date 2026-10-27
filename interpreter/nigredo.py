@@ -3169,9 +3169,17 @@ def _url_ok(it, pos, tool, url):
     return parts
 
 
+NET_CAP, NET_TIME = 1_000_000, 30   # мережа: найбільша відповідь (байтів) і строк усього запиту (с)
+
+
 def _http(it, pos, tool, url, body=None):
-    """HTTP до хоста з печатки, без переадресацій."""
+    """HTTP до хоста з печатки, без переадресацій. NET_TIME — на весь запит (зʼєднання, заголовки, тіло), а не на кожну
+    операцію сокета: сервер, що віддає по байту, тримав би запит скільки завгодно. Відповідь понад NET_CAP байтів чи
+    --розмір символів, обірвана (коротша за Content-Length) і не UTF-8 — помилка, а не тихе обрізання чи U+FFFD, як у
+    файл.читати (суд 9; проєкт модулів з git, §14)."""
     parts = _url_ok(it, pos, tool, url)
+    import socket
+    import time
     import urllib.parse
     import urllib.request                 # ліниво: мережа потрібна рідко, а імпорт коштує ~0,05 с запуску
 
@@ -3187,17 +3195,80 @@ def _http(it, pos, tool, url, body=None):
             data, headers['Content-Type'] = to_json(body).encode(), 'application/json'
         else:
             raise NgrError(f'{tool}: тіло — рядок, список чи словник, а не {kind(body)}', pos)
+    lock, live, stop, got, done = threading.Lock(), [], [], {}, threading.Event()
+
+    def connect(*a, **k):                 # копія дескриптора: shutdown нею рве зʼєднання й під TLS (SSLSocket забирає
+        s = socket.create_connection(*a, **k)   # сам сокет), а номер дескриптора чужому зʼєднанню не дістанеться
+        with lock:
+            if stop:                      # строк минув, поки зʼєднувалися, — нічого не надсилаємо
+                s.close()
+                raise TimeoutError('timed out')
+            live.append(s.dup())
+        return s
+
+    class Watched:                        # зʼєднання HTTP(S) — через connect: строк може його обірвати
+        def do_open(self, cls, req, **kw):
+            def conn(*a, **k):
+                h = cls(*a, **k)
+                h._create_connection = connect
+                return h
+            return super().do_open(conn, req, **kw)
+
+    class Http(Watched, urllib.request.HTTPHandler):
+        pass
+
+    class Https(Watched, urllib.request.HTTPSHandler):
+        pass
+
+    def work():                           # увесь запит — в окремому потоці: строк тримає й DNS, і TLS, і заголовки
+        try:
+            with urllib.request.build_opener(NoRedirect, Http, Https).open(req, timeout=NET_TIME) as r:
+                raw = r.read(NET_CAP + 1)
+                got['тіло'], got['бракує'] = raw, r.length if len(raw) <= NET_CAP else None
+        except BaseException as e:        # noqa: BLE001 — і NgrError переадресації: віддасть потік виклику
+            got['помилка'] = e
+        finally:
+            with lock:
+                for d in live:
+                    d.close()
+            done.set()
+    deadline = time.monotonic() + NET_TIME
     try:
-        opener = urllib.request.build_opener(NoRedirect)
         q = urllib.parse.quote
         u = urllib.parse.urlunsplit(parts._replace(path=q(parts.path, safe='/%'), query=q(parts.query, safe='=&%+')))
         req = urllib.request.Request(u, data=data, headers=headers, method='POST' if body is not None else 'GET')
-        with opener.open(req, timeout=30) as r:
-            return V(r.read(1_000_000).decode('utf-8', 'replace'))
-    except NgrError:
-        raise
     except Exception as e:
         raise NgrError(f'{tool}: {e}', pos)
+    threading.Thread(target=work, daemon=True).start()
+    # строк минув — і тоді, коли потік устиг сам упасти на тайм-ауті сокета: текст один, хоч хто був перший
+    if not done.wait(max(0.0, deadline - time.monotonic())) or ('помилка' in got and time.monotonic() > deadline):
+        with lock:
+            stop.append(1)
+            for d in live:
+                try:
+                    d.shutdown(socket.SHUT_RDWR)   # recv/send потоку повертаються одразу; копії закриє сам потік
+                except OSError:
+                    pass
+        raise NgrError(f'{tool}: запит довший за {NET_TIME} с — зупинено' +
+                       (' (тіло могло вже дійти до сервера)' if body is not None else '') + f': {url.v}', pos)
+    e = got.get('помилка')
+    if isinstance(e, NgrError):
+        raise e
+    if e is not None:
+        raise NgrError(f'{tool}: {e}', pos)
+    raw, cap = got['тіло'], f'{NET_CAP:_}'.replace('_', ' ')
+    if len(raw) > NET_CAP:
+        raise NgrError(f'{tool}: відповідь понад {cap} байтів — частину не читаю мовчки: {url.v}', pos)
+    if got['бракує']:                     # сервер закрив зʼєднання раніше, ніж віддав обіцяне
+        raise NgrError(f'{tool}: відповідь обірвано — бракує {got["бракує"]} байтів до Content-Length, неповну не віддаю '
+                       f'мовчки: {url.v}', pos)
+    try:
+        text = raw.decode('utf-8')
+    except UnicodeDecodeError:
+        raise NgrError(f'{tool}: відповідь не UTF-8: {url.v}', pos)
+    if len(text) > it.max_size:             # як файл.читати і бд.читати: не довша за --розмір
+        raise NgrError(f'{tool}: відповідь понад {it.max_size} символів (--розмір) — частину не читаю мовчки: {url.v}', pos)
+    return V(text)
 
 
 def t_fetch(it, pos, url):

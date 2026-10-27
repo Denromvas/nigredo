@@ -44,14 +44,49 @@ PAGE = ('<html><head><title>Тест &amp; браузер</title><style>.x{color
 
 
 class Redirect(http.server.BaseHTTPRequestHandler):
+    def edge(self):
+        """Відповіді на межах мережі (проєкт модулів з git, §14): рівно N байтів, не UTF-8, обірвана, по байту."""
+        path = urllib.parse.unquote(self.path)
+        bodies = {'/не-utf8': b'ok \xff', '/розрізано': 'кі'.encode()[:-1], '/обірвано': b'a' * 50}
+        if path.startswith('/капає/'):        # по байту на 0,2 с: жодна операція сокета не стоїть довше за строк
+            try:
+                if path.endswith('заголовки'):
+                    self.wfile.write(b'HTTP/1.0 200 OK\r\nX-Slow: ')
+                else:
+                    self.send_response(200)
+                    self.send_header('Content-Length', '40')
+                    self.end_headers()
+                for _ in range(40):
+                    self.wfile.write(b'a')
+                    time.sleep(0.2)
+                self.wfile.write(b'\r\n\r\nok' if path.endswith('заголовки') else b'')
+            except OSError:                   # клієнт обірвав на строку
+                pass
+            return True
+        if path.startswith('/байти/'):
+            body = b'a' * int(path.rsplit('/', 1)[1])
+        elif path in bodies:
+            body = bodies[path]
+        else:
+            return False
+        self.send_response(200)
+        self.send_header('Content-Length', str(100 if path == '/обірвано' else len(body)))   # обірвано: 50 зі 100
+        self.end_headers()
+        self.wfile.write(body)
+        return True
+
     def do_POST(self):
         body = self.rfile.read(int(self.headers.get('Content-Length', 0)))
+        if self.edge():
+            return
         self.send_response(200)
         self.send_header('Content-Type', 'text/plain; charset=utf-8')
         self.end_headers()
         self.wfile.write(b'got ' + self.headers.get('Content-Type', '').encode() + b' ' + body)
 
     def do_GET(self):
+        if self.edge():
+            return
         if urllib.parse.unquote(self.path).startswith('/повільно/'):          # ‖: кожен запит — 0,3 с
             time.sleep(0.3)
             self.send_response(200)
@@ -298,6 +333,44 @@ def main():
           'послати: JSON без втрат, тіло повністю в сліді', got.stdout + got.stderr)
     got = run(['-e', f'🜂 【「послати:127.0.0.1:{port}」】\n» 🜔послати 「http://127.0.0.1:1/x」 「a」'], env)
     check(got.returncode == 1 and 'поза дозволеним' in got.stderr, 'послати: інший порт — відмова під час виконання', got.stderr)
+    # проєкт модулів з git, §14: відповідь понад 1 000 000 байтів, обірвана чи не UTF-8 — помилка, а не тихе обрізання
+    # чи U+FFFD (раніше read(1_000_000) і decode('utf-8', 'replace')); понад --розмір — як файл.читати
+    web_ = f'http://127.0.0.1:{port}'
+    got = run(['-e', f'🜂 【「взяти:127.0.0.1:{port}」 「послати:127.0.0.1:{port}」】\n'
+               f'» ρ 🜔взяти 「{web_}/байти/1000000」\n» ρ 🜔послати 「{web_}/байти/1000000」 「x」\n' + ''.join(
+                   f'» ☂ {t_} 「{web_}/{p_}」{" 「x」" if t_ == "🜔послати" else ""} λe e\n' for t_, p_ in (
+                       ('🜔взяти', 'байти/1000001'), ('🜔послати', 'байти/1000001'), ('🜔взяти', 'не-utf8'),
+                       ('🜔взяти', 'розрізано'), ('🜔взяти', 'обірвано')))], env)
+    check(got.returncode == 0 and got.stdout == (
+        f'1000000\n1000000\n'
+        f'мережа.взяти: відповідь понад 1 000 000 байтів — частину не читаю мовчки: {web_}/байти/1000001\n'
+        f'мережа.послати: відповідь понад 1 000 000 байтів — частину не читаю мовчки: {web_}/байти/1000001\n'
+        f'мережа.взяти: відповідь не UTF-8: {web_}/не-utf8\nмережа.взяти: відповідь не UTF-8: {web_}/розрізано\n'
+        f'мережа.взяти: відповідь обірвано — бракує 50 байтів до Content-Length, неповну не віддаю мовчки: {web_}/обірвано\n'),
+          'мережа: рівно 1 000 000 байтів — так; на байт більше (взяти, послати), не UTF-8 (і розрізаний символ), '
+          'обірвана — помилка, а не обрізання (проєкт модулів з git, §14)', got.stdout + got.stderr)
+    got = run(['--розмір', '300', '-e', f'🜂 【「взяти:127.0.0.1:{port}」】\n» ρ 🜔взяти 「{web_}/байти/300」\n'
+               f'» ρ 🜔взяти 「{web_}/байти/301」'], env)
+    check(got.returncode == 1 and got.stdout == '300\n'
+          and f'мережа.взяти: відповідь понад 300 символів (--розмір) — частину не читаю мовчки: {web_}/байти/301' in got.stderr,
+          'мережа: відповідь понад --розмір — помилка, як у файл.читати', got.stdout + got.stderr)
+    # строк — на весь запит, а не на кожну операцію сокета: сервер віддає по байту на 0,2 с (заголовки чи тіло, разом
+    # 8 с). Щоб не чекати 30 с, NET_TIME = 1 — у підпроцесі з еталоном (Атанор мережу однаково віддає еталону); потоки
+    # запиту по строку закінчуються (зʼєднання обірвано), а не висять, доки сервер капає
+    t0 = time.monotonic()
+    got = subprocess.run([sys.executable, '-c', 'import sys, threading, time; sys.path.insert(0, sys.argv[1]); import nigredo as n\n'
+                          'n.NET_TIME = 1\ncode = n.main(sys.argv[2:])\nend = time.monotonic() + 3\n'
+                          'while threading.active_count() > 1 and time.monotonic() < end:\n    time.sleep(0.05)\n'
+                          'print("код", code, "потоків", threading.active_count())', str(ROOT / 'interpreter'),
+                          '-e', f'🜂 【「взяти:127.0.0.1:{port}」 「послати:127.0.0.1:{port}」】\n'
+                          f'» ☂ 🜔взяти 「{web_}/капає/заголовки」 λe e\n» ☂ 🜔послати 「{web_}/капає/тіло」 「x」 λe e'],
+                         capture_output=True, text=True, env=env)
+    took = time.monotonic() - t0
+    check(got.stdout == f'мережа.взяти: запит довший за 1 с — зупинено: {web_}/капає/заголовки\n'
+          f'мережа.послати: запит довший за 1 с — зупинено (тіло могло вже дійти до сервера): {web_}/капає/тіло\n'
+          'код 0 потоків 1\n' and took < 7,
+          f'мережа: строк на весь запит — сервер, що капає по байту (заголовки, тіло), зупинено за строком ({took:.1f} с '
+          'на два запити зі строком 1 с), потоки запиту не висять (проєкт модулів з git, §14)', got.stdout + got.stderr)
     # ‖: дії разом, слід — у порядку елементів
     ptr2 = tmp / 'паралельно.jsonl'
     t0 = time.monotonic()
