@@ -1,0 +1,13 @@
+🜂 「р2: годинник і випадковість через бд.читати без прав «час» і «жереб»」 【「бд.читати:дані」】
+← б 「дані/база.db」
+← з λq ☂ σ 🜔бд.читати б q 【】 λe ＋ 「✗ 」 e
+» з 「SELECT datetime('now') AS t」
+» з 「SELECT CURRENT_TIMESTAMP AS t」
+» з 「SELECT unixepoch() AS t」
+» з 「SELECT julianday('now') AS t」
+» з 「SELECT random() AS r」
+» з 「SELECT abs(random()) % 6 + 1 AS кубик」
+» з 「SELECT hex(randomblob(4)) AS r」
+← г 🜔бд.читати б 「SELECT CAST(strftime('%S', 'now') AS INTEGER) % 2 AS парна」 【】
+» г
+» ± г

@@ -1,0 +1,12 @@
+🜂 「атака20: інші форми читання тексту схеми temp (усі стовпці, довжина, порівняння, LIKE) — чи дасть програмі біти назви службової; лише бд.писати」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE t(x)」
+» з 「CREATE TABLE лог(v)」
+» з 「INSERT INTO лог(v) SELECT * FROM temp.sqlite_master」
+» з 「INSERT INTO лог(v) SELECT length(sql) FROM temp.sqlite_master」
+» з 「INSERT INTO лог(v) SELECT 1 FROM temp.sqlite_master WHERE sql LIKE '%ngr%'」
+» з 「INSERT INTO лог(v) SELECT 1 FROM sqlite_temp_master WHERE sql > 'a'」
+» з 「INSERT INTO лог(v) SELECT type || name || tbl_name || rootpage FROM temp.sqlite_master」
+» з 「INSERT INTO t(x) VALUES (1)」
+» з 「SELECT count(*) AS n FROM лог」

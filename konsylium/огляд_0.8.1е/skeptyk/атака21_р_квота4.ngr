@@ -1,0 +1,11 @@
+🜂 「атака21: ті самі бази не з Nigredo під квотою бд.писати≤1 — перша вставка в t бере квоту; далі CHECK на межі, DEFAULT, згенерований, індекс, R-Tree: заборонено чи квоту вичерпано」 【「бд.писати:звіти≤1」】
+← з Λбаза q ☂ ＋ 「✓ 」 σ 🜔бд.писати база q 【】 λпом ＋ 「✗ 」 пом
+» з § ⌂ 0 「INSERT INTO t(x) VALUES (1)」
+» з § ⌂ 0 「INSERT INTO c(a) VALUES (1)」
+» з § ⌂ 0 「INSERT INTO c(rowid, a) VALUES (5, NULL)」
+» з § ⌂ 1 「INSERT INTO d(a) VALUES (1)」
+» з § ⌂ 1 「INSERT INTO d(a, b) VALUES (3, 3)」
+» з § ⌂ 2 「INSERT INTO g(a) VALUES (1)」
+» з § ⌂ 2 「INSERT INTO i(a) VALUES (1)」
+» з § ⌂ 3 「INSERT INTO r VALUES (1, 0, 1)」
+» з § ⌂ 3 「INSERT INTO t(x) VALUES (2)」

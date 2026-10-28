@@ -1,0 +1,9 @@
+🜂 「атака20: бд.читати бази не з Nigredo — згенерований стовпець і індекс зі службовою, схема temp; лише бд.читати」 【「бд.читати:дані」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.читати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「SELECT count(*) AS n FROM t」
+» з 「SELECT a FROM g」
+» з 「SELECT b FROM g」
+» з 「SELECT a FROM i WHERE ngr_rowid('i', a) = 1」
+» з 「SELECT name FROM temp.sqlite_master」
+» з 「SELECT sql FROM sqlite_temp_master」

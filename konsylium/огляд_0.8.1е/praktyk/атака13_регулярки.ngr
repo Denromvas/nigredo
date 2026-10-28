@@ -1,0 +1,69 @@
+🜂 「атака13: заміна й (?i) «як Python re» — кожен рядок з відповіддю CPython 3.13 (parse_template, _sre) у коментарі」 【】
+← з Λш з ☂ Δ ≋ 「a-b」 ш з λпом ＋ 「✗ 」 пом
+← зш Λт ш ☂ Δ ⌕ т ш λпом ＋ 「✗ 」 пом
+» з 「a」 「\012」
+※ Python: "\n-b"
+» з 「(a)」 「\1\2」
+※ Python: error invalid group reference 2
+» з 「z」 「\2」
+※ Python: error invalid group reference 2 (навіть без збігу)
+» з 「a」 「\x41」
+※ Python: error bad escape \x
+» з 「a」 「\g<0>\g<0>」
+※ Python: "aa-b"
+» з 「(a)-(b)」 「\2\1」
+※ Python: "ba"
+» з 「(a)」 「\18」
+※ Python: error invalid group reference 18
+» з 「(a)」 「\123」
+※ Python: "S-b" (вісімкове, хоч група 1 є)
+» з 「(a)」 「\12」
+※ Python: error invalid group reference 12
+» з 「a」 「\400」
+※ Python: error octal escape value \400 outside of range 0-0o377
+» з 「a」 「\08」
+※ Python: "\x008-b"
+» з 「a」 「\.\й」
+※ Python: "\.\й-b"
+» з 「a」 「\q」
+※ Python: error bad escape \q
+» з 「a」 「\\b」
+※ Python: "\x08-b" (backspace)
+» з 「(?P<x>a)」 「\g<x>!」
+※ Python: "a!-b"
+» з 「(a)」 「\g<01>」
+※ Python: "a-b"
+» з 「(a)」 「\g<١>」
+※ Python: error bad character in group name
+» з 「a」 「\\」
+※ Python: error bad escape (end of pattern)
+» з 「a」 「\g<x」
+※ Python: error missing >, unterminated name
+» зш 「ǅ ǆ Ǆ」 「(?i)ǆ」
+※ Python: 3
+» зш 「ſ s S」 「(?i)s」
+※ Python: 3
+» зш δ 「"\\u212a k K"」 「(?i)k」
+※ Python: 3 (K — знак кельвіна U+212A)
+» зш δ 「"\\u212a k K"」 「(?ai)k」
+※ Python: 2 (без U+212A)
+» зш 「ı i I İ」 「(?i)i」
+※ Python: 4
+» зш 「ß ẞ」 「(?i)ß」
+※ Python: 2
+» зш 「σ ς Σ」 「(?i)σ」
+※ Python: 3
+» зш 「ᲀ в В」 「(?i)в」
+※ Python: 3
+» зш 「ᲄ ᲅ т Т」 「(?i)т」
+※ Python: 4
+» зш 「Ґ ґ Г」 「(?i)[а-я]」
+※ Python: 1 (Г; ґ і Ґ поза а-я)
+» зш 「РАХУНОК №5 рахунок Рахунок」 「(?i)рахунок」
+※ Python: 3
+» зш 「ﬀ ff FF」 「(?i)ﬀ」
+※ Python: 1
+» зш δ 「"\\u0390 \\u1fd3"」 「(?i)ΐ」
+※ Python: 2 (U+0390 і U+1FD3 — _EXTRA_CASES)
+» зш 「µ μ Μ」 「(?i)[µ]」
+※ Python: 3

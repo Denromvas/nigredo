@@ -1,0 +1,11 @@
+🜂 「атака20 (аудитор): чи бачить сама програма біт випадкової назви службової через sqlite_stmt — без права «жереб»; 6 однакових запитів, кожен дає 0 чи 1」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+← біт 「INSERT INTO v(s) SELECT 1 FROM sqlite_stmt WHERE sql LIKE 'CREATE TEMP TRIGGER%' AND instr(sql, 'BEGIN SELECT ngr_rowid_') > 0 AND substr(sql, instr(sql, 'BEGIN SELECT ngr_rowid_') + 23, 1) < '8'」
+» з 「CREATE TABLE IF NOT EXISTS v(s)」
+» з біт
+» з біт
+» з біт
+» з біт
+» з біт
+» з біт

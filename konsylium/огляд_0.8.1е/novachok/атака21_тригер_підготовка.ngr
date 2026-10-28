@@ -1,0 +1,7 @@
+🜂 「атака21, підготовка: у базі лишаються тригер і VIEW, що читають sqlite_stmt」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+∀ 【「CREATE TABLE t2(x)」
+  「CREATE TABLE v2(s)」
+  「CREATE TRIGGER tv2 AFTER INSERT ON t2 BEGIN INSERT INTO v2(s) SELECT count(*) FROM sqlite_stmt; END」
+  「CREATE VIEW vs2 AS SELECT sql FROM sqlite_stmt」】 λq » 〔{⊏ q 0 50} → {з q}〕

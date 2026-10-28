@@ -1,0 +1,32 @@
+🜂 「атака13: версія SQLite і її поведінка — однакова в Атанора й еталона?」 【「бд.читати:дані」】
+← б 「порожня.db」
+← q λs ☂ 🜔бд.читати б s 【】 λe ＋ 「помилка: 」 e
+» q 「SELECT sqlite_version() AS v」
+» q 「SELECT sqlite_source_id() AS v」
+» q 「SELECT unistr('\\u0041') AS v」
+» q 「SELECT concat('a', 1, NULL) AS v」
+» q 「SELECT octet_length('ї') AS v」
+» q 「SELECT timediff('2026-10-20', '2026-01-01') AS v」
+» q 「SELECT date('2026-10-20 10:00', 'floor') AS v」
+» q 「SELECT date(45000.5, 'auto') AS v」
+» q 「SELECT unixepoch('2026-10-20', 'subsec') AS v」
+» q 「SELECT '{"a":[1,2]}' ->> '$.a[1]' AS v」
+» q 「SELECT json_pretty('{"a":1}') AS v」
+» q 「SELECT format('%!.3s', 'абвгд') AS v」
+» q 「SELECT 1 AS v WHERE 'Abc' GLOB '[[:upper:]]*'」
+» q 「SELECT string_agg('x', ',') AS v」
+» q 「SELECT median(1) AS v」
+» q 「SELECT percentile(1, 50) AS v」
+» q 「SELECT 9223372036854775807 + 1 AS v」
+» q 「SELECT 1e400 AS v」
+» q 「SELECT CAST('0x1F' AS INTEGER) AS v」
+» q 「SELECT 0x7FFFFFFFFFFFFFFF AS v」
+» q 「SELECT 1_000 AS v」
+» q 「SELECT printf('%.20f', 0.1) AS v」
+» q 「SELECT round(2.5) AS v, round(-2.5) AS w, round(0.15, 1) AS z」
+» q 「SELECT upper('ї') AS v, lower('Ї') AS w, 'ї' LIKE 'Ї' AS z」
+» q 「SELECT sqlite_compileoption_used('ENABLE_MATH_FUNCTIONS') AS v」
+» q 「SELECT sqrt(2) AS v, pi() AS w」
+» q 「SELECT ln(0) AS v」
+» q 「SELECT sqlite_compileoption_get(0) AS v」
+» q 「PRAGMA compile_options」

@@ -1,0 +1,8 @@
+🜂 「огляд 0.8.1г (аудитор): після вичерпаної квоти ≤1 — дата з даних, ngr_rowid і rowid 2⁶³−1; що в тексті відмов і в сліді」 【「бд.писати:звіти≤1」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) VALUES (5)」
+» з 「INSERT INTO t(x) VALUES (date('2020-01-01'))」
+» з 「INSERT INTO t(x) VALUES (ngr_rowid('t', 0))」
+» з 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, ngr_rowid('t', 0))」
+» з 「INSERT INTO t(x) VALUES (6)」

@@ -1,0 +1,6 @@
+🜂 「атака12: годинник SQLite у VIEW, рекурсивному CTE і підзапиті — ⚠ у --сухо?」 【「бд.читати:дані」 「писати:звіти」 「час」 「жереб」】
+← а § § 🜔бд.читати 「дані/порожня.db」 「WITH RECURSIVE c(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM c WHERE i < 3) SELECT (SELECT max(i) FROM c) + (SELECT CAST(strftime('%S','now') AS INTEGER) % 2) AS p」 【】 0 「p」
+← б § § 🜔бд.читати 「дані/порожня.db」 「SELECT abs(random()) % 2 AS p」 【】 0 「p」
+¿ ∧ ＝ а 3 ＝ б 0
+  🜔писати 「звіти/с12_вкладено.txt」 「так」
+  » 「ні: нічого не пишу」

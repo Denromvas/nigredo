@@ -1,0 +1,9 @@
+🜂 「атака21: random() з ? і хибною кількістю параметрів у справжньому запуску (без квоти) — що каже запуск; контроль — хибна кількість без random」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← зп Λq п ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q п λпом ＋ 「✗ 」 пом
+» зп 「CREATE TABLE IF NOT EXISTS d(a, b)」 【】
+» зп 「INSERT INTO d(a, b) VALUES (random(), ?)」 【】
+» зп 「INSERT INTO d(a, b) VALUES (random(), ?)」 【1 2】
+» зп 「INSERT INTO d(a, b) VALUES (?, ?)」 【1】
+» зп 「INSERT INTO d(a, b) VALUES (?, ?)」 【1 2】
+» зп 「SELECT count(*) FROM d」 【】

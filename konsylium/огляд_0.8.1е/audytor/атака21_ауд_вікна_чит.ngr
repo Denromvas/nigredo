@@ -1,0 +1,11 @@
+🜂 「атака21 (аудитор): ті самі вікна в бд.читати — sqlite_stmt (в 0.8.1д 1 проти 2), лічильники, версія, temp.dbstat без своєї таблиці; і сама база назад」 【「бд.читати:дані」】
+← бд § ⌂ 0
+← ч λq ☂ ＋ 「✓ 」 σ 🜔бд.читати бд q 【】 λпом ＋ 「✗ 」 пом
+» ч 「SELECT count(*) AS n FROM sqlite_stmt」
+» ч 「SELECT count(*) AS n FROM temp.sqlite_stmt」
+» ч 「SELECT count(*) AS n FROM dbstat」
+» ч 「SELECT count(*) AS n FROM temp.dbstat」
+» ч 「SELECT total_changes() AS a, changes() AS b, last_insert_rowid() AS c」
+» ч 「SELECT name FROM (SELECT * FROM sqlite_master UNION ALL SELECT * FROM sqlite_temp_master) WHERE type = 'table'」
+» ч 「SELECT count(*) AS n, count(sql) AS m FROM temp.sqlite_master」
+» ч 「SELECT k, s FROM v ORDER BY rowid」

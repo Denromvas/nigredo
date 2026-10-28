@@ -1,0 +1,14 @@
+🜂 「атака19 (оркестратор): звичайна робота після BEGIN IMMEDIATE … COMMIT — OR FAIL посеред інструкції, RAISE тригера бази, UNIQUE, RETURNING, описка; що лишилось у базі」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE u(k INTEGER UNIQUE, v)」
+» з 「INSERT INTO u(k, v) VALUES (1, 'а'), (2, 'б')」
+» з 「INSERT OR FAIL INTO u(k, v) VALUES (3, 'в'), (1, 'дубль'), (4, 'г')」
+» з 「INSERT OR ROLLBACK INTO u(k, v) VALUES (5, 'д'), (2, 'дубль')」
+» з 「INSERT INTO u(k, v) VALUES (6, 'е'), (1, 'дубль')」
+» з 「CREATE TRIGGER стоп BEFORE INSERT ON u WHEN NEW.k = 99 BEGIN SELECT RAISE(ABORT, 'не можна 99'); END」
+» з 「INSERT INTO u(k, v) VALUES (99, 'ж')」
+» з 「UPDATE u SET v = v || '!' WHERE k <= 3 RETURNING k」
+» з 「INSERT INTO u(kk) VALUES (7)」
+» з 「DELETE FROM u WHERE k = 4」
+» з 「SELECT group_concat(k || v, ',') FROM (SELECT k, v FROM u ORDER BY k)」

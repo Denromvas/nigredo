@@ -1,0 +1,8 @@
+🜂 「атака13: тригер з іменем ngr_rowid_0 у самій базі — чи не вимикає він захисту rowid 2⁶³−1 без «жереб»」 【「бд.писати:звіти」】
+← база § ⌂ 0
+← крок λq » ☂ ＋ 「змінено: 」 σ 🜔бд.писати база q 【】 λe e
+крок 「CREATE TABLE t(x)」
+крок 「CREATE TRIGGER ngr_rowid_0 AFTER DELETE ON t BEGIN SELECT 1; END」
+крок 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, 0)」
+крок 「INSERT INTO t(x) VALUES (1)」
+крок 「INSERT INTO t(x) VALUES (2)」

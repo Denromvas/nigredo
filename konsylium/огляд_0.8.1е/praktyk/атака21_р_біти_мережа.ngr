@@ -1,0 +1,11 @@
+🜂 「атака21 (практик, копія атака20_орк_біти_через_ngr Оркестратора): біти через сам ngr — у печатці ще мережа (не кличеться), тож ngr віддає еталону; чи отримає програма випадковість без «жереб»」 【「бд.писати:звіти」 「взяти:127.0.0.1:28720」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+← біт 「INSERT INTO v(s) SELECT 1 FROM sqlite_stmt WHERE sql LIKE 'CREATE TEMP TRIGGER%' AND instr(sql, 'BEGIN SELECT ngr_rowid_') > 0 AND substr(sql, instr(sql, 'BEGIN SELECT ngr_rowid_') + 23, 1) < '8'」
+» з 「CREATE TABLE IF NOT EXISTS v(s)」
+» з біт
+» з біт
+» з біт
+» з біт
+» з біт
+» з біт

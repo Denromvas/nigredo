@@ -1,0 +1,44 @@
+🜂 「атака14: rowid 2⁶³−1 — старий файл на межі (хибні тривоги, NULL-rowid) і запис повз тригери (VIEW, rtree, FTS4, FTS5, FK)」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+← скільки λт ＋ 「→ 」 з ＋ ＋ 「WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM c WHERE i < (」 т 「)) INSERT INTO n SELECT i FROM c」
+» з 「CREATE TABLE IF NOT EXISTS n(i)」
+» 「— старий файл: t уже на межі —」
+» з 「UPDATE t SET x = x WHERE rowid = 9223372036854775807」
+» з 「INSERT INTO t(rowid, x) VALUES (NULL, 1)」
+» з 「INSERT INTO t(rowid, x) VALUES ((SELECT NULL), 2)」
+» з 「INSERT INTO t(x) SELECT 3」
+» з 「INSERT INTO t(rowid, x) VALUES (5, 4)」
+» з 「INSERT INTO t(rowid, x) VALUES (-1, 6)」
+» з 「REPLACE INTO t(rowid, x) VALUES (9223372036854775807, 5)」
+» з 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, 7) ON CONFLICT DO UPDATE SET x = 7」
+» 「— VIEW + INSTEAD OF —」
+» з 「CREATE TABLE b(y)」
+» з 「CREATE VIEW v AS SELECT 1 AS z」
+» з 「CREATE TRIGGER vi INSTEAD OF INSERT ON v BEGIN INSERT INTO b(rowid, y) VALUES (9223372036854775807, 0); INSERT INTO b(y) VALUES (NEW.z); END」
+» з 「INSERT INTO v VALUES (1)」
+» скільки 「SELECT rowid % 100 + 1 FROM b WHERE y = 1」
+» 「— rtree —」
+» з 「CREATE VIRTUAL TABLE rt USING rtree(id, a, c)」
+» з 「INSERT INTO rt VALUES (9223372036854775807, 0, 1)」
+» з 「INSERT INTO rt(a, c) VALUES (5, 6)」
+» скільки 「SELECT id % 100 + 1 FROM rt WHERE a = 5」
+» 「— FTS4 —」
+» з 「CREATE VIRTUAL TABLE f4 USING fts4(c)」
+» з 「INSERT INTO f4(docid, c) VALUES (9223372036854775807, 'а')」
+» з 「INSERT INTO f4(c) VALUES ('бе')」
+» скільки 「SELECT docid % 100 + 1 FROM f4 WHERE c = 'бе'」
+» 「— FTS5 —」
+» з 「CREATE VIRTUAL TABLE f5 USING fts5(c)」
+» з 「INSERT INTO f5(rowid, c) VALUES (9223372036854775807, 'а')」
+» з 「INSERT INTO f5(c) VALUES ('бе')」
+» скільки 「SELECT rowid % 100 + 1 FROM f5 WHERE c = 'бе'」
+» 「— FK CASCADE у rowid дитини —」
+» з 「CREATE TABLE p(k UNIQUE)」
+» з 「CREATE TABLE ch(id INTEGER PRIMARY KEY REFERENCES p(k) ON UPDATE CASCADE, w)」
+» з 「INSERT INTO p VALUES (1)」
+» з 「INSERT INTO ch VALUES (1, 0)」
+» з 「UPDATE p SET k = 9223372036854775807」
+» з 「SELECT 1」
+» з 「INSERT INTO ch(w) VALUES (1)」
+» скільки 「SELECT id % 100 + 1 FROM ch WHERE w = 1」

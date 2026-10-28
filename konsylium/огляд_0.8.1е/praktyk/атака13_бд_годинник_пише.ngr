@@ -1,0 +1,36 @@
+🜂 「атака13: годинник і жереб SQLite без «час»/«жереб» у схемі — DEFAULT, CHECK, індекс, тригер, VIEW, UPSERT; rowid 2⁶³−1」 【「бд.писати:звіти」】
+← б 「звіти/а13_год.db」
+← з λq ☂ σ 🜔бд.писати б q 【】 λпом ＋ 「✗ 」 пом
+» з 「DROP TABLE IF EXISTS т1」
+» з 「DROP TABLE IF EXISTS т2」
+» з 「DROP TABLE IF EXISTS т3」
+» з 「DROP TABLE IF EXISTS т4」
+» з 「DROP TABLE IF EXISTS т5」
+» з 「DROP TABLE IF EXISTS т6」
+» з 「DROP TABLE IF EXISTS т7」
+» з 「DROP VIEW IF EXISTS в1」
+» з 「CREATE TABLE т1(а TEXT, к TEXT DEFAULT (date('2026-01-01', '+1 day')))」
+» з 「INSERT INTO т1(а) VALUES ('дата з DEFAULT без now — можна')」
+» з 「CREATE TABLE т2(а TEXT, к TEXT CHECK (к < date('now')))」
+» з 「INSERT INTO т2 VALUES ('check з now', '2020-01-01')」
+» з 「CREATE TABLE т3(а TEXT, к TEXT)」
+» з 「CREATE INDEX і3 ON т3(date(к))」
+» з 「INSERT INTO т3 VALUES ('індекс, дата з даних', '2026-01-01')」
+» з 「INSERT INTO т3 VALUES ('індекс, now у даних', 'now')」
+» з 「CREATE TABLE т4(а TEXT, к TEXT)」
+» з 「CREATE TRIGGER тр4 BEFORE INSERT ON т4 BEGIN SELECT CASE WHEN CAST(strftime('%S', 'now') AS INTEGER) % 2 = 1 THEN RAISE(ABORT, 'непарна') END; END」
+» з 「INSERT INTO т4 VALUES ('тригер з now', '')」
+» з 「CREATE VIEW в1 AS SELECT а, datetime('now') AS к FROM т1」
+» з 「CREATE TABLE т5(а TEXT PRIMARY KEY, к INTEGER)」
+» з 「INSERT INTO т5 VALUES ('x', 1)」
+» з 「INSERT INTO т5 VALUES ('x', 2) ON CONFLICT(а) DO UPDATE SET к = unixepoch()」
+» з 「INSERT INTO т5 VALUES ('x', 3) ON CONFLICT(а) DO UPDATE SET к = abs(random()) % 2」
+» з 「CREATE TABLE т6(а TEXT, к INTEGER)」
+» з 「INSERT INTO т6(rowid, а, к) VALUES (9223372036854775807, 'макс', 1)」
+» з 「INSERT INTO т6(а, к) VALUES ('наступний — навмання', 2)」
+» з 「INSERT INTO т6(rowid, а, к) VALUES (5, 'явний rowid', 3)」
+» з 「CREATE TABLE т7(oid TEXT, а TEXT)」
+» з 「INSERT INTO т7 VALUES ('ід-1с', 'стовпець oid — звична назва')」
+» з 「CREATE TRIGGER тр7 AFTER INSERT ON т7 BEGIN INSERT INTO т6(а, к) VALUES ('з тригера', 4); END」
+» з 「INSERT INTO т7 VALUES ('ід-2', 'тригер пише в т6 з rowid 2⁶³−1')」
+» з 「UPDATE т6 SET к = к + 1 WHERE rowid = 5」

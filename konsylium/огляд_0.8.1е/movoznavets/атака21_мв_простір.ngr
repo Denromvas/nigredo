@@ -1,0 +1,17 @@
+🜂 「огляд 0.8.1е, Мовознавець: перелік дозволених віртуальних таблиць і простори назв — написання json_each/json_tree, префікси main./temp., своя таблиця з назвою таблиці-функції PRAGMA і temp.<та сама назва>, TEMP-таблиця dbstat і main.dbstat; лише бд.писати на свіжій базі」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE v(s)」
+» з 「INSERT INTO v(s) SELECT 1 FROM json_each('[1,2]')」
+» з 「INSERT INTO v(s) SELECT 1 FROM JSON_EACH('[1,2]')」
+» з 「INSERT INTO v(s) SELECT 1 FROM "json_each"('[1,2]')」
+» з 「INSERT INTO v(s) SELECT 1 FROM main.json_each('[1,2]')」
+» з 「INSERT INTO v(s) SELECT 1 FROM temp.json_tree('[1,2]')」
+» з 「INSERT INTO v(s) SELECT 1 FROM pragma_function_list WHERE name GLOB 'ngr_rowid_*'」
+» з 「CREATE TABLE pragma_function_list(x)」
+» з 「INSERT INTO v(s) SELECT 1 FROM pragma_function_list」
+» з 「INSERT INTO v(s) SELECT 1 FROM temp.pragma_function_list WHERE name GLOB 'ngr_rowid_*'」
+» з 「INSERT INTO v(s) SELECT 1 FROM temp.pragma_table_info('v')」
+» з 「CREATE TEMP TABLE dbstat(x)」
+» з 「INSERT INTO v(s) SELECT 1 FROM main.dbstat」
+» з 「INSERT INTO v(s) SELECT 1 FROM dbstat」

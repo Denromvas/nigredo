@@ -1,0 +1,15 @@
+🜂 「атака21: те саме правило тексту схеми під вичерпаною квотою бд.писати≤1 — перша вставка в t бере квоту」 【「бд.писати:звіти≤1」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) VALUES (1)」
+» з 「INSERT INTO s1(a) VALUES (1)」
+» з 「INSERT INTO s2(a) VALUES (1)」
+» з 「INSERT INTO s3 VALUES (1)」
+» з 「INSERT INTO u(x) VALUES (1)」
+» з 「INSERT INTO p(x) VALUES (1)」
+» з 「UPDATE s1 SET a = 3」
+» з 「DELETE FROM s1」
+» з 「ALTER TABLE s2 RENAME TO s2b」
+» з 「ALTER TABLE s3 RENAME COLUMN ngr_rowid_n TO n」
+» з 「DROP TABLE s1」
+» з 「INSERT INTO t(x) VALUES (2)」

@@ -1,0 +1,4 @@
+
+thread '<unknown>' (13932) has overflowed its stack
+fatal runtime error: stack overflow, aborting
+timeout: warning: disabling core dumps failed: Interrupted system call

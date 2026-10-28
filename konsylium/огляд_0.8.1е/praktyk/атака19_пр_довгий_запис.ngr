@@ -1,0 +1,4 @@
+🜂 「атака19 (практик): довгий запис — тримає базу зайнятою, поки другий процес ngr пише в неї ж (N рядків рахує, один записує)」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← н § ⌂ 1
+» ☂ ＋ 「довгий ✓ 」 σ 🜔бд.писати бд 「INSERT INTO t(x) SELECT count(*) FROM (WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM c WHERE i < CAST(? AS INTEGER)) SELECT i FROM c)」 【н】 λпом ＋ 「довгий ✗ 」 пом

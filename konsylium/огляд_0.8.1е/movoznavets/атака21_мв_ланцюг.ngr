@@ -1,0 +1,9 @@
+🜂 「огляд 0.8.1е, Мовознавець: правило тексту схеми через ланцюжок — запит пише в lt або VIEW lv, а тригер пише в c, чий CHECK кличе ngr_rowid (чужа база, c на межі); контроль — lt2 → t; лише бд.писати (і --сухо)」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO n(x) VALUES (1)」
+» з 「INSERT INTO lt(x) VALUES (1)」
+» з 「UPDATE lt SET x = 2」
+» з 「INSERT INTO lv(x) VALUES (3)」
+» з 「INSERT INTO lt2(x) VALUES (4)」
+» з 「INSERT INTO c(a) VALUES (5)」

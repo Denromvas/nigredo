@@ -1,0 +1,9 @@
+🜂 「атака21: слово ngr_rowid у рядку й коментарі самого запиту (не схеми) — хибна тривога?」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+∀ 【「CREATE TABLE IF NOT EXISTS w(s)」
+  「INSERT INTO w(s) VALUES ('ngr_rowid')」
+  「INSERT INTO w(s) VALUES (1) /* ngr_rowid */」
+  「INSERT INTO w(s) SELECT 'ngr_rowid_0_0'」
+  「UPDATE w SET s = 'ngr_rowid(1, 2)' WHERE s = 1」
+  「DELETE FROM w WHERE s LIKE 'ngr_rowid%'」】 λq » 〔{⊏ q 0 50} → {з q}〕
