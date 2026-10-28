@@ -1,0 +1,10 @@
+🜂 「атака16: db_compiles вирішує за текстом «not authorized» — а UPDATE, що в SET читає стовпець, під authorizer «відмовляй усе» падає з іншим текстом; видно за ціною (400 таблиць, 20 запитів)」 【「бд.писати:звіти」 「час」】
+← бд § ⌂ 0
+← зап § ⌂ 1
+∀ …1 400 λi 🜔бд.писати бд 〔CREATE TABLE IF NOT EXISTS т{i}(x)〕 【】
+» 🜔бд.писати бд 「CREATE TABLE IF NOT EXISTS ai(id INTEGER PRIMARY KEY AUTOINCREMENT, x)」 【】
+» 🜔бд.писати бд 「INSERT INTO ai(x) VALUES (1)」 【】
+» 🜔час
+∀ …1 20 λj ☂ σ 🜔бд.писати бд зап 【】 λпом 0
+» 🜔час
+» ☂ σ 🜔бд.писати бд зап 【】 λпом пом

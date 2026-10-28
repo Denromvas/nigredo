@@ -1,0 +1,16 @@
+🜂 【「бд.писати:звіти」】
+
+※ 1. База з R-Tree і CHECK на тіньовій таблиці
+← р1 ☂ 🜔бд.писати 「звіти/чужа_rtree_1.db」 「INSERT INTO r(id, x0, x1) VALUES (1, 0, 1)」 【】 λe e
+» 〔чужа_rtree: {р1}〕
+
+※ 2. Створення таблиці та окрема спроба доступу до temp schema
+🜔бд.писати 「звіти/ж_нова.db」 「CREATE TABLE a(x)」 【】
+← р2 ☂ 🜔бд.писати 「звіти/ж_нова.db」 「SELECT sql FROM temp.sqlite_master」 【】 λe e
+» 〔читання_temp: {р2}〕
+
+※ 3. Штатна робота ALTER TABLE
+🜔бд.писати 「звіти/ж_нова.db」 「ALTER TABLE a RENAME TO a_нове」 【】
+🜔бд.писати 「звіти/ж_нова.db」 「ALTER TABLE a_нове ADD COLUMN y INTEGER」 【】
+🜔бд.писати 「звіти/ж_нова.db」 「INSERT INTO a_нове(x, y) VALUES (10, 20)」 【】
+» 「alter_table: успішно」

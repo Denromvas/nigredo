@@ -1,0 +1,8 @@
+🜂 「бд」 【「бд.писати:звіти」】
+» 🜔бд.писати 「р2.db」 「CREATE TABLE IF NOT EXISTS t (a)」 【】
+» 〔RETURNING: {🜔бд.писати 「р2.db」 「INSERT INTO t VALUES (1), (2), (3) RETURNING a」 【】}〕
+» 〔DELETE: {🜔бд.писати 「р2.db」 「DELETE FROM t」 【】}〕
+» 🜔бд.писати 「р2.db」 「CREATE TRIGGER IF NOT EXISTS тр AFTER INSERT ON t BEGIN SELECT 1; END」 【】
+» ☂ 🜔бд.писати 「р2.db」 「DROP TRIGGER тр」 【】 λe e
+» 🜔бд.писати 「р2.db」 「CREATE VIEW IF NOT EXISTS в AS SELECT a FROM t」 【】
+» ☂ 🜔бд.писати 「р2.db」 「DROP VIEW в」 【】 λe e

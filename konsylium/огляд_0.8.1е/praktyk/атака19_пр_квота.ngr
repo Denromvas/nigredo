@@ -1,0 +1,11 @@
+🜂 「атака19 (практик): власна квота бд.писати≤1 — до неї і після неї службова ngr_rowid, random, дата з даних і rowid 2⁶³−1; чи той самий текст відмови, що без квоти」 【「бд.писати:звіти≤1」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) VALUES (ngr_rowid('t', 0))」
+» з 「INSERT INTO t(x) VALUES (5)」
+» з 「INSERT INTO t(x) VALUES (ngr_rowid('t', 0))」
+» з 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, ngr_rowid('t', 2))」
+» з 「INSERT INTO t(x) VALUES (random())」
+» з 「INSERT INTO t(x) VALUES (date('2020-01-01'))」
+» з 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, 1)」
+» з 「INSERT INTO t(x) VALUES (6)」

@@ -1,0 +1,21 @@
+🜂 「атака17 (для еталона — у печатці мережа, не викликається): спроби поза правами, яких не видно ні authorizer, ні в байткоді самого запиту — на старій базі й на далекій」 【「бд.писати:звіти」 「взяти:127.0.0.1:28720」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, 5)」
+» з 「INSERT INTO t(rowid, x) VALUES (9223372036854775806 + 1, 6)」
+» з 「UPDATE t SET rowid = 9223372036854775807 WHERE x = 1」
+» з 「UPDATE sqlite_sequence SET seq = 9223372036854775807 WHERE name = 'q'」
+» з 「INSERT INTO tr_src VALUES (1)」
+» з 「INSERT INTO tc_src VALUES (1)」
+» з 「INSERT INTO t(x) SELECT file FROM vp」
+» з 「INSERT INTO t(x) SELECT r FROM vr」
+» з 「INSERT INTO td(x) VALUES (1)」
+» з 「INSERT INTO t(x) SELECT name FROM "pragma_table_list"」
+» з 「INSERT INTO t(x) SELECT file FROM Pragma_Database_List」
+» з 「INSERT INTO t(x) SELECT file FROM main.pragma_database_list」
+» з 「INSERT INTO t(x) SELECT name FROM pragma_function_list」
+» з 「INSERT INTO t(x) SELECT CASE WHEN 0 THEN random() ELSE 1 END」
+» з 「INSERT INTO t(x) VALUES (date('2020-01-01'))」
+» з 「INSERT INTO t(x) VALUES (CURRENT_DATE)」
+» ☂ ＋ 「✓ 」 σ 🜔бд.писати бд 「INSERT INTO t(x) VALUES (date(?))」 【「now」】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) VALUES (1); ATTACH DATABASE 'звіти/н17_x.db' AS z」

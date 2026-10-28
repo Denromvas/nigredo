@@ -1,0 +1,10 @@
+🜂 「атака17 (аудитор; для еталона — у печатці мережа, не викликається): квота ≤1 вичерпана невинним INSERT; чи наступні спроби — «заборонено»?」 【「бд.писати:звіти≤1」 「взяти:127.0.0.1:28720」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) VALUES (5)」
+» з 「ATTACH DATABASE 'звіти/квота_приєднана.db' AS y」
+» з 「INSERT INTO t(x) VALUES (random())」
+» з 「INSERT INTO t(x) VALUES (date('now'))」
+» з 「INSERT INTO t(x) SELECT file FROM pragma_database_list」
+» з 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, 1)」
+» з 「INSERT INTO t(x) VALUES (6)」

@@ -1,0 +1,10 @@
+🜂 「атака21 (практик): правило тексту схеми — у базі журнал, чий DEFAULT лише згадує ngr_rowid рядком; нова таблиця поряд; чи однакові запуск і --сухо на нові таблиці, коли журнал уже є, а нової ще немає」 【「бд.писати:звіти」】
+← база § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати база q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS журнал(подія TEXT, примітка TEXT DEFAULT 'див. ngr_rowid')」
+» з 「CREATE TABLE IF NOT EXISTS нова(x)」
+» з 「INSERT INTO нова VALUES (1)」
+» з 「UPDATE нова SET x = x + 1」
+» з 「INSERT INTO журнал(подія) VALUES ('x')」
+» з 「INSERT INTO нова SELECT count(*) FROM журнал」
+» з 「DROP TABLE нова」

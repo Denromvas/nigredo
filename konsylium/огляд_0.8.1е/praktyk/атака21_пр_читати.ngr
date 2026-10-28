@@ -1,0 +1,12 @@
+🜂 「атака21 (практик): побажання 0.8.1д у бд.читати на базі з R-Tree — ідіома FAQ із sqlite_temp_master, SELECT * з temp, R-Tree, json_each, pragma_table_info; і заборонені віртуальні таблиці поряд」 【「бд.читати:дані」】
+← бд § ⌂ 0
+← ч λq ☂ ＋ 「✓ 」 σ 🜔бд.читати бд q 【】 λпом ＋ 「✗ 」 пом
+» ч 「SELECT name FROM (SELECT * FROM sqlite_master UNION ALL SELECT * FROM sqlite_temp_master) WHERE type = 'table' ORDER BY name」
+» ч 「SELECT count(*), count(sql) FROM sqlite_temp_master」
+» ч 「SELECT count(*) FROM r」
+» ч 「SELECT id FROM r WHERE x0 >= 0 ORDER BY id」
+» ч 「SELECT sum(value) FROM json_each('[1,2,3]')」
+» ч 「SELECT group_concat(name, ',') FROM pragma_table_info('r')」
+» ч 「SELECT count(*) FROM sqlite_stmt」
+» ч 「SELECT count(*) FROM dbstat」
+» ч 「SELECT count(*) FROM r_node」

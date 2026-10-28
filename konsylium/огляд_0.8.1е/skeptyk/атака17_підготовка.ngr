@@ -1,0 +1,12 @@
+🜂 「атака17 (підготовка, без «жереб»): VIEW, DEFAULT і тригери з random() та pragma_database_list — до старого файлу」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS t(x)」
+» з 「CREATE VIEW v_rnd AS SELECT random() AS r」
+» з 「CREATE VIEW v_prg AS SELECT file FROM pragma_database_list」
+» з 「CREATE TABLE td(x, y DEFAULT (random()))」
+» з 「CREATE TABLE td2(x, y DEFAULT CURRENT_TIMESTAMP)」
+» з 「CREATE TABLE t3(x)」
+» з 「CREATE TRIGGER tr3 AFTER INSERT ON t3 BEGIN INSERT INTO t(x) VALUES (random()); END」
+» з 「CREATE TABLE t4(x)」
+» з 「CREATE TRIGGER tr4 AFTER INSERT ON t4 BEGIN INSERT INTO t(x) SELECT file FROM pragma_database_list; END」

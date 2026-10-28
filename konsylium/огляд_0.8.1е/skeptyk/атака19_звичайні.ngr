@@ -1,0 +1,14 @@
+🜂 「атака19: звичайні запити в одній транзакції запису — ON CONFLICT FAIL/ROLLBACK, RAISE, RETURNING, помилка посеред, UNIQUE」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE u(x INTEGER PRIMARY KEY, y)」
+» з 「INSERT INTO u VALUES (1, 'a'), (2, 'b')」
+» з 「INSERT OR FAIL INTO u VALUES (3, 'c'), (1, 'dup'), (4, 'd')」
+» з 「SELECT count(*) AS c FROM u」
+» з 「INSERT INTO u VALUES (5, 'e') RETURNING x, y」
+» з 「CREATE TABLE журн(подія)」
+» з 「CREATE TRIGGER тр AFTER INSERT ON журн BEGIN SELECT RAISE(ABORT, 'стоп'); END」
+» з 「INSERT INTO журн VALUES ('раз')」
+» з 「SELECT count(*) AS c FROM журн」
+» з 「INSERT OR ROLLBACK INTO u VALUES (2, 'конфлікт')」
+» з 「SELECT count(*) AS c FROM u」

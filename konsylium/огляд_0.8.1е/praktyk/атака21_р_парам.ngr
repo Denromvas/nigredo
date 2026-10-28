@@ -1,0 +1,9 @@
+🜂 「атака21 (практик): random() поряд з параметром ? — під власною квотою бд.писати≤2 (два перші INSERT її вичерпують) і в --сухо; контроль — той самий запит з ? без random()」 【「бд.писати:звіти≤2」】
+← база § ⌂ 0
+← з Λq п ☂ ＋ 「✓ 」 σ 🜔бд.писати база q п λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS v(a, b)」 【】
+» з 「INSERT INTO v(a, b) VALUES (1, ?)」 【「накладна」】
+» з 「INSERT INTO v(a, b) VALUES (random(), ?)」 【「накладна」】
+» з 「INSERT INTO v(a, b) SELECT ?, random()」 【7】
+» з 「INSERT INTO v(a, b) SELECT value, random() FROM json_each(?)」 【「[1,2]」】
+» з 「INSERT INTO v(a, b) VALUES (2, ?)」 【「накладна」】

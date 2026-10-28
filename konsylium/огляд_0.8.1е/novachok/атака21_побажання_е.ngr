@@ -1,0 +1,12 @@
+🜂 「атака21 для еталона (мережа в печатці, не кличеться): побажання огляду 0.8.1д у бд.читати」 【「бд.читати:дані」 「взяти:127.0.0.1:28720」】
+← ч Λбаза q ☂ Δ 🜔бд.читати база q 【】 λпом ＋ 「✗ 」 пом
+» ч 「чужа_check_межа.db」 「SELECT name FROM (SELECT * FROM sqlite_master UNION ALL SELECT * FROM sqlite_temp_master) WHERE type = 'table'」
+» ч 「чужа_check_межа.db」 「SELECT type, name, sql FROM sqlite_temp_master」
+» ч 「чужа_check_межа.db」 「SELECT count(*) AS n FROM temp.sqlite_schema WHERE sql IS NOT NULL」
+» ч 「чужа_rtree.db」 「SELECT count(*) AS n FROM r」
+» ч 「чужа_rtree.db」 「SELECT id, x0, x1 FROM r WHERE x0 <= 1」
+» ч 「чужа_rtree.db」 「SELECT count(*) AS n FROM r_node」
+» ч 「чужа_check_межа.db」 「SELECT count(*) AS n FROM sqlite_stmt」
+» ч 「чужа_check_межа.db」 「SELECT count(*) AS n FROM dbstat」
+» ч 「чужа_check_межа.db」 「SELECT value FROM json_each('[1,2,3]')」
+» ч 「чужа_check_межа.db」 「SELECT name FROM pragma_table_info('c')」

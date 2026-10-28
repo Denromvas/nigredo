@@ -1,0 +1,11 @@
+🜂 「контроль до к18_ауд_квота_порядок: ті самі запити без квоти — чи той самий текст відмови, що під квотою」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) VALUES (5)」
+» з 「ATTACH DATABASE 'звіти/квота_приєднана.db' AS y」
+» з 「INSERT INTO t(x) VALUES (random())」
+» з 「INSERT INTO t(x) VALUES (date('now'))」
+» з 「INSERT INTO t(x) SELECT file FROM pragma_database_list」
+» з 「UPDATE sqlite_dbpage SET data = data WHERE pgno = 2」
+» з 「INSERT INTO t(x) VALUES (ngr_rowid('t', 0))」
+» з 「INSERT INTO t(x) VALUES (6)」

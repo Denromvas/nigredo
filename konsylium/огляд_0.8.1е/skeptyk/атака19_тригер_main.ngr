@@ -1,0 +1,10 @@
+🜂 「атака19 (умова огляду 0.8.1в, порада Оркестратора): тригер і VIEW програми в main з назвою, як у тимчасового тригера інтерпретатора, кличуть ngr_rowid — чи стануть «своїми»」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TRIGGER ngr_rowid_0_0 BEFORE INSERT ON t BEGIN SELECT ngr_rowid('t', 0); END」
+» з 「INSERT INTO t(x) VALUES (1)」
+» з 「DROP TRIGGER ngr_rowid_0_0」
+» з 「CREATE VIEW ngr_rowid_0_1 AS SELECT ngr_rowid('t', 0) AS r」
+» з 「INSERT INTO t(x) SELECT r FROM ngr_rowid_0_1」
+» з 「DROP VIEW ngr_rowid_0_1」
+» з 「INSERT INTO t(x) VALUES (2)」

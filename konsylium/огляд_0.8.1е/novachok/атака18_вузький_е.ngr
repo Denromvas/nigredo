@@ -1,0 +1,13 @@
+🜂 「атака18 (для еталона — у печатці мережа, не викликається): вузький залишок sqlite_sequence на межі; чи ховається random за запобіжною」 【「бд.писати:звіти」 「взяти:127.0.0.1:28720」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE a(id INTEGER PRIMARY KEY AUTOINCREMENT, x)」
+» з 「CREATE TABLE b(id INTEGER PRIMARY KEY AUTOINCREMENT, x)」
+» з 「CREATE TABLE c(id INTEGER PRIMARY KEY AUTOINCREMENT, x)」
+» з 「CREATE TABLE d(id INTEGER PRIMARY KEY AUTOINCREMENT, x)」
+» з 「INSERT INTO a(x) VALUES (1)」
+» з 「INSERT INTO sqlite_sequence(rowid, name, seq) VALUES (9223372036854775806, 'zz', 0)」
+» з 「INSERT INTO b(x) VALUES (1)」
+» з 「INSERT INTO c(x) VALUES (1)」
+» з 「INSERT INTO d(x) SELECT random()」
+» з 「INSERT INTO a(x) VALUES (2)」

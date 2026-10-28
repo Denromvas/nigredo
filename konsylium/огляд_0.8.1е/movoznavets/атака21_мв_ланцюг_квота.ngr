@@ -1,0 +1,9 @@
+🜂 「огляд 0.8.1е, Мовознавець: той самий ланцюжок під квотою бд.писати≤1 — перша вставка в n бере квоту, далі lt → c, VIEW lv → c, контроль lt2 → t: заборонено чи квоту вичерпано」 【「бд.писати:звіти≤1」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO n(x) VALUES (1)」
+» з 「INSERT INTO lt(x) VALUES (1)」
+» з 「UPDATE lt SET x = 2」
+» з 「INSERT INTO lv(x) VALUES (3)」
+» з 「INSERT INTO lt2(x) VALUES (4)」
+» з 「INSERT INTO c(a) VALUES (5)」

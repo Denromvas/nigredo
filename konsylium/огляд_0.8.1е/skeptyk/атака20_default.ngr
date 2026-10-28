@@ -1,0 +1,22 @@
+🜂 「атака20: ngr_rowid у DEFAULT стовпця (Новачок атака19_default, Оркестратор k9, аргументи н19_дфв) на свіжій базі — запобіжна чи заборонено, чи пише програма свої слова в слід; лише бд.писати」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE d(a, b DEFAULT (ngr_rowid('d', 0)))」
+» з 「INSERT INTO d(rowid, a) VALUES (9223372036854775807, 1)」
+» з 「UPDATE d SET a = a WHERE rowid = 9223372036854775807」
+» з 「INSERT INTO d(a) VALUES (2)」
+» з 「INSERT INTO d(a, b) VALUES (3, 3)」
+» з 「CREATE TABLE d9(a, b DEFAULT (ngr_rowid('d9', 9)))」
+» з 「INSERT INTO d9(a) VALUES (1)」
+» з 「INSERT INTO d9(a, b) VALUES (2, 2)」
+» з 「CREATE TABLE dn(a, b DEFAULT (ngr_rowid('немає', 0)))」
+» з 「INSERT INTO dn(rowid, a) VALUES (9223372036854775807, 1)」
+» з 「CREATE TABLE d1(a, b DEFAULT (ngr_rowid('d1', 1)))」
+» з 「INSERT INTO d1(a) VALUES (1)」
+» з 「CREATE TABLE d3(a, b DEFAULT (ngr_rowid('d3', 3)))」
+» з 「INSERT INTO d3(a) VALUES (1)」
+» з 「CREATE TABLE dnull(a, b DEFAULT (ngr_rowid(NULL, NULL)))」
+» з 「INSERT INTO dnull(a) VALUES (1)」
+» з 「CREATE TABLE dsx(a, b DEFAULT (ngr_rowid('ds', 'x')))」
+» з 「INSERT INTO dsx(a) VALUES (1)」
+» з 「SELECT (SELECT count(*) FROM d) AS d, (SELECT count(*) FROM d9) AS d9, (SELECT count(*) FROM dn) AS dn, (SELECT count(*) FROM d1) AS d1, (SELECT count(*) FROM d3) AS d3, (SELECT count(*) FROM dnull) AS dnull, (SELECT count(*) FROM dsx) AS dsx」
