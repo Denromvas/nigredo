@@ -123,11 +123,14 @@ function, so it now gets a fresh random name for every query, and the old name i
 fifth (5:2 “A”) confirmed that; two judges found the reference interpreter let a program read that random name
 through SQLite's `sqlite_stmt` virtual table, so virtual tables are now an allowlist (`json_each`, `json_tree` and the
 database's own tables), and the run, an exhausted quota and `--сухо` now share one pre-check. Network tools no longer
-truncate silently: a response over 1 MB, cut short or not UTF-8 is an error, and 30 s bounds the whole request. The
+truncate silently: a response over 1 000 000 bytes (10⁶, not MiB), cut short or not UTF-8 is an error, and 30 s bounds
+the whole request. The
 sixth (7:0 “A”, with a condition) found the allowlist checked the name, not the `(schema, name)` pair SQLite actually
 resolves — `temp.dbstat` read the internal module when a real table `dbstat` existed, and a schema-declared virtual
 table on an internal module (`dbstat`, `sqlite_dbpage`) was reachable under its own name — so the allowlist now checks,
-through the query plan, which table SQLite really opens; with that fix **0.8.1 was announced (2026-10-28)**. The latest
+through the query plan, which table SQLite really opens; with that fix **0.8.1 was announced (2026-10-28)**. The
+judges' wishes followed: a refusal now says whether the database schema *calls* the decoy or only *mentions* it (a
+string, a comment, a column or table name), and `random()` is refused with the same text in all three modes. The latest
 comparison report is
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols — [`konsylium/`](konsylium/).
 
@@ -267,11 +270,14 @@ claude mcp add nigredo -- python3 mcp/nigredo_mcp.py   # дати мову бу�
 стара назва — приманка, на яку завжди відмова. П'ятий (5:2 «А») це підтвердив; двоє суддів знайшли, що еталон давав
 програмі прочитати цю випадкову назву через віртуальну таблицю SQLite `sqlite_stmt`, тож віртуальні таблиці тепер —
 перелік дозволених (`json_each`, `json_tree` і таблиці самої бази), а запуск, вичерпана квота й `--сухо` мають один
-попередній прохід. Мережа більше не обрізає мовчки: відповідь понад 1 МБ, обірвана чи не UTF-8 — помилка, а 30 с —
+попередній прохід. Мережа більше не обрізає мовчки: відповідь понад 1 000 000 байтів (10⁶, не МіБ), обірвана чи не
+UTF-8 — помилка, а 30 с —
 на весь запит. Шостий огляд (7:0 «А» з умовою) знайшов, що перелік звіряв назву, а не пару «схема.назва», яку
 розвʼязує SQLite: `temp.dbstat` при справжній таблиці `dbstat` читав службовий модуль, а схемну віртуальну таблицю на
 внутрішньому модулі (`dbstat`, `sqlite_dbpage`) можна було дістати під власною назвою — тож перелік тепер звіряє за
-планом запиту, яку таблицю SQLite відкриває насправді; з цим виправленням **0.8.1 оголошено (2026-10-28)**. Останній звіт звірки —
+планом запиту, яку таблицю SQLite відкриває насправді; з цим виправленням **0.8.1 оголошено (2026-10-28)**. Слідом —
+побажання суддів: відмова каже, чи схема бази приманку **кличе**, чи лише **згадує** (рядок, коментар, назва стовпця
+чи таблиці), а `random()` має один текст відмови в усіх трьох режимах. Останній звіт звірки —
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); історія й протоколи — [`konsylium/`](konsylium/).
 
 **Чесно про межі:** Nigredo — інструмент прозорості й аудиту, **не пісочниця ОС**: агент із доступом до shell може
