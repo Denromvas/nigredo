@@ -32,7 +32,8 @@ pub struct E {
 impl E {
     pub fn text(&self) -> String {
         let mut w = String::new();
-        if let Some(f) = &self.file {
+        // file: None — ще не відомо, "" — код програми (λ програми, викликана з модуля, — місце в програмі, суд 10)
+        if let Some(f) = self.file.as_ref().filter(|f| !f.is_empty()) {
             w.push_str(f);
             w.push(':');
         }
@@ -44,6 +45,14 @@ impl E {
 }
 
 pub type R<T> = Result<T, Box<E>>;
+
+/// Помилка в λ програми: місце — у програмі, а не в модулі, що її викликав (суд 10; еталон: e.file = '').
+fn prog_file(mut e: Box<E>) -> Box<E> {
+    if e.file.is_none() && !e.pipe && !e.internal {
+        e.file = Some(String::new());
+    }
+    e
+}
 
 pub fn ngr<T>(msg: impl Into<String>, pos: Pos) -> R<T> {
     Err(Box::new(E { msg: msg.into(), pos: Some(pos), c: 1.0, wh: false, file: None, fatal: false, pipe: false, internal: false, deep: false }))
@@ -727,7 +736,7 @@ impl Interp {
     fn call_in(&mut self, func: &Rc<Func>, env: &Rc<Env>, arg: V, pos: Pos) -> R<V> {
         self.enter(func.lam.height, pos)?;
         env.vars.borrow_mut()[0] = arg;
-        let r = self.eval(&func.lam.body, env);
+        let r = self.eval(&func.lam.body, env).map_err(prog_file);
         self.leave(func.lam.height);
         r
     }
@@ -748,7 +757,7 @@ impl Interp {
         self.enter(lam.height, pos)?;
         if f.c >= 1.0 && lam.simple && func.module.is_none() {
             let env = Env::child(args, &func.env);
-            let r = self.eval(&lam.body, &env);
+            let r = self.eval(&lam.body, &env).map_err(prog_file);
             self.leave(lam.height);
             return r;
         }
@@ -814,6 +823,7 @@ impl Interp {
                 e.file = Some(m.rel.clone());
                 Err(e)
             }
+            (r, None) => r.map_err(prog_file),
             (r, _) => r,
         };
         if mod_q {
