@@ -327,7 +327,7 @@ impl Parser {
         // модуль з мережі (і все, що еталон читає як адресу, а не шлях): у v1a — кожну таку програму еталону (модулі з
         // git, §11): сховище, чистота, слід і --отримати — лише там, тож розбіжностей немає за побудовою
         if rel.contains('#') || rel.contains("://") || rel.starts_with("github.com/") || rel.starts_with("raw.githubusercontent.com/") {
-            return back("⊃ з мережі — еталон (модулі з git, §11)");
+            return back("⊃ з мережі чи схожий на адресу — еталон (модулі з git, §11)");
         }
         let base = match &self.base {
             None => return back("⊃: модулі — лише в програмах із текою"),
@@ -733,7 +733,14 @@ impl Parser {
             '∘' => {
                 let name = self.name_tok()?;
                 match self.resolve(&name) {
-                    Some((Some(a), hops, slot)) if a > 0 => Ok(Node::new(pos, K::Var(name, hops, slot))),
+                    Some((Some(a), hops, slot)) if a > 0 => {
+                        // ∘х — на вигляд ∘× (суд 10): та сама перевірка, що на виклику функції
+                        let sk = uni::skeleton(&name).ok_or(Back("скелет".into()))?;
+                        if uni::glyph_twin_name(&sk).is_some() || uni::name_twin(&name) || uni::cjk_repeat(&name) {
+                            return back("функція на вигляд — гліф");
+                        }
+                        Ok(Node::new(pos, K::Var(name, hops, slot)))
+                    }
                     _ => back("∘ бере функцію, названу ←"),
                 }
             }

@@ -56,10 +56,13 @@ class NgrError(Exception):
 
     def __init__(self, msg, pos=None, c=1.0):
         super().__init__(msg)
-        self.msg, self.pos, self.c, self.where, self.file = msg, pos, c, False, None
+        self.msg, self.pos, self.c, self.where, self.file, self.said = msg, pos, c, False, None, False
 
     def __str__(self):
+        # file: None — ще не відомо, '' — код програми (λ програми, викликана з модуля, — місце в програмі, суд 10)
         where = (f'{self.file}:' if self.file else '') + (f'{self.pos[0]}:{self.pos[1]} ' if self.pos else '')
+        if self.said and self.file and '#sha256=' in self.file:     # ☠ модуля з мережі — слова його автора (суд 10)
+            return f'✗ {where}☠ модуля (слова автора модуля): {self.msg}'
         return f'✗ {where}{self.msg}'
 
 
@@ -733,6 +736,18 @@ def const_twin(name):
     return CONST_TWINS.get(name) or next((c for c in CONSTS if skeleton(c) == sk), None)
 
 
+def fn_glyph_twin(val, pos, pre=''):
+    """Функція, чиє імʼя на вигляд — гліф (х і ×, 匚匚 і ⊏⊏): і на виклику, і в ∘імʼя — помилка розбору."""
+    twin = glyph_twin(val)
+    if twin:
+        raise StaticError(f'функція «{val}» на вигляд — гліф «{twin}»: «{pre}{val} …» читається як «{pre}{twin} …»; '
+                          f'назвіть її інакше', pos)
+    one = unit(val.rstrip('0123456789') or val)
+    if len(one) == 1 and script_of(one) in ('CJK', 'HIRAGANA', 'KATAKANA'):   # 匚匚 ≈ ⊏⊏ (суд 9д)
+        raise StaticError(f'функція «{val}» — повтор одного знака «{one}»: як імʼя з одного ієрогліфа, він '
+                          f'на вигляд буває гліфом (匚 і ⊏, 田 і ⊞); назвіть її різними знаками', pos)
+
+
 def check_twins(toks):
     """Два різні імена, однакові на вигляд (x і х, cop і сор, h і һ, I і l), — помилка (скелети UTS #39). Так само
     імʼя, що виглядає як число (З, О) чи як стала (Ø, ᄋ), і імʼя з символів сумісності (ｘ, 𝚡, ﬁ). Імʼя функції,
@@ -1097,7 +1112,7 @@ def parse_address(text, pos, need_hash=True):
                   'невидимих, у формі NFC, на .ngr')
     if not mark:
         if need_hash:
-            raise err(f'модуль з мережі без «#sha256=…» — вміст має бути закріплено: ngr --отримати 「{safe(text)}」 '
+            raise err(f'модуль з мережі без «#sha256=…» — вміст має бути закріплено: ngr --отримати {safe(text)} '
                       f'отримає його й надрукує готовий рядок ⊃')
         return owner, repo, commit, path, None
     if hpart.startswith('sha256=') and re.fullmatch(r'[0-9a-f]{64}', val):
@@ -1185,7 +1200,8 @@ class Net:
 
 def pure_remote(node):
     """Замок 1 (§6.2): модуль з мережі лише обчислює — увесь його код, разом із тілами λ: жодного інструмента, субагента,
-    друку, памʼяті, ≈, ⚗, 🜍. Перша дія — StaticError, інакше None. Вкладені модулі перевіряє їхній власний розбір."""
+    друку, памʼяті, ≈, ⚗, 🜍 і ⌂ (аргументи програми — вхід, якого модулю не давали; суд 10). Перша дія — StaticError,
+    інакше None. Вкладені модулі перевіряє їхній власний розбір."""
     todo = [node]
     while todo:
         n = todo.pop()
@@ -1195,6 +1211,9 @@ def pure_remote(node):
                 return StaticError(f'модуль з мережі лише обчислює — «🜔{n[2]}» (інструмент) заборонено й у функціях', n[1])
             if k == 'deleg':
                 return StaticError('модуль з мережі лише обчислює — «🜁» (субагент) заборонено й у функціях', n[1])
+            if k == 'op' and n[2] == '⌂':
+                return StaticError('модуль з мережі бачить лише те, що йому передали, — «⌂» (аргументи програми) '
+                                   'заборонено й у функціях', n[1])
             if k == 'op' and n[2] in REMOTE_BANNED:
                 return StaticError(f'модуль з мережі лише обчислює — «{n[2]}» ({REMOTE_BANNED[n[2]]}) заборонено й у функціях',
                                    n[1])
@@ -1206,7 +1225,8 @@ def pure_remote(node):
     return None
 
 
-REMOTE_BANNED = {'»': 'друк', '🜄': 'памʼять', '🜃': 'памʼять', '≈': 'впевненість', '⚗': 'відсів', '🜍': 'перевірка'}
+REMOTE_BANNED = {'»': 'друк', '🜄': 'памʼять', '🜃': 'памʼять', '≈': 'впевненість', '⚗': 'відсів', '🜍': 'перевірка',
+                 '⌂': 'аргументи програми'}     # ⌂ — вхід, якого модулю не давали (суд 10)
 
 
 def rewrap(e, msg, pos):
@@ -1452,14 +1472,7 @@ class Parser:
                                       f'(і не може перекривати однойменне зовнішнє імʼя у власному виразі)', pos)
                 raise StaticError(f'невідоме імʼя «{val}» (імена треба спершу назвати ←)', pos)
             if ar:
-                twin = glyph_twin(val)
-                if twin:
-                    raise StaticError(f'функція «{val}» на вигляд — гліф «{twin}»: «{val} …» читається як «{twin} …»; '
-                                      f'назвіть її інакше', pos)
-                one = unit(val.rstrip('0123456789') or val)
-                if len(one) == 1 and script_of(one) in ('CJK', 'HIRAGANA', 'KATAKANA'):   # 匚匚 ≈ ⊏⊏ (суд 9д)
-                    raise StaticError(f'функція «{val}» — повтор одного знака «{one}»: як імʼя з одного ієрогліфа, він '
-                                      f'на вигляд буває гліфом (匚 і ⊏, 田 і ⊞); назвіть її різними знаками', pos)
+                fn_glyph_twin(val, pos)
                 return ('call', pos, val, [self.expr() for _ in range(ar)])
             return ('var', pos, val)
         if kind_ == 'open':
@@ -1579,7 +1592,7 @@ class Parser:
             hint = addr_page(rel)
             if hint or 'github' in rel.lower():
                 raise StaticError(f'⊃: «{safe(clip(rel, 160))}» — це адреса сторінки, а не модуля; пишіть {ADDR_FORM}'
-                                  + (f' — мабуть: 「{hint}」 + «#sha256=…» (ngr --отримати 「{hint}」 надрукує)' if hint else ''), pos)
+                                  + (f' — мабуть: 「{hint}」 + «#sha256=…» (ngr --отримати {hint} надрукує)' if hint else ''), pos)
             raise StaticError(f'⊃: «{safe(clip(rel, 160))}» — адреса, а не шлях у теці програми; модуль з мережі: {ADDR_FORM}', pos)
         if self.remote is not None:            # у модулі з мережі — лише закріплені модулі з мережі (§2.3, §7)
             if rel.startswith('github.com/'):
@@ -1747,6 +1760,7 @@ class Parser:
             name, npos = self.name_tok('∘')
             if not self.lookup(name):
                 raise StaticError(f'∘ бере функцію, названу ← (λ або Λ); «{name}» — не така', npos)
+            fn_glyph_twin(name, npos, '∘')     # Σ 【2 3 4】 1 ∘х читалося як «згорнути ×» (суд 10, Мовознавець)
             return ('var', pos, name)
         if g == '🜁':
             name = self.expr()
@@ -2361,8 +2375,9 @@ def _verify(path, program=None):
     перехоплені помилки, підсумовані (не повністю записані) значення, теку й аргументи запуску."""
     key, prev, n, last, head, path_ = owner_key(), '0' * 16, 0, None, None, path
     denied, caught, summed, modules, dry, raised, quota_hits, careful = [], 0, 0, [], False, 0, [], []
+    caught_mod = []        # ☂ у виклику модуля з мережі: його текст — слова автора модуля (суд 10)
     chunks, events, rejected, running = {'виконується': 0, 'відкинуто': 0, 'помилка частини': 0}, [], [], False
-    fetched, mismatched = {'отримано': 0, 'уже було': 0, 'замінено пошкоджений': 0}, []   # слід --отримати (§4.7)
+    fetched, mismatched = {'отримано': 0, 'уже було': 0, 'замінено пошкоджений': 0, 'звірено': 0}, []   # слід --отримати
     info = {}
     try:
         st = os.stat(path)
@@ -2392,14 +2407,19 @@ def _verify(path, program=None):
         if rec.get('подія') in ('заборонено', 'запобіжна відмова'):   # з самим запитом і причиною не посеред слова —
             what = rec.get('шлях') or rec.get('адреса') or rec.get('субагент') or rec.get('аргументи') or ''   # (огляд 0.8.1)
             sql = f' запит «{clip(safe(str(rec["запит"])), 160)}»' if rec.get('запит') else ''
+            mod = (f' (у виклику модуля з мережі 「{clip(safe(str(rec["модуль"]).partition("#")[0]), 160)}」)'
+                   if rec.get('модуль') else '')
             (denied if rec['подія'] == 'заборонено' else careful).append(
                 f'{rec.get("агент", "?")}: {rec.get("назва") or "делегування"} {clip(safe(str(what)), 120)}{sql} — '
-                f'{clip(safe(str(rec.get("причина") or "бракує прав")), 400)}')
+                f'{clip(safe(str(rec.get("причина") or "бракує прав")), 400)}{mod}')
         if rec.get('подія') == 'квоту вичерпано':      # і що саме не виконано (огляд 0.8.1б, Аудитор)
             quota_hits.append(f'{rec.get("агент", "?")}: {rec.get("квота", "?")} ({rec.get("чия", "?")})'
                               + (f' — {clip(safe(json.dumps(rec["аргументи"], ensure_ascii=False)), 200)}'
                                  if rec.get('аргументи') else ''))
         caught += rec.get('подія') == 'помилку перехоплено'
+        if rec.get('подія') == 'помилку перехоплено' and rec.get('модуль'):
+            caught_mod.append(f'「{clip(safe(str(rec["модуль"]).partition("#")[0]), 160)}」: '
+                              f'「{clip(safe(str(rec.get("помилка", ""))), 160)}」')
         dry = dry or rec.get('подія') == 'сухо'
         if rec.get('подія') == 'впевненість' and isinstance(rec.get('стало'), (int, float)) and \
                 isinstance(rec.get('було'), (int, float)) and rec['стало'] > rec['було']:
@@ -2447,7 +2467,7 @@ def _verify(path, program=None):
             return f'✗ слід цілий, але від ІНШОЇ програми ({about})', info
         texts = None
         for rel, path, sha in modules:              # програма — це й усі її модулі
-            if str(rel).startswith('github.com/'):  # модуль з мережі: файл сліду, сховище, СЛІД.дані (модулі з git, §9.3)
+            if remote_path(rel):  # модуль з мережі: файл сліду, сховище, СЛІД.дані (модулі з git, §9.3)
                 if texts is None:
                     texts = trace_modules(path_)
                 raw, sources[sha] = module_copy(str(sha), path, path_, texts)
@@ -2462,14 +2482,14 @@ def _verify(path, program=None):
             if now != sha:
                 return (f'✗ слід цілий, але модуль «{safe(str(rel))}» тепер ІНШИЙ (у сліді sha256 {str(sha)[:16]}…, '
                         f'зараз {"немає файлу" if now is None else now[:16] + "…"}) — виконано не той код, що зараз', info)
-    remote = [h for r, _, h in modules if str(r).startswith('github.com/')]
-    info.update({'модулі': [{'шлях': r, 'sha256': h, **({'з_мережі': True} if str(r).startswith('github.com/') else {}),
+    remote = [h for r, _, h in modules if remote_path(r)]
+    info.update({'модулі': [{'шлях': r, 'sha256': h, 'з_мережі': remote_path(r),
                              **({'джерело': sources[h]} if h in sources else {})}
                             for r, _, h in modules],
                  'інтерпретатор': head.get('інтерпретатор'),
                  'записів': n, 'останній': last, 'заборонено': denied, 'квоту_вичерпано': quota_hits,
                  'запобіжні_відмови': careful,
-                 'перехоплено_помилок': caught,
+                 'перехоплено_помилок': caught, 'перехоплено_в_модулях': caught_mod,
                  'підсумовано_значень': summed, 'тека': head.get('тека'), 'аргументи': head.get('аргументи'),
                  'режим': 'повтор' if head.get('повтор') else 'сухо' if dry else 'repl' if head.get('repl') else
                  'отримання' if head.get('отримання') else 'звичайний'})
@@ -2503,13 +2523,19 @@ def _verify(path, program=None):
                      + '; '.join(quota_hits[:5]) + (' …' if len(quota_hits) > 5 else ''))
     if modules:
         notes.append('модулі: ' + (f'{len(modules)} (з мережі: {len(remote)}, sha256 повністю): ' if remote else '')
-                     + ', '.join(safe(str(r)) + ('' if str(r).startswith('github.com/') else f' (sha256 {str(h)[:16]}…)')
-                                 + (f' [{sources.get(h)}]' if program is not None and str(r).startswith('github.com/') else '')
+                     + ', '.join(safe(str(r)) + ('' if remote_path(r) else f' (sha256 {str(h)[:16]}…)')
+                                 + (f' [{sources.get(h)}]' if program is not None and remote_path(r) else '')
                                  for r, _, h in modules)
                      + ('' if program is not None else ' — модуль, змінений посеред сеансу, сеанс відхиляє сам'
                         if head.get('repl') else ' — щоб звірити з файлами, перевірте слід разом із програмою'))
+    for r, _, h in modules:            # локальний модуль, схожий на адресу, — не «з мережі» (суд 10, Новачок)
+        if not remote_path(r) and looks_like_address(r):
+            notes.append(f'⚠ модуль 「{safe(str(r))}」 — ЛОКАЛЬНИЙ файл, хоча шлях схожий на адресу модуля з мережі: він '
+                         f'виконувався з правами (його дозволи — у записі «модуль»), а не як чистий модуль з мережі')
     if caught:
-        notes.append(f'перехоплено помилок (☂): {caught}')
+        notes.append(f'перехоплено помилок (☂): {caught}' + (
+            f'; з них у виклику модулів з мережі — {len(caught_mod)} (текст — слова автора модуля, не інтерпретатора): '
+            + '; '.join(caught_mod[:5]) + (' …' if len(caught_mod) > 5 else '') if caught_mod else ''))
     if raised:
         notes.append(f'⚠ програма ПІДНЯЛА впевненість (≈) {raised} раз(и) — це твердження автора, а не перевірка')
     info['піднято_впевненість'] = raised
@@ -2526,7 +2552,9 @@ def _verify(path, program=None):
     if mismatched:
         notes.insert(0, f'⚠ ВМІСТ НЕ ЗБІГСЯ: {len(mismatched)} (можлива підміна; у сховище не покладено) — '
                         + '; '.join(mismatched[:5]) + (' …' if len(mismatched) > 5 else ''))
-    mode = (f' — ОТРИМАННЯ МОДУЛІВ: {fetched["отримано"]} отримано, {fetched["уже було"]} уже було'
+    mode = ((f' — ЗВІРКА МОДУЛІВ З АДРЕСОЮ: {fetched["звірено"]} звірено (у сховище нічого не покладено)'
+             if head.get('звірка') else
+             f' — ОТРИМАННЯ МОДУЛІВ: {fetched["отримано"]} отримано, {fetched["уже було"]} уже було')
             + (f', {fetched["замінено пошкоджений"]} замінено пошкоджений' if fetched['замінено пошкоджений'] else '')
             + (f'; ⚠ вміст не збігся: {len(mismatched)} (можлива підміна)' if mismatched else '')
             + ' — жодна програма не виконувалась' if head.get('отримання') else
@@ -5169,7 +5197,8 @@ class Interp:
         self.quota_lock = threading.Lock()
         self.replay = None      # --повторити: (записи «інструмент», сховище значень)
         self.dry = None         # --сухо: список придушених дій (записи, надсилання, процеси, агенти)
-        self.pure = False       # замок 2 (модулі з git, §6.2): виконується код з функції модуля з мережі — лише обчислення
+        self.pure = False       # замок 2 (модулі з git, §6.2): виконується код з функції модуля з мережі — лише обчислення;
+        #                         не False — адреса того модуля (у слід і в помилку: власник бачить, котрий модуль)
 
     def tool_begin(self, name, args, pos):
         """Перевірка прав, впевненість аргументів і запис «виклик» — до дії (для ‖ — по черзі, до паралельних дій)."""
@@ -5178,6 +5207,8 @@ class Interp:
             targs = [trace_val(a, full) for a in args]
         except RecursionError:              # аргумент глибший за стек — помилка програми до дії, не код 4 (суд 8б)
             raise NgrError(f'{name}: аргумент вкладений надто глибоко', pos, min([self.cpc] + [a.c for a in args]))
+        if self.pure:                      # замок 2: у виклику функції модуля з мережі — жодного інструмента (суд 10)
+            self.pure_deny(f'🜔{name}', pos, аргументи=targs)
         if name not in self.caps:          # права — того, хто виконує зараз, а не того, хто написав функцію
             self.trace('заборонено', агент=self.agent, назва=name, аргументи=targs,
                        причина='інструмента немає в дозволах цього агента')
@@ -5507,6 +5538,10 @@ class Interp:
             env['\0parent'] = f.env
             try:
                 return self.eval(f.body, env)
+            except NgrError as e:      # λ програми, викликана з модуля: місце — у програмі, а не в модулі (суд 10)
+                if e.file is None:
+                    e.file = ''
+                raise
             finally:
                 self.depth -= 1
                 self.wdepth -= f.h
@@ -5524,8 +5559,8 @@ class Interp:
         mod_q = f.mod is not None and bool(getattr(f.mod[1], 'quotas', None))
         if f.mod is not None:          # печатка модуля діє: права — перетин прав агента й печатки модуля
             self.caps = intersect_caps(self.caps, f.mod[1], self.cwd)    # модуль з мережі: печатка гола — прав немає
-            if f.mod[2]:               # і жодних дій без інструментів — до кінця виклику, і в λ того, хто кличе (§6.2)
-                self.pure = True
+            if f.mod[2]:               # і жодних дій без інструментів — до кінця виклику, і в λ того, хто кличе (§6.2);
+                self.pure = f.mod[0]   # self.pure — адреса модуля, у виклику якого це діє (для сліду й помилки)
             if mod_q:                  # і квоти модуля — на весь запуск, усі виклики його функцій (суд 8)
                 self.quota_stack.append((f'модуль {f.mod[0]}', f.mod[1], id(f.mod[1])))
         try:
@@ -5544,8 +5579,8 @@ class Interp:
             res = self.eval(f.body, env)
             return capc(res, fn.c) if fn.c < res.c else res
         except NgrError as e:
-            if f.mod is not None and e.file is None:
-                e.file = f.mod[0]
+            if e.file is None:         # функція модуля — його файл; λ програми — '' (місце в програмі, суд 10)
+                e.file = f.mod[0] if f.mod is not None else ''
             raise
         finally:
             if mod_q:
@@ -5765,7 +5800,7 @@ class Interp:
                 menv = self.modules[real] = {'\0модуль': (safe(path) if remote else safe(os.path.relpath(real, self.cwd)),
                                                           mod[2][0][3], remote)}
                 saved = self.pure
-                self.pure = saved or remote
+                self.pure = saved or (safe(path) if remote else False)
                 try:
                     for st in mod[2][1:]:          # печатку модуля НЕ виконуємо: права агента вона не змінює
                         self.eval(st, menv)
@@ -5808,11 +5843,13 @@ class Interp:
                     over.append(f'{t}:{sc}')
         return over
 
-    def pure_deny(self, g, pos):
+    def pure_deny(self, g, pos, **extra):
         """Замок 2 (модулі з git, §6.2): у коді з функції модуля з мережі (і в λ того, хто кличе, викликаній там, і в
-        замиканні, яке модуль повернув) немає друку, памʼяті, ≈, ⚗, 🜍, 🜁 — «заборонено» в слід, потім помилка."""
-        self.trace('заборонено', агент=self.agent, назва=g, причина='модуль з мережі лише обчислює')
-        raise NgrError(f'модуль з мережі лише обчислює: «{g}» тут неможливий', pos)
+        замиканні, яке модуль повернув) немає інструментів, друку, памʼяті, ≈, ⚗, 🜍, 🜁, ⌂ — «заборонено» в слід з
+        адресою модуля, потім помилка."""
+        self.trace('заборонено', агент=self.agent, назва=g, **extra, модуль=self.pure, причина='модуль з мережі лише обчислює')
+        raise NgrError(f'модуль з мережі лише обчислює: «{g}» тут неможливий (у виклику функції модуля '
+                       f'「{self.pure.partition("#")[0]}」)', pos)
 
     def delegate(self, node, env):
         _, pos, name, intent, caps, body = node
@@ -5914,7 +5951,9 @@ class Interp:
                 tc = min(self.try_stack.pop(), e.c)
                 self.taint_effects((argn[0],), tc)
                 self.fn_effects(argn[1], tc)
-                self.trace('помилку перехоплено', агент=self.agent, помилка=e.msg, впевненість=tc)
+                src_mod = self.pure or (e.file if e.file and '#sha256=' in e.file else None)
+                self.trace('помилку перехоплено', агент=self.agent, помилка=e.msg, впевненість=tc,   # з коду чи у виклику
+                           **({'модуль': src_mod} if src_mod else {}))   # модуля з мережі — котрого (суд 10, Мовознавець)
                 saved = self.pc
                 self.pc = min(saved, tc)
                 try:
@@ -6121,7 +6160,9 @@ class Interp:
         if g == '▶':
             return self.call(a[0], [a[1], a[2]], pos)
         if g == '☠':
-            raise NgrError(show(a[0]), pos)
+            e = NgrError(show(a[0]), pos)
+            e.said = True
+            raise e
         if g == '…':
             x, y = n(0), n(1)
             if not (isinstance(x, int) and isinstance(y, int)):
@@ -6566,10 +6607,47 @@ def seal_warnings(prog, cwd):
     return out
 
 
+ADDR_WARNING = ('адреси модулів з мережі — слова автора програми, їх не звірено: сховище памʼятає вміст за sha256, а не '
+                'звідки його взято (будь-хто міг покласти його з іншої адреси чи теки); що виконується, визначає лише '
+                'sha256 — звірити з адресою: ngr --отримати ПРОГРАМА --звірити')
+
+
+def looks_like_address(rel):
+    """Шлях локального модуля схожий на адресу модуля з мережі (github.com/…, …@КОМІТ40/…) — попередити (суд 10)."""
+    return bool(re.search(r'(^|/)(github\.com|raw\.githubusercontent\.com)/', str(rel), re.I)
+                or re.search(r'@[0-9a-fA-F]{40}(/|$)', str(rel)))
+
+
+def remote_path(rel):
+    """Запис «модуль» сліду — модуля з мережі? Його «шлях» — адреса з «#sha256=» (у локального шляху такого бути не може:
+    розбір відкидає). Не за «github.com/» на початку: локальний файл із таким шляхом — локальний модуль із правами
+    (суд 10, Новачок: --перевірити-слід називав його «з мережі»)."""
+    return '#sha256=' in str(rel)
+
+
+def lookalike_warnings(prog):
+    """Локальний модуль, чий шлях схожий на адресу модуля з мережі (github.com/…, …@40hex/…): він виконується з правами,
+    а на вигляд — як чиста бібліотека; --печатка і --отримати ПРОГРАМА попереджають (суд 10)."""
+    out, todo = [], [prog]
+    while todo:
+        n = todo.pop()
+        if isinstance(n, tuple) and n and n[0] == 'import':
+            rel = n[2]
+            if len(n) == 7 and looks_like_address(rel):
+                msg = (f'модуль 「{safe(rel)}」 — ЛОКАЛЬНИЙ файл 「{safe(n[6])}」, хоча шлях схожий на адресу модуля з '
+                       f'мережі: він виконується з правами (див. його дозволи), а не як чистий модуль з мережі')
+                out.extend([msg] if msg not in out else [])
+            todo.append(n[4])
+        elif isinstance(n, (tuple, list)):
+            todo.extend(n)
+    return out
+
+
 def callback_warnings(prog):
-    """λ з дією, передана у функцію модуля з мережі (модулі з git, §6.4): там прав немає й дій немає — виклик дасть
-    «заборонено». Найкраще, що можна до запуску: буквальна λ чи імʼя, звʼязане з λ, в аргументі виклику імені з
-    модуля з мережі."""
+    """λ з дією, передана у функцію модуля з мережі (модулі з git, §6.4): якщо її викличе сам модуль, прав і дій там немає —
+    «заборонено»; якщо модуль лише поверне її, а викличе програма, — це код програми, діє з її правами (суд 10). Найкраще,
+    що можна до запуску: буквальна λ чи імʼя, звʼязане з λ, в аргументі виклику імені з модуля з мережі (у списку,
+    словнику, замиканні — не бачимо: там лише слід)."""
     stmts = prog[2][1:] if prog[2] else []
     remote = {nm for st in stmts if st[0] == 'import' and len(st) > 7 for nm in st[3]}
     if not remote:
@@ -6602,8 +6680,10 @@ def callback_warnings(prog):
                     lam = a if a[0] == 'lam' else lams.get(a[2]) if a[0] == 'var' else None
                     got = effect(lam) if lam else None
                     if got:
-                        msg = (f'λ з {got[0]} передано у «{n[2]}» з модуля з мережі — там ' + ('прав немає' if got[1] else
-                               'модуль лише обчислює') + ' (виклик дасть «заборонено»)')
+                        msg = (f'λ з {got[0]} передано у «{n[2]}» з модуля з мережі: якщо її викличе модуль — «заборонено» '
+                               '(там ' + ('прав немає' if got[1] else 'лише обчислення') + '; ☂ модуля може перехопити '
+                               'помилку — тоді лише слід); якщо модуль її поверне, а викличе програма, — діє з правами '
+                               'програми')
                         out.extend([msg] if msg not in out else [])
             todo.extend(x for x in n if isinstance(x, (tuple, list)))
         elif isinstance(n, list):
@@ -6619,32 +6699,42 @@ def seal_info(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
         return [safe(x) for x in sc]
 
     seal = prog[2][0]
-    subs, explicit, mods = [], 0, []
+    subs, explicit, mods, seen = [], 0, [], {}
 
-    def walk(n, owner):
+    def walk(n, owner, by):
         nonlocal explicit
         if isinstance(n, tuple) and n:
             if n[0] == 'op' and n[2] == '≈':
                 explicit += 1
-            if n[0] == 'import':
+            if n[0] == 'import':         # кожен модуль — раз (ромб), з тим, хто його бере (суд 10, Мовознавець)
+                key = n[5] if len(n) > 7 else n[6]
+                if key in seen:
+                    seen[key]['бере_його'].extend([by] if by not in seen[key]['бере_його'] else [])
+                    return
                 mods.append({'шлях': safe(n[2]), 'sha256': n[5], 'намір': safe(n[4][2][0][2]), 'імена': n[3],
                              'дозволи': {t: scopes(t, sc) for t, sc in n[4][2][0][3].items()},
-                             'квоти': quota_list(n[4][2][0][3])})
+                             'квоти': quota_list(n[4][2][0][3]), 'бере_його': [by]})
+                seen[key] = mods[-1]
                 if len(n) > 7:          # модуль з мережі (модулі з git, §10.1): sha256 повністю — це його тотожність
                     bare = n[2].partition('#')[0]
                     mods[-1].update({'з_мережі': True, 'адреса': safe(bare), 'коміт': bare.partition('@')[2][:40],
-                                     'файл': safe(n[6]), 'у_сховищі': os.path.isfile(n[6]), 'чистий': True})
+                                     'файл': safe(n[6]), 'у_сховищі': os.path.isfile(n[6]), 'чистий': True,
+                                     'адресу_звірено': False})
+                else:                   # локальний — так і сказати, з файлом (суд 10: шлях буває схожий на адресу)
+                    mods[-1].update({'з_мережі': False, 'файл': safe(n[6])})
+                walk(n[4], owner, safe(n[2].partition('#')[0]))
+                return
             if n[0] == 'deleg':
                 subs.append({'імʼя': safe(n[2]), 'намір': safe(n[3]), 'усередині': owner,
                              'дозволи': {t: scopes(t, sc) for t, sc in n[4].items()}, 'квоти': quota_list(n[4])})
-                walk(n[5], owner + [safe(n[2])])
+                walk(n[5], owner + [safe(n[2])], by)
                 return
             for x in n:
-                walk(x, owner)
+                walk(x, owner, by)
         elif isinstance(n, list):
             for x in n:
-                walk(x, owner)
-    walk(prog, ['головний'])
+                walk(x, owner, by)
+    walk(prog, ['головний'], 'програма')
     missing = [safe(m) for m in check_program(prog, allowed, cwd)]
     return {'намір': safe(seal[2]), 'дозволи': {t: scopes(t, sc) for t, sc in seal[3].items()},
             'субагенти': subs, 'модулі': mods, 'явні_зміни_впевненості': explicit, 'дозволи_власника': safe(source),
@@ -6652,7 +6742,8 @@ def seal_info(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
             'квоти_власника': [{'інструмент': t, 'обмеження': safe(sc), 'не_більше': n} for t, sc, n in owner_quotas(allowed)],
             'права_теки': [safe(x) for x in dir_extra] if dir_extra is not None else None,
             'права_схвалення': [safe(x) for x in prog_extra or []], 'тека': safe(cwd), 'в_межах': not missing,
-            'бракує': missing, 'попередження': seal_warnings(prog, cwd),
+            'бракує': missing, 'попередження': lookalike_warnings(prog) + seal_warnings(prog, cwd) + (
+                [ADDR_WARNING] if any(m.get('з_мережі') for m in mods) else []),
             **({'джерела_модулів_власника': sources_text(getattr(allowed, 'sources', DEFAULT_SOURCES))}
                if any(m.get('з_мережі') for m in mods) else {})}
 
@@ -6677,16 +6768,20 @@ def seal_report(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
                      + (f'; КВОТА на кожен запуск: {quota_text(d["квоти"])}' if d['квоти'] else '')
                      + (f'; намір 「{d["намір"]}」' if d['намір'] else ''))
     for m in i['модулі']:
+        by = ('' if m['бере_його'] == ['програма'] else
+              ' — його бере ' + ', '.join('програма' if b == 'програма' else f'модуль 「{b}」' for b in m['бере_його']))
         if m.get('з_мережі'):
-            lines += [f'  модуль З МЕРЕЖІ 「{m["адреса"]}」',
-                      f'      sha256 {m["sha256"]} (' + ('у сховищі ✓' if m['у_сховищі'] else 'не зі сховища') + ')',
-                      f'      бере {", ".join(m["імена"])}; ЧИСТИЙ: дозволів, друку, памʼяті, ≈, 🜍 немає; '
+            lines += [f'  модуль З МЕРЕЖІ 「{m["адреса"]}」{by}',
+                      f'      sha256 {m["sha256"]} (' + ('у сховищі ✓ — байти з цим sha256 є; адресу не звірено, це не '
+                                                         'схвалення' if m['у_сховищі'] else 'не зі сховища') + ')',
+                      f'      бере {", ".join(m["імена"])}; ЧИСТИЙ: дозволів, друку, памʼяті, ≈, ⚗, 🜍, 🜁, ⌂ немає; '
                       + (f'намір 「{m["намір"]}」' if m['намір'] else 'намір не вказано'),
-                      '      ⚠ адреса — слова автора програми: GitHub віддає за нею й коміти з форків, тож авторства вона не '
-                      'доводить;', '        що виконується, визначає лише sha256 у тексті програми']
+                      '      ⚠ адреса — слова автора програми, не звірено: не доводить ні авторства (GitHub віддає за нею й',
+                      '        коміти з форків), ні навіть того, що цей вміст там лежав; виконується лише те, що названо sha256']
             continue
         caps = '; '.join(t + (f' → {q(sc)}' if sc else '') for t, sc in m['дозволи'].items()) or 'жодних'
-        lines.append(f'  модуль 「{m["шлях"]}」 (sha256 {m["sha256"][:16]}…): бере {", ".join(m["імена"])}; дозволи: {caps}; '
+        lines.append(f'  модуль 「{m["шлях"]}」 (локальний файл 「{m["файл"]}」, sha256 {m["sha256"][:16]}…){by}: бере '
+                     f'{", ".join(m["імена"])}; дозволи: {caps}; '
                      + (f'КВОТА на весь запуск: {quota_text(m["квоти"])}; ' if m['квоти'] else '') + f'намір 「{m["намір"]}」')
     if i['явні_зміни_впевненості']:
         lines.append(f'  явні зміни впевненості ≈: {i["явні_зміни_впевненості"]} (кожна — у сліді)')
@@ -7023,17 +7118,22 @@ def cheatsheet():
            '  діє з **перетином** прав того, хто кличе, і печатки модуля. Шляхи в модулі — від теки програми. Модуль із теки,',
            '  куди програмам дозволено писати, — відмова. `--перевірити-слід СЛІД ПРОГРАМА` звіряє й sha256 кожного модуля.',
            '- **Модулі з мережі:** `⊃ 「github.com/власник/репо@КОМІТ/шлях.ngr#sha256=ВМІСТ」 【「f」】` — КОМІТ — 40 hex,',
-           '  ВМІСТ — sha256 файлу (64 hex), усе малими; рядок не пишіть руками: `ngr --отримати 「github.com/в/р@КОМІТ/шлях.ngr」`',
+           '  ВМІСТ — sha256 файлу (64 hex), усе малими; рядок не пишіть руками: `ngr --отримати github.com/в/р@КОМІТ/шлях.ngr`',
            '  друкує готовий (прочитайте модуль `ngr --розбір` до того, як вписати). Що виконується, визначає лише sha256;',
-           '  **адреса — слова автора**: GitHub віддає за нею й коміти з форків, авторства вона не доводить. Під час запуску мережі',
+           '  **адреса — слова автора**: сховище памʼятає вміст за sha256, а не звідки його взято, тож адреса не доводить ні',
+           '  авторства (GitHub віддає за нею й коміти з форків), ні навіть того, що цей вміст там лежав. Під час запуску мережі',
            '  немає — байти лише зі сховища `~/.nigredo/модулі/<sha256>.ngr`, sha256 звіряється на кожному розборі. Мережа — лише',
            '  `ngr --отримати ПРОГРАМА` (github.com дозволено; власник може звузити — «джерела_модулів»; без мережі — `--з-теки',
-           '  ТЕКА`). **Модуль з мережі лише обчислює. Дії робить програма:** гола печатка, жодних 🜔 🜁 » 🜄 🜃 ≈ ⚗ 🜍 навіть у',
-           '  функціях; **λ з дією, передана в модуль з мережі, прав не має** («заборонено» в сліді). Інші модулі він бере лише',
-           '  закріпленими: повною адресою чи `「util/x.ngr#sha256=…」` (той самий коміт, лише вглиб). Отримувачу: `--печатка',
-           '  --json` дає «бракує_модулів» і «печатка_без_модулів» (верхня межа) → `ngr --отримати ПРОГРАМА` → знову',
-           '  `--печатка --json`; «вміст не збігся» в сліді отримання — повідомте власника. Текст модуля — у `СЛІД.дані`:',
-           '  `--повторити` і `--перевірити-слід` — без мережі.',
+           '  ТЕКА`; через MCP — не можна: попросіть власника). **Модуль з мережі лише обчислює над тим, що йому передали. Дії',
+           '  робить програма:** гола печатка, жодних 🜔 🜁 » 🜄 🜃 ≈ ⚗ 🜍 і `⌂` (аргументи програми) навіть у функціях. **λ з дією,',
+           '  яку викличе функція модуля з мережі, прав не має**: «заборонено» в сліді з адресою модуля — навіть якщо `☂` модуля',
+           '  перехопив помилку (тоді код 0, видно лише в сліді); λ, яку модуль лише повернув, а викликала програма, — код',
+           '  програми, діє з її правами. Текст `☠`/`☂` з модуля — слова автора модуля. Інші модулі він бере лише закріпленими:',
+           '  повною адресою чи `「util/x.ngr#sha256=…」` (той самий коміт, лише вглиб). Локальний `⊃`, чий шлях схожий на адресу,',
+           '  — локальний модуль з правами: печатка попереджає. Отримувачу: `--печатка --json` дає «бракує_модулів» і',
+           '  «печатка_без_модулів» (верхня межа) → `ngr --отримати ПРОГРАМА` → знову `--печатка --json`; «вміст не збігся» в',
+           '  сліді отримання — повідомте власника. Чи віддає адреса той самий вміст зараз — `ngr --отримати ПРОГРАМА --звірити`',
+           '  (нічого не кладе). Текст модуля — у `СЛІД.дані`: `--повторити` і `--перевірити-слід` — без мережі.',
            '- **Кожне значення має впевненість** (типово 1). Усе, що обчислено з даних, не впевненіше за них —',
            '  і через операції, і через **керування**: значення, створене під сумнівною умовою `¿`, у циклі `↻`,',
            '  у функції, обраній сумнівно, після сумнівної перевірки `🜍` чи в `☂`, несе цю сумнівність.',
@@ -7237,8 +7337,8 @@ def cheatsheet_short():
              'До запуску ловляться: типи (＋ рядка й числа, умова не ●/○…), невідомі імена, арність, небезпечні регулярки.',
              'Модуль: ⊃ 「мод.ngr」 【「f」】 (верхній рівень); f кличуть за імʼям; печатка модуля ⊆ програми й діє (перетин прав);',
              'у модулі на верхньому рівні — лише функції й сталі.',
-             'Модуль з мережі: ⊃ 「github.com/в/р@КОМІТ40/шлях.ngr#sha256=ВМІСТ64」 【「f」】 — лише обчислює (дії — у програмі);',
-             'рядок друкує ngr --отримати 「github.com/в/р@КОМІТ/шлях.ngr」; бракує — ngr --отримати ПРОГРАМА; адреса — слова автора.',
+             'Модуль з мережі: ⊃ 「github.com/в/р@КОМІТ40/шлях.ngr#sha256=ВМІСТ64」 【「f」】 — лише обчислює (без ⌂; дії — у програмі);',
+             'рядок друкує ngr --отримати github.com/в/р@КОМІТ/шлях.ngr; бракує — ngr --отримати ПРОГРАМА; адреса — слова автора.',
              'Шаблон 〔текст {вираз} текст〕 — як f-рядок (у {} один вираз): 〔{k}: {⌗ v 2}〕. Регулярки ⌕ ≋ — синтаксис re;',
              'Регулярки — рушій без відкатів (лінійний, кроки з --кроки); \\1 у шаблоні, (?=…), (?>…), (a?)+ — помилка.',
              '⇅ стабільне, ключ-список — складений: ⇅ п λp 【－0 §p 1 §p 0】 (спадання числа, потім абетка).',
@@ -7399,7 +7499,7 @@ def run_tests(targets, as_json=False):
                 code, err = p.returncode, p.stderr
             except subprocess.TimeoutExpired:
                 code, err = 'час', f'тест не завершився за {TEST_TIMEOUT} с'
-            checks, failed, doubtful, caps, caught = 0, 0, [], {}, 0
+            checks, failed, doubtful, caps, caught, tmods = 0, 0, [], {}, 0, []
             try:
                 for line in open(tr, encoding='utf-8'):
                     rec = json.loads(line)
@@ -7413,6 +7513,9 @@ def run_tests(targets, as_json=False):
                         caught += 1
                     elif rec.get('подія') == 'печатка' and rec.get('агент') == 'головний':
                         caps = rec.get('дозволи') or {}
+                    elif rec.get('подія') == 'модуль':    # які модулі тест узяв (суд 10, Новачок: не було видно)
+                        tmods.append({'шлях': safe(str(rec.get('шлях'))), 'sha256': rec.get('sha256'),
+                                      **({'з_мережі': True} if remote_path(rec.get('шлях')) else {})})
             except (OSError, ValueError):
                 pass
         finally:
@@ -7425,7 +7528,8 @@ def run_tests(targets, as_json=False):
                'жодної перевірки 🜍 не виконано' if not checks else
                f'перевірка на сумнівній умові (впевненість {min(doubtful)})' if doubtful else '')
         results.append({'файл': safe(f), 'код': code, 'пройшов': not why, 'перевірок': checks, 'не_пройдено': failed,
-                        'сумнівних': len(doubtful), 'перехоплено_помилок': caught, 'дозволи': {safe(k): [safe(x) for x in v] for k, v in caps.items()},
+                        'сумнівних': len(doubtful), 'перехоплено_помилок': caught, 'модулі': tmods,
+                        'дозволи': {safe(k): [safe(x) for x in v] for k, v in caps.items()},
                         'помилка': safe(why)})
     ok = sum(r['пройшов'] for r in results)
     if as_json:
@@ -7437,7 +7541,9 @@ def run_tests(targets, as_json=False):
             caps = '; '.join(t + (':' + ','.join(v) if v else '') for t, v in r['дозволи'].items())
             print(f'{"✓" if r["пройшов"] else "✗"} {r["файл"]} — перевірок {r["перевірок"]}'
                   + (f'; печатка: {caps}' if caps else '') + (f' — {r["помилка"]}' if not r['пройшов'] else '')
-                  + (f' (перехоплено помилок ☂: {r["перехоплено_помилок"]})' if r['перехоплено_помилок'] else ''))
+                  + (f' (перехоплено помилок ☂: {r["перехоплено_помилок"]})' if r['перехоплено_помилок'] else '')
+                  + (f'; модулі: {", ".join(m["шлях"] + (" (з мережі)" if m.get("з_мережі") else "") for m in r["модулі"])}'
+                     if r['модулі'] else ''))
         if skipped:
             print(f'пропущено {len(skipped)} файл(и) в теках, куди програмам дозволено писати (їх могла написати програма)')
         print(f'{ok} з {len(results)} тестів пройшли ({sum(r["перевірок"] for r in results)} перевірок; тести діють по-справжньому — у межах своїх печаток)')
@@ -7482,7 +7588,7 @@ def load_replay(tpath, program=None):
                       f'(слід записано без СЛІД.дані або старою версією)')
     files = {}                          # модулі з мережі — за «файл» зі сліду (теж звірено з sha256)
     for r in recs:
-        if r.get('подія') == 'модуль' and str(r.get('шлях')).startswith('github.com/'):
+        if r.get('подія') == 'модуль' and remote_path(r.get('шлях')):
             raw, _ = module_copy(str(r.get('sha256')), r.get('файл'), tpath, {})
             if raw is not None:
                 files[r['sha256']] = raw
@@ -7616,9 +7722,9 @@ class FetchError(Exception):
     """Невдача --отримати з кодом виходу (§4.8): 1 — мережа, HTTP, розмір, LFS, інший вміст у теці (можна повторити);
     2 — крива адреса, не модуль, межі; 3 — власник не дозволив, вміст не збігся (тривога), сховище не записати."""
 
-    def __init__(self, code, msg, refusal=False):
+    def __init__(self, code, msg, refusal=False, address=None):
         super().__init__(msg)
-        self.code, self.msg, self.refusal = code, msg, refusal
+        self.code, self.msg, self.refusal, self.address = code, msg, refusal, address   # address — чий файл (суд 10)
 
 
 def _fetch_bytes(url):
@@ -7724,14 +7830,15 @@ def store_put(sha, raw):
     return state
 
 
-FETCH_USAGE = '✗ ngr --отримати ПРОГРАМА.ngr | 「github.com/в/р@КОМІТ/шлях.ngr[#sha256=…]」 [--з-теки ТЕКА] [--json]'
+FETCH_USAGE = ('✗ ngr --отримати ПРОГРАМА.ngr | github.com/в/р@КОМІТ/шлях.ngr[#sha256=…] [--з-теки ТЕКА | --звірити] '
+               '[--json]')
 
 
 def fetch_main(rest, opts, argv):
     """ngr --отримати (модулі з git, §4): єдиний крок, що ходить у мережу, — і лише по названі файли, з джерел власника
     (github.com за замовчуванням; «джерела_модулів» лише звужує). Нічого не виконує: байти, sha256, той самий розбір,
     що й --печатка (Missing → отримати → розібрати знову), атомарний запис. Свій підписаний слід (режим «отримання»)."""
-    target, from_dir, as_json, narrow = None, None, opts['json'], opts['allow']
+    target, from_dir, as_json, narrow, check = None, None, opts['json'], opts['allow'], False
     it = iter(rest)
     for a in it:
         if a in ('--з-теки', '--дозволи'):
@@ -7742,6 +7849,8 @@ def fetch_main(rest, opts, argv):
             from_dir, narrow = (v, narrow) if a == '--з-теки' else (from_dir, v)
         elif a == '--json':
             as_json = True
+        elif a == '--звірити':        # суд 10: справді спитати джерело, чи віддає адреса той самий вміст; нічого не класти
+            check = True
         elif target is None:
             target = a
         else:
@@ -7750,7 +7859,13 @@ def fetch_main(rest, opts, argv):
     if target is None:
         print(FETCH_USAGE, file=sys.stderr)
         return 2
-    is_addr = target.startswith('github.com/')
+    if check and from_dir:
+        print('✗ --звірити питає джерело власника (мережу); з --з-теки — не звірка адреси', file=sys.stderr)
+        return 2
+    if len(target) > 2 and target[0] == '「' and target[-1] == '」' and not os.path.exists(target):
+        target = target[1:-1]          # адреса в 「」, як у ⊃ і в підказках (суд 10: «No such file» на першому кроці)
+    is_addr = target.startswith('github.com/') or (not os.path.exists(target) and bool(
+        re.search(r'github|://|#sha256=|@[0-9a-fA-F]{7,}', target, re.I)))     # схоже на адресу — її помилка, а не «файлу немає»
     if is_addr:
         cwd, raw_prog, src, prog_path = os.getcwd(), None, None, None
     else:
@@ -7758,7 +7873,11 @@ def fetch_main(rest, opts, argv):
             raw_prog = open(target, 'rb').read()
             src = raw_prog.decode('utf-8')
         except (OSError, UnicodeDecodeError) as e:
-            print(f'✗ {safe(target)}: {getattr(e, "strerror", None) or e}', file=sys.stderr)
+            msg = f'✗ --отримати: {safe(target)}: {getattr(e, "strerror", None) or e} (ПРОГРАМА.ngr чи адреса github.com/…)'
+            if as_json:
+                print(json.dumps({'гаразд': False, 'код': 2, 'помилка': msg, 'модулі': [], 'слід': None},
+                                 ensure_ascii=False, indent=1))
+            print(msg, file=sys.stderr)
             return 2
         prog_path, cwd = os.path.realpath(target), os.path.dirname(os.path.abspath(target))
     try:
@@ -7775,8 +7894,9 @@ def fetch_main(rest, opts, argv):
     out = open(tpath, 'x', encoding='utf-8')
     trace = Trace([out] + ([sys.stderr] if opts['trace'] == '-' else []), key)
     done, report, current = {}, [], None   # sha256 → стан; [(стан, адреса, sha256, байтів, звідки)]; що отримуємо
+    got_now = {}                           # sha256 → байти, отримані цим кроком (для --звірити — єдине джерело)
     try:
-        trace('початок', версія=VERSION, інтерпретатор=INTERP_SHA, отримання=True,
+        trace('початок', версія=VERSION, інтерпретатор=INTERP_SHA, отримання=True, **({'звірка': True} if check else {}),
               **({'адреса': safe(target)} if is_addr else {'програма': safe(prog_path), 'sha256': sha_prog}),
               аргументи=[safe(a) for a in argv], час=datetime.now(timezone.utc).isoformat(timespec='seconds'),
               запуск=os.urandom(6).hex(), тека=safe(cwd), дозволи_власника=safe(source), джерела=sources,
@@ -7789,8 +7909,17 @@ def fetch_main(rest, opts, argv):
             if not os.path.isdir(root):
                 raise FetchError(1, f'--з-теки: «{safe(root)}» — не тека')
 
-        def obtain(bare, sha):
-            """Байти одного файлу: з ТЕКИ (копія сховища чи клон) або з джерела власника — і звірка з sha256."""
+        def obtain(bare, sha, by):
+            """Байти одного файлу: з ТЕКИ (копія сховища чи клон) або з джерела власника — і звірка з sha256. by — хто
+            закріпив sha256 — «програма закріпила», «модуль «…» закріпив», «у командному рядку закріплено»: у тривозі —
+            саме цей файл і він (суд 10, Аудитор: для вкладеного називало батька й «програму»)."""
+            try:
+                return obtain1(bare, sha, by)
+            except FetchError as e:
+                e.address = e.address or bare
+                raise
+
+        def obtain1(bare, sha, by):
             o, r, c, p, _ = parse_address(bare, None, need_hash=False)
             if root is not None:
                 for cand in ([os.path.join(root, f'{sha}.ngr')] if sha else []) + [os.path.join(root, p)]:
@@ -7804,9 +7933,14 @@ def fetch_main(rest, opts, argv):
                     if raw is None:
                         continue
                     got = hashlib.sha256(raw).hexdigest()
+                    if sha and got != sha and cand.endswith(f'{sha}.ngr'):   # копія сховища: імʼя — це sha256 (суд 10)
+                        trace('вміст не збігся', адреса=safe(bare), звідки=safe(f'тека {cand}'), чекали=sha, отримано=got,
+                              байтів=len(raw))
+                        raise FetchError(3, f'--з-теки: «{sha}.ngr» у теці має вміст із sha256 {got} — копію сховища '
+                                            f'змінено чи підмінено; не взято (тривога в сліді)')
                     if sha and got != sha:
                         raise FetchError(1, f'--з-теки: у теці є «{safe(os.path.relpath(cand, root))}», але sha256 інший '
-                                            f'({got}) — не взято')
+                                            f'({got}) — не взято (тека — з іншого коміту?)')
                     return raw, f'тека {cand}'
                 raise FetchError(1, f'--з-теки: у теці «{safe(root)}» немає ні «{sha}.ngr», ні «{safe(p)}» — не взято'
                                  if sha else f'--з-теки: у теці «{safe(root)}» немає «{safe(p)}» — не взято')
@@ -7832,39 +7966,43 @@ def fetch_main(rest, opts, argv):
             got = hashlib.sha256(raw).hexdigest()
             if sha and got != sha:
                 trace('вміст не збігся', адреса=safe(bare), звідки=safe(url), чекали=sha, отримано=got, байтів=len(raw))
-                raise FetchError(3, f'сервер віддав вміст із sha256 {got}, а програма закріпила {sha} — у сховище НЕ '
+                raise FetchError(3, f'сервер віддав вміст із sha256 {got}, а {by} {sha} — у сховище НЕ '
                                     f'покладено (підміна, помилка в програмі чи переплутано коміт)')
             return raw, url
 
-        def ensure(bare, sha):
+        def ensure(bare, sha, by):
             """Один модуль і все, що він бере: отримати, розібрати тим самим Parser (бракує вкладеного — спершу його),
-            покласти. Не розбирається чи не чистий — не кладеться."""
+            покласти. Не розбирається чи не чистий — не кладеться. by — хто закріпив sha256."""
             if sha in done:
                 return sha
             if len(done) >= MOD_MAX:
                 raise FetchError(2, f'модулів з мережі понад {MOD_MAX}')
             try:                                  # уже у сховищі — без мережі, але вкладені однаково перевірити
-                raw, where = (store_read(sha, None, bare) if sha else None), 'сховище'
+                raw, where = (store_read(sha, None, bare) if sha and not check else None), 'сховище'
             except Tampered:
                 raw = None
             if raw is None:
-                raw, where = obtain(bare, sha)
-            sha = sha or hashlib.sha256(raw).hexdigest()
+                raw, where = obtain(bare, sha, by)
+            sha_in, sha = sha, sha or hashlib.sha256(raw).hexdigest()
             if sum(x[3] for x in report) + len(raw) > MOD_TOTAL:
                 raise FetchError(2, f'модулі з мережі разом понад {MOD_TOTAL} байтів')
+            got_now[sha] = raw
             for _ in range(MOD_MAX + 2):
-                try:
-                    load_remote(parse_address(f'{bare}#sha256={sha}', None), Net([('отримано', {sha: raw}), ('сховище', None)]),
+                try:                              # звірка: вкладені — теж лише з мережі (щойно отримані), не зі сховища
+                    load_remote(parse_address(f'{bare}#sha256={sha}', None),
+                                Net([('отримано', got_now)] if check else [('отримано', {sha: raw}), ('сховище', None)]),
                                 (), 0, None)
                     break
                 except (Missing, Tampered) as m:
                     if m.sha in done or m.sha == sha or not m.address:   # те саме знову — не по колу
                         raise FetchError(3, f'сховище змінено під час отримання ({m.sha}.ngr)')
-                    ensure(m.address.partition('#')[0], m.sha)
+                    ensure(m.address.partition('#')[0], m.sha, f'модуль «{bare}» закріпив')
                 except StaticError as e:
-                    raise FetchError(2, f'отримано (sha256 збігся), але це не модуль з мережі: {e.msg} — не покладено')
+                    got = ('у сховищі' if where == 'сховище' else 'отримано (sha256 збігся)' if sha_in
+                           else 'отримано')
+                    raise FetchError(2, f'{got}, але це не модуль з мережі: {e.msg} — не покладено', address=bare)
             try:
-                state = store_put(sha, raw)
+                state = 'звірено' if check else store_put(sha, raw)
             except OSError as e:
                 raise FetchError(3, f'сховище {safe(MOD_STORE)} не записати: {e}')
             if state == 'замінено пошкоджений':
@@ -7877,10 +8015,22 @@ def fetch_main(rest, opts, argv):
 
         others = []
         if is_addr:
-            o, r, c, p, pin = parse_address(target, None, need_hash=False)
+            if '://' in target or target.startswith('raw.githubusercontent.com/'):   # адреса сторінки — як у ⊃ (суд 10)
+                hint = addr_page(target)
+                raise StaticError(f'«{safe(clip(target, 160))}» — це адреса сторінки, а не модуля; пишіть '
+                                  f'github.com/в/р@КОМІТ/шлях.ngr' + (f' — мабуть: {hint}' if hint else ''))
+            o, r, c, p, pin = parse_address(target, None, need_hash=check)
             current = f'github.com/{o}/{r}@{c}/{p}'
-            sha = ensure(current, pin)
-            address, _, mod, scope, _, _ = load_remote((o, r, c, p, sha), Net(), (), 0, None)
+            sha = ensure(current, pin, 'у командному рядку закріплено')
+            log = {}
+            address, _, mod, scope, _, _ = load_remote((o, r, c, p, sha), Net([('отримано', got_now)] if check else None,
+                                                                              log=log), (), 0, None)
+            for addr, s_ in log.items():      # вкладені, що вже були у сховищі, — теж у вивід і слід (суд 10)
+                if s_ not in done:
+                    done[s_] = 'уже було'
+                    size = len(store_read(s_, None) or b'')
+                    trace('модуль отримано', адреса=safe(addr), звідки='сховище', sha256=s_, байтів=size, стан='уже було')
+                    report.append(('уже було', addr, s_, size, 'сховище'))
         else:
             log = {}
             for _ in range(MOD_MAX + 2):
@@ -7888,15 +8038,22 @@ def fetch_main(rest, opts, argv):
                 lacks = {}
                 for e in errs:
                     if isinstance(e, (Missing, Tampered)) and getattr(e, 'address', None):
-                        lacks.setdefault(e.sha, e.address.partition('#')[0])
+                        par = re.findall(r'у модулі «([^»]*)»', e.msg)      # хто закріпив: найближчий батько (суд 10)
+                        lacks.setdefault(e.sha, (e.address.partition('#')[0],
+                                                 f'модуль «{par[-1].partition("#")[0]}» закріпив' if par
+                                                 else 'програма закріпила'))
+                if check:                         # звірка: усі модулі з мережі програми (log), не лише відсутні
+                    lacks.update((s_, (a_.partition('#')[0], 'у програмі чи її модулі закріплено'))
+                                 for a_, s_ in log.items() if s_ not in done and s_ not in lacks)
+                    lacks = {s_: v_ for s_, v_ in lacks.items() if s_ not in done}
                 if not lacks:
                     others = [e for e in errs if not isinstance(e, (Missing, Tampered))]
                     break
                 if all(s_ in done for s_ in lacks):
                     raise FetchError(3, 'сховище змінено під час отримання')
-                for s_, bare in lacks.items():
+                for s_, (bare, by) in lacks.items():
                     current = bare
-                    ensure(bare, s_)
+                    ensure(bare, s_, by)
             else:
                 raise FetchError(2, f'понад {MOD_MAX + 1} повторів розбору')
             for addr, s_ in log.items():
@@ -7905,27 +8062,29 @@ def fetch_main(rest, opts, argv):
                     size = len(store_read(s_, None) or b'')
                     trace('модуль отримано', адреса=safe(addr), звідки='сховище', sha256=s_, байтів=size, стан='уже було')
                     report.append(('уже було', addr, s_, size, 'сховище'))
-        n_new = sum(1 for x in report if x[0] != 'уже було')
+        n_new = sum(1 for x in report if x[0] not in ('уже було', 'звірено'))
         n_old = len(report) - n_new
         trace('кінець', отримано=n_new, уже_було=n_old, не_збіглося=0)
     except FetchError as e:
-        what = f' «{safe(current)}»' if current else ''
+        whose = e.address or current          # чий файл: вкладений — сам він, а не батько (суд 10)
+        what = f' «{safe(whose)}»' if whose else ''
         if e.refusal and trace.n == 1:
             trace('відмова', причина=safe(e.msg))
         else:
             trace('помилка', повідомлення=safe(f'✗ --отримати{what}: {e.msg}'))
         if as_json:
             print(json.dumps({'гаразд': False, 'код': e.code, 'помилка': safe(f'✗ --отримати{what}: {e.msg}'),
+                              **({'адреса': safe(whose)} if whose else {}),
                               'модулі': [{'стан': x[0], 'адреса': x[1], 'sha256': x[2], 'байтів': x[3], 'звідки': safe(x[4])}
                                          for x in report], 'слід': tpath}, ensure_ascii=False, indent=1))
-        print(f'✗ --отримати{what}: {e.msg}', file=sys.stderr)
+        print(f'✗ --отримати{what}: {e.msg}\n  слід: {tpath}', file=sys.stderr)    # для «вміст не збігся» — саме він
         return e.code
     except StaticError as e:                 # крива адреса в командному рядку
         trace('помилка', повідомлення=safe(f'✗ --отримати: {e.msg}'))
         if as_json:
             print(json.dumps({'гаразд': False, 'код': 2, 'помилка': safe(f'✗ --отримати: {e.msg}'), 'модулі': [],
                               'слід': tpath}, ensure_ascii=False, indent=1))
-        print(f'✗ --отримати: {e.msg}', file=sys.stderr)
+        print(f'✗ --отримати: {e.msg}\n  слід: {tpath}', file=sys.stderr)
         return getattr(e, 'code', 2)
     except Exception as e:                   # вада інтерпретатора: чесно, без трасування Python, із записом у слід
         trace('помилка', внутрішня=True, повідомлення=f'{type(e).__name__}: {e}')
@@ -7944,32 +8103,63 @@ def fetch_main(rest, opts, argv):
         '⚠ власник не дозволив модулів з «github.com» («джерела_модулів»): програма з ними не запуститься (код 3)']
     if others:
         warn.append(f'⚠ у програмі є й інші помилки до запуску — ngr --перевірити: {safe(others[0].msg)[:200]}')
+    elif not is_addr:
+        try:
+            warn += [f'⚠ {w}' for w in lookalike_warnings(parse(src, cwd, prog_path))]
+        except NgrError:
+            pass
     line = None
     if is_addr:
         binds = [st[2] for st in mod[2][1:] if st[0] == 'bind']
         line = f'⊃ 「{address}」 【{" ".join(f"「{nm}」" for nm in binds)}】'
+        for nm in binds:                  # функцію, на вигляд гліф, програма не викличе — сказати автору зараз (суд 10)
+            try:
+                if scope[nm]:
+                    fn_glyph_twin(nm, None)
+            except StaticError as e:
+                warn.append(f'⚠ {e.msg}: програма не зможе її викликати (ні «{nm} …», ні «∘{nm}»)')
     if as_json:
         print(json.dumps({'гаразд': True, 'код': 0, 'модулі': [{'стан': x[0], 'адреса': x[1], 'sha256': x[2], 'байтів': x[3],
                                                                 'звідки': safe(x[4])} for x in report],
                           **({'рядок': line, 'sha256': sha, 'довіра_з_першого_разу': pin is None} if is_addr else {}),
                           'попередження': warn, 'слід': tpath}, ensure_ascii=False, indent=1))
         return 0
+    n_new = sum(1 for x in report if x[0] not in ('уже було', 'звірено'))
+    if check and not as_json:             # звірка: лише правда про те, що віддає джерело зараз
+        print('\n'.join([f'✓ --звірити: джерело власника віддає той самий вміст — {len(report)} файл(и), sha256 збігся з '
+                          'закріпленим; у сховище нічого не покладено, нічого не виконано']
+                         + [f'  звірено {x[1]} — {x[3]} байтів з {safe(x[4])}' for x in report]
+                         + [f'  {w}' for w in warn] + [f'  слід: {tpath}']))
+        return 0
     if is_addr:
         seal = mod[2][0]
         names = ', '.join(f'{nm} (' + (f'{scope[nm]} аргумент(и)' if scope[nm] else 'значення') + ')' for nm in binds)
-        lines = [f'✓ отримано {current} ({len(report)} файл(и), {sum(x[3] for x in report)} байтів)', f'  sha256: {sha}',
+        where = next(x[4] for x in report if x[2] == sha)
+        size = f'{len(report)} файл(и), {sum(x[3] for x in report)} байтів'
+        # уже у сховищі — так і сказати: мережу не питали, і з адресою не звірено (суд 10: було «✓ отримано … збігся»)
+        n_net = sum(1 for x in report if x[4] != 'сховище')       # скільки файлів справді взято з мережі чи теки
+        lines = [f'✓ уже у сховищі {current} — мережу не питали; нічого не отримано ({size})' if not n_net else
+                 f'✓ отримано {current} ({size}; нових у сховищі: {n_new})', f'  sha256: {sha}',
                  '  печатка: лише обчислює' + (f'; намір (слова автора модуля): 「{safe(seal[2])}」' if seal[2] else ''),
                  f'  імена: {names or "жодних"}']
         if pin is None:
-            lines += ['  ⚠ sha256 узято з того, що сервер віддав ЗАРАЗ; адреса не доводить авторства (коміти з форків).',
+            lines += [f'  ⚠ sha256 узято з того, що ' + ('сервер віддав ЗАРАЗ' if not where.startswith('тека ') else
+                                                       f'лежить у теці ({safe(where[5:])}), без мережі')
+                      + '; адреса не доводить ні авторства (коміти з форків), ні того, що цей вміст там лежав.',
                       '    Прочитайте код перед тим, як вписати: ngr --розбір програми з цим рядком']
+        elif where == 'сховище':
+            lines.append('  sha256 — із закріпленого; вміст узято зі сховища: чи віддає адреса те саме зараз, не звірено')
         else:
-            lines.append('  sha256 збігся із закріпленим')
-        lines += ['  рядок для програми:', f'    {line}']
+            lines.append('  sha256 збігся із закріпленим' + (f' (з теки {safe(where[5:])}, без мережі)'
+                                                             if where.startswith('тека ') else ''))
+        lines += ['  рядок для програми:', f'    {line}',
+                  '  у модулі того самого коміту (шлях від кореня репозиторію; з підтеки — від неї):',
+                  f'    ⊃ 「{address.partition("@")[2].partition("/")[2]}」 【{" ".join(f"「{nm}」" for nm in binds)}】']
     else:
-        lines = [f'✓ --отримати: модулі програми — у сховищі ({sum(1 for x in report if x[0] != "уже було")} отримано, '
-                 f'{sum(1 for x in report if x[0] == "уже було")} уже було); нічого не виконано']
-        lines += [f'  {x[0]} {x[1]} — {x[3]} байтів' + (f' з {safe(x[4])}' if x[0] != 'уже було' else '') for x in report]
+        lines = [f'✓ --отримати: модулі програми — у сховищі ({n_new} отримано, {len(report) - n_new} уже було); '
+                 'нічого не виконано']
+        lines += [f'  {x[0]} {x[1]} — {x[3]} байтів' + (f' з {safe(x[4])}' if x[0] != 'уже було' else
+                                                       ' (зі сховища, мережу не питали)') for x in report]
     print('\n'.join(lines + [f'  {w}' for w in warn] + [f'  слід: {tpath}']))
     return 0
 
