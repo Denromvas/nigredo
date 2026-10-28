@@ -1575,19 +1575,6 @@ def const_expr(node):
     return False
 
 
-def acts(node):
-    """Чи діє цей код у світі поза функціями (інструмент, субагент, друк, памʼять, слід) — для модулів."""
-    if isinstance(node, tuple) and node:
-        if node[0] == 'lam':
-            return False
-        if node[0] in ('tool', 'deleg', 'import') or node[0] == 'op' and node[2] in ('»', '🜄', '🜃', '≈', '⚗', '🜍', '☠'):
-            return True
-        return any(acts(x) for x in node)
-    if isinstance(node, list):
-        return any(acts(x) for x in node)
-    return False
-
-
 def may_stop(node, called=False):
     """Чи може цей код зупинити програму — для каналу завершення (☠, 🜍, ÷ 0, § поза межами, невідповідний тип,
     виклик, інструмент…). called: вузол — функція, яку викличуть (λ — дивимося тіло; інше — невідомо, отже може)."""
@@ -3356,6 +3343,10 @@ def _db(it, pos, tool, p, sql, params, write):
             vt.update(db_vtabs(con))     # запису — ще в транзакції _db_guard
             if not write:
                 db_rtree(con)
+                pw = db_vtab_plan(con, sql.v, args, vt)   # модуль під назвою таблиці (temp.dbstat) — за планом (0.8.1е)
+                if pw:                   # запис бачить це в _db_written (підзапит пише в таблицю — той самий прохід)
+                    why.append(pw)
+                    raise sqlite3.OperationalError(pw)   # у обробник: db_refusal, deny-лог і код 4 — як в authorizer
             con.set_authorizer(auth)
             con.set_progress_handler(progress, 1000)
             before = con.total_changes
@@ -3649,19 +3640,94 @@ def db_lower(s):
     return (s or '').encode('utf-8', 'surrogatepass').lower().decode('utf-8', 'surrogatepass')
 
 
+SAFE_VMODULES = ('rtree', 'rtree_i32', 'geopoly', 'fts3', 'fts4', 'fts5', 'fts4aux', 'fts5vocab', 'fts3tokenize')
+# віртуальні таблиці даних, які база може оголосити як свої «таблиці самої бази» (R-Tree, повнотекст). dbstat,
+# sqlite_dbpage, sqlite_stmt — не дані бази, а її нутрощі: їх не пускаємо навіть схемною CREATE VIRTUAL TABLE (огляд 0.8.1е)
+
+
+def db_using_module(sql):
+    """Модуль з «CREATE VIRTUAL TABLE … USING <модуль>» — малими ASCII (None, якщо не знайдено). Беремо слово після
+    «using», пропустивши пропуски й відкривні лапки."""
+    s = db_lower(sql or '')
+    i = s.find(' using ')
+    if i < 0:
+        return None
+    j = i + 7
+    while j < len(s) and s[j] in ' \t\n\r"`[':
+        j += 1
+    k = j
+    while k < len(s) and (s[k].isalnum() or s[k] == '_'):
+        k += 1
+    return s[j:k] or None
+
+
+def db_schema_vtabs(con):
+    """{назва: модуль} схемних віртуальних таблиць (main і temp) — те, що база оголосила через CREATE VIRTUAL TABLE.
+    Назва й модуль — малими ASCII, як їх порівнює SQLite (огляд 0.8.1е)."""
+    import sqlite3
+    out = {}
+    for schema in ('main', 'temp'):
+        try:
+            rows = con.execute(f"SELECT name, sql FROM {schema}.sqlite_master WHERE type = 'table' AND sql IS NOT NULL "
+                               "AND instr(lower(sql), 'create virtual table') > 0").fetchall()
+        except sqlite3.Error:
+            continue
+        for name, sql in rows:
+            mod = db_using_module(sql)
+            if mod:
+                out.setdefault(db_lower(name), mod)
+    return out
+
+
 def db_vtabs(con):
     """Віртуальні таблиці SQLite, яких програма не бачить (огляд 0.8.1д, Н-1 Аудитора й Оркестратора: sqlite_stmt —
     перелік підготовлених запитів зʼєднання з текстом, і в кеші Python — тимчасові тригери з назвою службової, 128 біт
     випадковості без «жереб»; виконавці ще й розходились). Перелік дозволених, а не заборонених (після sqlite_dbpage —
     друга така): модулі цього зʼєднання, крім json_each, json_tree і таблиць-функцій PRAGMA (у них свої правила);
     sqlite_… — завжди, решта — коли таблиці чи VIEW з такою назвою в самій базі немає (є — то SQLite читає її, а не
-    модуль: CREATE TABLE dbstat(x) лишається таблицею). Назви — малими ASCII, як їх порівнює SQLite."""
-    return {r[0] for r in con.execute(
+    модуль: CREATE TABLE dbstat(x) лишається таблицею — а модуль під тією назвою ловить db_vtab_plan за планом). Ще —
+    схемні CREATE VIRTUAL TABLE на модулі не з даних (dbstat, sqlite_dbpage…): їх видно під власною назвою таблиці
+    («st USING dbstat» читало б сирі нутрощі бази, а в переліку за назвою модуля його не було; огляд 0.8.1е). Назви —
+    малими ASCII, як їх порівнює SQLite."""
+    bad = {r[0] for r in con.execute(
         "SELECT lower(name) FROM pragma_module_list m WHERE lower(name) NOT IN ('json_each', 'json_tree') "
         "AND substr(lower(name), 1, 7) <> 'pragma_' AND (substr(lower(name), 1, 7) = 'sqlite_' OR (NOT EXISTS "
         "(SELECT 1 FROM main.sqlite_master s WHERE s.type IN ('table', 'view') AND lower(s.name) = lower(m.name)) "
         "AND NOT EXISTS (SELECT 1 FROM temp.sqlite_master s WHERE s.type IN ('table', 'view') "
         "AND lower(s.name) = lower(m.name))))")}
+    bad.update(name for name, mod in db_schema_vtabs(con).items() if mod not in SAFE_VMODULES)
+    return bad
+
+
+def db_vtab_plan(con, sql, args, vt):
+    """EXPLAIN QUERY PLAN: яку віртуальну таблицю SQLite відкриває НАСПРАВДІ, а не як її названо в запиті. temp.dbstat
+    при справжній таблиці dbstat — це модуль dbstat (сторінки файлу), а не таблиця, і authorizer за назвою його не
+    бачить (огляд 0.8.1е, Н-1 Скептика; той самий клас, що й sqlite_stmt). Повертає причину відмови або None. Назви у
+    vt (прямі sqlite_… і схемні vtab на небезпечному модулі) лишаємо authorizer'ові — його текст і регістр незмінні;
+    json_each, json_tree, таблиці-функції PRAGMA й схемні vtab на модулях даних (R-Tree, повнотекст) — дозволені."""
+    import sqlite3
+    try:
+        plan = con.execute('EXPLAIN QUERY PLAN ' + sql, args).fetchall()
+    except (sqlite3.Error, ValueError, OverflowError):
+        return None                  # не планується — покаже компіляція чи виконання самого запиту
+    sv = None
+    for row in plan:
+        detail = row[-1] if row and isinstance(row[-1], str) else ''
+        i = detail.find(' VIRTUAL TABLE INDEX ')   # «SCAN <назва> VIRTUAL TABLE INDEX n:» — так SQLite пише віртуальну
+        if i < 0:
+            continue
+        head = detail[:i].split(None, 1)
+        if len(head) < 2:
+            continue
+        base = db_lower(head[1].rsplit('.', 1)[-1].strip('"[]`'))   # без «temp.»/«main.» і лапок — як порівнює SQLite
+        if base in ('json_each', 'json_tree') or base in vt or base.startswith('pragma_'):
+            continue                 # json_*; прямі sqlite_… і схемні vtab на небезпечному модулі — authorizer; PRAGMA — db_pragma_tables
+        if sv is None:
+            sv = db_schema_vtabs(con)
+        if sv.get(base) in SAFE_VMODULES:
+            continue
+        return f'віртуальна таблиця SQLite «{safe(base)}» — програмі лише json_each, json_tree і таблиці самої бази'
+    return None
 
 
 def db_rtree(con):
@@ -3715,7 +3781,8 @@ def _db_written(con, it, sql, args):
     Аудитор, Оркестратор)."""
     import sqlite3
     ins, upd, reads, ops = set(), set(), set(), []
-    denied, check = _db_auth(True, it, vt=db_vtabs(con))
+    vt = db_vtabs(con)
+    denied, check = _db_auth(True, it, vt=vt)
 
     def rec(action, a1, a2, db, src):
         if db == 'main' and action in (sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE):
@@ -3734,6 +3801,10 @@ def _db_written(con, it, sql, args):
         failed = True                # помилку запиту покаже його виконання, а захист стане на всі таблиці
     finally:
         con.set_authorizer(None)
+    if not denied and not failed:    # модуль під назвою таблиці (temp.dbstat) у підзапиті запису — за планом (0.8.1е)
+        pw = db_vtab_plan(con, sql, args, vt)
+        if pw:
+            denied = [pw]
     if denied:
         return set(), set(), [], denied, [], failed
     if db_service(ops):              # без тригерів _db_guard (їх ще немає) службову кличе лише схема чи запит програми
@@ -3951,6 +4022,8 @@ def _db_ok(it, pos, tool, p, sql, write, params):
                 denied, doubt, failed = [], [], True
             it.tl.unchecked = failed and not denied
             why.extend(denied or ([] if failed else doubt))
+        elif db_vtab_plan(con, sql.v, args, vt) is not None:   # модуль під назвою таблиці (temp.dbstat) — за планом (0.8.1е)
+            why.append(db_vtab_plan(con, sql.v, args, vt))
         else:
             con.set_authorizer(rec)
             try:
