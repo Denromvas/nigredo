@@ -49,6 +49,29 @@ fn per_programs(kv: &[(std::borrow::Cow<'_, str>, bool, P<'_>)]) -> Result<Vec<(
     }
 }
 
+/// Дзеркало власника у «джерела_модулів» — лише форма, яку еталон (mirror_ok) приймає напевно: http(s)://хост[:порт]/шлях/
+/// з ASCII, хост малими, порт до 65535; решту (великі літери, IPv6, не ASCII, вади) перевіряє еталон.
+fn mirror_simple(b: &str) -> bool {
+    let rest = match b.strip_prefix("http://").or_else(|| b.strip_prefix("https://")) {
+        Some(r) => r,
+        None => return false,
+    };
+    let (netloc, path) = match rest.find('/') {
+        Some(i) => rest.split_at(i),
+        None => return false,
+    };
+    let (host, port) = match netloc.split_once(':') {
+        Some((h, p)) => (h, Some(p)),
+        None => (netloc, None),
+    };
+    !host.is_empty()
+        && host.bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'.' || c == b'-')
+        && port.map_or(true, |p| (1..=5).contains(&p.len()) && p.bytes().all(|c| c.is_ascii_digit())
+                                 && p.parse::<u32>().map_or(false, |n| n <= 65535))
+        && path.ends_with('/')
+        && path.bytes().all(|c| c.is_ascii_alphanumeric() || b"._~/-".contains(&c))
+}
+
 /// read_allowlist(path, cwd, prog, approval).
 fn read_allowlist(path: &str, cwd: Option<&str>, prog: Option<&str>, approval: Option<&str>) -> Result<Vec<String>, Back> {
     let text = std::fs::read_to_string(path).map_err(|_| Back("дозволи не прочитати".into()))?;
@@ -68,10 +91,12 @@ fn read_allowlist(path: &str, cwd: Option<&str>, prog: Option<&str>, approval: O
     };
     let per_prog = per_programs(kv)?;
     // «джерела_модулів» (модулі з git, §4.2): на програму без модулів з мережі не впливає, але криве значення — відмова
-    // еталона всім програмам; тут — лише список із «github.com» чи порожній, решта (дзеркало, вада) — до еталона
+    // еталона всім програмам; тут — лише список із «github.com» чи порожній і дзеркало простої форми, решта — до еталона
     match get(kv, "джерела_модулів") {
         None => {}
         Some(P::Arr(xs)) if xs.len() <= 1 && xs.iter().all(|x| matches!(x, P::Str(s, false) if s == "github.com")) => {}
+        Some(P::Obj(d)) if d.len() <= 1 && d.iter().all(|(k, s, v)| k == "github.com" && !s
+                                                         && matches!(v, P::Str(b, false) if mirror_simple(b))) => {}
         Some(_) => return back("джерела_модулів — еталон"),
     }
     let mut writable = Vec::new();
