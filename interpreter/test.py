@@ -1506,7 +1506,8 @@ def main():
     o_ = res81[0].stdout
     check(o_ == res81[2].stdout and res81[0].returncode == res81[2].returncode == 0
           and o_.count('запобіжна відмова (так у самій базі') == 2 and o_.count('дія поза дозволеним') == 3
-          and o_.count('у запиті — random') == 1 and o_.count('у запиті — date: «зараз» чи дата з даних') == 2
+          and o_.count('(random) без права «жереб» (з квотою «жереб≤N» — лише 🜔жереб); запит і не виконувався') == 1
+          and o_.count('у запиті — date: «зараз» чи дата з даних') == 2
           and o_.count('таблиця-функція pragma_database_list') == 1 and o_.count('запит і не виконувався') == 4
           and o_.count('рядок отримав би rowid 2⁶³−1') == 2 and o_.count('сирі сторінки бази (sqlite_dbpage)') == 1
           and o_.count('тригер бази зупинив запит: «запобіжна відмова (x)»') == 1
@@ -1564,11 +1565,11 @@ def main():
     o_ = resq81[0].stdout
     check(o_ == resq81[2].stdout and o_.count('вичерпано квоту') == 1 and o_.count('дія поза дозволеним (лише') == 1
           and o_.count('бд.писати: заборонено: ') == 2
-          and 'у запиті — random' in o_ and 'у запиті — date' in o_
+          and 'випадковість SQLite (random)' in o_ and 'у запиті — date' in o_
           and all('(«заборонено»): 3 ' in v_ and 'квоту вичерпано (межа спрацювала' in v_
                   and 'VALUES (9223372036854775807, 1)' in v_ for v_ in (resq81[1], resq81[3]))
           and dry81[0].stdout == dry81[1].stdout and dry81[0].returncode == dry81[1].returncode != 0
-          and 'у запиті — random' in dry81[0].stdout + dry81[0].stderr,
+          and 'випадковість SQLite (random)' in dry81[0].stdout + dry81[0].stderr,
           'квота не ховає спроби: random і годинник у запиті після вичерпаної квоти — «заборонено», у підсумку квоти — сам '
           'запит; --сухо бачить random (огляд 0.8.1б)', o_ + resq81[0].stderr + resq81[1] + dry81[0].stdout + dry81[0].stderr)
     # огляд 0.8.1в: службова ngr_rowid — лише з тимчасових тригерів інтерпретатора (Скептик: ngr_rowid('t', 0) у SQL
@@ -1834,12 +1835,12 @@ def main():
     note81д_ = (svc81д_ + '; у запиті її немає — її кличе схема бази (DEFAULT, CHECK, згенерований стовпець, індекс, '
                 'тригер, VIEW чи тіньова таблиця)')
     quota81д_ = f'бд.писати: вичерпано квоту (печатка: «бд.писати:{DATA}/звіти≤1»)'
-    rnd81д_ = 'бд.писати: заборонено: випадковість SQLite (у запиті — random) без права «жереб»'
+    rnd81д_ = 'бд.писати: заборонено: випадковість SQLite (random) без права «жереб» (з квотою «жереб≤N» — лише 🜔жереб)'
     out81д = [r_.stdout.splitlines() for r_ in res81дч[0::3]]
     run81д, quota81д, dry81дч = out81д[0], out81д[1], out81д[2]
     check(out81д[:3] == out81д[3:] and all(res81дч[2::3]) and run81д[:4] == ['1', note81д_, note81д_, svc81д_]
           and run81д[4].startswith('бд.писати: запобіжна відмова (так у самій базі')
-          and run81д[5].startswith('бд.писати: заборонено: випадковість SQLite (random)')
+          and run81д[5] == rnd81д_     # той самий текст random(), що й під квотою та в --сухо (огляд 0.8.1е)
           and run81д[6:] == ['1', note81д_, '3', '【『「n」 0』】', '【『「n」 1』】']   # 3 — і тіньові таблиці R-Tree
           and quota81д == ['1', note81д_, note81д_, svc81д_, quota81д_, rnd81д_, quota81д_, note81д_, quota81д_,
                            '【『「n」 0』】', '【『「n」 0』】']
@@ -1947,6 +1948,58 @@ def main():
           'у --сухо однаково (Атанор = еталон); справжня таблиця dbstat, R-Tree і json_each — ✓; --сухо не змінює баз '
           '(огляд 0.8.1е)',
           '\n---\n'.join('\n'.join(o_) for o_ in out81е) + '\n===\n' + res81е[0].stderr + res81е[2])
+    # огляд 0.8.1е, побажання. ngr_rowid, яку схема лише ЗГАДУЄ (рядок, коментар, назва стовпця чи таблиці
+    # ngr_rowid_журнал), — «лише згадує», а не «кличе» (Скептик, Практик, Мовознавець, Новачок); «у запиті її немає» — за
+    # викликом, а не підрядком: рядок 'ngr_rowid' у запиті й назва ngr_rowid_п з пасткою (Новачок); з 「жереб」 без квоти
+    # таблиці зі згадкою пишуться (так каже відмова); random() — той самий текст у запуску, під квотою й у --сухо (Аудитор,
+    # Новачок)
+    m81е_ = f'{DATA}/звіти/згадка81е.db'
+
+    def mention81е():
+        if os.path.exists(m81е_):
+            os.remove(m81е_)
+        with sqlite3.connect(m81е_) as c_:   # база не з Nigredo: згадки поряд із пастками (CHECK кличе службову)
+            c_.create_function('ngr_rowid', 2, lambda *a: None)
+            c_.executescript("CREATE TABLE t(x); CREATE TABLE журнал(a, b DEFAULT 'ngr_rowid'); "
+                             'CREATE TABLE к(a /* ngr_rowid */, b); CREATE TABLE ж(ngr_rowid INTEGER, x); '
+                             "CREATE TABLE ngr_rowid_журнал(a); CREATE TABLE c(a CHECK (ngr_rowid('c', 0) IS NULL)); "
+                             'CREATE TABLE ngr_rowid_п(a CHECK ("NGR_ROWID"(\'x\', 0) IS NULL))')
+    body81еп = ''.join(wr81е(m81е_, q_) for q_ in (
+        'INSERT INTO t(x) VALUES (1)', 'INSERT INTO журнал(a) VALUES (1)', 'INSERT INTO к(a) VALUES (1)',
+        'INSERT INTO ж(x) VALUES (1)', 'INSERT INTO ngr_rowid_журнал(a) VALUES (1)', "INSERT INTO c(a) VALUES ('ngr_rowid')",
+        'INSERT INTO ngr_rowid_п(a) VALUES (1)', 'INSERT INTO t(x) VALUES (random())'))
+    res81еп = []
+    for k_ in range(2):              # 0 — Атанор, 1 — еталон
+        cmd_ = NGR_CMD if k_ == 0 else [sys.executable, str(NGR)]
+        for mode_, seal_, dry_ in (('запуск', '」', []), ('квота', '≤1」', []), ('сухо', '」', ['--сухо']),
+                                   ('жереб', '」 「жереб」', [])):
+            mention81е()
+            before_ = pathlib.Path(m81е_).read_bytes()
+            tp_ = tmp / f'згадка81е_{k_}_{mode_}.jsonl'
+            res81еп.append(subprocess.run([*cmd_, '--слід', str(tp_), *dry_, '-e',
+                                           f'🜂 【「бд.писати:{DATA}/звіти{seal_}】\n' + body81еп],
+                                          capture_output=True, text=True, env=envd))
+            res81еп.append(pathlib.Path(m81е_).read_bytes() == before_)
+            res81еп.append(subprocess.run([sys.executable, str(NGR), '--перевірити-слід', str(tp_)], capture_output=True,
+                                          text=True, env=envd).stdout)
+    o81еп = [r_.stdout.splitlines() for r_ in res81еп[0::3]]   # [Атанор: запуск, квота, сухо, жереб; еталон: …]
+    svc81е_ = ('✗ бд.писати: заборонено: службова функція інтерпретатора (ngr_rowid) — її кличуть лише його тимчасові '
+               'тригери; у запиті її немає — ')
+    deny81еп = [svc81е_ + 'схема бази її не кличе, а лише згадує (назва таблиці чи стовпця, рядок, коментар); таблицю з '
+                'такою схемою бд.писати пише лише з правом «жереб» без квоти'] * 4 + [
+        svc81е_ + 'її кличе схема бази (DEFAULT, CHECK, згенерований стовпець, індекс, тригер, VIEW чи тіньова таблиця)'] * 2 + [
+        '✗ бд.писати: заборонено: випадковість SQLite (random) без права «жереб» (з квотою «жереб≤N» — лише 🜔жереб)']
+    check(o81еп[:4] == o81еп[4:]                                      # Атанор = еталон у всіх чотирьох режимах
+          and o81еп[0] == o81еп[1] == ['✓ 1'] + deny81еп and o81еп[2][:8] == ['✓ 0'] + deny81еп
+          and o81еп[3][:5] + o81еп[3][7:8] == ['✓ 1'] * 6              # з 「жереб」: згадки пишуться, random — теж
+          and all(l_.startswith('✗ бд.писати: ') for l_ in o81еп[3][5:7])   # пастки — ні
+          and res81еп[7] and res81еп[19]                               # --сухо лишає базу байт у байт
+          and all('(«заборонено»): 7 ' in res81еп[i_] for i_ in (2, 5, 14, 17))
+          and all('спроб поза правами немає' in res81еп[i_] for i_ in (11, 23)),   # з 「жереб」 спроб немає
+          'SQLite: ngr_rowid, яку схема лише згадує (рядок, коментар, назва стовпця чи таблиці ngr_rowid_журнал), — «лише '
+          'згадує», а не «кличе»; «у запиті її немає» — за викликом, а не підрядком; з 「жереб」 без квоти такі таблиці '
+          'пишуться; random() — той самий текст у запуску, під квотою й у --сухо (Атанор = еталон; огляд 0.8.1е, побажання)',
+          '\n---\n'.join('\n'.join(o_) for o_ in o81еп) + '\n===\n' + res81еп[0].stderr + res81еп[2])
     seal81 = tmp / 'печатка81'
     (seal81 / 'звіти').mkdir(parents=True, exist_ok=True)
     (seal81 / 'файл.ngr').write_text('🜂 「новий файл」 【「писати:звіти/нова.txt」】\n» 🜔писати 「звіти/нова.txt」 「x」\n',

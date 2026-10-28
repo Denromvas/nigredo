@@ -435,7 +435,7 @@ fn refusal(f: &FnCtx, a: &[SqlV]) -> Option<String> {
             now.then(|| format!("годинник SQLite ({} — поточний час чи часовий пояс) без права «час» (з квотою «час≤N» — лише 🜔час) — дати з даних рахуються, «зараз» — лише з «час» у печатці", name))
         }
         1 => Some(format!("годинник SQLite ({}) без права «час» (з квотою «час≤N» — лише 🜔час) — дати рахуйте в Nigredo (◷) чи дайте «час» у печатці", name)),
-        2 => Some(format!("випадковість SQLite ({}) без права «жереб» (з квотою «жереб≤N» — лише 🜔жереб)", name)),
+        2 => Some(rand_why(name)),
         4 => Some(SVC_WHY.into()),
         _ => {
             let t = match a.first() {
@@ -744,7 +744,7 @@ fn doubts(clock_ok: bool, rand_ok: bool, ops: &[(String, Option<String>)], reads
             _ => continue,
         };
         let why = if (name == "random" || name == "randomblob") && !rand_ok {
-            format!("випадковість SQLite (у запиті — {}) без права «жереб»", name)
+            rand_why(&name)
         } else if DB_NOW.contains(&name.as_str()) && !clock_ok {
             format!("годинник SQLite (у запиті — {}) без права «час»", name)
         } else if DB_CLOCK.contains(&name.as_str()) && !clock_ok {
@@ -769,6 +769,70 @@ fn service(ops: &[(String, Option<String>)]) -> bool {
 
 const SVC_WHY: &str = "службова функція інтерпретатора (ngr_rowid) — її кличуть лише його тимчасові тригери";
 const SVC_NOTE: &str = "; у запиті її немає — її кличе схема бази (DEFAULT, CHECK, згенерований стовпець, індекс, тригер, VIEW чи тіньова таблиця)";
+const SVC_MENTION: &str = "; у запиті її немає — схема бази її не кличе, а лише згадує (назва таблиці чи стовпця, рядок, коментар); таблицю з такою схемою бд.писати пише лише з правом «жереб» без квоти";
+/// «ngr_rowid(» після цих слів — таблиця зі стовпцями, а не виклик (огляд 0.8.1е).
+const NOT_CALL: [&str; 7] = ["table", "into", "references", "view", "exists", "with", "recursive"];
+
+/// db_RAND_WHY: та сама відмова random() у запуску й з байткоду (квота, --сухо; огляд 0.8.1е, Аудитор і Новачок).
+fn rand_why(name: &str) -> String {
+    format!("випадковість SQLite ({}) без права «жереб» (з квотою «жереб≤N» — лише 🜔жереб)", name)
+}
+
+/// db_id_char: знак імені SQL — як у самого SQLite (sqlite3IsIdChar): ASCII-літери й цифри, «_», «$» і все від 0x80.
+fn id_char(c: u8) -> bool {
+    c == b'_' || c == b'$' || c.is_ascii_alphanumeric() || c >= 0x80
+}
+
+/// db_svc_called: чи SQL кличе ngr_rowid як функцію, а не лише згадує (огляд 0.8.1е) — так само, як еталон. Виклик —
+/// назва (і в лапках-імені "…", […], `…`), далі пропуски й коментарі, далі «(»; згадка — рядок, коментар, назва
+/// стовпця, довша назва (ngr_rowid_журнал), «main.ngr_rowid(» і таблиця зі стовпцями після NOT_CALL; «ON ngr_rowid(» —
+/// сумнів у бік «кличе». Знаки-межі — ASCII, тож байти від 0x80 (і цілий символ UTF-8) — частина імені, як в еталоні.
+fn svc_called(sql: &str) -> bool {
+    let b = sql.as_bytes();
+    let n = b.len();
+    let mut toks: Vec<(u8, &str)> = Vec::new(); // b'w' слово, b'q' лапки-імені, b's' рядок, b'p' знак
+    let mut i = 0;
+    while i < n {
+        let c = b[i];
+        if matches!(c, b' ' | b'\t' | b'\n' | b'\x0c' | b'\r') {
+            i += 1;
+        } else if b[i..].starts_with(b"--") {
+            i = sql[i..].find('\n').map_or(n, |j| i + j);
+        } else if b[i..].starts_with(b"/*") {
+            i = sql[i + 2..].find("*/").map_or(n, |j| i + 2 + j + 2);
+        } else if matches!(c, b'\'' | b'"' | b'`' | b'[') {
+            // рядок чи лапки-імені; подвоєна лапка — усередині (у […] — ні)
+            let end = if c == b'[' { b']' } else { c };
+            let mut j = i + 1;
+            while j < n {
+                if b[j] == end {
+                    if c == b'[' || !b[j..].starts_with(&[end, end]) {
+                        break;
+                    }
+                    j += 1;
+                }
+                j += 1;
+            }
+            toks.push((if c == b'\'' { b's' } else { b'q' }, &sql[i + 1..j]));
+            i = j + 1;
+        } else if id_char(c) {
+            let mut j = i;
+            while j < n && id_char(b[j]) {
+                j += 1;
+            }
+            toks.push((b'w', &sql[i..j]));
+            i = j;
+        } else {
+            toks.push((b'p', &sql[i..i + 1]));
+            i += 1;
+        }
+    }
+    toks.iter().enumerate().any(|(k, &(kind, text))| {
+        let prev = if k > 0 { toks[k - 1] } else { (b'p', "") };
+        (kind == b'w' || kind == b'q') && text.to_ascii_lowercase() == "ngr_rowid" && toks.get(k + 1) == Some(&(b'p', "("))
+            && prev != (b'p', ".") && !(prev.0 == b'w' && NOT_CALL.contains(&prev.1.to_ascii_lowercase().as_str()))
+    })
+}
 
 /// db_SAFE_VMODULES: віртуальні таблиці даних, які база може оголосити своїми «таблицями самої бази» (R-Tree,
 /// повнотекст). dbstat, sqlite_dbpage, sqlite_stmt — не дані бази, а її нутрощі: їх не пускаємо навіть схемною
@@ -893,10 +957,10 @@ fn rtree(l: &Lib, db: *mut c_void) {
     }
 }
 
-/// db_svc_note: службова без ngr_rowid у тексті запиту — її покликала схема бази (огляд 0.8.1д, Практик, Оркестратор,
-/// Мовознавець, Новачок).
+/// db_svc_note: службова, якої запит не кличе, — її покликала схема бази (огляд 0.8.1д, Практик, Оркестратор,
+/// Мовознавець, Новачок); не кличе — за svc_called, а не за підрядком (огляд 0.8.1е, Новачок: ngr_rowid_журнал).
 fn svc_note(why: &mut [String], sql: &str) {
-    if why.first().map_or(false, |w| w == SVC_WHY) && !sql.to_ascii_lowercase().contains("ngr_rowid") {
+    if why.first().map_or(false, |w| w == SVC_WHY) && !svc_called(sql) {
         why[0].push_str(SVC_NOTE);
     }
 }
@@ -979,16 +1043,20 @@ fn written(l: &Lib, db: *mut c_void, clock_ok: bool, sql: &str, args: &[Arg]) ->
         }
     }
     // службова в тексті схеми таблиць, у які запит пише (сама таблиця, її індекси й тригери), — так само на будь-якому
-    // зʼєднанні; малі — самого SQLite (ASCII), як і в еталоні
+    // зʼєднанні; малі — самого SQLite (ASCII), як і в еталоні. Відмова — на будь-яку згадку, а текст — чи схема її
+    // кличе, чи лише згадує (огляд 0.8.1е)
     let svc = "FROM main.sqlite_master WHERE instr(lower(sql), 'ngr_rowid') > 0";
     if has_row(l, db, &format!("SELECT 1 {}", svc), &[])? {
         let mut all: Vec<&String> = w.ins.iter().chain(w.upd.iter()).collect();
         all.sort();
         all.dedup();
+        let mut hit: Vec<String> = Vec::new();
         for t in all {
-            if has_row(l, db, &format!("SELECT 1 {} AND tbl_name = ? COLLATE NOCASE", svc), &[Arg::Text(t.clone())])? {
-                return Ok(none(vec![SVC_WHY.into()]));
-            }
+            hit.extend(exec(l, db, &format!("SELECT sql {} AND tbl_name = ? COLLATE NOCASE", svc), &[Arg::Text(t.clone())])?);
+        }
+        if !hit.is_empty() {
+            let why = if hit.iter().any(|s| svc_called(s)) { SVC_WHY.to_string() } else { format!("{}{}", SVC_WHY, SVC_MENTION) };
+            return Ok(none(vec![why]));
         }
     }
     let doubt = match &ops {

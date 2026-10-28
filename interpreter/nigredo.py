@@ -3535,6 +3535,10 @@ DB_ROWID_MAX = 2 ** 63 - 1   # після нього SQLite бере rowid на�
 DB_SVC_WHY = 'службова функція інтерпретатора (ngr_rowid) — її кличуть лише його тимчасові тригери'
 DB_SVC_NOTE = ('; у запиті її немає — її кличе схема бази (DEFAULT, CHECK, згенерований стовпець, індекс, тригер, VIEW '
                'чи тіньова таблиця)')
+DB_SVC_MENTION = ('; у запиті її немає — схема бази її не кличе, а лише згадує (назва таблиці чи стовпця, рядок, '
+                  'коментар); таблицю з такою схемою бд.писати пише лише з правом «жереб» без квоти')
+DB_NOT_CALL = ('table', 'into', 'references', 'view', 'exists', 'with', 'recursive')   # «ngr_rowid(» після них — таблиця
+DB_RAND_WHY = 'випадковість SQLite ({}) без права «жереб» (з квотою «жереб≤N» — лише 🜔жереб)'   # запуск = байткод (0.8.1е)
 DB_SCHEMA_TABLES = ('sqlite_master', 'sqlite_schema', 'sqlite_temp_master', 'sqlite_temp_schema')   # CREATE пише сюди
 DB_ROWID_WHY = ('дійшла до rowid 2⁶³−1 — далі SQLite бере його навмання',
                 'ховає rowid стовпцями rowid, _rowid_ і oid — запис у неї не перевірити',
@@ -3626,7 +3630,7 @@ def db_doubts(it, ops, reads):
     out = []
     for r in ops:
         name = r[5].split('(')[0].lower() if len(r) > 5 and r[1] in ('Function', 'PureFunc') and isinstance(r[5], str) else ''
-        why = (f'випадковість SQLite (у запиті — {name}) без права «жереб»' if name in ('random', 'randomblob') and not rand_ok
+        why = (DB_RAND_WHY.format(name) if name in ('random', 'randomblob') and not rand_ok
                else f'годинник SQLite (у запиті — {name}) без права «час»' if name in DB_NOW and not clock_ok
                else f'годинник SQLite (у запиті — {name}: «зараз» чи дата з даних — без виконання не перевірити) без права «час»'
                if name in DB_CLOCK and not clock_ok else None)
@@ -3750,11 +3754,60 @@ def db_rtree(con):
 
 
 def db_svc_note(why, sql):
-    """Службова функція без ngr_rowid у тексті запиту — її покликала схема бази (огляд 0.8.1д, Практик, Оркестратор,
-    Мовознавець, Новачок): інакше «заборонено» біля «INSERT INTO d(a) VALUES (1)» без читання схеми не зрозуміти.
-    Малі — лише ASCII, як в Атанорі."""
-    if why and why[0] == DB_SVC_WHY and b'ngr_rowid' not in sql.encode('utf-8', 'surrogatepass').lower():
+    """Службова функція, якої запит не кличе, — її покликала схема бази (огляд 0.8.1д, Практик, Оркестратор,
+    Мовознавець, Новачок): інакше «заборонено» біля «INSERT INTO d(a) VALUES (1)» без читання схеми не зрозуміти. Не
+    кличе — за db_svc_called, а не за підрядком: «INSERT INTO ngr_rowid_журнал» її не кличе (огляд 0.8.1е, Новачок)."""
+    if why and why[0] == DB_SVC_WHY and not db_svc_called(sql):
         why[0] += DB_SVC_NOTE
+
+
+def db_id_char(c):
+    """Знак імені SQL — як у самого SQLite (sqlite3IsIdChar): ASCII-літери й цифри, «_», «$» і все від U+0080."""
+    return c in '_$' or 'a' <= c <= 'z' or 'A' <= c <= 'Z' or '0' <= c <= '9' or c >= '\x80'
+
+
+def db_svc_called(sql):
+    """Чи SQL кличе ngr_rowid як функцію, а не лише згадує (огляд 0.8.1е, Скептик, Практик, Мовознавець, Новачок).
+    Виклик — назва (і в лапках-імені "…", […], `…`: так кличе й SQLite), далі пропуски й коментарі, далі «(». Згадка —
+    рядок, коментар, назва стовпця, довша назва (ngr_rowid_журнал), «main.ngr_rowid(» і таблиця зі стовпцями після
+    TABLE, INTO, REFERENCES, VIEW, EXISTS, WITH, RECURSIVE. «ON ngr_rowid(» — і індекс, і виклик у JOIN … ON: сумнів —
+    у бік «кличе». Малі — лише ASCII, як у SQLite й Атанорі."""
+    toks, i, n = [], 0, len(sql)
+    while i < n:
+        c = sql[i]
+        if c in ' \t\n\f\r':
+            i += 1
+        elif sql.startswith('--', i):
+            j = sql.find('\n', i)
+            i = n if j < 0 else j
+        elif sql.startswith('/*', i):
+            j = sql.find('*/', i + 2)
+            i = n if j < 0 else j + 2
+        elif c in '\'"`[':           # рядок чи лапки-імені; подвоєна лапка — усередині (у […] — ні)
+            end, j = ']' if c == '[' else c, i + 1
+            while j < n:
+                if sql[j] == end:
+                    if c == '[' or not sql.startswith(end * 2, j):
+                        break
+                    j += 1
+                j += 1
+            toks.append(('s' if c == "'" else 'q', sql[i + 1:j]))
+            i = j + 1
+        elif db_id_char(c):
+            j = i
+            while j < n and db_id_char(sql[j]):
+                j += 1
+            toks.append(('w', sql[i:j]))
+            i = j
+        else:
+            toks.append(('p', c))
+            i += 1
+    for k, (kind, text) in enumerate(toks):
+        if kind in 'wq' and db_lower(text) == 'ngr_rowid' and toks[k + 1:k + 2] == [('p', '(')]:
+            prev = toks[k - 1] if k else ('p', '')
+            if prev != ('p', '.') and not (prev[0] == 'w' and db_lower(prev[1]) in DB_NOT_CALL):
+                return True
+    return False
 
 
 def db_service(ops):
@@ -3828,11 +3881,13 @@ def _db_written(con, it, sql, args):
         shadow = {t for t, k in kinds.items() if k == 'shadow'}
         ins, upd = ins | shadow, upd | shadow
     # службова в тексті схеми таблиць, у які запит пише (сама таблиця, її індекси й тригери), — так само на будь-якому
-    # зʼєднанні; малі — самого SQLite (ASCII), як і в Атанорі
+    # зʼєднанні; малі — самого SQLite (ASCII), як і в Атанорі. Відмова — на будь-яку згадку, а текст — чи схема її кличе,
+    # чи лише згадує (огляд 0.8.1е, Скептик, Практик, Мовознавець, Новачок)
     svc = "FROM main.sqlite_master WHERE instr(lower(sql), 'ngr_rowid') > 0"
-    if con.execute(f'SELECT 1 {svc}').fetchone() and any(
-            con.execute(f'SELECT 1 {svc} AND tbl_name = ? COLLATE NOCASE', (t,)).fetchone() for t in sorted(ins | upd)):
-        return set(), set(), [], [DB_SVC_WHY], [], failed
+    if con.execute(f'SELECT 1 {svc}').fetchone():
+        hit = [s for t in sorted(ins | upd) for (s,) in con.execute(f'SELECT sql {svc} AND tbl_name = ? COLLATE NOCASE', (t,))]
+        if hit:
+            return set(), set(), [], [DB_SVC_WHY if any(map(db_svc_called, hit)) else DB_SVC_WHY + DB_SVC_MENTION], [], failed
     doubt = ['запит не перевірено до виконання (EXPLAIN не скомпілювався)'] if failed else \
         db_doubts(it, ops, db_pragma_tables(con, reads))
     ok = {t for t, k in kinds.items() if k in ('table', 'shadow')}
@@ -3880,7 +3935,7 @@ def _db_guard(con, it, why, mark, write, sql, args):
         return lambda: refuse(f'годинник SQLite ({name}) без права «час» (з квотою «час≤N» — лише 🜔час) — дати рахуйте в Nigredo (◷) чи дайте «час» у печатці')
 
     def rand(name):
-        return lambda *a: refuse(f'випадковість SQLite ({name}) без права «жереб» (з квотою «жереб≤N» — лише 🜔жереб)')
+        return lambda *a: refuse(DB_RAND_WHY.format(name))
     # детермінованість — як у самого SQLite: функції дат — так, CURRENT_* і random — ні (інакше GENERATED … AS
     # (random()) чи індекс на CURRENT_TIME пройшли б і записали схему, якої SQLite потім не відкриє; суд 9б)
     if not clock_ok:
@@ -4296,14 +4351,17 @@ TOOLS = {
                   'таблиці з AUTOINCREMENT), — «запобіжна відмова» (у сліді окремо від «заборонено»: так у самій базі, а в '
                   'запиті заборонених дій authorizer і байткод SQLite не знайшли; знайшли — ATTACH, PRAGMA, random, '
                   'годинник, — це «заборонено», хоч база й на межі; rowid, який запит дав би іншим таблицям, без '
-                  'виконання не перевірено); CREATE VIRTUAL TABLE — відмова; «заборонено: службова функція» на запиті '
-                  'без ngr_rowid — її покликала схема самої бази (чужа база з пасткою: DEFAULT, CHECK, тригер…) — тривога '
-                  'слушна',
+                  'виконання не перевірено); CREATE VIRTUAL TABLE — відмова; «заборонено: службова функція» на запиті, що '
+                  'її не кличе: «кличе схема бази» — пастка чужої бази (DEFAULT, CHECK, тригер…), тривога слушна; «лише '
+                  'згадує» — ngr_rowid у назві таблиці чи стовпця, рядку чи коментарі схеми: таку таблицю бд.писати '
+                  'пише лише з 「жереб」 без квоти',
                   True, 'тека', t_db_write),
-    'мережа.взяти': (1, '🜔взяти url → рядок', 'HTTP GET (до 1 МБ, 30 с; адреса — повністю в сліді: даними в адресі '
+    'мережа.взяти': (1, '🜔взяти url → рядок', 'HTTP GET (відповідь до 1 000 000 байтів — 10⁶, не МіБ; більша, обірвана '
+                     'чи не UTF-8 — помилка; 30 с; адреса — повністю в сліді: даними в адресі '
                      'теж можна поділитися з хостом, тож дозволяйте лише хости, яким довіряєте)', True, 'хост', t_fetch),
     'мережа.послати': (2, '🜔послати url тіло → рядок', 'HTTP POST: тіло-рядок — як текст, список чи словник — як JSON; '
-                       'відповідь до 1 МБ, 30 с (окремий дозвіл: надсилання даних назовні)', True, 'хост', t_send),
+                       'відповідь до 1 000 000 байтів — 10⁶, не МіБ (більша, обірвана чи не UTF-8 — помилка), 30 с '
+                       '(окремий дозвіл: надсилання даних назовні)', True, 'хост', t_send),
     'процес': (1, '🜔процес 【「git」 「status」】 → вивід', 'запустити команду з печатки без оболонки (60 с, вивід до '
                '1 МБ; не 0 — помилка). Дозвіл — початок команди: 「процес:git status」 не дає git push. Команда діє з правами '
                'процесу: межі тек Nigredo на неї не діють (git, make, npm у теці, куди можна писати, — довільний код; команда, що '
