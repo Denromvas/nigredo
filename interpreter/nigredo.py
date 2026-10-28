@@ -20,7 +20,7 @@ import decimal
 import math
 from decimal import ROUND_HALF_UP, Decimal
 
-VERSION = '0.8.1-dev'
+VERSION = '0.8.1'
 MAX_DEPTH = 2000
 WALK_MAX_DEPTH = 2000     # показ, порівняння, JSON, ключі ⇅ обходять значення не глибше: далі — «вкладене надто глибоко»
 #                           (межа мови, а не стека CPython — та сама в еталоні й Атанорі, від версії Python не залежить)
