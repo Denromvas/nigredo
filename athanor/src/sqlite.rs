@@ -770,16 +770,115 @@ fn service(ops: &[(String, Option<String>)]) -> bool {
 const SVC_WHY: &str = "службова функція інтерпретатора (ngr_rowid) — її кличуть лише його тимчасові тригери";
 const SVC_NOTE: &str = "; у запиті її немає — її кличе схема бази (DEFAULT, CHECK, згенерований стовпець, індекс, тригер, VIEW чи тіньова таблиця)";
 
+/// db_SAFE_VMODULES: віртуальні таблиці даних, які база може оголосити своїми «таблицями самої бази» (R-Tree,
+/// повнотекст). dbstat, sqlite_dbpage, sqlite_stmt — не дані бази, а її нутрощі: їх не пускаємо навіть схемною
+/// CREATE VIRTUAL TABLE (огляд 0.8.1е).
+const SAFE_VMODULES: [&str; 9] = ["rtree", "rtree_i32", "geopoly", "fts3", "fts4", "fts5", "fts4aux", "fts5vocab", "fts3tokenize"];
+
+/// db_using_module: модуль з «CREATE VIRTUAL TABLE … USING <модуль>» — малими ASCII (None, якщо немає).
+fn using_module(sql: &str) -> Option<String> {
+    let s = sql.to_ascii_lowercase();
+    let b = s.as_bytes();
+    let mut j = s.find(" using ")? + 7;
+    while j < b.len() && matches!(b[j], b' ' | b'\t' | b'\n' | b'\r' | b'"' | b'`' | b'[') {
+        j += 1;
+    }
+    let mut k = j;
+    while k < b.len() && (b[k].is_ascii_alphanumeric() || b[k] == b'_') {
+        k += 1;
+    }
+    (k > j).then(|| s[j..k].to_string())
+}
+
+/// db_schema_vtabs: (назва, модуль) схемних віртуальних таблиць (main і temp) — те, що база оголосила через
+/// CREATE VIRTUAL TABLE; назва й модуль — малими ASCII, як їх порівнює SQLite (огляд 0.8.1е).
+fn schema_vtabs(l: &Lib, db: *mut c_void) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for schema in ["main", "temp"] {
+        let q = format!("SELECT name, sql FROM {}.sqlite_master WHERE type = 'table' AND sql IS NOT NULL \
+                         AND instr(lower(sql), 'create virtual table') > 0", schema);
+        let Ok(st) = execute(l, db, &q, &[]) else { continue };
+        let mut rc = st.rc;
+        while rc == SQLITE_ROW {
+            if let Ok(cells) = fetch_row(l, st.st) {
+                if let (Some(Cell::Text(name)), Some(Cell::Text(sql))) = (cells.first(), cells.get(1)) {
+                    if let Some(m) = using_module(sql) {
+                        let nl = name.to_ascii_lowercase();
+                        if !out.iter().any(|(n, _)| *n == nl) {
+                            out.push((nl, m));
+                        }
+                    }
+                }
+            }
+            rc = (l.step)(st.st);
+        }
+        if !st.st.is_null() {
+            (l.finalize)(st.st);
+        }
+    }
+    out
+}
+
 /// db_vtabs: віртуальні таблиці SQLite, яких програма не бачить (огляд 0.8.1д, Н-1 Аудитора й Оркестратора: sqlite_stmt —
 /// перелік запитів зʼєднання з текстом, а в еталона й тимчасові тригери з назвою службової). Перелік дозволених: модулі
 /// зʼєднання, крім json_each, json_tree і таблиць-функцій PRAGMA; sqlite_… — завжди, решта — коли таблиці чи VIEW з
-/// такою назвою в самій базі немає. Назви — малими ASCII, як їх порівнює SQLite.
+/// такою назвою в самій базі немає (а модуль під тією назвою ловить vtab_plan за планом). Ще — схемні CREATE VIRTUAL
+/// TABLE на модулі не з даних (dbstat, sqlite_dbpage…): їх видно під власною назвою таблиці (огляд 0.8.1е). Назви —
+/// малими ASCII, як їх порівнює SQLite.
 fn vtabs(l: &Lib, db: *mut c_void) -> Result<Vec<String>, PyErr> {
-    exec(l, db, "SELECT lower(name) FROM pragma_module_list m WHERE lower(name) NOT IN ('json_each', 'json_tree') \
+    let mut bad = exec(l, db, "SELECT lower(name) FROM pragma_module_list m WHERE lower(name) NOT IN ('json_each', 'json_tree') \
                  AND substr(lower(name), 1, 7) <> 'pragma_' AND (substr(lower(name), 1, 7) = 'sqlite_' OR (NOT EXISTS \
                  (SELECT 1 FROM main.sqlite_master s WHERE s.type IN ('table', 'view') AND lower(s.name) = lower(m.name)) \
                  AND NOT EXISTS (SELECT 1 FROM temp.sqlite_master s WHERE s.type IN ('table', 'view') \
-                 AND lower(s.name) = lower(m.name))))", &[])
+                 AND lower(s.name) = lower(m.name))))", &[])?;
+    for (name, m) in schema_vtabs(l, db) {
+        if !SAFE_VMODULES.contains(&m.as_str()) && !bad.contains(&name) {
+            bad.push(name);
+        }
+    }
+    Ok(bad)
+}
+
+/// db_vtab_plan: EXPLAIN QUERY PLAN — яку віртуальну таблицю SQLite відкриває НАСПРАВДІ, а не як названо (temp.dbstat
+/// при справжній таблиці dbstat — це модуль, authorizer за назвою його не бачить; огляд 0.8.1е, Н-1 Скептика). Назви у
+/// vt (прямі sqlite_… і схемні vtab на небезпечному модулі) — authorizer (його текст незмінний); json_*, PRAGMA й схемні
+/// vtab на модулях даних — дозволені. Причина відмови або None.
+fn vtab_plan(l: &Lib, db: *mut c_void, sql: &str, args: &[Arg], vt: &[String]) -> Option<String> {
+    let st = execute(l, db, &format!("EXPLAIN QUERY PLAN {}", sql), args).ok()?;
+    let mut sv: Option<Vec<(String, String)>> = None;
+    let mut hit: Option<String> = None;
+    let mut rc = st.rc;
+    while rc == SQLITE_ROW {
+        if hit.is_none() {
+            if let Ok(cells) = fetch_row(l, st.st) {
+                if let Some(Cell::Text(detail)) = cells.last() {
+                    if let Some(i) = detail.find(" VIRTUAL TABLE INDEX ") {
+                        if let Some(sp) = detail[..i].find(' ') {
+                            let name = &detail[sp + 1..i];
+                            let base = name.rsplit('.').next().unwrap_or(name)
+                                .trim_matches(|c| c == '"' || c == '[' || c == ']' || c == '`').to_ascii_lowercase();
+                            let ok = base == "json_each" || base == "json_tree" || vt.contains(&base) || base.starts_with("pragma_")
+                                || {
+                                    if sv.is_none() {
+                                        sv = Some(schema_vtabs(l, db));
+                                    }
+                                    sv.as_ref().unwrap().iter().any(|(n, m)| *n == base && SAFE_VMODULES.contains(&m.as_str()))
+                                };
+                            if !ok {
+                                hit = Some(format!("віртуальна таблиця SQLite «{}» — програмі лише json_each, json_tree і таблиці самої бази",
+                                                   uni::safe(&base)));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        rc = (l.step)(st.st);
+    }
+    if !st.st.is_null() {
+        (l.finalize)(st.st);
+    }
+    hit
 }
 
 /// db_rtree: бд.читати — R-Tree (rtree, rtree_i32, geopoly) готує свої INSERT ще при підключенні таблиці, і authorizer
@@ -836,6 +935,11 @@ fn written(l: &Lib, db: *mut c_void, clock_ok: bool, sql: &str, args: &[Arg]) ->
     let code = if ops.is_err() && w.auth.why.is_empty() { prepare_code(l, db, &db_explain(sql)) } else { None };
     (l.set_authorizer)(db, None, std::ptr::null_mut());
     let failed = ops.is_err();
+    if w.auth.why.is_empty() && !failed {   // модуль під назвою таблиці (temp.dbstat) у підзапиті запису — за планом (0.8.1е)
+        if let Some(pw) = vtab_plan(l, db, sql, args, &w.auth.vt) {
+            w.auth.why.push(pw);
+        }
+    }
     let none = |denied: Vec<String>| Pass { ins: Vec::new(), upd: Vec::new(), system: Vec::new(), denied, doubt: Vec::new(),
                                             failed };
     if !w.auth.why.is_empty() {
@@ -1350,6 +1454,10 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
             auth.vt = vtabs(l, db).map_err(Ok)?; // запису — ще в транзакції guard
             if !write {
                 rtree(l, db);
+                if let Some(pw) = vtab_plan(l, db, &sql, &bound, &auth.vt) {   // модуль під назвою таблиці — за планом (0.8.1е)
+                    auth.why.push(pw.clone());
+                    return Err(Ok(PyErr::Sql(pw)));   // у обробник Sql: db_refusal, deny-лог і код 4 — як в authorizer
+                }
             }
             (l.set_authorizer)(db, Some(on_auth), &mut auth as *mut AuthCtx as *mut c_void);
             (l.progress)(db, 1000, Some(on_progress), &mut prog as *mut ProgCtx as *mut c_void);
@@ -1555,6 +1663,8 @@ pub fn rights(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) ->
         };
         it.db_unchecked = failed && denied.is_empty();
         w.auth.why.extend(if !denied.is_empty() { denied } else if failed { Vec::new() } else { doubt });
+    } else if let Some(pw) = vtab_plan(l, db, &sql, &bound, &w.auth.vt) {   // модуль під назвою таблиці — за планом (0.8.1е)
+        w.auth.why.push(pw);
     } else {
         (l.set_authorizer)(db, Some(on_record), &mut w as *mut Written as *mut c_void);
         // «;PRAGMA …» — та сама відмова, що й у запуску (суд 9г); не скомпілювався на нинішній базі — random, годинник

@@ -1882,6 +1882,71 @@ def main():
           'SQLite: ідіома FAQ зі sqlite_temp_master — ✓ і в бд.читати, і в бд.писати: стовпець sql схеми temp — NULL, а не '
           '«заборонено»; ALTER TABLE RENAME, RENAME COLUMN, DROP COLUMN працюють (огляд 0.8.1д)',
           resf81д[0].stdout + resf81д[0].stderr + resf81д[1] + resf81д[2].stdout + resf81д[3])
+    # огляд 0.8.1е (Н-1 Скептика й автор): перелік дозволених віртуальних таблиць звіряв НАЗВУ, а SQLite розвʼязує пару
+    # «схема.назва»: temp.dbstat при справжній таблиці dbstat читав модуль (сторінки файлу), а схемна CREATE VIRTUAL TABLE
+    # на модулі не з даних (st USING dbstat, pg USING sqlite_dbpage) читала/писала нутрощі бази під власною назвою. Тепер —
+    # за планом (EXPLAIN QUERY PLAN): модуль під назвою таблиці «заборонено» у запуску, під квотою й у --сухо однаково;
+    # схемну vtab на небезпечному модулі ловить і authorizer за назвою; справжня таблиця dbstat, R-Tree і json_each — ✓
+    vt81е = {n_: f'{DATA}/звіти/{n_}81е.db' for n_ in ('тінь', 'стат', 'пейдж', 'дерево')}
+
+    def foreign81е():
+        for f_ in vt81е.values():
+            if os.path.exists(f_):
+                os.remove(f_)
+        with sqlite3.connect(vt81е['тінь']) as c_:
+            c_.executescript("CREATE TABLE dbstat(x); INSERT INTO dbstat(x) VALUES (7); CREATE TABLE t(a)")
+        with sqlite3.connect(vt81е['стат']) as c_:
+            c_.executescript("CREATE TABLE t(a); CREATE VIRTUAL TABLE st USING dbstat")
+        with sqlite3.connect(vt81е['пейдж']) as c_:
+            c_.executescript("CREATE TABLE t(a); CREATE VIRTUAL TABLE pg USING sqlite_dbpage")
+        with sqlite3.connect(vt81е['дерево']) as c_:
+            c_.executescript("CREATE VIRTUAL TABLE r USING rtree(id, x0, x1); INSERT INTO r VALUES (1, 0, 1)")
+
+    def rd81е(p, q):
+        return f'» ☂ ＋ 「✓ 」 σ 🜔бд.читати 「{p}」 「{q}」 【】 λe ＋ 「✗ 」 e\n'
+
+    def wr81е(p, q):
+        return f'» ☂ ＋ 「✓ 」 σ 🜔бд.писати 「{p}」 「{q}」 【】 λe ＋ 「✗ 」 e\n'
+    body81е = (wr81е(vt81е['тінь'], 'INSERT INTO t(a) VALUES (1)')                       # 0: квоту ≤1 вичерпує
+               + wr81е(vt81е['тінь'], 'INSERT INTO t SELECT pageno FROM temp.dbstat')    # 1: модуль у підзапиті — заборонено
+               + wr81е(vt81е['пейдж'], 'UPDATE pg SET data = data WHERE pgno = 1')        # 2: сліпий запис у pg — заборонено
+               + rd81е(vt81е['тінь'], 'SELECT count(*) AS n FROM temp.dbstat')            # 3: модуль під назвою таблиці
+               + rd81е(vt81е['тінь'], 'SELECT x FROM dbstat')                             # 4: справжня таблиця dbstat — ✓
+               + rd81е(vt81е['стат'], 'SELECT count(*) AS n FROM st')                     # 5: схемна vtab на dbstat
+               + rd81е(vt81е['дерево'], 'SELECT count(*) AS n FROM r')                    # 6: R-Tree — ✓
+               + rd81е(vt81е['дерево'], "SELECT value AS v FROM json_each('[5]')"))       # 7: json_each — ✓
+    vdbst_ = 'заборонено: віртуальна таблиця SQLite «{}» — програмі лише json_each, json_tree і таблиці самої бази'
+    res81е = []
+    for k_ in range(2):              # 0 — Атанор, 1 — еталон; бінарник той самий dlopen libsqlite3
+        cmd_ = NGR_CMD if k_ == 0 else [sys.executable, str(NGR)]
+        for mode_, seal_, dry_ in (('запуск', '', []), ('квота', '≤1', []), ('сухо', '', ['--сухо'])):
+            foreign81е()
+            bytes_ = {n_: pathlib.Path(p_).read_bytes() for n_, p_ in vt81е.items()}
+            tp_ = tmp / f'вт81е_{k_}_{mode_}.jsonl'
+            res81е.append(subprocess.run(
+                [*cmd_, '--слід', str(tp_), *dry_, '-e',
+                 f'🜂 【「бд.писати:{DATA}/звіти{seal_}」 「бд.читати:{DATA}/звіти」】\n' + body81е],
+                capture_output=True, text=True, env=envd))
+            res81е.append(all(pathlib.Path(p_).read_bytes() == bytes_[n_] for n_, p_ in vt81е.items()) if dry_ else None)
+            res81е.append(subprocess.run([sys.executable, str(NGR), '--перевірити-слід', str(tp_)], capture_output=True,
+                                         text=True, env=envd).stdout)
+    out81е = [res81е[i_].stdout.splitlines() for i_ in range(0, len(res81е), 3)]   # [Атанор: запуск, квота, сухо; еталон: …]
+    run_, quota_, dry_ = out81е[0], out81е[1], out81е[2]
+    deny81е = [f'✗ бд.писати: {vdbst_.format("dbstat")}', f'✗ бд.писати: {vdbst_.format("pg")}',
+               f'✗ бд.читати: {vdbst_.format("dbstat")}', f'✗ бд.читати: {vdbst_.format("st")}']   # рядки 1,2,3,5 (☂ дає ✗)
+    check(out81е[:3] == out81е[3:]                        # Атанор = еталон у всіх трьох режимах
+          and [run_[1], run_[2], run_[3], run_[5]] == deny81е          # модуль і схемна vtab — заборонено
+          and [quota_[1], quota_[2], quota_[3], quota_[5]] == deny81е  # так само під вичерпаною квотою (не «вичерпано квоту»)
+          and [dry_[1], dry_[2], dry_[3], dry_[5]] == deny81е          # і в --сухо (не «✓ без позначки»)
+          and run_[4] == '✓ 【『「x」 7』】' and run_[6] == '✓ 【『「n」 1』】' and run_[7] == '✓ 【『「v」 5』】'
+          and run_[0] == '✓ 1' and quota_[0] == '✓ 1'                  # перший запис бере квоту ≤1
+          and res81е[1] is None and res81е[7] is True                  # --сухо лишає всі бази байт у байт
+          and '(«заборонено»): 4 ' in res81е[2],                       # слід: 4 спроби поза правами (рядки 1,2,3,5)
+          'SQLite: модуль під назвою справжньої таблиці (temp.dbstat) і схемна CREATE VIRTUAL TABLE на модулі не з даних '
+          '(st USING dbstat, pg USING sqlite_dbpage) — «заборонено: віртуальна таблиця» за планом у запуску, під квотою й '
+          'у --сухо однаково (Атанор = еталон); справжня таблиця dbstat, R-Tree і json_each — ✓; --сухо не змінює баз '
+          '(огляд 0.8.1е)',
+          '\n---\n'.join('\n'.join(o_) for o_ in out81е) + '\n===\n' + res81е[0].stderr + res81е[2])
     seal81 = tmp / 'печатка81'
     (seal81 / 'звіти').mkdir(parents=True, exist_ok=True)
     (seal81 / 'файл.ngr').write_text('🜂 「новий файл」 【「писати:звіти/нова.txt」】\n» 🜔писати 「звіти/нова.txt」 「x」\n',
