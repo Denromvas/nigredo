@@ -1,0 +1,11 @@
+🜂 「атака21: готує базу — таблиці, у схемі яких ngr_rowid лише в рядку, коментарі, назві стовпця, тригері іншої таблиці й частковому індексі; лише бд.писати」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE t(x)」
+» з 「CREATE TABLE s1(a DEFAULT 'ngr_rowid')」
+» з 「CREATE TABLE s2(a /* ngr_rowid */)」
+» з 「CREATE TABLE s3(ngr_rowid_n)」
+» з 「CREATE TABLE u(x)」
+» з 「CREATE TRIGGER tt AFTER INSERT ON u BEGIN INSERT INTO s1(a) VALUES (2); END」
+» з 「CREATE TABLE p(x)」
+» з 「CREATE INDEX px ON p(x) WHERE x <> 'NGR_ROWID'」

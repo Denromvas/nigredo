@@ -1,0 +1,8 @@
+🜂 「атака21: random() поряд з параметром ? у --сухо (без квоти) — позначка «заборонено» чи «не скомпілювався»; контроль — звичайний запит з ?」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← зп Λq п ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q п λпом ＋ 「✗ 」 пом
+» зп 「INSERT INTO d(a, b) VALUES (random(), ?)」 【1】
+» зп 「INSERT INTO d(a, b) VALUES (?, random())」 【「x」】
+» зп 「INSERT INTO d(a, b) VALUES (random(), ?)」 【】
+» зп 「INSERT INTO d(a, b) SELECT ?, value FROM json_each(?) WHERE random() > 0」 【1 「[1,2]」】
+» зп 「INSERT INTO d(a, b) VALUES (?, ?)」 【1 2】

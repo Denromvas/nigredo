@@ -1,0 +1,8 @@
+🜂 「атака20: звичайні запити до схеми — ідіома SQLite FAQ (sqlite_master UNION ALL sqlite_temp_master), назви таблиць temp, схема main; лише бд.читати」 【「бд.читати:дані」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.читати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name」
+» з 「SELECT name, sql FROM sqlite_schema WHERE name = 't'」
+» з 「SELECT name FROM (SELECT * FROM sqlite_master UNION ALL SELECT * FROM sqlite_temp_master) WHERE type = 'table' ORDER BY name」
+» з 「SELECT name FROM sqlite_master UNION ALL SELECT name FROM sqlite_temp_master」
+» з 「SELECT count(*) AS n FROM sqlite_temp_master」

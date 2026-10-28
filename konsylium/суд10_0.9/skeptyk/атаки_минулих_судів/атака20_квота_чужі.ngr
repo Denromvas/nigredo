@@ -1,0 +1,10 @@
+🜂 「атака20: бази не з Nigredo під вичерпаною квотою бд.писати≤1 — CHECK таблиці на межі, R-Tree, DEFAULT, згенерований: заборонено чи квоту вичерпано」 【「бд.писати:звіти≤1」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) VALUES (1)」
+» з 「INSERT INTO c(a) VALUES (1)」
+» з 「INSERT INTO c(rowid, a) VALUES (5, NULL)」
+» з 「INSERT INTO r VALUES (1, 0, 1)」
+» з 「INSERT INTO d(a) VALUES (2)」
+» з 「INSERT INTO g(a) VALUES (1)」
+» з 「INSERT INTO t(x) VALUES (2)」

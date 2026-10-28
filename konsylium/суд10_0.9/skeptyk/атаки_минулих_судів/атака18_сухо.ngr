@@ -1,0 +1,10 @@
+🜂 「атака18: що бачить --сухо — random, дата, rowid 2⁶³−1, sqlite_dbpage, тригер з random; поряд невинний INSERT」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) VALUES (random())」
+» з 「INSERT INTO t(x) VALUES (date('now'))」
+» з 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, 1)」
+» з 「UPDATE sqlite_dbpage SET data = data WHERE pgno = 2」
+» з 「INSERT INTO t3(x) VALUES (1)」
+» з 「INSERT INTO td(x) VALUES (1)」
+» з 「INSERT INTO t(x) VALUES (5)」

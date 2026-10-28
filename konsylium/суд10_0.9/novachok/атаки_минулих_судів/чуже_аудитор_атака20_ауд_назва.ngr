@@ -1,0 +1,14 @@
+🜂 「атака20 (аудитор): чи дістане програма випадкову назву службової (128 біт без «жереб») не з тексту схеми temp — sqlite_stmt, bytecode(), tables_used(), dbstat temp, pragma_function_list」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS t(x)」
+» з 「CREATE TABLE IF NOT EXISTS v(s)」
+» з 「INSERT INTO t(x) VALUES (1)」
+» з 「INSERT INTO v(s) SELECT sql FROM sqlite_stmt」
+» з 「INSERT INTO v(s) SELECT p4 FROM bytecode('INSERT INTO v(s) VALUES (2)')」
+» з 「INSERT INTO v(s) SELECT subprog FROM bytecode('INSERT INTO v(s) VALUES (2)')」
+» з 「INSERT INTO v(s) SELECT name FROM tables_used('INSERT INTO v(s) VALUES (2)')」
+» з 「INSERT INTO v(s) SELECT name || char(58) || payload FROM dbstat('temp')」
+» з 「INSERT INTO v(s) SELECT name FROM pragma_function_list」
+» з 「INSERT INTO v(s) SELECT name FROM temp.sqlite_master」
+» з 「INSERT INTO t(x) VALUES (3)」

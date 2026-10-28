@@ -1,0 +1,12 @@
+🜂 「атака12: годинник і випадковість SQLite через DEFAULT у схемі — без «час» і «жереб»」 【「бд.писати:звіти」】
+← б 「звіти/default.db」
+» 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS t(x, ts DEFAULT CURRENT_TIMESTAMP, r DEFAULT (random()))」 【】
+» 🜔бд.писати б 「DELETE FROM t」 【】
+» 🜔бд.писати б 「CREATE TABLE IF NOT EXISTS n(i)」 【】
+» 🜔бд.писати б 「DELETE FROM n」 【】
+» 🜔бд.писати б 「INSERT INTO t(x) VALUES (1)」 【】
+← сек 🜔бд.писати б 「WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM c WHERE i < (SELECT CAST(substr(ts,18,2) AS INTEGER) + 1 FROM t)) INSERT INTO n SELECT i FROM c」 【】
+» 〔секунда з годинника SQLite (без права «час»): {－ сек 1}〕
+» 🜔бд.писати б 「DELETE FROM n」 【】
+← жр 🜔бд.писати б 「WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM c WHERE i < (SELECT abs(r) % 100 + 1 FROM t)) INSERT INTO n SELECT i FROM c」 【】
+» 〔випадкове 0–99 з random() SQLite (без права «жереб»): {－ жр 1}〕

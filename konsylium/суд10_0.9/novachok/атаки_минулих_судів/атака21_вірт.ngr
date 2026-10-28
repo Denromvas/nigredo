@@ -1,0 +1,54 @@
+🜂 「атака21: перелік дозволених віртуальних таблиць і правило тексту схеми у бд.писати — обхідні шляхи, json_each/json_tree, таблиці з назвою модуля, ідіома FAQ, назви тимчасових тригерів, ngr_rowid у рядку й коментарі схеми, звичайні запити」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+∀ 【「CREATE TABLE IF NOT EXISTS v(s)」
+  「CREATE TABLE IF NOT EXISTS t(x)」
+  「INSERT INTO v(s) SELECT value FROM json_each('[1,2,3]')」
+  「INSERT INTO v(s) SELECT key FROM json_tree('{"a":{"b":1}}')」
+  「CREATE TABLE IF NOT EXISTS dbstat(x)」
+  「INSERT INTO dbstat(x) VALUES (1)」
+  「INSERT INTO v(s) SELECT x FROM dbstat」
+  「INSERT INTO v(s) SELECT x FROM main.dbstat」
+  「INSERT INTO v(s) SELECT count(*) FROM dbstat('main')」
+  「CREATE TABLE IF NOT EXISTS sqlite_stmt(x)」
+  「INSERT INTO v(s) SELECT count(*) FROM SQLITE_STMT」
+  「INSERT INTO v(s) SELECT count(*) FROM "sqlite_stmt"」
+  「INSERT INTO v(s) SELECT count(*) FROM main.sqlite_stmt」
+  「INSERT INTO v(s) SELECT count(*) FROM temp.sqlite_stmt」
+  「INSERT INTO v(s) SELECT count(*) FROM generate_series(1, 3)」
+  「CREATE VIEW IF NOT EXISTS vs AS SELECT sql FROM sqlite_stmt」
+  「INSERT INTO v(s) SELECT count(*) FROM vs」
+  「CREATE TRIGGER IF NOT EXISTS tv AFTER INSERT ON t BEGIN INSERT INTO v(s) SELECT count(*) FROM sqlite_stmt; END」
+  「INSERT INTO t(x) VALUES (1)」
+  「DROP TRIGGER IF EXISTS tv」
+  「WITH sqlite_stmt(sql) AS (SELECT 'x') INSERT INTO v(s) SELECT sql FROM sqlite_stmt」
+  「INSERT INTO v(s) SELECT hex(randomblob(1))」
+  「INSERT INTO v(s) SELECT name FROM (SELECT * FROM sqlite_master UNION ALL SELECT * FROM sqlite_temp_master) WHERE type = 'table'」
+  「INSERT INTO v(s) SELECT 1 FROM sqlite_temp_master WHERE sql IS NOT NULL」
+  「INSERT INTO v(s) SELECT name FROM sqlite_temp_master」
+  「INSERT INTO v(s) SELECT 1 FROM sqlite_temp_master WHERE length(name) > 16 OR name GLOB '*[a-fA-F]*'」
+  「CREATE TABLE IF NOT EXISTS n1(a, b DEFAULT 'ngr_rowid')」
+  「INSERT INTO n1(a) VALUES (1)」
+  「CREATE TABLE IF NOT EXISTS n2(a /* ngr_rowid */)」
+  「INSERT INTO n2(a) VALUES (1)」
+  「CREATE TABLE IF NOT EXISTS ngr_rowid_журнал(x)」
+  「INSERT INTO ngr_rowid_журнал(x) VALUES (1)」
+  「CREATE TABLE IF NOT EXISTS n4(a)」
+  「CREATE TRIGGER IF NOT EXISTS n4t AFTER INSERT ON n4 BEGIN INSERT INTO v(s) VALUES ('ngr_rowid'); END」
+  「INSERT INTO n4(a) VALUES (1)」
+  「UPDATE n1 SET a = 2」
+  「DELETE FROM n2」
+  「CREATE TABLE IF NOT EXISTS k(id INTEGER PRIMARY KEY, a CHECK (a > 0), b DEFAULT (abs(-5)), c AS (a * 2), d TEXT DEFAULT 'x')」
+  「CREATE INDEX IF NOT EXISTS ki ON k(lower(d))」
+  「CREATE TABLE IF NOT EXISTS klog(m)」
+  「CREATE TRIGGER IF NOT EXISTS kt AFTER INSERT ON k BEGIN INSERT INTO klog(m) VALUES (new.a); END」
+  「CREATE VIEW IF NOT EXISTS kv AS SELECT a, c FROM k」
+  「INSERT INTO k(a) VALUES (1), (2), (3)」
+  「INSERT INTO k(a) VALUES (0)」
+  「UPDATE k SET a = a + 10 WHERE a > 1」
+  「INSERT INTO k(id, a) VALUES (1, 7) ON CONFLICT(id) DO UPDATE SET a = excluded.a」
+  「INSERT INTO v(s) SELECT c FROM kv」
+  「DELETE FROM k WHERE a = 7」
+  「CREATE TABLE IF NOT EXISTS ka(id INTEGER PRIMARY KEY AUTOINCREMENT, x)」
+  「INSERT INTO ka(x) VALUES (1)」
+  「INSERT INTO v(s) SELECT count(*) FROM pragma_table_info('k')」】 λq » 〔{⊏ q 0 50} → {з q}〕

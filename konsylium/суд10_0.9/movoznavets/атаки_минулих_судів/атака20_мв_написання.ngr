@@ -1,0 +1,29 @@
+🜂 「огляд 0.8.1д, Мовознавець: приманка ngr_rowid у DEFAULT стовпця — аргументи Новачка й Оркестратора, «немає», і інші написання того самого імені (регістр, лапки, дужки, коментар перед дужкою), явний rowid 2⁶³−1 на свіжій базі; лише бд.писати」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE d(a, b DEFAULT (ngr_rowid('d', 0)))」
+» з 「INSERT INTO d(rowid, a) VALUES (9223372036854775807, 1)」
+» з 「CREATE TABLE d9(a, b DEFAULT (ngr_rowid('d9', 9)))」
+» з 「INSERT INTO d9(a) VALUES (1)」
+» з 「INSERT INTO d9(a, b) VALUES (2, 2)」
+» з 「CREATE TABLE ns(a, b DEFAULT (ngr_rowid('немає', 0)))」
+» з 「INSERT INTO ns(rowid, a) VALUES (9223372036854775807, 1)」
+» з 「CREATE TABLE up(a, b DEFAULT (NGR_ROWID('up', 0)))」
+» з 「INSERT INTO up(rowid, a) VALUES (9223372036854775807, 1)」
+» з 「CREATE TABLE mx(a, b DEFAULT (Ngr_RowId('mx', 0)))」
+» з 「INSERT INTO mx(rowid, a) VALUES (9223372036854775807, 1)」
+» з 「CREATE TABLE dq(a, b DEFAULT ("ngr_rowid"('dq', 0)))」
+» з 「INSERT INTO dq(rowid, a) VALUES (9223372036854775807, 1)」
+» з 「CREATE TABLE sq(a, b DEFAULT ([ngr_rowid]('sq', 0)))」
+» з 「INSERT INTO sq(rowid, a) VALUES (9223372036854775807, 1)」
+» з 「CREATE TABLE bt(a, b DEFAULT (`ngr_rowid`('bt', 0)))」
+» з 「INSERT INTO bt(rowid, a) VALUES (9223372036854775807, 1)」
+» з 「CREATE TABLE cm(a, b DEFAULT (ngr_rowid /* x */ ('cm', 0)))」
+» з 「INSERT INTO cm(rowid, a) VALUES (9223372036854775807, 1)」
+» з 「CREATE TABLE tt(x)」
+» з 「INSERT INTO tt(rowid, x) VALUES (9223372036854775807, NGR_ROWID('tt', 0))」
+» з 「INSERT INTO tt(rowid, x) VALUES (9223372036854775807, "Ngr_Rowid"('tt', 0))」
+» з 「UPDATE d SET a = a WHERE rowid = 9223372036854775807」
+» з 「UPDATE up SET a = a WHERE rowid = 9223372036854775807」
+» з 「UPDATE dq SET a = a WHERE rowid = 9223372036854775807」
+» з 「UPDATE tt SET x = x WHERE rowid = 9223372036854775807」

@@ -1,0 +1,8 @@
+🜂 「атака19 (оркестратор, підтвердження умови 0.8.1в): тригер бази в main, що кличе службову ngr_rowid, і VIEW з нею — має бути «заборонено», не «запобіжна»」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TRIGGER ngr_rowid_0_0 AFTER INSERT ON t BEGIN SELECT ngr_rowid('t', 0); END」
+» з 「INSERT INTO t(x) VALUES (7)」
+» з 「CREATE VIEW v AS SELECT ngr_rowid('t', 0) AS r」
+» з 「SELECT r FROM v」
+» з 「INSERT INTO t(x) VALUES (Ngr_Rowid('t', 0))」

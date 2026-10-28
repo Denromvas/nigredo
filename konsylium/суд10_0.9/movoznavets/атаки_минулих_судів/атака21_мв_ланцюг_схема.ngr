@@ -1,0 +1,12 @@
+🜂 「огляд 0.8.1е, Мовознавець: схема для ланцюжка на копії чужої бази з CHECK таблиці c на межі — у c пишуть лише нові тригери: AFTER INSERT і AFTER UPDATE на lt, INSTEAD OF на VIEW lv; контроль lt2 → t (без CHECK); n — нейтральна таблиця для квоти」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE n(x)」
+» з 「CREATE TABLE lt(x)」
+» з 「CREATE TABLE lt2(x)」
+» з 「CREATE TRIGGER lti AFTER INSERT ON lt BEGIN INSERT INTO c(a) VALUES (new.x); END」
+» з 「CREATE TRIGGER ltu AFTER UPDATE ON lt BEGIN UPDATE c SET a = new.x; END」
+» з 「CREATE TRIGGER lti2 AFTER INSERT ON lt2 BEGIN INSERT INTO t(x) VALUES (new.x); END」
+» з 「CREATE VIEW lv AS SELECT 1 AS x」
+» з 「CREATE TRIGGER lvi INSTEAD OF INSERT ON lv BEGIN INSERT INTO c(a) VALUES (new.x); END」
+» з 「INSERT INTO lt2(x) VALUES (0)」

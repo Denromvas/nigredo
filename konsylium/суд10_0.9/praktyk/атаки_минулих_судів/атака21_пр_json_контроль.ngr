@@ -1,0 +1,6 @@
+🜂 「атака21 (практик, контроль до атака21_пр_json): та сама база без своєї таблиці dbstat — temp.dbstat і dbstat мають бути «заборонено»」 【「бд.писати:звіти」】
+← база § ⌂ 0
+← з Λq п ☂ ＋ 「✓ 」 σ 🜔бд.писати база q п λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS накл(ном TEXT, сума INTEGER)」 【】
+» з 「INSERT INTO накл(ном, сума) SELECT 'temp.dbstat', 1 FROM temp.dbstat」 【】
+» з 「INSERT INTO накл(ном, сума) SELECT 'dbstat', 1 FROM dbstat」 【】

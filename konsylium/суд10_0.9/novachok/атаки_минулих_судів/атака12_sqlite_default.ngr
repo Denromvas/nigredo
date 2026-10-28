@@ -1,0 +1,18 @@
+🜂 「суд 9б: годинник і жереб SQLite через DEFAULT стовпця — без «час» і «жереб»」 【「бд.писати:звіти」】
+← б 「звіти/default.db」
+🜔бд.писати б 「CREATE TABLE IF NOT EXISTS т (а)」 【】
+🜔бд.писати б 「DELETE FROM т」 【】
+🜔бд.писати б 「INSERT INTO т SELECT value FROM json_each('[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59]')」 【】
+🜔бд.писати б 「CREATE TABLE IF NOT EXISTS е (x, t DEFAULT CURRENT_TIMESTAMP, s DEFAULT (strftime('%S','now')), u DEFAULT (unixepoch()), r DEFAULT (random()), h DEFAULT (randomblob(4)))」 【】
+🜔бд.писати б 「DELETE FROM е」 【】
+🜔бд.писати б 「INSERT INTO е (x) VALUES (1), (2), (3)」 【】
+← витік λsql 🜔бд.писати б ＋ 「UPDATE т SET а=а WHERE а < 」 sql 【】
+» 〔довжина t (19 — це час): {витік 「(SELECT length(t) FROM е WHERE x=1)」}〕
+» 〔година t: {витік 「(SELECT CAST(substr(t,12,2) AS INTEGER) FROM е WHERE x=1)」}〕
+» 〔хвилина t: {витік 「(SELECT CAST(substr(t,15,2) AS INTEGER) FROM е WHERE x=1)」}〕
+» 〔секунда t: {витік 「(SELECT CAST(substr(t,18,2) AS INTEGER) FROM е WHERE x=1)」}〕
+» 〔секунда s: {витік 「(SELECT CAST(s AS INTEGER) FROM е WHERE x=1)」}〕
+» 〔unixepoch % 60: {витік 「(SELECT u % 60 FROM е WHERE x=1)」}〕
+» 〔random 1, 2, 3 (% 60): {витік 「(SELECT abs(r) % 60 FROM е WHERE x=1)」} {витік 「(SELECT abs(r) % 60 FROM е WHERE x=2)」} {витік 「(SELECT abs(r) % 60 FROM е WHERE x=3)」}〕
+» 〔randomblob 1, 2 (% 60): {витік 「(SELECT unicode(h) % 60 FROM е WHERE x=1)」} {витік 「(SELECT unicode(h) % 60 FROM е WHERE x=2)」}〕
+» 〔впевненість: {± витік 「(SELECT abs(r) % 60 FROM е WHERE x=1)」}〕

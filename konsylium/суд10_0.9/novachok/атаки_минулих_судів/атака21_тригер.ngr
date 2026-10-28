@@ -1,0 +1,13 @@
+🜂 「атака21: тригер і VIEW, що читають sqlite_stmt, уже в базі; random() з ?; назва тимчасового тригера — біти; звичайні запити (для запуску й --сухо)」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+← зп λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【5】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO v2(s) VALUES (0)」
+» з 「INSERT INTO t2(x) VALUES (1)」
+» з 「INSERT INTO v2(s) SELECT count(*) FROM vs2」
+» зп 「INSERT INTO v2(s) VALUES (random() + ?)」
+» зп 「INSERT INTO v2(s) SELECT ? FROM sqlite_temp_master WHERE name <> 'ngr_rowid_0_0'」
+» зп 「INSERT INTO v2(s) SELECT ? FROM sqlite_temp_master WHERE unicode(substr(name, 11, 1)) % 2 = 0」
+» зп 「INSERT INTO v2(s) SELECT ? FROM sqlite_temp_master WHERE unicode(substr(name, 13, 1)) % 2 = 0」
+» зп 「INSERT INTO v2(s) VALUES (?)」
+» з 「DELETE FROM v2 WHERE s = 0」

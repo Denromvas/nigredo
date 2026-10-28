@@ -1,0 +1,10 @@
+🜂 「атака14 (тихо): «;» на початку запиту — rowid навмання без «жереб», жодного «заборонено»」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+» 🜔бд.писати бд 「DROP TABLE IF EXISTS t」 【】
+» 🜔бд.писати бд 「DROP TABLE IF EXISTS n」 【】
+» 🜔бд.писати бд 「CREATE TABLE t(x)」 【】
+» 🜔бд.писати бд 「CREATE TABLE n(i)」 【】
+» 🜔бд.писати бд 「;INSERT INTO t(rowid, x) VALUES (9223372036854775807, 0)」 【】
+» 🜔бд.писати бд 「;INSERT INTO t(x) VALUES (1)」 【】
+← жр 🜔бд.писати бд 「;WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM c WHERE i < (SELECT rowid % 100 + 1 FROM t WHERE x = 1)) INSERT INTO n SELECT i FROM c」 【】
+» 〔випадкове 0–99: {－ жр 1}〕

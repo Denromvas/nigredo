@@ -1,0 +1,6 @@
+🜂 「SQLite: біт часу й біт випадковості через DEFAULT і CHECK лише з бд.писати」 【「бд.писати:звіти」】
+» ☂ 🜔бд.писати 「звіти/а12_б2.db」 「CREATE TABLE IF NOT EXISTS t(x DEFAULT CURRENT_TIMESTAMP CHECK (CAST(substr(x, 19, 1) AS INTEGER) % 2 = 1))」 【】 λe e
+» ☂ 🜔бд.писати 「звіти/а12_б2.db」 「CREATE TABLE IF NOT EXISTS r(y DEFAULT (random()) CHECK (y > 0))」 【】 λe e
+← біт_часу 🜔бд.писати 「звіти/а12_б2.db」 「INSERT OR IGNORE INTO t DEFAULT VALUES」 【】
+← біт_жереба 🜔бд.писати 「звіти/а12_б2.db」 「INSERT OR IGNORE INTO r DEFAULT VALUES」 【】
+» 〔секунда непарна: {біт_часу}; жереб додатний: {біт_жереба}〕

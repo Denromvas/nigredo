@@ -1,0 +1,10 @@
+🜂 「огляд 0.8.1е, Мовознавець: відтворення Н-1 Скептика — своя таблиця dbstat, потім temp.dbstat різними написаннями (регістр, лапки); лише бд.писати на свіжій базі」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE v(s)」
+» з 「INSERT INTO v(s) SELECT 1 FROM temp.dbstat」
+» з 「CREATE TABLE dbstat(x)」
+» з 「INSERT INTO v(s) SELECT 1 FROM dbstat」
+» з 「INSERT INTO v(s) SELECT 1 FROM temp.dbstat」
+» з 「INSERT INTO v(s) SELECT 1 FROM TEMP.DBSTAT」
+» з 「INSERT INTO v(s) SELECT 1 FROM "temp"."dbstat"」

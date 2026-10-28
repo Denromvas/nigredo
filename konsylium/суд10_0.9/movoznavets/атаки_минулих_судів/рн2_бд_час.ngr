@@ -1,0 +1,2 @@
+🜂 「лише читання бази: чи дає SQLite годинник і випадковість без «час»/«жереб»」 【「бд.читати:дані」】
+» ☂ 🜔бд.читати 「дані/рн2.db」 「SELECT strftime('%Y-%m-%d %H:%M:%S','now') AS t, random() AS r, julianday('now') AS j, datetime() AS d, hex(randomblob(8)) AS h, changes() AS c」 【】 λe ＋ 「помилка: 」 e

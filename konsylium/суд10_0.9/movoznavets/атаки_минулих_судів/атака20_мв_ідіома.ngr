@@ -1,0 +1,10 @@
+🜂 「огляд 0.8.1д, Мовознавець: ідіома SQLite FAQ «перелік таблиць» (sqlite_master UNION ALL sqlite_temp_master) і перелік стовпців — у бд.читати (базу дає аргумент 0) і в бд.писати (аргумент 1)」 【「бд.читати:дані」 「бд.писати:звіти」】
+← чит § ⌂ 0
+← пис § ⌂ 1
+← зч λq ☂ ＋ 「✓ 」 σ 🜔бд.читати чит q 【】 λпом ＋ 「✗ 」 пом
+← зп λq ☂ ＋ 「✓ 」 σ 🜔бд.писати пис q 【】 λпом ＋ 「✗ 」 пом
+» зч 「SELECT name FROM (SELECT * FROM sqlite_master UNION ALL SELECT * FROM sqlite_temp_master) WHERE type = 'table' ORDER BY name」
+» зч 「SELECT type, name FROM sqlite_temp_master」
+» зп 「CREATE TABLE tt(x)」
+» зп 「INSERT INTO tt(x) SELECT count(*) FROM (SELECT * FROM sqlite_master UNION ALL SELECT * FROM sqlite_temp_master) WHERE type = 'table'」
+» зп 「INSERT INTO tt(x) SELECT count(*) FROM (SELECT type, name FROM sqlite_master UNION ALL SELECT type, name FROM sqlite_temp_master) WHERE type = 'table'」

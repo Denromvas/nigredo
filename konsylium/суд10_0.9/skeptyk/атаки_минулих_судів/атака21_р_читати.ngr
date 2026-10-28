@@ -1,0 +1,11 @@
+🜂 「атака21: побажання в бд.читати — ідіома SQLite FAQ (sqlite_master UNION ALL sqlite_temp_master), R-Tree count, json_each, pragma_table_info; контроль — sqlite_stmt, dbstat」 【「бд.читати:дані」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.читати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「SELECT name FROM (SELECT * FROM sqlite_master UNION ALL SELECT * FROM sqlite_temp_master) WHERE type = 'table' ORDER BY name」
+» з 「SELECT count(*) AS n, count(sql) AS s FROM (SELECT * FROM sqlite_master UNION ALL SELECT * FROM sqlite_temp_master)」
+» з 「SELECT count(*) AS n FROM r」
+» з 「SELECT id, x0, x1 FROM r WHERE x0 >= 0」
+» з 「SELECT value FROM json_each('[1,2,3]')」
+» з 「SELECT name FROM pragma_table_info('t')」
+» з 「SELECT count(*) AS n FROM sqlite_stmt」
+» з 「SELECT count(*) AS n FROM dbstat」

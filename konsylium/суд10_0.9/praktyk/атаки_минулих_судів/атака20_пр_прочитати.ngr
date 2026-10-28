@@ -1,0 +1,8 @@
+🜂 「атака20 (практик): прочитати назад базу після атака20_пр_схема — t, док, рух, sqlite_sequence」 【「бд.читати:дані」】
+← бд § ⌂ 0
+← ч λq ☂ σ 🜔бд.читати бд q 【】 λпом ＋ 「✗ 」 пом
+» ч 「SELECT x FROM t ORDER BY rowid」
+» ч 「SELECT * FROM док ORDER BY н」
+» ч 「SELECT * FROM рух ORDER BY rowid」
+» ч 「SELECT name, seq FROM sqlite_sequence」
+» ч 「SELECT name FROM sqlite_master WHERE type = 'view'」

@@ -1,0 +1,10 @@
+🜂 【「бд.писати:звіти」】
+← в λq ☂ σ 🜔бд.писати 「р10.db」 q 【】 λe ＋ 「відмова: 」 e
+» ＋ 「0 таблиця: 」 в 「CREATE TABLE IF NOT EXISTS t(a)」
+» ＋ 「1 великими: 」 в 「CREATE TRIGGER t1 AFTER INSERT ON t BEGIN SELECT LOAD_EXTENSION('x'); END」
+» ＋ 「2 у лапках: 」 в 「CREATE TRIGGER t2 AFTER INSERT ON t BEGIN SELECT "load_extension"('x'); END」
+» ＋ 「3 квадратні: 」 в 「CREATE TRIGGER t3 AFTER INSERT ON t BEGIN SELECT [load_extension]('x'); END」
+» ＋ 「4 коментар: 」 в 「CREATE TRIGGER t4 AFTER INSERT ON t BEGIN SELECT load_extension/**/('x'); END」
+» ＋ 「5 VIEW: 」 в 「CREATE VIEW v5 AS SELECT load_extension('x')」
+» ＋ 「6 вставка після: 」 в 「INSERT INTO t VALUES (1)」
+» ＋ 「7 у рядку (не виклик): 」 в 「INSERT INTO t VALUES ('load_extension')」

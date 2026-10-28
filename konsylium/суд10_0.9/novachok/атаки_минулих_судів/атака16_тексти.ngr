@@ -1,0 +1,9 @@
+🜂 「атака16: тексти SQLite — незнайомий знак (\v спереду, незакрита лапка), ORDER BY поза межами, запис у VIEW」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS t(x)」
+» з ＋ δ 「"\\u000b;"」 「INSERT INTO t(x) VALUES (1)」
+» з 「INSERT INTO t(x) VALUES ('незакрита)」
+» з 「INSERT INTO t(x) SELECT x FROM t ORDER BY 5」
+» з 「CREATE VIEW IF NOT EXISTS в AS SELECT x FROM t」
+» з 「INSERT INTO в(x) VALUES (1)」

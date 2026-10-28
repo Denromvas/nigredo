@@ -1,0 +1,15 @@
+🜂 「атака20: бази не з Nigredo (DEFAULT, CHECK на межі, згенерований стовпець і індекс, тіньова таблиця R-Tree) — звичайні вставки й rowid 2⁶³−1; лише бд.писати」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) VALUES (1)」
+» з 「INSERT INTO d(rowid, a) VALUES (9223372036854775807, 1)」
+» з 「INSERT INTO d(a) VALUES (2)」
+» з 「INSERT INTO d(a, b) VALUES (3, 3)」
+» з 「INSERT INTO c(a) VALUES (1)」
+» з 「INSERT INTO c(rowid, a) VALUES (5, NULL)」
+» з 「INSERT INTO g(a) VALUES (1)」
+» з 「INSERT INTO i(a) VALUES (1)」
+» з 「INSERT INTO r VALUES (1, 0, 1)」
+» з 「INSERT INTO r_rowid(rowid, nodeno) VALUES (9223372036854775807, 1)」
+» з 「INSERT INTO t(x) VALUES (2)」
+» з 「SELECT count(*) AS n FROM t」

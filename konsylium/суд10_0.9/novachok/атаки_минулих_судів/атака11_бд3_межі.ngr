@@ -1,0 +1,55 @@
+🜂 「SQLite: вийти за звіти/ — ATTACH, VACUUM INTO, PRAGMA, розширення, тригери, шляхи」 【「бд.писати:звіти」 「бд.читати:дані」】
+← б ＋ 「звіти/м_」 ＋ § ⌂ 0 「.db」
+← з Λ шлях sql » 〔{шлях} «{sql}» →{☂ σ 🜔бд.писати шлях sql 【】 λп ＋ 「ВІДМОВА: 」 п}〕
+← ч Λ шлях sql » 〔читати {шлях} «{sql}» →{☂ Δ 🜔бд.читати шлях sql 【】 λп ＋ 「ВІДМОВА: 」 п}〕
+▶ ∘з б 「CREATE TABLE IF NOT EXISTS т (а)」
+▶ ∘з б 「ATTACH DATABASE 'звіти/../секрет/x.db' AS x」
+▶ ∘з б 「ATTACH 'file:/tmp/x.db?mode=rwc' AS x」
+▶ ∘з б 「attach   database ':memory:' as m」
+▶ ∘з б 「ATTACH '' AS t2」
+▶ ∘з б 「VACUUM INTO '/tmp/nigredo_vacuum.db'」
+▶ ∘з б 「VACUUM INTO 'звіти/копія.db'」
+▶ ∘з б 「VACUUM」
+▶ ∘з б 「PRAGMA writable_schema=ON」
+▶ ∘з б 「PRAGMA journal_mode=WAL」
+▶ ∘з б 「pragma/**/temp_store_directory='/tmp'」
+▶ ∘з б 「SELECT * FROM pragma_table_info('т')」
+▶ ∘з б 「SELECT * FROM pragma_compile_options」
+▶ ∘з б 「INSERT INTO т VALUES (1); DROP TABLE т」
+▶ ∘з б 「INSERT INTO т VALUES (1);」
+▶ ∘з б 「INSERT INTO т VALUES (1); 」
+▶ ∘з б 「INSERT INTO т VALUES (1);--」
+▶ ∘з б 「INSERT INTO т VALUES (1);/* */」
+▶ ∘з б 「SELECT load_extension('/tmp/x.so')」
+▶ ∘з б 「SELECT LOAD_EXTENSION ('/tmp/x')」
+▶ ∘з б 「SELECT "load_extension"('/tmp/x')」
+▶ ∘з б 「SELECT [load_extension]('/tmp/x')」
+▶ ∘з б 「SELECT `load_extension`('/tmp/x')」
+▶ ∘з б 「SELECT load_extension/**/('/tmp/x')」
+▶ ∘з б 「CREATE TRIGGER IF NOT EXISTS тр AFTER INSERT ON т BEGIN SELECT load_extension('/tmp/x'); END」
+▶ ∘з б 「CREATE VIEW IF NOT EXISTS в AS SELECT load_extension('/tmp/x')」
+▶ ∘з б 「CREATE TRIGGER IF NOT EXISTS тр2 AFTER INSERT ON т BEGIN INSERT INTO т SELECT а FROM т LIMIT 0; END」
+▶ ∘з б 「SELECT fts3_tokenizer('simple')」
+▶ ∘з б 「SELECT readfile('/etc/passwd')」
+▶ ∘з б 「SELECT writefile('/tmp/x', 'y')」
+▶ ∘з б 「SELECT edit('x')」
+▶ ∘з б 「CREATE VIRTUAL TABLE IF NOT EXISTS ф USING fts5(а)」
+▶ ∘з б 「CREATE VIRTUAL TABLE IF NOT EXISTS р USING rtree(id, a, b)」
+▶ ∘з б 「CREATE VIRTUAL TABLE IF NOT EXISTS с USING csv(filename='/etc/passwd')」
+▶ ∘з б 「SELECT zeroblob(100000000)」
+▶ ∘з б 「SELECT randomblob(100000000)」
+▶ ∘з б 「SELECT length(datetime('now'))」
+▶ ∘з 「звіти/../секрет/x.db」 「CREATE TABLE a (b)」
+▶ ∘з 「/tmp/nigredo_x.db」 「CREATE TABLE a (b)」
+▶ ∘з 「file:звіти/ф.db?mode=rwc」 「CREATE TABLE a (b)」
+▶ ∘з 「:memory:」 「CREATE TABLE a (b)」
+▶ ∘з 「」 「CREATE TABLE a (b)」
+▶ ∘з 「звіти」 「CREATE TABLE a (b)」
+▶ ∘з 「звіти/」 「CREATE TABLE a (b)」
+▶ ∘з 「звіти/.」 「CREATE TABLE a (b)」
+▶ ∘з 「звіти/нова_тека/ф.db」 「CREATE TABLE a (b)」
+▶ ∘ч 「дані/нова.db」 「SELECT 1 AS x」
+▶ ∘ч 「дані/товари.json」 「SELECT 1 AS x」
+▶ ∘ч 「дані」 「SELECT 1 AS x」
+▶ ∘ч 「:memory:」 「SELECT 1 AS x」
+▶ ∘ч б 「SELECT 1 AS x」
