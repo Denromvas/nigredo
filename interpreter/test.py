@@ -3007,13 +3007,14 @@ def main():
     Mirror.files['tekst.ngr'] = B                     # сервер тепер віддає інше за тією самою адресою
     got2 = run(['--отримати', t1_, '--звірити'], menv)
     vr2_ = run(['--перевірити-слід', str(last(menv))], menv).stdout
+    nh_ = len(hits)
     Mirror.files['tekst.ngr'] = TEKST
     got3, got4 = run(['--отримати', f'{LIB}/tekst.ngr', '--звірити'], menv), run(['--отримати', romb, '--звірити', '--з-теки',
                                                                                    str(tmp)], menv)
     vh_, venv_ = owner('власник_звірка', {'github.com': mbase})        # модулів ще немає: звірка їх не кладе
     got5 = run(['--отримати', romb, '--звірити'], venv_)
     check(got.returncode == 0 and got.stdout.startswith('✓ --звірити: джерело власника віддає той самий вміст — 3 файл(и)')
-          and len(hits) == n_ + 4 and 'ЗВІРКА МОДУЛІВ З АДРЕСОЮ: 3 звірено' in vr_
+          and nh_ == n_ + 4 and 'ЗВІРКА МОДУЛІВ З АДРЕСОЮ: 3 звірено' in vr_
           and got2.returncode == 3 and f'сервер віддав вміст із sha256 {sha(B)}' in got2.stderr and 'ВМІСТ НЕ ЗБІГСЯ' in vr2_
           and mt_ == {p_.name: p_.stat().st_mtime_ns for p_ in (mh / 'модулі').iterdir()}
           and got3.returncode == 2 and 'вміст має бути закріплено' in got3.stderr and got4.returncode == 2
