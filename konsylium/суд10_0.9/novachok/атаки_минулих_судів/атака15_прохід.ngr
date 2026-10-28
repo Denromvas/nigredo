@@ -1,0 +1,25 @@
+🜂 「атака15: чи бачить попередній прохід ту саму інструкцію, що й SQLite: /*/, «--» до \r \f \v U+2028 U+0085, \f і \v перед запитом, explain малими, тимчасова таблиця між викликами」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+← межа 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, 0)」
+» з 「DROP TABLE IF EXISTS t」
+» з 「DROP TABLE IF EXISTS a」
+» з 「CREATE TABLE t(x)」
+» з 「CREATE TABLE a(x)」
+» ＋ 「1 /*/…*/:        」 з ＋ 「/*/ INSERT INTO a(x) VALUES (1) -- */ 」 межа
+» ＋ 「2 -- до \r:       」 з ＋ δ 「"-- к\rINSERT INTO a(x) VALUES (1)\\n"」 межа
+» ＋ 「3 -- до \f:       」 з ＋ δ 「"-- к\fINSERT INTO a(x) VALUES (1)\\n"」 межа
+» ＋ 「4 -- до \v:       」 з ＋ δ 「"-- к\u000bINSERT INTO a(x) VALUES (1)\\n"」 межа
+» ＋ 「5 -- до U+2028:   」 з ＋ δ 「"-- к\\u2028INSERT INTO a(x) VALUES (1)\\n"」 межа
+» ＋ 「6 -- до U+0085:   」 з ＋ δ 「"-- к\u0085INSERT INTO a(x) VALUES (1)\\n"」 межа
+» ＋ 「7 \f; спереду:    」 з ＋ δ 「"\f;"」 межа
+» ＋ 「8 \v; спереду:    」 з ＋ δ 「"\u000b;"」 межа
+» ＋ 「9 U+00A0 спереду: 」 з ＋ δ 「"\\u00a0"」 межа
+» ＋ 「10 explain малими: 」 з ＋ 「explain 」 межа
+» ＋ 「11 ;EXPLAIN:        」 з ＋ 「; EXPLAIN 」 межа
+» ＋ 「12 /*…*/ без кінця:」 з ＋ 「/* к 」 межа
+» ＋ 「13 два запити:     」 з ＋ 「INSERT INTO a(x) VALUES (1); 」 межа
+» ＋ 「14 -- до \r, далі а:」 з ＋ δ 「"-- к\r"」 ＋ межа 「\nINSERT INTO a(x) VALUES (1)」
+» ＋ 「15 temp: 」 з 「CREATE TEMP TABLE tt(x)」
+» ＋ 「16 temp далі: 」 з 「INSERT INTO tt(rowid, x) VALUES (9223372036854775807, 0)」
+» ＋ 「t — рядків: 」 з 「DELETE FROM t」

@@ -1,0 +1,10 @@
+🜂 「атака19: ngr_rowid і rowid 2⁶³−1 під вичерпаною квотою бд.писати≤1 та в --сухо — тексти й позначки」 【「бд.писати:звіти≤1」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) VALUES (1)」
+» з 「INSERT INTO t(x) VALUES (ngr_rowid('t', 0))」
+» з 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, 2)」
+» з 「INSERT INTO t(x) VALUES (random())」
+» з 「INSERT INTO t(x) VALUES (3)」
+» з 「INSERT INTO t(y) VALUES (4)」
+» з 「INSERT INTO нова(x) VALUES (5)」

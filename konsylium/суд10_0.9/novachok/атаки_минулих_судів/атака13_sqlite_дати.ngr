@@ -1,0 +1,25 @@
+🜂 「суд 9в: дати з даних без «час» — як SQLite; годинник у будь-якій формі — відмова」 【「бд.писати:звіти」】
+← б 「звіти/д13.db」
+← з λq ☂ σ 🜔бд.писати б ＋ 「SELECT json_extract('{}', typeof(」 ＋ q ＋ 「) || ':' || coalesce(」 ＋ q 「, 'NULL'))」 【】 λe ⇄ ⇄ e 「бд.писати: 」 「」 「bad JSON path: 」 「」
+∀ 【「date('2026-01-31','+1 month')」 「strftime('%Y-%m','2026-03-15')」
+    「julianday('2026-03-15') - julianday('2026-03-01')」 「date('2026-03-15','start of month','+1 month','-1 day')」
+    「strftime('%w','2026-10-20')」 「datetime(1700000000,'unixepoch')」 「datetime(1700000000.5,'unixepoch','subsec')」
+    「strftime('%f','2026-01-01 10:00:00.123')」 「date(2460000.5)」 「datetime('2026-01-01T10:00:00+03:00')」
+    「date('2026-01-01','weekday 0')」 「datetime('2026-01-01','+1.5 days')」 「timediff('2026-03-01','2026-01-15')」
+    「unixepoch('2026-01-01')」 「strftime('%J','2026-01-01')」 「date('2026-02-30')」 「datetime(1700000000,'auto')」
+    「date('2026-01-31','+1 month','floor')」 「date('2026-01-31','+1 month','ceiling')」 「strftime('%s','2026-01-01 00:00:00')」
+    「date('12:00')」 「strftime('%G-W%V-%u','2026-01-01')」 「strftime('%e|%k|%l|%p|%I|%j','2026-01-01 15:04:05')」
+    「date('2026-01-01','-0001-02-03')」 「datetime('2026-01-01 23:59:59.9999')」 「date(julianday('2026-01-01'))」
+    「date(x'323032362d30312d3031')」 「strftime('%Y',NULL)」 「date('2026-01-01',NULL)」 「date('2026-01-01','unixepoch')」
+    「date('NOW1')」 「date('nowx')」 「date('now ')」 「date(' now')」 「datetime('2026-01-01','subsec')」 「date('2026-01-01','now')」
+    「strftime('%H:%M','2026-01-01 10:00','+90 minutes')」 「datetime(0,'unixepoch')」 「datetime(-1e10,'unixepoch')」
+    「datetime(1e20,'unixepoch')」 「strftime('%%')」 「date('ｎｏｗ')」 「date('2026-01-01 ','+1 day')」】 λq » ＋ ＋ q 「 → 」 з q
+» 「— годинник —」
+∀ 【「date('now')」 「date()」 「date(char(110,111,119))」 「date(lower('NOW'))」 「date('nOw')」 「date('now'||char(0)||'x')」
+    「date(CAST('now' AS BLOB))」 「date('subsec')」 「date('SubSecond')」 「date('2026-01-01','localtime')」
+    「date('2026-01-01','LocalTime')」 「date('2026-01-01','utc')」 「strftime('%Y')」 「julianday()」 「time()」 「CURRENT_DATE」
+    「unixepoch()」 「timediff('now','2026-01-01')」 「date((SELECT 'now'))」 「datetime(json_extract('["now"]','$[0]'))」
+    「datetime(printf('%s','now'))」 「date(trim('  now  '))」 「date(substr('xxnow',3))」 「date(replace('n_w','_','o'))」
+    「(WITH v(x) AS (SELECT 'now') SELECT date(x) FROM v)」 「strftime('%s','now','+0 seconds')」 「date('now','start of day')」
+    「date(CAST(x'6e6f7700' AS TEXT))」 「unixepoch('subsec')」 「julianday('NOW')」】 λq » ＋ ＋ q 「 → 」 з q
+» 「кінець」

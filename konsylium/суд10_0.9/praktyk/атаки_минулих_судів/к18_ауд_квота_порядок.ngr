@@ -1,0 +1,11 @@
+🜂 「копія атака17_квота_порядок Аудитора: власна квота печатки ≤1 вичерпана невинним INSERT; чи стануть наступні спроби поза правами «квоту вичерпано» замість «заборонено»?」 【「бд.писати:звіти≤1」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) VALUES (5)」
+» з 「ATTACH DATABASE 'звіти/квота_приєднана.db' AS y」
+» з 「INSERT INTO t(x) VALUES (random())」
+» з 「INSERT INTO t(x) VALUES (date('now'))」
+» з 「INSERT INTO t(x) SELECT file FROM pragma_database_list」
+» з 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, 1)」
+» з 「UPDATE sqlite_dbpage SET data = data WHERE pgno = 2」
+» з 「INSERT INTO t(x) VALUES (6)」

@@ -1,0 +1,30 @@
+🜂 「атака20 (практик): звичайна робота зі схемою після виправлення — свій тригер і VIEW у main, журнал документів з AUTOINCREMENT; ALTER TABLE RENAME, RENAME COLUMN, ADD і DROP COLUMN, DROP TABLE, DROP TRIGGER і вставки після кожного; довідки про схему з main」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE док(н INTEGER PRIMARY KEY AUTOINCREMENT, сума INTEGER, коментар TEXT)」
+» з 「CREATE TABLE рух(док INTEGER, сума INTEGER)」
+» з 「CREATE TRIGGER док_рух AFTER INSERT ON док BEGIN INSERT INTO рух VALUES (new.н, new.сума); END」
+» з 「CREATE VIEW підсумок AS SELECT count(*) AS к, sum(сума) AS с FROM док」
+» з 「INSERT INTO док(сума) VALUES (100)」
+» з 「ALTER TABLE док RENAME TO документи」
+» з 「INSERT INTO документи(сума) VALUES (200)」
+» з 「ALTER TABLE документи RENAME COLUMN сума TO разом」
+» з 「INSERT INTO документи(разом) VALUES (300)」
+» з 「ALTER TABLE документи ADD COLUMN склад TEXT DEFAULT 'С1'」
+» з 「INSERT INTO документи(разом) VALUES (400)」
+» з 「ALTER TABLE документи DROP COLUMN коментар」
+» з 「INSERT INTO документи(разом, склад) VALUES (500, 'С2')」
+» з 「DELETE FROM документи WHERE н = 5」
+» з 「INSERT INTO документи(разом) VALUES (600)」
+» з 「INSERT INTO t(x) SELECT с FROM підсумок」
+» з 「INSERT INTO t(x) SELECT group_concat(name, ',') FROM (SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name)」
+» з 「INSERT INTO t(x) SELECT sql FROM sqlite_master WHERE name = 'док_рух'」
+» з 「INSERT INTO t(x) SELECT group_concat(name, ',') FROM pragma_table_info('документи')」
+» з 「INSERT INTO t(x) SELECT seq FROM sqlite_sequence WHERE name = 'документи'」
+» з 「CREATE TABLE тимч(a)」
+» з 「INSERT INTO тимч VALUES (1)」
+» з 「DROP TABLE тимч」
+» з 「DROP TRIGGER док_рух」
+» з 「INSERT INTO документи(разом) VALUES (700)」
+» з 「ALTER TABLE документи RENAME TO док」
+» з 「INSERT INTO док(разом) VALUES (800)」

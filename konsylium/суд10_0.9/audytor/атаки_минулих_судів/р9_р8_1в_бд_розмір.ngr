@@ -1,0 +1,9 @@
+🜂 「SQLite: велетенські значення і нескінченна рекурсія」 【「бд.читати:дані」 「бд.писати:звіти」 「процес:ls」】
+※ 1) читання: рядок 20 млн символів одним значенням
+» ☂ ρ §§ 🜔бд.читати 「база.db」 「SELECT printf('%.*c', 20000000, 'x') AS s」 【】 0 「s」 λe e
+※ 2) запис: 5 рядків по 4 МБ у теку звітів
+» 🜔бд.писати 「звіти/в.db」 「CREATE TABLE IF NOT EXISTS t(x)」 【】
+» ☂ 🜔бд.писати 「звіти/в.db」 「INSERT INTO t SELECT printf('%.*c', 4000000, 'x') FROM (WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM c WHERE i<5) SELECT i FROM c)」 【】 λe e
+» 🜔процес 【「ls」 「-l」 「звіти/в.db」】
+※ 3) нескінченна рекурсія
+» ☂ Δ 🜔бд.читати 「база.db」 「WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM c) SELECT max(i) AS m FROM c」 【】 λe e

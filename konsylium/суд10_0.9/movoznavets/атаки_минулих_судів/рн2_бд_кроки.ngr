@@ -1,0 +1,2 @@
+🜂 「кроки SQLite: рекурсивний CTE на n рядків (n = ⌂ 0)」 【「бд.читати:дані」】
+» 🜔бд.читати 「дані/рн2.db」 「WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < ?) SELECT count(*) AS n FROM c」 【ν § ⌂ 0】

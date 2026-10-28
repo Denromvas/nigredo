@@ -1,0 +1,9 @@
+🜂 「огляд 0.8.1в (побажання): тригер-перевірка бази з RAISE — як програма бачить його текст; random() і date('now') без прав — що скаже --сухо; поряд — звичайний запис」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS док(н INTEGER PRIMARY KEY, склад TEXT)」
+» з 「CREATE TRIGGER IF NOT EXISTS док_склад BEFORE INSERT ON док WHEN NEW.склад IS NULL BEGIN SELECT RAISE(ABORT, 'склад не заповнено'); END」
+» з 「INSERT INTO док(склад) VALUES ('С1')」
+» з 「INSERT INTO док(склад) VALUES (NULL)」
+» з 「INSERT INTO док(склад) VALUES (random())」
+» з 「INSERT INTO док(склад) VALUES (date('now'))」

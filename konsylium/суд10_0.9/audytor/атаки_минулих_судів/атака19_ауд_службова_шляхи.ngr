@@ -1,0 +1,7 @@
+🜂 「атака19 (аудитор): інші шляхи до ngr_rowid — з тимчасового тригера самої програми зі «службовою» назвою, з CTE; чи скрізь «заборонено» і чи пише це слід」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TEMP TRIGGER ngr_rowid_0_0 AFTER INSERT ON t BEGIN SELECT ngr_rowid('t', 0); END」
+» з 「INSERT INTO t(rowid, x) VALUES (9223372036854775807, 1)」
+» з 「WITH c(v) AS (SELECT ngr_rowid('t', 0)) INSERT INTO t(x) SELECT v FROM c」
+» з 「INSERT INTO t(x) VALUES (7)」

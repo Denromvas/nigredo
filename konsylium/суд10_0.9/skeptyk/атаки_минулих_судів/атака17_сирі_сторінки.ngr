@@ -1,0 +1,7 @@
+🜂 「атака17: sqlite_dbpage — сирі сторінки бази; чи пускає запис (переписати сторінку 1 тим самим вмістом — нічого не змінює)」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) SELECT count(*) FROM sqlite_dbpage」
+» з 「UPDATE sqlite_dbpage SET data = data WHERE pgno = 1」
+» з 「INSERT INTO sqlite_dbpage(pgno, data) SELECT pgno, data FROM sqlite_dbpage WHERE pgno = 1」
+» з 「INSERT INTO t(x) SELECT count(*) FROM dbstat」

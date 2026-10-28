@@ -1,0 +1,13 @@
+🜂 「атака21 для еталона (мережа в печатці, не кличеться): під вичерпаною квотою бд.писати≤1 — CHECK на межі (і з ?), DEFAULT, згенерований, індекс, R-Tree, random() з ?, звичайні запити」 【「бд.писати:звіти≤1」 「взяти:127.0.0.1:28730」】
+← з Λбаза q ☂ ＋ 「✓ 」 σ 🜔бд.писати база q 【】 λпом ＋ 「✗ 」 пом
+← зп Λбаза q ☂ ＋ 「✓ 」 σ 🜔бд.писати база q 【7】 λпом ＋ 「✗ 」 пом
+» з § ⌂ 0 「INSERT INTO t(x) VALUES (1)」
+» з § ⌂ 0 「INSERT INTO c(a) VALUES (1)」
+» зп § ⌂ 0 「INSERT INTO c(a) VALUES (?)」
+» з § ⌂ 1 「INSERT INTO d(a) VALUES (1)」
+» з § ⌂ 2 「INSERT INTO g(a) VALUES (1)」
+» з § ⌂ 2 「INSERT INTO i(a) VALUES (1)」
+» з § ⌂ 3 「INSERT INTO r VALUES (1, 0, 1)」
+» зп § ⌂ 0 「INSERT INTO t(x) VALUES (random() + ?)」
+» зп § ⌂ 0 「INSERT INTO t(x) VALUES (?)」
+» з § ⌂ 3 「INSERT INTO t(x) VALUES (2)」

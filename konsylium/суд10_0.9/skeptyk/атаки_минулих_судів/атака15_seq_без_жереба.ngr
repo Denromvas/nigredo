@@ -1,0 +1,10 @@
+🜂 「атака15: старий файл, sqlite_sequence біля межі — без «жереб» що можна, а що ні」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「UPDATE t SET x = x」
+» з 「INSERT INTO t(x) VALUES (1)」
+» з 「;INSERT INTO q(x) VALUES (2)」
+» з 「UPDATE sqlite_sequence SET seq = 5 WHERE name = 'q'」
+» з 「DELETE FROM sqlite_sequence WHERE name = 'z'」
+» з 「INSERT INTO t(x) VALUES (1)」
+» з 「INSERT INTO q(x) VALUES (2)」

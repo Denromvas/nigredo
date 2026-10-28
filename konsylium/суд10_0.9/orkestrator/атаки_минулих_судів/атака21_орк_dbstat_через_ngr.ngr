@@ -1,0 +1,9 @@
+🜂 「атака21 (оркестратор): те саме, що атака21_орк_dbstat, але в печатці ще мережа (не кличеться), тож ngr віддає еталону」 【「бд.писати:звіти」 「взяти:127.0.0.1:28730」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS лог(s)」
+» з 「INSERT INTO лог(s) SELECT 'k' || count(*) FROM temp.dbstat」
+» з 「CREATE TABLE IF NOT EXISTS dbstat(x)」
+» з 「INSERT INTO лог(s) SELECT 'main' || char(58) || name || char(58) || pageno || char(58) || ncell || char(58) || payload || char(58) || unused FROM temp.dbstat('main')」
+» з 「INSERT INTO лог(s) SELECT 'temp' || char(58) || name || char(58) || pageno || char(58) || ncell || char(58) || payload || char(58) || unused FROM temp.dbstat('temp')」
+» з 「INSERT INTO лог(s) SELECT 'x' || count(*) FROM DBSTAT」
