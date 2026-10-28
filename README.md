@@ -130,7 +130,12 @@ resolves — `temp.dbstat` read the internal module when a real table `dbstat` e
 table on an internal module (`dbstat`, `sqlite_dbpage`) was reachable under its own name — so the allowlist now checks,
 through the query plan, which table SQLite really opens; with that fix **0.8.1 was announced (2026-10-28)**. The
 judges' wishes followed: a refusal now says whether the database schema *calls* the decoy or only *mentions* it (a
-string, a comment, a column or table name), and `random()` is refused with the same text in all three modes. The latest
+string, a comment, a column or table name), and `random()` is refused with the same text in all three modes. **In development — 0.9-dev:** modules from git
+pinned by hash, `⊃ 「github.com/owner/repo@COMMIT/path.ngr#sha256=CONTENT」`: a module's identity is the sha256 of its
+bytes (the address is only the author's words — GitHub serves fork commits under the original's name), only a
+separate `ngr --отримати` step touches the network, never a run, and a module from the network only computes (no
+permissions, printing or memory — checked before the run and again while it runs); it goes to court before 0.9 is
+announced. The latest
 comparison report is
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols — [`konsylium/`](konsylium/).
 
@@ -277,7 +282,11 @@ UTF-8 — помилка, а 30 с —
 внутрішньому модулі (`dbstat`, `sqlite_dbpage`) можна було дістати під власною назвою — тож перелік тепер звіряє за
 планом запиту, яку таблицю SQLite відкриває насправді; з цим виправленням **0.8.1 оголошено (2026-10-28)**. Слідом —
 побажання суддів: відмова каже, чи схема бази приманку **кличе**, чи лише **згадує** (рядок, коментар, назва стовпця
-чи таблиці), а `random()` має один текст відмови в усіх трьох режимах. Останній звіт звірки —
+чи таблиці), а `random()` має один текст відмови в усіх трьох режимах. **У розробці — 0.9-dev:** модулі з git, закріплені
+хешем, `⊃ 「github.com/власник/репо@КОМІТ/шлях.ngr#sha256=ВМІСТ」`: тотожність модуля — sha256 його байтів (адреса —
+лише слова автора: GitHub віддає за назвою оригіналу й коміти з форків), у мережу ходить лише окремий крок
+`ngr --отримати`, а не запуск, і модуль з мережі лише обчислює (жодних дозволів, друку й памʼяті — перевіряється до
+запуску й ще раз під час нього); перед оголошенням 0.9 — суд. Останній звіт звірки —
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); історія й протоколи — [`konsylium/`](konsylium/).
 
 **Чесно про межі:** Nigredo — інструмент прозорості й аудиту, **не пісочниця ОС**: агент із доступом до shell може
