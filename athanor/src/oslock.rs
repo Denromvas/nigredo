@@ -105,6 +105,10 @@ pub fn lock(closed: &[&'static str]) -> Vec<(String, J)> {
         }
         let mut r = syscall(t.seccomp, 1i64, 1i64, &fp as *const Fprog); // SET_MODE_FILTER, FILTER_FLAG_TSYNC
         if r != 0 {
+            // без TSYNC фільтр ляже лише на цей потік: так — лише коли потік один (суд 11, Мовознавець)
+            if std::fs::read_dir("/proc/self/task").map_or(0, |d| d.count()) != 1 {
+                return none("TSYNC недоступний, а потоків більше одного — замок ліг би лише на один".into());
+            }
             r = prctl(22, 2u64, &fp as *const Fprog as u64, 0u64, 0u64) as i64; // PR_SET_SECCOMP, MODE_FILTER
         }
         if r != 0 {

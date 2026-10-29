@@ -210,6 +210,9 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Back> {
             if !uni::hidden(&text, "\t").is_empty() {
                 return back("невидимий символ у коментарі");
             }
+            if uni::sig_like(&text) {
+                return back("коментар схожий на рядок підпису — еталон"); // суд 11: відмову (код 3) пише еталон
+            }
             while i < n && s[i] != '\n' {
                 adv!(1);
             }

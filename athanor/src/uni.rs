@@ -72,6 +72,25 @@ pub fn skeleton(s: &str) -> Option<String> {
     Some(out)
 }
 
+/// Коментар, схожий на рядок підпису (як nigredo.sig_like): скелет без пробілів містить скелет «ed25519». Символ, з яким
+/// нормалізація відрізнялася б, у збіг не входить: розклад дає діакритичний знак одразу за основою (перевірено по всьому
+/// Unicode), тож він лише розриває збіг — і тут він розрив.
+pub fn sig_like(text: &str) -> bool {
+    let target = skeleton("ed25519").unwrap_or_default();
+    let mut sk = String::with_capacity(text.len());
+    for c in text.chars().filter(|c| !isspace(*c)) {
+        if norm_unsafe(c) {
+            sk.push('\0');
+        } else {
+            match map_str(&SKELETON, c as u32) {
+                Some(t) => sk.push_str(t),
+                None => sk.push(c),
+            }
+        }
+    }
+    sk.contains(&target)
+}
+
 pub fn glyph_twin(skel: &str) -> Option<&'static str> {
     GLYPH_TWIN.binary_search_by(|&(a, _)| a.cmp(skel)).ok().map(|i| GLYPH_TWIN[i].1)
 }

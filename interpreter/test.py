@@ -3212,7 +3212,7 @@ def main():
           '(процес відкриває й запис, агент — усе, бд.читати — запис; --сухо — усе) (фаза 6.1)', str(bad_))
     seal_ = run(['--печатка', '--json', '-e', '🜂 【「процес:sh -c」】\n» 1'], oenv)
     check(json.loads(seal_.stdout).get('замок_ОС') == {'закрито': ['мережа']}
-          and 'ЗАМОК ОС: ядро закриє мережа' in run(['--печатка', '-e', '🜂 【「процес:sh -c」】\n» 1'], oenv).stdout,
+          and 'ЗАМОК ОС: ядро закриє мережу (' in run(['--печатка', '-e', '🜂 【「процес:sh -c」】\n» 1'], oenv).stdout,
           '--печатка: що закриє ядро (і в --json «замок_ОС») (фаза 6.1)', seal_.stdout[-400:])
     if has_lock:
         # дочірні процеси успадковують замок: команда без 「взяти」 у печатці мережі не має, з ним — має
@@ -3277,11 +3277,13 @@ def main():
                     '» ☂ 🜔python 「urllib.request.urlopen」 【「http://127.0.0.1:9/」】 λe e',
                     'subprocess.getoutput', 'os.mkdir', 'urllib.request.urlopen')
         lines_ = got.stdout.splitlines()
-        check(got.returncode == 0 and len(lines_) == 3 and 'Operation not permitted' in lines_[0]
-              and 'PermissionError' in lines_[1] and 'Operation not permitted' in lines_[2]
+        den_ = [r_ for r_ in recs_of(last(penv)) if r_['подія'] == 'заборонено']
+        check(got.returncode == 0 and len(lines_) == 3 and 'пробувала запустити процес' in lines_[0]
+              and 'пробувала писати' in lines_[1] and 'пробувала вийти в мережу' in lines_[2]
+              and [d_.get('спроба', '').split(':')[0] for d_ in den_] == ['процеси', 'запис', 'мережа']
               and not (ow / 'з_моста.txt').exists() and not (ow / 'тека_з_моста').exists(),
-              '🜔python: процес моста — під повним замком ОС: процесу, запису й мережі ядро не дає (EPERM), хоч функцію '
-              'й дозволено (фаза 6.2)', got.stdout + got.stderr)
+              '🜔python: процес моста — процесу, запису й мережі не дає, хоч функцію й дозволено: стеження відмовляє ще до '
+              'ядра, і кожна спроба — «заборонено» в сліді (фаза 6.2, суд 11)', got.stdout + got.stderr + str(den_))
     got = pyrun('← f λx x\n» 🜔python 「statistics.median」 【∘f】', 'statistics.median')
     got2 = pyrun('» 🜔python 「builtins.iter」 【【1 2】】', 'builtins.iter')
     check(got.returncode == 1 and 'передати можна лише дані' in got.stderr and got2.returncode == 1
@@ -3349,10 +3351,10 @@ def main():
     vj_ = json.loads(run(['--перевірити-підпис', str(sp_), '--json'], senv).stdout)
     got3 = run([str(sp_)], senv)
     check(got.returncode == 0 and sp_.read_text(encoding='utf-8').splitlines()[-1].startswith(f'※ підпис {key_} ')
-          and vj_['код'] == 0 and vj_['підпис']['цілий'] is True and vj_['підпис']['імʼя'] is None
+          and vj_['код'] == 1 and vj_['підпис']['цілий'] is True and vj_['підпис']['імʼя'] is None
           and len(vj_['підпис']['модулі']) == 1 and got3.returncode == 3 and 'печатка просить більше' in got3.stderr,
-          '--підписати: рядок підпису — останній; --перевірити-підпис: цілий, ключ власнику невідомий, модуль охоплено; '
-          'прав підпис сам не дає (власник не вписав ключ) (фаза 6.3)', got.stdout + json.dumps(vj_, ensure_ascii=False) + got3.stderr)
+          '--підписати: рядок підпису — останній; --перевірити-підпис: цілий, але ключ власнику невідомий — код 1 (суд 11), '
+          'модуль охоплено; прав підпис сам не дає (власник не вписав ключ) (фаза 6.3)', got.stdout + json.dumps(vj_, ensure_ascii=False) + got3.stderr)
     (sh_ / 'дозволи.json').write_text(json.dumps({'дозволено': [], 'для_авторів': {key_: {'імʼя': 'агент звітів', 'дозволи': [
         f'читати:{sd_}/дані']}}}, ensure_ascii=False), encoding='utf-8')
     got = run([str(sp_)], senv)
@@ -3362,7 +3364,9 @@ def main():
     sj_ = json.loads(run(['--печатка', '--json', str(sp_)], senv).stdout)
     check(got.returncode == 0 and got.stdout == '[привіт]\n' and head_.get('підпис') == {'ключ': key_, 'імʼя': 'агент звітів'}
           and 'підпис автора: ' + key_ + ' («агент звітів»)' in vr_ and 'ПІДПИС АВТОРА: цілий' in seal_
-          and '⚠ права з підпису: файл.читати:' in seal_ and sj_['підпис']['імʼя'] == 'агент звітів' and sj_['в_межах'] is True,
+          and 'права з підпису: файл.читати:' in seal_ and '⚠ права з підпису автора («агент звітів»), без яких печатці '
+          'бракувало б: файл.читати:' in seal_ and sj_['підпис']['імʼя'] == 'агент звітів' and sj_['в_межах'] is True
+          and sj_['підпис']['бере'] == [f'файл.читати:{sd_}/дані'] and any('права з підпису автора' in w_ for w_ in sj_['попередження']),
           '«для_авторів»: програма з цілим підписом ключа отримує права власника для цього автора; у сліді «підпис», '
           'у --печатка — «ПІДПИС АВТОРА» з правами (фаза 6.3)', got.stdout + got.stderr + vr_[-300:] + seal_[-500:])
     # підробка: текст, печатка, модуль, рядок після підпису, два підписи — код 3 до запуску; чужий ключ — прав немає
@@ -3404,9 +3408,201 @@ def main():
         w1_ = subprocess.run([*NGR_CMD, str(sp_)], capture_output=True, text=True, env=dict(senv, ATHANOR_WHY='1'))
         w2_ = subprocess.run([*NGR_CMD, '-e', '🜂\n» 1'], capture_output=True, text=True, env=dict(senv, ATHANOR_WHY='1'))
         check('атанор → еталон: підпис автора — еталон' in w1_.stderr and w1_.stdout == '[привіт]\n'
-              and 'атанор → еталон: для_авторів — еталон' in w2_.stderr and w2_.stdout == '1\n',
-              'Атанор: підписану програму й будь-яку програму при «для_авторів» віддає еталону (явна причина) (фаза 6.3)',
+              and 'атанор → еталон' not in w2_.stderr and w2_.stdout == '1\n',
+              'Атанор: підписану програму віддає еталону (явна причина); програму без підпису при непорожньому '
+              '«для_авторів» виконує сам (суд 11: один ключ власника вимикав Атанор для всіх програм) (фаза 6.3)',
               w1_.stderr + w2_.stderr)
+
+    # ------------------------------------------------------------------ суд 11 (0.10-dev): знахідки
+    dbd_ = tmp / 'суд11_бази'
+    dbd_.mkdir()
+    qh_ = tmp / 'власник_суд11'
+    qh_.mkdir()
+    qf_ = ['statistics.median', 'linecache.getlines', 'os.system', 'os.kill', 'unicodedata.normalize', 'json.loads',
+           'time.sleep']
+    (qh_ / 'дозволи.json').write_text(json.dumps({'дозволено': [f'python:{f_}' for f_ in qf_] + [
+        'python:math.isqrt≤1', f'бд.читати:{dbd_}']}, ensure_ascii=False), encoding='utf-8')
+    qenv_ = dict(env, NIGREDO_HOME=str(qh_), NIGREDO_TRACE_PATH_FILE=str(tmp / 'суд11.слід'))
+
+    def q11(body, *perm, extra=()):
+        seal_ = ' '.join(f'「python:{x}」' for x in perm)
+        return run([*extra, '-e', f'🜂 【{seal_}】\n{body}'], qenv_)
+    if has_lock:
+        # квота «python:…≤N» — печатки й власника (досі quota_covers не знав виду «функція»: печатка казала «≤ 2», а
+        # виконувалось скільки завгодно)
+        g1_ = q11('» 🜔python 「statistics.median」 【【1】】\n» 🜔python 「statistics.median」 【【2】】\n'
+                  '» 🜔python 「statistics.median」 【【3】】', 'statistics.median≤2')
+        r1_ = recs_of(last(qenv_))
+        g2_ = q11('» 🜔python 「math.isqrt」 【9】\n» 🜔python 「math.isqrt」 【16】', 'math.isqrt')
+        r2_ = recs_of(last(qenv_))
+        check(g1_.stdout == '1\n2\n' and g1_.returncode == 1 and sum(r_['подія'] == 'квоту вичерпано' for r_ in r1_) == 1
+              and g2_.stdout == '3\n' and g2_.returncode == 1 and sum(r_['подія'] == 'квоту вичерпано' for r_ in r2_) == 1,
+              'квота «python:функція≤N» тримає — печатки (третій виклик — «квоту вичерпано») і власника (суд 11)',
+              g1_.stdout + g1_.stderr + g2_.stdout + g2_.stderr)
+        # стеження моста: читання поза теками Python, os.system, os.kill — відмова; спроба — «заборонено» з назвою функції
+        sec_ = tmp / 'суд11_секрет.txt'
+        sec_.write_text('таємниця\n', encoding='utf-8')
+        g_ = q11(f'» ☂ ρ 🜔python 「linecache.getlines」 【「{sec_}」】 λe e\n» ☂ 🜔python 「os.system」 【「true」】 λe e\n'
+                 '» ☂ 🜔python 「os.kill」 【¯1 0】 λe e', 'linecache.getlines', 'os.system', 'os.kill')
+        tp_ = last(qenv_)
+        den_ = [r_ for r_ in recs_of(tp_) if r_['подія'] == 'заборонено']
+        vt_ = run(['--перевірити-слід', str(tp_)], qenv_)
+        lines_ = g_.stdout.splitlines()
+        check(g_.returncode == 0 and len(lines_) == 3 and 'пробувала читати поза теками Python' in lines_[0]
+              and 'пробувала запустити процес' in lines_[1] and 'пробувала запустити процес' in lines_[2]
+              and [d_.get('функція') for d_ in den_] == ['linecache.getlines', 'os.system', 'os.kill']
+              and den_[0].get('спроба') == f'читання: open {sec_}' and 'таємниця' not in g_.stdout + tp_.read_text(encoding='utf-8')
+              and 'linecache.getlines (читання: open' in vt_.stdout and '(«заборонено»): 3' in vt_.stdout,
+              'міст: стеження sys.audit — читання поза теками Python (linecache.getlines ковтає помилку — однаково '
+              '«заборонено»), os.system (а не 32512), os.kill — відмова; у сліді й підсумку --перевірити-слід — назва '
+              'функції й спроба (суд 11)', g_.stdout + g_.stderr + vt_.stdout[-700:])
+        g_ = q11('» 🜔python 「unicodedata.normalize」 【「NFKD」 「' + 'ﬃ' * 25 + '」】', 'unicodedata.normalize',
+                 extra=('--розмір', '60'))
+        g2_ = q11('» 🜔python 「json.loads」 【「"\\\\udc80"」】', 'json.loads')
+        check(g_.returncode != 0 and 'значення завелике' in g_.stderr and g2_.returncode == 1
+              and 'самотнім сурогатом' in g2_.stderr and 'впав' not in g2_.stderr,
+              'міст: відповідь — у межах --розмір (ﬃ × 25 → 75 символів при --розмір 60 — «завелике»); самотній сурогат — '
+              '«не дані», а не «процес моста впав» (суд 11)', g_.stderr + g2_.stderr)
+        # процес моста гине разом з ngr (досі жив сиротою до кінця сну функції)
+        pr_ = subprocess.Popen([*NGR_CMD, '-e', '🜂 【「python:time.sleep」】\n» 🜔python 「time.sleep」 【25】'], env=qenv_,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(4)
+        pr_.kill()
+        pr_.wait()
+        time.sleep(1)
+        orphans_ = []
+        for d_ in pathlib.Path('/proc').iterdir():
+            try:
+                if d_.name.isdigit() and b'PR_SET_PDEATHSIG' in (d_ / 'cmdline').read_bytes():
+                    orphans_.append(d_.name)
+            except OSError:
+                pass
+        check(not orphans_, 'міст: процес моста гине разом з ngr (PR_SET_PDEATHSIG) — сиротою не живе (суд 11)', str(orphans_))
+        # ядро процесу моста закриває й дії над іншими процесами (сигнали, pidfd — чужі дескриптори)
+        kd_ = subprocess.run([sys.executable, '-c', '\n'.join([
+            'import sys, os, ctypes, struct, platform, socket', 'sys.path.insert(0, sys.argv[1])', 'import nigredo as n',
+            'arch = platform.machine()',
+            'raw = b"".join(struct.pack("HBBI", *i) for i in n.os_filter(arch, list(n.OS_GROUPS), n.PY_DENY[arch]))',
+            'libc = ctypes.CDLL(None, use_errno=True)', 'buf = ctypes.create_string_buffer(raw, len(raw))',
+            'class F(ctypes.Structure):', '    _fields_ = [("len", ctypes.c_ushort), ("filter", ctypes.c_void_p)]',
+            'fp = F(len(raw) // 8, ctypes.addressof(buf))',
+            'assert libc.prctl(38, 1, 0, 0, 0) == 0 and libc.syscall(n.OS_TABLES[arch]["seccomp"], 1, 1, ctypes.byref(fp)) == 0',
+            'out = []',
+            'for name, f in (("kill", lambda: os.kill(os.getppid(), 0)), ("pidfd", lambda: os.pidfd_open(os.getppid())),',
+            '                ("socket", lambda: socket.socket()), ("exec", lambda: os.execv("/bin/true", ["true"]))):',
+            '    try:', '        f()', '        out.append(name + " є")', '    except OSError as e:',
+            '        out.append(name + " " + str(e.errno))', 'print(" ".join(out))']), str(ROOT / 'interpreter')],
+            capture_output=True, text=True)
+        check(kd_.stdout.strip() == 'kill 1 pidfd 1 socket 1 exec 1',
+              'міст: ядро закриває процесу моста й дії над іншими процесами — сигнали, pidfd (чужі дескриптори) — EPERM, '
+              'як і мережу та exec (суд 11)', kd_.stdout + kd_.stderr)
+        # --сухо закриває ядром і запис: GROUP BY на великій базі й база WAL, закрита начисто, — читаються
+        import sqlite3 as _sq
+        c_ = _sq.connect(dbd_ / 'велика.db')
+        c_.execute('CREATE TABLE t(x)')
+        c_.executemany('INSERT INTO t VALUES (?)', ((os.urandom(24).hex(),) for _ in range(60000)))
+        c_.commit()
+        c_.close()
+        c_ = _sq.connect(dbd_ / 'wal.db')
+        c_.execute('PRAGMA journal_mode=wal')
+        c_.execute('CREATE TABLE t(x)')
+        c_.execute("INSERT INTO t VALUES ('а')")
+        c_.commit()
+        c_.close()
+        dq_ = (f'🜂 【「бд.читати:{dbd_}」】\n» 🜔бд.читати 「{dbd_}/велика.db」 「SELECT count(*) AS n FROM (SELECT x FROM t '
+               f'GROUP BY x)」 【】\n» 🜔бд.читати 「{dbd_}/wal.db」 「SELECT x FROM t」 【】')
+        gd_ = run(['--сухо', '-e', dq_], qenv_)
+        check(gd_.returncode == 0 and gd_.stdout == '【『「n」 60000』】\n【『「x」 「а」』】\n'
+              and not (dbd_ / 'wal.db-shm').exists(),
+              '--сухо з бд.читати: GROUP BY на великій базі (тимчасове — у памʼяті) і база WAL без -shm (незмінна) — '
+              'читаються, хоч запис закрито ядром (суд 11)', gd_.stdout + gd_.stderr)
+        # --перевірити-слід каже, що закрило ядро; REPL пише в слід, що замка в ньому немає
+        q11('» 1')
+        v1_ = run(['--перевірити-слід', str(last(qenv_))], qenv_).stdout
+        q11('» 🜔python 「math.isqrt」 【4】', 'math.isqrt')
+        v2_ = json.loads(run(['--перевірити-слід', '--json', str(last(qenv_))], qenv_).stdout)
+        old_ = set((qh_ / 'сліди').glob('*-repl-*.jsonl'))
+        subprocess.run([*NGR_CMD, '--repl', '--тека', str(tmp)], input=json.dumps({'код': '🜂\n» 1'}).encode() + b'\n',
+                       capture_output=True, env=qenv_)
+        rt_ = sorted(set((qh_ / 'сліди').glob('*-repl-*.jsonl')) - old_)[-1]
+        ri_ = [r_ for r_ in recs_of(rt_) if r_['подія'] == 'ізоляція']
+        v3_ = run(['--перевірити-слід', str(rt_)], qenv_).stdout
+        check('замок ОС: ядро (seccomp) закрило мережу, процеси, запис' in v1_
+              and v2_['ізоляція'] == {'ядро': 'seccomp', 'закрито': ['мережа', 'запис'], 'причина': None}
+              and any('решту (процеси) відкрила печатка' in x_ for x_ in [v2_['повідомлення']])
+              and len(ri_) == 1 and ri_[0]['ядро'] == 'немає' and '⚠ замок ОС: ядро нічого не закрило (сеанс REPL' in v3_,
+              '--перевірити-слід: що закрило ядро (і що відкрила печатка); REPL пише в слід «ізоляція: немає» — і перевірка '
+              'це каже (суд 11)', v1_[-300:] + json.dumps(v2_.get('ізоляція'), ensure_ascii=False) + v3_[-300:])
+    pw_ = run(['--печатка', '-e', '🜂 【「python:linecache.getlines」 「python:statistics.median」】\n» 1'], qenv_)
+    check('python: linecache.getlines — функції, яким стеження моста НЕ межа' in pw_.stdout
+          and 'ключ власника (тоді слід можна підробити)' in pw_.stdout and 'statistics.median — функції, яким' not in pw_.stdout,
+          '--печатка: функції, яким стеження моста не межа (читають файли, виконують код), — окреме ⚠ з ключем власника '
+          'й ключами авторів (суд 11)', pw_.stdout[-900:])
+    # Ed25519: ключ чи R малого порядку
+    ident_ = bytes.fromhex('01' + '00' * 31)
+    ord2_ = bytes.fromhex('ec' + 'ff' * 30 + '7f')
+    ord8_ = bytes.fromhex('26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05')
+    check(not NS.ed_verify(ident_, b'any', ident_ + bytes(32)) and not NS.ed_verify(ident_, b'other', ident_ + bytes(32))
+          and all(not NS.ed_verify(k_, b'x', ident_ + bytes(32)) for k_ in (ord2_, ord8_))
+          and not NS.ed_verify(pub1, b'', ident_ + bytes(32)) and NS.ed_verify(pub1, b'', sig1),
+          'Ed25519: ключ чи R малого порядку (нейтральна точка, порядки 2 і 8) — «не збігся»: без секрету такий «підпис» '
+          'сходився б для будь-якого тексту (суд 11)')
+    # рядок підпису в рядку-літералі — дані; коментар, схожий на підпис, — код 3
+    lit_ = sd_ / 'літерал.ngr'
+    lit_.write_text(f'🜂\n» ρ 「\n※ підпис {key_} {"0" * 128}\n」\n', encoding='utf-8')
+    gl_ = run([str(lit_)], senv)
+    looks_ = []
+    for what_, line_ in (('таб', f'\t※ підпис {key_} {"0" * 128}'), ('латинська i', f'※ пiдпис {key_} {"0" * 128}'),
+                         ('посередині', f'※ підпис {key_} {"0" * 128}\n» 2')):
+        lk_ = sd_ / 'схожий.ngr'
+        lk_.write_text(f'🜂\n» 1\n{line_}\n', encoding='utf-8')
+        g_ = run([str(lk_)], senv)
+        if not (g_.returncode == 3 and 'коментар схожий на рядок підпису' in g_.stderr and g_.stdout == ''):
+            looks_.append((what_, g_.returncode, g_.stderr[-200:]))
+    sg_ = run(['--підписати', str(lit_), '--ключ', str(kf_)], senv)
+    check(gl_.returncode == 0 and gl_.stdout.strip().isdigit() and not looks_ and sg_.returncode == 0
+          and run([str(lit_)], senv).returncode == 0,
+          'рядок «※ підпис …» у рядку-літералі — дані: програма без підпису працює й підписується; коментар, схожий на '
+          'підпис (таб попереду, «пiдпис» з латинською i, не останнім рядком), — код 3 до запуску (суд 11)',
+          gl_.stdout + gl_.stderr + str(looks_) + sg_.stderr)
+    bl_ = sd_ / 'кривий.ngr'
+    bl_.write_text(f'🜂\n» 1\n※ підпис {key_} {"0" * 127}\n', encoding='utf-8')
+    vb_ = run(['--перевірити-підпис', str(bl_), '--json'], senv)
+    rz_ = run(['--розбір', str(sp_)], senv)
+    sg2_ = run(['--підписати', str(sp_), '--ключ', str(kf_)], senv)
+    check(vb_.returncode == 3 and json.loads(vb_.stdout)['гаразд'] is False and 'помилка_розбору' in json.loads(vb_.stdout)
+          and f'ПІДПИС АВТОРА {key_} (цілий; «агент звітів»' in rz_.stdout and 'печатка: файл.читати → 「дані」' in sg2_.stdout
+          and 'ключ у «для_авторів» власника: «агент звітів» — права з підпису: файл.читати:' in sg2_.stdout,
+          '--перевірити-підпис --json і на зіпсованому рядку — JSON (код 3); --розбір згадує підпис; --підписати показує '
+          'печатку й права ключа з «для_авторів» (суд 11)', vb_.stdout + rz_.stdout[-300:] + sg2_.stdout)
+    ap_ = sd_ / 'схвалена.ngr'
+    ap_.write_text('🜂\n» 1\n', encoding='utf-8')
+    fp_ = json.loads(run(['--печатка', '--json', str(ap_)], senv).stdout)['відбиток']
+    sdata_ = json.loads((sh_ / 'дозволи.json').read_text(encoding='utf-8'))
+    (sh_ / 'дозволи.json').write_text(json.dumps({**sdata_, 'для_програм': {fp_: []}}, ensure_ascii=False), encoding='utf-8')
+    sg3_ = run(['--підписати', str(ap_), '--ключ', str(kf_)], senv)
+    (sh_ / 'дозволи.json').write_text(json.dumps(sdata_, ensure_ascii=False), encoding='utf-8')
+    check(sg3_.returncode == 0 and '⚠ власник схвалив цю програму («для_програм»)' in sg3_.stdout,
+          '--підписати попереджає, що підпис знімає схвалення власника («для_програм») (суд 11)', sg3_.stdout)
+    # «для_авторів»: тека запису з прав ключа — тека запису й для «для_тек»; програму без підпису Атанор виконує сам
+    ad_ = tmp / 'суд11_тека'
+    (ad_ / 'вхід').mkdir(parents=True)
+    (ad_ / 'а.txt').write_text('а', encoding='utf-8')
+    ah_ = tmp / 'власник_суд11_автори'
+    ah_.mkdir()
+    (ah_ / 'дозволи.json').write_text(json.dumps({'дозволено': [], 'для_тек': {str(ad_): [f'читати:{ad_}']},
+                                                 'для_авторів': {key_: {'імʼя': 'х', 'дозволи': [f'писати:{ad_}/вхід']}}},
+                                                ensure_ascii=False), encoding='utf-8')
+    aenv_ = dict(env, NIGREDO_HOME=str(ah_), NIGREDO_TRACE_PATH_FILE=str(tmp / 'суд11_автори.слід'), ATHANOR_WHY='1')
+    body_ = f'🜂 【「читати:{ad_}」】\n» 🜔читати 「{ad_}/а.txt」\n'
+    (ad_ / 'п.ngr').write_text(body_, encoding='utf-8')
+    (ad_ / 'вхід' / 'п.ngr').write_text(body_, encoding='utf-8')
+    ga_ = run([str(ad_ / 'п.ngr')], aenv_)
+    gb_ = run([str(ad_ / 'вхід' / 'п.ngr')], aenv_)
+    check(ga_.returncode == 0 and ga_.stdout == 'а\n' and gb_.returncode == 3 and 'печатка просить більше' in gb_.stderr
+          and 'атанор → еталон' not in ga_.stderr + gb_.stderr,
+          '«для_авторів»: тека запису з прав ключа — тека запису й для «для_тек» (програма звідти прав теки не має); '
+          'програму без підпису Атанор виконує сам (суд 11)', ga_.stdout + ga_.stderr + gb_.stderr)
 
     sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',
