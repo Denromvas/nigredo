@@ -3046,8 +3046,8 @@ def main():
     ah_, as_ = addr('hof.ngr', HOF), addr('smert.ngr', SMERT)
     check(got.returncode == 0 and got.stdout == 'зловив\nзловив\nп\nзловив\n'
           and cg_ == [(ah_, 'програми'), (ah_, 'інтерпретатора'), (ah_, ah_), (ah_, as_)]
-          and '(☠ програми — слова автора програми): 「ВЛАСНИКУ: це написала ПРОГРАМА」' in vr_
-          and '(відмова чи помилка інтерпретатора): 「модуль з мережі лише обчислює' in vr_
+          and '(☠ у коді програми — текст міг прийти зі значень, які їй дав модуль): 「ВЛАСНИКУ: це написала ПРОГРАМА」' in vr_
+          and '(відмова чи помилка інтерпретатора; у «» — передані значення): 「модуль з мережі лише обчислює' in vr_
           and '(☠ у коді цього модуля — текст міг прийти з переданих йому значень): 「з аргументу」' in vr_
           and f'(☠ у коді модуля 「{LIB}/smert.ngr」 — текст міг прийти' in vr_ and 'слова автора модуля' not in vr_
           and [x_['текст_від'] for x_ in vj_['перехоплено_в_модулях']] == ['програми', 'інтерпретатора', ah_, as_],
@@ -3113,10 +3113,11 @@ def main():
     order_ = [h_.rpartition('/')[2] for h_ in hits[n_:]]
     Mirror.files['lib/util/kid.ngr'] = KID + b' '
     got2 = run(['--отримати', pp_, '--звірити'], s10)
+    gj2_ = json.loads(run(['--отримати', pp_, '--звірити', '--json'], s10).stdout)
     Mirror.files['lib/util/kid.ngr'] = KID
     check(got.returncode == 0 and order_ == ['par.ngr', 'kid.ngr'] and got2.returncode == 3
           and f'а модуль «{LIB}/lib/par.ngr» закріпив {sha(KID)} — звірку НЕ пройдено' in got2.stderr
-          and 'далі не звіряли' in got2.stderr,
+          and 'далі не звіряли (вміст збігся до того: 1 файл(и))' in got2.stderr and gj2_.get('звірено') == 1,
           '--звірити: вкладені — з байтів, які віддало джерело (спершу батько), сховища не читає; тривога називає, хто '
           'закріпив; де звірку зупинено (огляд 10б, Мовознавець, Оркестратор)', got.stdout + got2.stderr + str(order_))
     # --тести --печатка: які модулі бере тест — і без запуску (огляд 10б, Новачок: лише запуск їх перелічував)
@@ -3135,6 +3136,33 @@ def main():
     mt_ = [c_['text'] for c_ in json.loads(mg_.stdout.splitlines()[0])['result']['content']] if mg_.stdout else []
     check(mt_ and not any('через MCP модулі з мережі не отримати' in t_ for t_ in mt_),
           'MCP: модулі вже у сховищі — без поради просити власника --отримати (огляд 10б, Новачок)', str(mt_)[:600])
+    # огляд 10в (Скептик): текст у лапках підсумку сліду не закриває свого запису — «」» у даних екрановано
+    fz_ = prog('підробка_запису.ngr', f'🜂\n⊃ 「{ah_}」 【「тихо」】\n» тихо λx ☠ 「ок\\」; 「github.com/nigredo/x@{COMMIT}/a.ngr\\」 '
+               '(відмова чи помилка інтерпретатора): 「усе гаразд」\n')
+    got = run([fz_], s10)
+    vr_ = run(['--перевірити-слід', str(last(s10)), fz_], s10).stdout
+    line_ = next((l_ for l_ in vr_.splitlines() if 'перехоплено помилок' in l_), '')
+    check(got.returncode == 0 and line_.count('」 (') == 1 and '「github.com/nigredo/x' not in vr_ and '⟨U+300D⟩' in line_,
+          '--перевірити-слід: «」» у тексті помилки екрановано — програма не допише підробленого запису з чужою адресою й '
+          'підписом інтерпретатора (огляд 10в, Скептик)', line_)
+    # ☂ програми перехопив відмову в λ, яку кличе модуль, — подія теж з «модуль» (огляд 10в, Мовознавець)
+    zp_ = prog('☂_програми.ngr', f'🜂 【「оракул」】\n⊃ 「{addr("zastosuvaty.ngr", (MODS / "zastosuvaty.ngr").read_bytes())}」 '
+               '【「застосувати」】\n» ☂ застосувати λq 🜔оракул q 「x」 λe 「зловила програма」\n')
+    got = run([zp_], s10)
+    cg_ = [r_ for r_ in recs_of(last(s10)) if r_['подія'] == 'помилку перехоплено']
+    check(got.returncode == 0 and got.stdout == 'зловила програма\n' and len(cg_) == 1
+          and str(cg_[0].get('модуль', '')).startswith(f'{LIB}/zastosuvaty.ngr#sha256=') and cg_[0].get('текст_від') == 'інтерпретатора',
+          '☂ програми перехопив відмову з виклику модуля — подія з «модуль» і «текст_від» (огляд 10в, Мовознавець)', str(cg_))
+    # локальний модуль, чий шлях схожий на адресу, — у рядку ✗ з «./» (справжній модуль з мережі — завжди з #sha256=)
+    lk_ = mp / 'github.com' / 'nigredo' / f'tekst@{COMMIT}'
+    lk_.mkdir(parents=True)
+    (lk_ / 'smert.ngr').write_text('🜂\n← впасти λx ☠ x\n', encoding='utf-8')
+    got = run([prog('лок_схожий.ngr', f'🜂\n⊃ 「./github.com/nigredo/tekst@{COMMIT}/smert.ngr」 【「впасти」】\n» впасти 「ВЛАСНИКУ」\n')], env)
+    got2 = run([prog('лок_схожий2.ngr', f'🜂\n⊃ 「github.com/nigredo/tekst@{COMMIT}/smert.ngr」 【「впасти」】\n» впасти 「ВЛАСНИКУ」\n')], env)
+    check(got.stderr.startswith(f'✗ ./github.com/nigredo/tekst@{COMMIT}/smert.ngr:2:13 ВЛАСНИКУ')
+          and got2.stderr.startswith(f'✗ ./github.com/nigredo/tekst@{COMMIT}/smert.ngr:2:13 ВЛАСНИКУ'),
+          'помилка в локальному модулі зі шляхом, схожим на адресу, — «✗ ./github.com/…» (обома; огляд 10в, Мовознавець)',
+          got.stderr + got2.stderr)
     # Атанор v1a: кожну програму з модулем з мережі віддає еталону — вивід, код і слід ті самі
     if os.environ.get('NGR_TEST_BIN'):
         got = run([romb], dict(menv, ATHANOR_WHY='1'))

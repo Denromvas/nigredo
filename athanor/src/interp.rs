@@ -34,6 +34,10 @@ impl E {
         let mut w = String::new();
         // file: None — ще не відомо, "" — код програми (λ програми, викликана з модуля, — місце в програмі, суд 10)
         if let Some(f) = self.file.as_ref().filter(|f| !f.is_empty()) {
+            // локальний модуль, чий шлях схожий на адресу, — з «./» (огляд 10в; еталон: looks_like_address)
+            if !f.contains("#sha256=") && !f.starts_with('/') && !f.starts_with('.') && addr_like(f) {
+                w.push_str("./");
+            }
             w.push_str(f);
             w.push(':');
         }
@@ -42,6 +46,28 @@ impl E {
         }
         format!("✗ {}{}", w, self.msg)
     }
+}
+
+/// Шлях схожий на адресу модуля з мережі: «github.com/» чи «raw.githubusercontent.com/» на початку чи після «/» (регістр
+/// — лише ASCII), або «@» і рівно 40 hex, далі «/» чи кінець — як looks_like_address еталона (re.I | re.A).
+fn addr_like(f: &str) -> bool {
+    let b = f.as_bytes();
+    for pre in [&b"github.com/"[..], &b"raw.githubusercontent.com/"[..]] {
+        for i in 0..b.len() {
+            if (i == 0 || b[i - 1] == b'/') && b.len() - i >= pre.len() && b[i..i + pre.len()].eq_ignore_ascii_case(pre) {
+                return true;
+            }
+        }
+    }
+    for (i, &c) in b.iter().enumerate() {
+        if c == b'@' {
+            let hex = b[i + 1..].iter().take_while(|c| c.is_ascii_hexdigit()).count();
+            if hex == 40 && (i + 41 == b.len() || b[i + 41] == b'/') {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 pub type R<T> = Result<T, Box<E>>;
