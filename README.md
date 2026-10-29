@@ -140,7 +140,17 @@ arguments — checked before the run and again while it runs). Court 10 (7:0 «B
 owner's key; review 10b (4:2 «A») found more (whose words an error is), and the narrow confirmation 10c (2:0 «A») one more
 (quotes in the trace summary) — all fixed with tests in both executors before the announcement. Before the first run of
 someone else's program with network modules, agents run `ngr --отримати PROGRAM --звірити` (it asks the source whether
-the address still serves the pinned content; a non-zero code means do not run). The latest
+the address still serves the pinned content; a non-zero code means do not run). **In development — 0.10-dev**
+(phase 6, the owner's decisions; proposal `spec/пропозиції/фаза6.md`):
+- **OS lock.** A group of actions the seal does not ask for at all — network, processes, writing files — is closed by
+  the **kernel** (seccomp), not only by the interpreter. Child processes inherit it. `ngr --перевірити-ізоляцію` shows
+  whether this machine's kernel holds it.
+- **Python bridge.** Pure functions only, from the owner's list (`🜔python 「statistics.median」 【…】`), each in a separate
+  process under the full OS lock. Data only goes in and out.
+- **Author signature.** Ed25519 with no dependencies, covering the seal and every module. The owner can grant rights by
+  key (`"для_авторів"`).
+
+Court 11 has not judged it yet. The latest
 comparison report is
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols — [`konsylium/`](konsylium/).
 
@@ -295,7 +305,17 @@ UTF-8 — помилка, а 30 с —
 нього). Суд 10 (7:0 «Б») зламу не знайшов, лише неправдиві тексти ключа власника; огляд 10б (4:2 «А») знайшов ще (чиї
 слова в помилці), вузьке підтвердження 10в (2:0 «А») — ще одне (лапки в підсумку сліду): усе виправлено з тестами обома
 виконавцями до оголошення. Перед першим запуском чужої програми з модулями з мережі агенти виконують `ngr --отримати
-ПРОГРАМА --звірити` (питає джерело, чи віддає адреса закріплений вміст; код ≠ 0 — не запускати). Останній звіт звірки —
+ПРОГРАМА --звірити` (питає джерело, чи віддає адреса закріплений вміст; код ≠ 0 — не запускати). **У розробці —
+0.10-dev** (фаза 6, рішення власника; пропозиція `spec/пропозиції/фаза6.md`):
+- **Замок ОС.** Групу дій, якої печатка не просить зовсім, — мережу, процеси, запис — закриває **ядро** (seccomp), а не
+  лише інтерпретатор. Дочірні процеси його успадковують. `ngr --перевірити-ізоляцію` показує, чи тримає замок ядро
+  цієї машини.
+- **Міст до Python.** Лише чисті функції за списком власника (`🜔python 「statistics.median」 【…】`), кожна в окремому
+  процесі під повним замком ОС. Туди й назад — лише дані.
+- **Підпис автора.** Ed25519 без залежностей, охоплює печатку й усі модулі. Власник може дати права за ключем
+  («для_авторів»).
+
+Суд 11 ще попереду. Останній звіт звірки —
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); історія й протоколи — [`konsylium/`](konsylium/).
 
 **Чесно про межі:** Nigredo — інструмент прозорості й аудиту, **не пісочниця ОС**: агент із доступом до shell може
