@@ -5032,6 +5032,8 @@ def py_dec(v, pos, depth=0):
 def t_python(it, pos, fn, args):
     """Міст до Python (фаза 6.2): функція зі списку власника — в окремому процесі під повним замком ОС і стеженням."""
     _py_ok(it, pos, fn)
+    if not isinstance(args.v, list):     # тип відомий лише під час виконання — помилка мови, а не код 4 (суд 11)
+        raise NgrError(f'python: аргументи — список (【…】), а не {kind(args)}', pos)
     import platform
     import subprocess
     arch = platform.machine()
@@ -5315,7 +5317,9 @@ def author_main(mode, rest, opts):
             print(f'✗ --підписати: {e}', file=sys.stderr)
             return 3
         key = f'ed25519:{pubk.hex()}'
-        print(f'✓ підписано {safe(target)} ключем {key}{" (старий підпис замінено)" if pub else ""}\n'
+        old = ('' if not pub else ' (старий підпис тим самим ключем замінено)' if f'ed25519:{pub}' == key else
+               f' (⚠ замінено підпис ІНШОГО ключа ed25519:{pub}: права, які давав той ключ, ця програма втратила)')
+        print(f'✓ підписано {safe(target)} ключем {key}{old}\n'
               f'  охоплено: {covered}; змінений байт програми чи модуля — підпис не збіжеться')
         seal = prog[2][0][3] if prog[2] else {}      # за що ручається підпис (суд 11, Мовознавець): печатка й права ключа
         print('  печатка: ' + ('; '.join(t + (f' → {", ".join(f"「{safe(x)}」" for x in sc)}' if sc else '')
@@ -8486,6 +8490,9 @@ def test_seals(targets, as_json=False):
                     'дозволи': info.get('дозволи', {}), 'квоти': info.get('квоти', []), 'бракує': info.get('бракує', []),
                     'модулі': [{'шлях': m.get('адреса') or m.get('шлях'), 'sha256': m.get('sha256'),   # які модулі
                                 'з_мережі': bool(m.get('з_мережі'))} for m in info.get('модулі', [])],   # (огляд 10б)
+                    # замок ОС, підпис і попередження (⚠ мосту) — як у --печатка (суд 11, Оркестратор)
+                    'замок_ОС': info.get('замок_ОС'), 'підпис': info.get('підпис'),
+                    'попередження': info.get('попередження', []),
                     **({'бракує_модулів': info['бракує_модулів']} if info.get('бракує_модулів') else {})})
     if as_json:
         print(json.dumps({'тести': out, 'пропущено_з_тек_запису': [safe(x) for x in skipped]}, ensure_ascii=False, indent=1))
@@ -8495,7 +8502,12 @@ def test_seals(targets, as_json=False):
             print(f'{"✓" if r["в_межах"] else "✗"} {r["файл"]} — печатка: {caps}'
                   + (f'; КВОТА: {quota_text(r["квоти"])}' if r['квоти'] else '')
                   + ('' if r['в_межах'] else f' — бракує: {", ".join(r["бракує"])}')
-                  + (f'; модулі: {", ".join(safe(str(m["шлях"])) for m in r["модулі"])}' if r['модулі'] else ''))
+                  + (f'; модулі: {", ".join(safe(str(m["шлях"])) for m in r["модулі"])}' if r['модулі'] else '')
+                  + (f'; ядро закриє: {os_acc(r["замок_ОС"]["закрито"]) or "нічого"}'
+                     if isinstance(r['замок_ОС'], dict) and isinstance(r['замок_ОС'].get('закрито'), list) else '')
+                  + (f'; ПІДПИС АВТОРА: {r["підпис"].get("ключ")}' if isinstance(r['підпис'], dict) else ''))
+            for w in r['попередження']:
+                print(f'    ⚠ {w}')
         if skipped:
             print(f'пропущено {len(skipped)} файл(и) в теках, куди програмам дозволено писати')
     return 0 if all(r['в_межах'] for r in out) else 1
