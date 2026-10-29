@@ -1,0 +1,10 @@
+🜂 「атака21 (аудитор): відтворення Н-1 Скептика — temp.dbstat читає модуль dbstat, коли в базі є своя таблиця dbstat; контроль — без своєї таблиці; що бачать слід, печатка й --сухо」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS v(k, s)」
+» з 「INSERT INTO v(k, s) SELECT 'контроль', count(*) FROM temp.dbstat」
+» з 「CREATE TABLE IF NOT EXISTS dbstat(x)」
+» з 「INSERT INTO dbstat(x) VALUES (1)」
+» з 「INSERT INTO v(k, s) SELECT 'своя', count(*) FROM dbstat」
+» з 「INSERT INTO v(k, s) SELECT 'temp', count(*) FROM temp.dbstat」
+» з 「INSERT INTO v(k, s) SELECT 'temp_temp', group_concat(name || char(58) || pageno || char(58) || payload) FROM temp.dbstat('temp')」
