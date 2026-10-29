@@ -158,6 +158,7 @@ pub struct Interp {
     pub last_call: Option<(String, Vec<J>)>,
     pub modules: HashMap<String, Rc<Env>>,
     pub prof: Option<HashMap<String, (u64, std::time::Duration)>>,
+    pub os_mode: Option<&'static str>, // замок ОС (фаза 6.1): «печатка» — закрити групи, яких печатка не просить; «усе»
     pub dry: Option<Vec<(u64, &'static str, Vec<J>, f64, bool)>>, // --сухо: придушені дії (№, назва, аргументи, впевненість, запит не скомпілювався)
     pub db_unchecked: bool, // права без дії: запит SQLite не скомпілювався на нинішній базі (огляд 0.8.1в)
 }
@@ -684,6 +685,12 @@ impl Interp {
                 }
                 let agent = self.agent.clone();
                 self.rec("печатка", data!["агент" => J::Str(agent), "намір" => J::s(intent), "дозволи" => caps_json(caps)])?;
+                if let Some(m) = self.os_mode.take() {
+                    // замок ОС — раз, на печатці програми (фаза 6.1; еталон: os_lock)
+                    let closed = if m == "усе" { crate::lang::OS_GROUPS.to_vec() } else { crate::oslock::closed(caps) };
+                    let d = crate::oslock::lock(&closed);
+                    self.rec("ізоляція", d)?;
+                }
                 Ok(V::none())
             }
             K::Tool(name, args) => {

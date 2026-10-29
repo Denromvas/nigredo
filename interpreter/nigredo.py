@@ -21,7 +21,7 @@ import decimal
 import math
 from decimal import ROUND_HALF_UP, Decimal
 
-VERSION = '0.9'
+VERSION = '0.10-dev'
 MAX_DEPTH = 2000
 WALK_MAX_DEPTH = 2000     # показ, порівняння, JSON, ключі ⇅ обходять значення не глибше: далі — «вкладене надто глибоко»
 #                           (межа мови, а не стека CPython — та сама в еталоні й Атанорі, від версії Python не залежить)
@@ -4818,6 +4818,163 @@ TOOL_ALIASES = {'читати': 'файл.читати', 'писати': 'фай
 TOOL_SHORT = {v: k for k, v in TOOL_ALIASES.items()}
 WRITE_TOOLS = ('файл.писати', 'бд.писати')          # теки, куди програма може писати (і звідки не беруть код)
 
+# ---- Замок ОС (фаза 6.1, spec/пропозиції/фаза6.md §1): групи дій, яких печатка не просить зовсім, закриває ядро
+# (seccomp-bpf), а не лише чесність інтерпретатора. Теки, хости, команди всередині групи — далі інтерпретатор.
+OS_GROUPS = ('мережа', 'процеси', 'запис')
+OS_OPENED_BY = {'мережа': ('мережа.взяти', 'мережа.послати', 'агент'), 'процеси': ('процес', 'агент', 'python'),
+                'запис': ('файл.писати', 'бд.писати', 'бд.читати', 'процес', 'агент')}   # бд.читати: WAL і тимчасові
+#   таблиці SQLite; процес: команди пишуть /dev/null і тимчасові файли (шляху seccomp не бачить) — мережу ж без дозволу
+#   ядро закриває й командам: фільтр успадковують дочірні процеси
+OS_TABLES = {   # номери системних викликів; «відкрити» — (номер, який аргумент — прапорці)
+    'aarch64': {'audit': 0xC00000B7, 'seccomp': 277, 'x32': False,
+                'завжди': (425, 426, 427, 265),                       # io_uring_* (обхід фільтра), open_by_handle_at
+                'мережа': (198, 199, 200, 201, 202, 203, 242),        # socket socketpair bind listen accept connect accept4
+                'процеси': (221, 281),                                # execve execveat
+                'запис': (33, 34, 35, 36, 37, 38, 45, 46, 47, 52, 53, 54, 55, 88, 276, 452, 5, 6, 7, 14, 15, 16),
+                'відкрити': ((56, 2),), 'відкрити2': (437,)},         # openat (прапорці — arg2), openat2 (у структурі)
+    'x86_64': {'audit': 0xC000003E, 'seccomp': 317, 'x32': True,
+               'завжди': (425, 426, 427, 304),
+               'мережа': (41, 42, 43, 49, 50, 53, 288),
+               'процеси': (59, 322),
+               'запис': (85, 76, 77, 82, 83, 84, 86, 87, 88, 90, 91, 92, 93, 94, 133, 132, 235, 261, 258, 259, 260, 263,
+                         264, 265, 266, 268, 280, 285, 316, 452, 188, 189, 190, 197, 198, 199),
+               'відкрити': ((2, 1), (257, 2)), 'відкрити2': (437,)},
+}
+OS_WRITE_FLAGS = 0o1 | 0o2 | 0o100 | 0o1000      # O_WRONLY O_RDWR O_CREAT O_TRUNC (однакові на aarch64 і x86_64)
+OS_LOCK_PROCESS = False      # замок ставить лише окремий процес ngr (entry): main(), викликаний іншою програмою
+#                              (тести, пісочниця), не має права замкнути процес того, хто кличе
+
+
+def isolation_probe(as_json=False):
+    """ngr --перевірити-ізоляцію: дочірній процес ставить замок ОС із закритими всіма трьома групами й пробує socket(),
+    відкрити файл на запис (у тимчасовій теці) і exec /bin/sh — що з цього ядро відмовило. Код: 0 — тримає все, 1 — ні,
+    2 — замка немає (ядро, архітектура, не Linux)."""
+    import shutil
+    import tempfile
+    d = tempfile.mkdtemp(prefix='ngr-ізоляція-')
+    r, w = os.pipe()
+    pid = os.fork()
+    if pid == 0:                      # дитина: замок, проби — рядками JSON у трубу
+        try:
+            os.close(r)
+            lock = os_lock(list(OS_GROUPS))
+            os.write(w, (json.dumps({'замок': lock}, ensure_ascii=False) + '\n').encode())
+            if lock.get('ядро') == 'seccomp':
+                def err(e):
+                    return 'EPERM' if e.errno == 1 else f'errno {e.errno}'
+                import socket
+                try:
+                    socket.socket().close()
+                    res = 'дозволено'
+                except OSError as e:
+                    res = err(e)
+                os.write(w, (json.dumps({'мережа': res}, ensure_ascii=False) + '\n').encode())
+                try:
+                    os.close(os.open(os.path.join(d, 'спроба'), os.O_WRONLY | os.O_CREAT, 0o600))
+                    res = 'дозволено'
+                except OSError as e:
+                    res = err(e)
+                os.write(w, (json.dumps({'запис': res}, ensure_ascii=False) + '\n').encode())
+                try:
+                    os.execv('/bin/sh', ['sh', '-c', 'exit 0'])   # вдалося — дитина стала sh: «процеси» не напише
+                except OSError as e:
+                    os.write(w, (json.dumps({'процеси': err(e)}, ensure_ascii=False) + '\n').encode())
+        finally:
+            os._exit(0)
+    os.close(w)
+    data = b''
+    while True:
+        chunk = os.read(r, 4096)
+        if not chunk:
+            break
+        data += chunk
+    os.close(r)
+    os.waitpid(pid, 0)
+    shutil.rmtree(d, ignore_errors=True)
+    got = {}
+    for line in data.decode('utf-8', 'replace').splitlines():
+        got.update(json.loads(line))
+    lock = got.get('замок', {})
+    held = {g: got.get(g, 'дозволено') for g in OS_GROUPS} if lock.get('ядро') == 'seccomp' else {}
+    code = 2 if not held else 0 if all(v != 'дозволено' for v in held.values()) else 1
+    import platform
+    if as_json:
+        print(json.dumps({'ядро': lock.get('ядро'), 'причина': lock.get('причина'), 'архітектура': safe(platform.machine()),
+                          'групи': held, 'тримає': code == 0}, ensure_ascii=False, indent=1))
+        return code
+    if not held:
+        print(f'✗ замка ОС на цій машині немає: {lock.get("причина", "?")} — межі печатки тримає лише інтерпретатор')
+        return code
+    what = {'мережа': 'socket()', 'запис': 'відкрити файл на запис', 'процеси': 'exec /bin/sh'}
+    print(f'замок ОС на цій машині: seccomp ({safe(platform.machine())}) — '
+          + ('ядро тримає всі три групи' if code == 0 else 'ядро тримає НЕ все'))
+    for g in OS_GROUPS:
+        print(f'  {"✓" if held[g] != "дозволено" else "✗"} {g}: {what[g]} → '
+              + ('відмова (' + held[g] + ')' if held[g] != 'дозволено' else 'ДОЗВОЛЕНО'))
+    return code
+
+
+def os_closed(caps):
+    """Які групи закриває ядро: ті, жодного інструмента яких печатка не має."""
+    return [g for g in OS_GROUPS if not any(t in caps for t in OS_OPENED_BY[g])]
+
+
+def os_filter(arch, closed):
+    """Програма seccomp-bpf — [(code, jt, jf, k)]: чужа архітектура (і x32) — убити; io_uring, open_by_handle_at —
+    ENOSYS; закриті групи — EPERM; openat/open з прапорцями запису — EPERM, openat2 — ENOSYS; решта — дозволено.
+    Атанор будує ту саму програму з тих самих таблиць (gen_tables.py)."""
+    T = OS_TABLES[arch]
+    LD, JEQ, JGE, JSET, RET = 0x20, 0x15, 0x35, 0x45, 0x06
+    ALLOW, KILL, ERRNO = 0x7FFF0000, 0x80000000, 0x00050000
+    prog = [(LD, 0, 0, 4), (JEQ, 1, 0, T['audit']), (RET, 0, 0, KILL), (LD, 0, 0, 0)]
+    if T['x32']:
+        prog += [(JGE, 0, 1, 0x40000000), (RET, 0, 0, KILL)]
+    deny = [(n, 38) for n in T['завжди']]
+    for g in OS_GROUPS:
+        if g in closed:
+            deny += [(n, 1) for n in T[g]]
+    if 'запис' in closed:
+        deny += [(n, 38) for n in T['відкрити2']]
+    for n, err in deny:
+        prog += [(JEQ, 0, 1, n), (RET, 0, 0, ERRNO | err)]
+    if 'запис' in closed:
+        for n, arg in T['відкрити']:
+            prog += [(JEQ, 0, 4, n), (LD, 0, 0, 16 + 8 * arg), (JSET, 0, 1, OS_WRITE_FLAGS), (RET, 0, 0, ERRNO | 1),
+                     (RET, 0, 0, ALLOW)]
+    return prog + [(RET, 0, 0, ALLOW)]
+
+
+def os_lock(closed):
+    """Поставити замок ОС на весь процес (усі потоки — TSYNC; успадковують і дочірні процеси). → поля події «ізоляція»
+    сліду: {"ядро": "seccomp", "закрито": […]}, {"ядро": "не потрібне", …} чи {"ядро": "немає", "причина": …}."""
+    if not closed:
+        return {'ядро': 'не потрібне', 'закрито': []}
+    if not OS_LOCK_PROCESS:
+        return {'ядро': 'немає', 'причина': 'не окремий процес ngr (main викликала інша програма)', 'закрито': []}
+    import platform
+    arch = platform.machine()
+    if not sys.platform.startswith('linux'):
+        return {'ядро': 'немає', 'причина': 'не Linux', 'закрито': []}
+    if arch not in OS_TABLES:
+        return {'ядро': 'немає', 'причина': f'архітектура {safe(arch)} без таблиці замка', 'закрито': []}
+    import ctypes
+    import struct
+    libc = ctypes.CDLL(None, use_errno=True)
+    raw = b''.join(struct.pack('HBBI', *i) for i in os_filter(arch, closed))
+    buf = ctypes.create_string_buffer(raw, len(raw))
+
+    class Fprog(ctypes.Structure):
+        _fields_ = [('len', ctypes.c_ushort), ('filter', ctypes.c_void_p)]
+    fp = Fprog(len(raw) // 8, ctypes.addressof(buf))
+    if libc.prctl(38, 1, 0, 0, 0) != 0:          # PR_SET_NO_NEW_PRIVS
+        return {'ядро': 'немає', 'причина': f'ядро відмовило (errno {ctypes.get_errno()})', 'закрито': []}
+    r = libc.syscall(OS_TABLES[arch]['seccomp'], 1, 1, ctypes.byref(fp))   # SET_MODE_FILTER, FILTER_FLAG_TSYNC
+    if r != 0:
+        r = libc.prctl(22, 2, ctypes.byref(fp), 0, 0)                     # PR_SET_SECCOMP, MODE_FILTER
+    if r != 0:
+        return {'ядро': 'немає', 'причина': f'ядро відмовило (errno {ctypes.get_errno()})', 'закрито': []}
+    return {'ядро': 'seccomp', 'закрито': list(closed)}
+
 
 def read_allowlist(path, cwd=None, prog=None, approval=None):
     """«дозволено» — для всіх програм; «для_тек» — {"/абсолютна/тека": [дозволи]} лише для програм у цій теці;
@@ -5223,6 +5380,7 @@ class Interp:
         self.dry = None         # --сухо: список придушених дій (записи, надсилання, процеси, агенти)
         self.pure = False       # замок 2 (модулі з git, §6.2): виконується код з функції модуля з мережі — лише обчислення;
         #                         не False — адреса того модуля (у слід і в помилку: власник бачить, котрий модуль)
+        self.os_mode = None     # замок ОС (фаза 6.1): 'печатка' — закрити групи, яких печатка не просить; 'усе' — усі
 
     def tool_begin(self, name, args, pos):
         """Перевірка прав, впевненість аргументів і запис «виклик» — до дії (для ‖ — по черзі, до паралельних дій)."""
@@ -5844,6 +6002,9 @@ class Interp:
             if getattr(node[3], 'quotas', None):
                 self.quota_stack.append(('печатка', node[3], id(node[3])))
             self.trace('печатка', агент=self.agent, намір=node[2], дозволи=node[3])
+            if self.os_mode is not None:          # замок ОС — раз, на печатці програми (фаза 6.1)
+                closed, self.os_mode = (list(OS_GROUPS) if self.os_mode == 'усе' else os_closed(node[3])), None
+                self.trace('ізоляція', **os_lock(closed))
             return V(None)
         if k == 'tool':
             job = self.tool_begin(node[2], [self.eval(a, env) for a in node[3]], pos)
@@ -6814,7 +6975,8 @@ def seal_info(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
             'квоти_власника': [{'інструмент': t, 'обмеження': safe(sc), 'не_більше': n} for t, sc, n in owner_quotas(allowed)],
             'права_теки': [safe(x) for x in dir_extra] if dir_extra is not None else None,
             'права_схвалення': [safe(x) for x in prog_extra or []], 'тека': safe(cwd), 'в_межах': not missing,
-            'бракує': missing, 'попередження': lookalike_warnings(prog) + seal_warnings(prog, cwd) + (
+            'бракує': missing, 'замок_ОС': {'закрито': os_closed(seal[3])},
+            'попередження': lookalike_warnings(prog) + seal_warnings(prog, cwd) + (
                 [ADDR_WARNING] if any(m.get('з_мережі') for m in mods) else []),
             **({'джерела_модулів_власника': sources_text(getattr(allowed, 'sources', DEFAULT_SOURCES))}
                if any(m.get('з_мережі') for m in mods) else {})}
@@ -6872,6 +7034,9 @@ def seal_report(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
     if i['права_схвалення']:
         lines.append(f'  права, схвалені власником саме для цієї програми («для_програм»): {", ".join(i["права_схвалення"])}')
     lines.append('  ✓ печатка в межах дозволів власника' if i['в_межах'] else f'  ✗ бракує дозволу власника: {", ".join(i["бракує"])}')
+    shut = i['замок_ОС']['закрито']                 # фаза 6.1: що закриє ядро (а не лише інтерпретатор)
+    lines.append(f'  ЗАМОК ОС: ядро закриє {", ".join(shut)} (seccomp; чи тримає ця машина — ngr --перевірити-ізоляцію)'
+                 if shut else '  ЗАМОК ОС: не потрібен — печатка відкриває мережу, процеси й запис')
     lines += [f'  ⚠ {w}' for w in i['попередження']]
     lines.append('  (права перевіряються й під час виконання: кожен інструмент і кожен субагент — лише в межах агента, '
                  'що його викликає. Цього необхідно, але не досить: намір, імена й вивід — слова автора програми)')
@@ -7348,6 +7513,10 @@ def cheatsheet():
             '  не зробить нічого поза печаткою і не допише, не змінить і не обріже свій слід непомітно. Але *агент*,',
             '  що має shell, може обійти Nigredo взагалі чи змінити `~/.nigredo` (дозволи, ключ сліду). Від такого',
             '  агента захищають права процесу й пісочниця ОС, а не мова.',
+            '- **Замок ОС** (0.10-dev): групу дій, якої печатка не просить зовсім — мережа, процеси, запис, — закриває',
+            '  ядро (seccomp), а не лише інтерпретатор; дочірні процеси (`🜔процес`) успадковують замок. У сліді — подія',
+            '  `ізоляція` (що закрито, чи є ядро); `--печатка` каже, що закриє; `ngr --перевірити-ізоляцію` — чи тримає ядро',
+            '  цієї машини. Межі всередині групи (теки, хости, команди) й читання — далі тримає інтерпретатор.',
             '- Впевненість відстежується через дані, керування й побічний стан, але це консервативна оцінка, а не',
             '  ймовірність. Канал завершення відстежується (див. вище); лишається лише вичерпання лімітів кроків і',
             '  розміру — їх задає той, хто запускає, однаково для всіх гілок.',
@@ -8325,6 +8494,8 @@ def _main(argv, opts, it, value):
             return 0 if msg.startswith('✓') else 1
         if a == '--отримати':              # модулі з мережі — єдиний крок із мережею (модулі з git, §4)
             return fetch_main(list(it), opts, argv)
+        if a == '--перевірити-ізоляцію':   # чи тримає ядро цієї машини замок ОС (фаза 6.1)
+            return isolation_probe('--json' in list(it) or opts['json'])
         if a == '--відбиток':              # ідентичність виконавця (Атанор друкує sha256 свого бінарника)
             print(f'еталон {os.path.realpath(__file__)}\n  sha256 nigredo.py (поле «інтерпретатор» сліду) {INTERP_SHA}')
             return 0
@@ -8594,6 +8765,15 @@ def _main(argv, opts, it, value):
         if opts.get('dry'):
             interp.dry = []
             trace('сухо', причина='--сухо: записи, надсилання, процеси й агенти не виконуються')
+        # замок ОС ставиться на печатці; що треба писати після неї (шлях сліду для тестів, /dev/null для обірваної
+        # труби) — відкрити зараз
+        interp.os_mode = 'усе' if replay or opts.get('dry') else 'печатка'
+        devnull_w = os.open(os.devnull, os.O_WRONLY | os.O_CLOEXEC)
+        if os.environ.get('NIGREDO_TRACE_PATH_FILE'):
+            try:
+                tpf = open(os.environ['NIGREDO_TRACE_PATH_FILE'], 'w', encoding='utf-8')
+            except OSError:
+                pass
         try:
             try:
                 interp.run(prog)
@@ -8614,7 +8794,7 @@ def _main(argv, opts, it, value):
             if replay:
                 return replay_report(replay, main_trace, interp.ends)
         except BrokenPipeError:                      # читач закрив вивід (| head) — тихо, без «вади мови»
-            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+            os.dup2(devnull_w, sys.stdout.fileno())
             trace('помилка', повідомлення='вивід обірвано: читач закрив трубу')
             code = 1
         except Exception as e:                       # вада інтерпретатора: чесно, без трасування Python
@@ -8625,7 +8805,11 @@ def _main(argv, opts, it, value):
             code = 4
         return code
     finally:
-        if os.environ.get('NIGREDO_TRACE_PATH_FILE'):
+        tpf = locals().get('tpf')                    # відкрито до замка ОС
+        if tpf is not None:
+            tpf.write(main_trace)
+            tpf.close()
+        elif os.environ.get('NIGREDO_TRACE_PATH_FILE'):
             try:
                 with open(os.environ['NIGREDO_TRACE_PATH_FILE'], 'w', encoding='utf-8') as f:
                     f.write(main_trace)
@@ -8876,6 +9060,8 @@ def entry():
     """Точка входу: глибока рекурсія — в окремому потоці з великим стеком. Запускач — interpreter/ngr.py.
     Межа мови — MAX_WORK (200 000 рівнів: виклики × висота їхніх тіл) і ще MAX_NEST верхнього рівня; Python мусить
     витримати їх усі, а не впасти з кодом 4 (суд 9: 1900 викликів × 60 вкладених ＋ — ~114 тис.)."""
+    global OS_LOCK_PROCESS
+    OS_LOCK_PROCESS = True                       # окремий процес ngr — замок ОС можна ставити (фаза 6.1)
     sys.setrecursionlimit(10_000_000)
     threading.stack_size(1024 * 1024 * 1024 - 4096)
     result = [1]

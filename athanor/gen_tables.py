@@ -250,6 +250,20 @@ def lang():
     tt = list(N.TOOL_TYPES.items())
     out.append(f'pub static TOOL_TYPES: [(&str, &str, &str); {len(tt)}] = [' +
                ', '.join(f'({rs(k)}, {rs(",".join(a))}, {rs(r)})' for k, (a, r) in tt) + '];')
+    # замок ОС (фаза 6.1): ті самі групи й номери системних викликів, що й в еталоні — фільтр будують обидва однаково
+    out.append(f'pub static OS_GROUPS: [&str; {len(N.OS_GROUPS)}] = [' + ', '.join(rs(g) for g in N.OS_GROUPS) + '];')
+    out.append(f'pub static OS_OPENED_BY: [&[&str]; {len(N.OS_GROUPS)}] = [' +
+               ', '.join('&[' + ', '.join(rs(t) for t in N.OS_OPENED_BY[g]) + ']' for g in N.OS_GROUPS) + '];')
+    out.append(f'pub const OS_WRITE_FLAGS: u32 = {N.OS_WRITE_FLAGS};')
+    out.append('pub struct OsTable {\n    pub arch: &\'static str,\n    pub audit: u32,\n    pub seccomp: i64,\n    pub x32: bool,\n'
+               '    pub always: &\'static [u32],\n    pub groups: [&\'static [u32]; 3],\n    pub open: &\'static [(u32, u32)],\n'
+               '    pub open2: &\'static [u32],\n}')
+    nums = lambda xs: '&[' + ', '.join(str(x) for x in xs) + ']'   # noqa: E731
+    out.append(f'pub static OS_TABLES: [OsTable; {len(N.OS_TABLES)}] = [' + ', '.join(
+        f'OsTable {{ arch: {rs(a)}, audit: {T["audit"]:#x}, seccomp: {T["seccomp"]}, x32: {str(T["x32"]).lower()}, '
+        f'always: {nums(T["завжди"])}, groups: [{", ".join(nums(T[g]) for g in N.OS_GROUPS)}], '
+        f'open: &[{", ".join(f"({n}, {i})" for n, i in T["відкрити"])}], open2: {nums(T["відкрити2"])} }}'
+        for a, T in N.OS_TABLES.items()) + '];')
     import errno
     se = [(i, errno.errorcode.get(i, ''), os.strerror(i)) for i in range(1, 134)]
     out.append(f'pub static STRERROR: [(i32, &str, &str); {len(se)}] = [' +

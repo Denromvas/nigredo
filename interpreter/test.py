@@ -2193,7 +2193,7 @@ def main():
     sizes = [len(x) + 1 for x in (tmp / 'повінь1.jsonl').read_bytes().split(b'\n')[1:-1]]
     got = run(['--слід', str(tmp / 'повінь2.jsonl'), '--слід-розмір', str(sum(sizes[:12]) - 1), '-e', flood], env)
     evs = [json.loads(x)['подія'] for x in (tmp / 'повінь2.jsonl').read_text(encoding='utf-8').splitlines()]
-    check(got.returncode == 1 and len(evs) == 14 and evs[-1] == 'помилка' and got.stdout.split() == [str(i) for i in range(1, 12)],
+    check(got.returncode == 1 and len(evs) == 14 and evs[-1] == 'помилка' and got.stdout.split() == [str(i) for i in range(1, 11)],
           '--слід-розмір: «початок» не рахується — зупинка рівно після 12-го запису', f'{evs}\n{got.stderr}')
     # суд 9б: --повторити сліду, який зупинила межа сліду (і на результаті дії), — «✓ … там само», а не «вада мови»
     rprog = (f'🜂 【「писати:{DATA}/звіти」 「читати:{DATA}/звіти」】\n∀ …1 6 λi 《 🜔писати ＋ 「{DATA}/звіти/пм_」 ＋ σ i '
@@ -3173,6 +3173,73 @@ def main():
               and got.returncode == ref_.returncode == 0 and ev1 == ev2,
               'Атанор v1a: програму з модулем з мережі віддано еталону (явна причина), вивід і слід ті самі', got.stderr)
     msrv.shutdown()
+
+    # ------------------------------------------------------------------ фаза 6.1: замок ОС (spec/пропозиції/фаза6.md §1)
+    # Чого печатка не просить зовсім (мережа, процеси, запис), те закриває ядро (seccomp), а не лише інтерпретатор.
+    oh = tmp / 'власник_замок'
+    oh.mkdir()
+    ow = tmp / 'замок_вих'
+    ow.mkdir()
+    (oh / 'дозволи.json').write_text(json.dumps({'дозволено': ['процес:sh -c', f'писати:{ow}', 'взяти:127.0.0.1', 'агент:ніхто',
+                                                              f'бд.читати:{ow}']}, ensure_ascii=False), encoding='utf-8')
+    oenv = dict(env, NIGREDO_HOME=str(oh), NIGREDO_TRACE_PATH_FILE=str(tmp / 'замок.слід'))
+    pj = json.loads(run(['--перевірити-ізоляцію', '--json'], oenv).stdout)
+    probe_ = run(['--перевірити-ізоляцію'], oenv)
+    has_lock = pj.get('ядро') == 'seccomp'
+    check((probe_.returncode == 0 and pj['тримає'] is True and set(pj['групи'].values()) == {'EPERM'}
+           and probe_.stdout.count('✓') == 3) if has_lock else (probe_.returncode == 2 and 'замка ОС на цій машині немає' in probe_.stdout),
+          '--перевірити-ізоляцію: дочірній процес під замком — socket, запис файлу й exec ядро відмовило (EPERM); замка '
+          'немає — так і сказано, код 2 (фаза 6.1)', probe_.stdout + probe_.stderr)
+
+    def iso(code, *extra):
+        got_ = run([*extra, '-e', code], oenv)
+        ev_ = [r_ for r_ in (json.loads(x) for x in pathlib.Path((tmp / 'замок.слід').read_text(encoding='utf-8'))
+                             .read_text(encoding='utf-8').splitlines()) if r_['подія'] == 'ізоляція']
+        return got_, ev_
+    cases_ = [('🜂\n» 1', [], ['мережа', 'процеси', 'запис']), (f'🜂 【「писати:{ow}」】\n» 1', [], ['мережа', 'процеси']),
+              ('🜂 【「процес:sh -c」】\n» 1', [], ['мережа']), ('🜂 【「взяти:127.0.0.1」】\n» 1', [], ['процеси', 'запис']),
+              (f'🜂 【「бд.читати:{ow}」】\n» 1', [], ['мережа', 'процеси']), ('🜂 【「агент:ніхто」】\n» 1', [], []),
+              (f'🜂 【「писати:{ow}」】\n» 1', ['--сухо'], ['мережа', 'процеси', 'запис'])]
+    bad_ = []
+    for code_, extra_, want_ in cases_:
+        got_, ev_ = iso(code_, *extra_)
+        exp_ = ({'ядро': 'seccomp', 'закрито': want_} if want_ and has_lock else {'ядро': 'не потрібне', 'закрито': []}
+                if not want_ else None)
+        ok_ = got_.returncode == 0 and len(ev_) == 1 and (exp_ is None or {k: ev_[0].get(k) for k in exp_} == exp_)
+        if not ok_:
+            bad_.append((code_, extra_, ev_, got_.stderr[-200:]))
+    check(not bad_, 'замок ОС: подія «ізоляція» одразу після печатки — закрито саме ті групи, яких печатка не просить '
+          '(процес відкриває й запис, агент — усе, бд.читати — запис; --сухо — усе) (фаза 6.1)', str(bad_))
+    seal_ = run(['--печатка', '--json', '-e', '🜂 【「процес:sh -c」】\n» 1'], oenv)
+    check(json.loads(seal_.stdout).get('замок_ОС') == {'закрито': ['мережа']}
+          and 'ЗАМОК ОС: ядро закриє мережа' in run(['--печатка', '-e', '🜂 【「процес:sh -c」】\n» 1'], oenv).stdout,
+          '--печатка: що закриє ядро (і в --json «замок_ОС») (фаза 6.1)', seal_.stdout[-400:])
+    if has_lock:
+        # дочірні процеси успадковують замок: команда без 「взяти」 у печатці мережі не має, з ним — має
+        netpy_ = 'import socket\ntry:\n    socket.socket().close(); print("мережа: є")\nexcept OSError as e:\n    print("мережа:", e.errno)\n'
+        (ow / 'мережа.py').write_text(netpy_, encoding='utf-8')
+        call_ = f'» 🜔процес 【「sh」 「-c」 「{sys.executable} {ow}/мережа.py」】'
+        got_ = run(['-e', f'🜂 【「процес:sh -c」】\n{call_}'], oenv)
+        got2_ = run(['-e', f'🜂 【「процес:sh -c」 「взяти:127.0.0.1」】\n{call_}'], oenv)
+        # запис без дозволу — ядро; і програма, і команда (з 「процес」 запис відкрито — тож тут без процесу)
+        lk_ = subprocess.run([sys.executable, '-c', 'import sys, os; sys.path.insert(0, sys.argv[1]); import nigredo as n\n'
+                              'n.OS_LOCK_PROCESS = True\nprint(n.os_lock(["запис"]))\n'
+                              'print(len(open("/etc/hostname").read()) >= 0)\n'
+                              'try:\n    open(sys.argv[2], "w")\n    print("запис: є")\nexcept OSError as e:\n    print("запис:", e.errno)\n'
+                              'import socket\nsocket.socket().close()\nprint("мережа відкрита")',
+                              str(ROOT / 'interpreter'), str(ow / 'не_має_зʼявитися.txt')], capture_output=True, text=True)
+        check(got_.stdout == 'мережа: 1\n\n' and got2_.stdout == 'мережа: є\n\n'
+              and lk_.stdout.splitlines()[1:] == ['True', 'запис: 1', 'мережа відкрита'] and not (ow / 'не_має_зʼявитися.txt').exists(),
+              'замок ОС: команда (🜔процес) успадковує замок — без 「взяти」 у печатці socket() → EPERM, з ним — є; os_lock(«запис») '
+              '— читання є, запис EPERM, мережа відкрита (фаза 6.1)', got_.stdout + got_.stderr + got2_.stdout + lk_.stdout + lk_.stderr)
+    # main(), викликана іншою програмою, процес того, хто кличе, не замикає
+    inproc_ = subprocess.run([sys.executable, '-c', 'import sys, io, contextlib; sys.path.insert(0, sys.argv[1]); import nigredo as n\n'
+                              'with contextlib.redirect_stdout(io.StringIO()):\n    n.main(["-e", "🜂\\n» 1"])\n'
+                              'import socket\nsocket.socket().close()\nprint("процес не замкнено")', str(ROOT / 'interpreter')],
+                             capture_output=True, text=True, env=oenv)
+    check(inproc_.stdout.strip() == 'процес не замкнено',
+          'замок ОС: main(), викликана іншою програмою (тести, пісочниця), процес того, хто кличе, не замикає (фаза 6.1)',
+          inproc_.stdout + inproc_.stderr)
 
     sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',
