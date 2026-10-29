@@ -49,6 +49,38 @@ fn per_programs(kv: &[(std::borrow::Cow<'_, str>, bool, P<'_>)]) -> Result<Vec<(
     }
 }
 
+/// «для_авторів» (фаза 6.3) — лише права ключів (для тек запису: вони впливають і на «для_тек» програм без підпису).
+/// Програму з підписом Атанор віддає еталону раніше, тож тут прав за ключем не додають. Форму — лише ту, яку еталон
+/// (per_authors) приймає напевно: ключ рівно «ed25519:» і 64 hex малими, значення — {"імʼя": рядок, "дозволи": [рядки]};
+/// решту (пробіли, великі літери, криве значення) перевіряє еталон (суд 11: досі будь-яке «для_авторів» віддавало
+/// еталону всі програми машини).
+fn per_authors(kv: &[(std::borrow::Cow<str>, bool, P)]) -> Result<Vec<Vec<String>>, Back> {
+    let d = match get(kv, "для_авторів") {
+        None => return Ok(Vec::new()),
+        Some(P::Obj(d)) => d,
+        Some(_) => return back("для_авторів — не словник"),
+    };
+    let mut out = Vec::new();
+    for (k, sur, v) in d {
+        let hex = k.strip_prefix("ed25519:").unwrap_or("");
+        if *sur || hex.len() != 64 || !hex.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)) {
+            return back("для_авторів — ключ не простої форми");
+        }
+        let vv = match v {
+            P::Obj(vv) if vv.iter().all(|(f, s2, _)| !s2 && (f == "імʼя" || f == "дозволи")) => vv,
+            _ => return back("для_авторів — значення не простої форми"),
+        };
+        if !matches!(get(vv, "імʼя"), None | Some(P::Str(_, false))) {
+            return back("для_авторів — імʼя не рядок");
+        }
+        match get(vv, "дозволи") {
+            Some(p @ P::Arr(_)) => out.push(strs(p)?),
+            _ => return back("для_авторів — без списку дозволів"),
+        }
+    }
+    Ok(out)
+}
+
 /// Дзеркало власника у «джерела_модулів» — лише форма, яку еталон (mirror_ok) приймає напевно: http(s)://хост[:порт]/шлях/
 /// з ASCII, хост малими, порт до 65535; решту (великі літери, IPv6, не ASCII, вади) перевіряє еталон.
 fn mirror_simple(b: &str) -> bool {
@@ -90,12 +122,7 @@ fn read_allowlist(path: &str, cwd: Option<&str>, prog: Option<&str>, approval: O
         Some(_) => return back("для_тек — не словник"),
     };
     let per_prog = per_programs(kv)?;
-    // «для_авторів» (фаза 6.3): його права й форму перевіряє еталон (і теки запису з нього впливають на «для_тек»)
-    match get(kv, "для_авторів") {
-        None => {}
-        Some(P::Obj(d)) if d.is_empty() => {}
-        Some(_) => return back("для_авторів — еталон"),
-    }
+    let per_auth = per_authors(kv)?;
     // «джерела_модулів» (модулі з git, §4.2): на програму без модулів з мережі не впливає, але криве значення — відмова
     // еталона всім програмам; тут — лише список із «github.com» чи порожній і дзеркало простої форми, решта — до еталона
     match get(kv, "джерела_модулів") {
@@ -107,7 +134,7 @@ fn read_allowlist(path: &str, cwd: Option<&str>, prog: Option<&str>, approval: O
     }
     let mut writable = Vec::new();
     let mut all: Vec<String> = lst.clone();
-    for (_, x) in per_dir.iter().chain(per_prog.iter()) {
+    for x in per_dir.iter().map(|(_, x)| x).chain(per_prog.iter().map(|(_, x)| x)).chain(per_auth.iter()) {
         all.extend(x.iter().map(|a| canon_perm(a)));
     }
     for e in &all {
