@@ -9,6 +9,7 @@ mod json;
 mod lang;
 mod lexer;
 mod nat;
+mod oslock;
 mod parser;
 mod pathx;
 mod prims;
@@ -343,11 +344,11 @@ fn run() -> i32 {
             }
         }
     }
+    // що треба записати після печатки (шлях сліду для тестів), — відкрити до замка ОС (фаза 6.1)
+    let tpf = std::env::var("NIGREDO_TRACE_PATH_FILE").ok().filter(|f| !f.is_empty()).and_then(|f| std::fs::File::create(f).ok());
     let code = execute(&o, &prog, &src, &path, &cwd, &sha, &allowed, outs, stores, &paths, &home, key);
-    if let Ok(f) = std::env::var("NIGREDO_TRACE_PATH_FILE") {
-        if !f.is_empty() {
-            let _ = std::fs::write(&f, &main_trace);
-        }
+    if let Some(mut f) = tpf {
+        let _ = f.write_all(main_trace.as_bytes());
     }
     if std::env::var_os("ATHANOR_SAMPLE").is_none() {
         // кінець: дерево й значення не розбираємо — процес усе одно завершується (звільнення мільйонів значень
@@ -377,6 +378,8 @@ fn execute(
     let tr = trace::Trace::new(outs, stores, key, o.tsize);
     let seed = int::Int::from_dec(o.seed.starts_with('-'), o.seed.trim_start_matches(['-', '+']).trim_start_matches('0'));
     let seed = if o.seed.trim_start_matches(['-', '+']).trim_start_matches('0').is_empty() { int::Int::S(0) } else { seed };
+    // /dev/null для обірваної труби — відкрити до замка ОС (фаза 6.1; після печатки запис закрито)
+    let devnull = std::fs::OpenOptions::new().write(true).open("/dev/null").ok();
     let mut it = interp::Interp {
         trace: tr,
         rng: rng::Mt::seed(&seed),
@@ -412,6 +415,7 @@ fn execute(
         prof: if std::env::var_os("ATHANOR_PROFILE").is_some() { Some(Default::default()) } else { None },
         dry: None,
         db_unchecked: false,
+        os_mode: Some(if o.dry { "усе" } else { "печатка" }), // замок ОС ставиться на печатці (фаза 6.1)
     };
     let mut head = vec![
         ("версія".to_string(), J::s(lang::VERSION)),
@@ -488,7 +492,7 @@ fn execute(
             4
         }
         Err(e) if e.pipe => {
-            if let Ok(f) = std::fs::OpenOptions::new().write(true).open("/dev/null") {
+            if let Some(f) = &devnull {
                 use std::os::unix::io::AsRawFd;
                 extern "C" {
                     fn dup2(a: i32, b: i32) -> i32;
@@ -650,6 +654,13 @@ fn main() {
     unsafe {
         mallopt(-3 /* M_MMAP_THRESHOLD */, 512 << 20);
         mallopt(-1 /* M_TRIM_THRESHOLD */, 1 << 30);
+    }
+    // замок ОС (фаза 6.1): проба власника — цим самим бінарником (дитина ставить замок і пробує дії)
+    if std::env::args().nth(1).as_deref() == Some("--перевірити-ізоляцію-дитина") {
+        std::process::exit(oslock::probe_child(&std::env::args().nth(2).unwrap_or_default()));
+    }
+    if std::env::args().nth(1).as_deref() == Some("--перевірити-ізоляцію") {
+        std::process::exit(oslock::probe(std::env::args().skip(2).any(|a| a == "--json")));
     }
     if std::env::args().nth(1).as_deref() == Some("--проба") {
         probe();
