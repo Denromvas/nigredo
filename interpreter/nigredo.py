@@ -2521,6 +2521,11 @@ def _verify(path, program=None):
     notes = [f'виконавець: {engine} (' + ('sha256 джерел ' if engine == 'Атанор' else 'sha256 nigredo.py ')
              + str(head.get('інтерпретатор', '')).removeprefix('атанор:')[:16] + '…; ngr --відбиток — для порівняння)', f'тека {safe(str(head.get("тека", "—")))}',
              f'аргументи {safe(json.dumps(head.get("аргументи"), ensure_ascii=False))}']
+    if isinstance(head.get('підпис'), dict):    # фаза 6.3: програму підписано — чий ключ (імʼя — з дозволів власника)
+        g = head['підпис']
+        notes.append(f'підпис автора: {safe(str(g.get("ключ")))}'
+                     + (f' («{safe(str(g["імʼя"]))}»)' if g.get('імʼя') is not None else ' (ключ, якого власник не знав)'))
+    info['підпис'] = head.get('підпис')
     approved = 'схвалено власником' in str(head.get('дозволи_власника', ''))
     if approved:                       # права саме цій програмі («для_програм») — власник має це бачити (суд 9)
         notes.append('⚠ права схвалено власником саме для цієї програми («для_програм»)')
@@ -5035,6 +5040,107 @@ OS_LOCK_PROCESS = False      # замок ставить лише окремий
 #                              (тести, пісочниця), не має права замкнути процес того, хто кличе
 
 
+def read_author_key(path):
+    """Насіння (32 байти) з файлу ключа автора: «nigredo-ключ-автора-1» і 64 hex."""
+    lines = open(path, encoding='utf-8').read().split('\n')
+    if len(lines) < 2 or lines[0] != KEY_HEAD or not re.fullmatch(r'[0-9a-f]{64}', lines[1]):
+        raise ValueError(f'це не ключ автора Nigredo (перший рядок — «{KEY_HEAD}», другий — 64 hex)')
+    return bytes.fromhex(lines[1])
+
+
+def author_main(mode, rest, opts):
+    """ngr --ключ-автора ФАЙЛ | --підписати ПРОГРАМА --ключ ФАЙЛ | --перевірити-підпис ПРОГРАМА [--json] (фаза 6.3)."""
+    as_json = opts['json'] or '--json' in rest
+    rest = [r for r in rest if r != '--json']
+    keyf = None
+    if '--ключ' in rest:
+        i = rest.index('--ключ')
+        keyf = rest[i + 1] if i + 1 < len(rest) else None
+        rest = rest[:i] + rest[i + 2:]
+    if len(rest) != 1 or (mode == '--підписати' and not keyf):
+        print('✗ ngr --ключ-автора ФАЙЛ | --підписати ПРОГРАМА --ключ ФАЙЛ | --перевірити-підпис ПРОГРАМА [--json]',
+              file=sys.stderr)
+        return 2
+    target = rest[0]
+    if mode == '--ключ-автора':
+        seed = os.urandom(32)
+        try:
+            fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        except OSError as e:
+            print(f'✗ --ключ-автора: {safe(target)}: {e.strerror} (ключ не перезаписується)', file=sys.stderr)
+            return 3
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(f'{KEY_HEAD}\n{seed.hex()}\n')
+        print(f'ed25519:{ed_public(seed).hex()}\n  ключ автора — {safe(os.path.realpath(target))} (0600; не давайте його '
+              f'нікому: хто має файл, той підписує від вашого імені)')
+        return 0
+    try:
+        raw = open(target, 'rb').read()
+        src_all = raw.decode('utf-8')
+    except (OSError, UnicodeDecodeError) as e:
+        print(f'✗ {safe(target)}: {getattr(e, "strerror", None) or e}', file=sys.stderr)
+        return 2
+    cwd = os.path.dirname(os.path.abspath(target))
+    try:
+        unsigned, pub, sig = signature_split(raw)
+        prog = parse(unsigned.decode('utf-8'), cwd, target)
+    except StaticError as e:
+        print(safe(str(e)), file=sys.stderr)
+        return getattr(e, 'code', 2)
+    mods = []
+
+    def walk(n):
+        if isinstance(n, tuple) and n:
+            if n[0] == 'import':
+                mods.append((safe(n[2]), n[5]))
+            for x in n:
+                walk(x)
+        elif isinstance(n, list):
+            for x in n:
+                walk(x)
+    walk(prog)
+    covered = f'програма з печаткою (sha256 {hashlib.sha256(unsigned).hexdigest()[:16]}…) і модулів: {len(mods)}'
+    if mode == '--підписати':
+        try:
+            seed = read_author_key(keyf)
+        except (OSError, ValueError) as e:
+            print(f'✗ --ключ {safe(keyf)}: {getattr(e, "strerror", None) or e}', file=sys.stderr)
+            return 2
+        head = unsigned if not unsigned or unsigned.endswith(b'\n') else unsigned + b'\n'
+        pubk = ed_public(seed)
+        line = f'{SIG_PREFIX}{pubk.hex()} {ed_sign(seed, sign_message(head, prog)).hex()}\n'.encode()
+        tmp = f'{target}.підпис-{os.getpid()}'
+        try:
+            with open(tmp, 'xb') as f:
+                f.write(head + line)
+            os.chmod(tmp, os.stat(target).st_mode & 0o7777)
+            os.replace(tmp, target)
+        except OSError as e:
+            print(f'✗ --підписати: {e}', file=sys.stderr)
+            return 3
+        print(f'✓ підписано {safe(target)} ключем ed25519:{pubk.hex()}{" (старий підпис замінено)" if pub else ""}\n'
+              f'  охоплено: {covered}; змінений байт програми чи модуля — підпис не збіжеться')
+        return 0
+    if pub is None:                       # --перевірити-підпис
+        msg, code, info = f'підпису немає: {safe(target)}', 1, {'підпис': None}
+    else:
+        ok = ed_verify(bytes.fromhex(pub), sign_message(unsigned, prog), bytes.fromhex(sig))
+        key = f'ed25519:{pub}'
+        name = author_name(key) if ok else None
+        info = {'підпис': {'ключ': key, 'цілий': ok, 'імʼя': name, 'модулі': [{'шлях': m, 'sha256': h} for m, h in mods]}}
+        if ok:
+            who = f'«{safe(name)}» з «для_авторів» власника' if name is not None else 'ключ, якого власник не знає'
+            msg, code = f'✓ підпис цілий: {key} — {who}\n  охоплено: {covered}', 0
+        else:
+            msg, code = (f'✗ підпис НЕ збігся: {key} — текст програми чи її модуля змінено після підпису, або підпис '
+                         f'зроблено іншим ключем'), 3
+    if as_json:
+        print(json.dumps({'гаразд': code == 0, 'код': code, **info}, ensure_ascii=False, indent=1))
+    else:
+        print(msg)
+    return code
+
+
 def isolation_probe(as_json=False):
     """ngr --перевірити-ізоляцію: дочірній процес ставить замок ОС із закритими всіма трьома групами й пробує socket(),
     відкрити файл на запис (у тимчасовій теці) і exec /bin/sh — що з цього ядро відмовило. Код: 0 — тримає все, 1 — ні,
@@ -5166,7 +5272,7 @@ def os_lock(closed):
     return {'ядро': 'seccomp', 'закрито': list(closed)}
 
 
-def read_allowlist(path, cwd=None, prog=None, approval=None):
+def read_allowlist(path, cwd=None, prog=None, approval=None, author=None):
     """«дозволено» — для всіх програм; «для_тек» — {"/абсолютна/тека": [дозволи]} лише для програм у цій теці;
     «для_програм» — {"відбиток": [дозволи]} лише програмі саме з таким текстом (і модулями) — approval_of."""
     try:
@@ -5180,11 +5286,13 @@ def read_allowlist(path, cwd=None, prog=None, approval=None):
             if not isinstance(extra, list):
                 raise ValueError(f'«для_тек» → «{d}»: потрібен список')
         per_prog = per_programs(data)
+        per_auth = per_authors(data)         # «для_авторів» (фаза 6.3): права програмам із цілим підписом ключа
         sources_of(data, {})                 # «джерела_модулів» — лише відомої форми (модулі з git, §4.2)
         # теки запису — з УСІХ записів власника, а не лише цієї теки (суд 8в: програма з теки C, якій дано писати в
         # A/вхідні, клала туди програму — і та діставала права теки A); схвалені програми — теж записи власника
         writable = [split_quota(e)[0].partition(':')[2].strip()
-                    for e in lst + [canon_perm(a) for x in [*per_dir.values(), *per_prog.values()] for a in x]
+                    for e in lst + [canon_perm(a) for x in [*per_dir.values(), *per_prog.values(),
+                                                            *(v['дозволи'] for v in per_auth.values())] for a in x]
                     if e.partition(':')[0].strip() in WRITE_TOOLS]
         for d, extra in per_dir.items():
             extra = [canon_perm(a) for a in extra]
@@ -5197,6 +5305,8 @@ def read_allowlist(path, cwd=None, prog=None, approval=None):
                 lst += extra
         if approval and approval in per_prog:
             lst += [canon_perm(a) for a in per_prog[approval]]
+        if author and author in per_auth:     # підпис перевірено до виклику (author — лише цілий)
+            lst += [canon_perm(a) for a in per_auth[author]['дозволи']]
         if not all(isinstance(x, str) for x in lst):
             raise ValueError('дозволи мають бути рядками')
         return lst
@@ -5288,6 +5398,34 @@ def sources_text(sources):
                      for h, b in sources.items())
 
 
+def per_authors(data):
+    """«для_авторів» з дозволів власника (фаза 6.3): «ed25519:<64 hex>» → {"імʼя": рядок, "дозволи": [рядки]}."""
+    per = data.get('для_авторів', {})
+    if not isinstance(per, dict):
+        raise ValueError('«для_авторів» має бути словником ключ → {"імʼя", "дозволи"}')
+    out = {}
+    for k, v in per.items():
+        if not isinstance(k, str) or not re.fullmatch(r'ed25519:[0-9a-f]{64}', k.strip().lower()):
+            raise ValueError(f'«для_авторів» → «{safe(str(k))[:80]}»: ключ — «ed25519:» і 64 hex')
+        if not (isinstance(v, dict) and set(v) <= {'імʼя', 'дозволи'} and isinstance(v.get('імʼя', ''), str)
+                and isinstance(v.get('дозволи'), list) and all(isinstance(x, str) for x in v['дозволи'])):
+            raise ValueError(f'«для_авторів» → «{safe(k)[:80]}»: потрібно {{"імʼя": рядок, "дозволи": [рядки]}}')
+        if k.strip().lower() in out:
+            raise ValueError('у «для_авторів» той самий ключ двічі (регістр і пробіли по краях не важать)')
+        out[k.strip().lower()] = v
+    return out
+
+
+def author_name(key):
+    """Імʼя автора з «для_авторів» власника — або None, якщо ключа там немає."""
+    try:
+        data = json.load(open(os.path.join(OWNER_HOME, 'дозволи.json'), encoding='utf-8'))
+        v = per_authors(data).get(key)
+    except (OSError, ValueError, AttributeError):
+        return None
+    return None if v is None else str(v.get('імʼя', ''))
+
+
 def per_programs(data):
     """«для_програм» з дозволів власника: відбиток (малими літерами) → список дозволів."""
     per_prog = data.get('для_програм', {})
@@ -5300,6 +5438,136 @@ def per_programs(data):
     if len(out) != len(per_prog):          # «AB…» і «ab…» — той самий відбиток: мовчки перемагав би останній (суд 9б)
         raise ValueError('у «для_програм» той самий відбиток двічі (регістр і пробіли по краях не важать)')
     return out
+
+
+# ---- Підпис автора (фаза 6.3, spec/пропозиції/фаза6.md §3): Ed25519 за RFC 8032 (§5.1, еталонний код §6) — без
+# залежностей. Підпис — останній рядок програми «※ підпис ed25519:<ключ 64 hex> <підпис 128 hex>»; підписано
+# «nigredo-підпис-1\n» + відбиток (approval_of) тексту без цього рядка: програма з печаткою й усі модулі за sha256.
+ED_P = 2 ** 255 - 19
+ED_Q = 2 ** 252 + 27742317777372353535851937790883648493
+ED_D = -121665 * pow(121666, ED_P - 2, ED_P) % ED_P
+ED_I = pow(2, (ED_P - 1) // 4, ED_P)
+SIG_PREFIX = '※ підпис ed25519:'
+SIG_LINE = re.compile(r'※ підпис ed25519:([0-9a-f]{64}) ([0-9a-f]{128})\n?')
+KEY_HEAD = 'nigredo-ключ-автора-1'
+
+
+def _ed_add(a, b):
+    A = (a[1] - a[0]) * (b[1] - b[0]) % ED_P
+    B = (a[1] + a[0]) * (b[1] + b[0]) % ED_P
+    C = 2 * a[3] * b[3] * ED_D % ED_P
+    D = 2 * a[2] * b[2] % ED_P
+    E, F, G, H = B - A, D - C, D + C, B + A
+    return E * F % ED_P, G * H % ED_P, F * G % ED_P, E * H % ED_P
+
+
+def _ed_mul(n, a):
+    q = (0, 1, 1, 0)
+    while n > 0:
+        if n & 1:
+            q = _ed_add(q, a)
+        a, n = _ed_add(a, a), n >> 1
+    return q
+
+
+def _ed_x(y, sign):
+    if y >= ED_P:
+        return None
+    x2 = (y * y - 1) * pow(ED_D * y * y + 1, ED_P - 2, ED_P) % ED_P
+    if x2 == 0:
+        return None if sign else 0
+    x = pow(x2, (ED_P + 3) // 8, ED_P)
+    if (x * x - x2) % ED_P:
+        x = x * ED_I % ED_P
+    if (x * x - x2) % ED_P:
+        return None
+    return ED_P - x if (x & 1) != sign else x
+
+
+_ED_GY = 4 * pow(5, ED_P - 2, ED_P) % ED_P
+_ED_G = (_ed_x(_ED_GY, 0), _ED_GY, 1, _ed_x(_ED_GY, 0) * _ED_GY % ED_P)
+
+
+def _ed_enc(a):
+    z = pow(a[2], ED_P - 2, ED_P)
+    x, y = a[0] * z % ED_P, a[1] * z % ED_P
+    return (y | ((x & 1) << 255)).to_bytes(32, 'little')
+
+
+def _ed_dec(b):
+    y = int.from_bytes(b, 'little')
+    sign, y = y >> 255, y & ((1 << 255) - 1)
+    x = _ed_x(y, sign)
+    return None if x is None else (x, y, 1, x * y % ED_P)
+
+
+def _ed_h(b):
+    return int.from_bytes(hashlib.sha512(b).digest(), 'little') % ED_Q
+
+
+def _ed_secret(seed):
+    h = hashlib.sha512(seed).digest()
+    return (int.from_bytes(h[:32], 'little') & ((1 << 254) - 8)) | (1 << 254), h[32:]
+
+
+def ed_public(seed):
+    """Відкритий ключ (32 байти) з насіння (32 байти)."""
+    return _ed_enc(_ed_mul(_ed_secret(seed)[0], _ED_G))
+
+
+def ed_sign(seed, msg):
+    a, prefix = _ed_secret(seed)
+    pub = _ed_enc(_ed_mul(a, _ED_G))
+    r = _ed_h(prefix + msg)
+    rs = _ed_enc(_ed_mul(r, _ED_G))
+    return rs + ((r + _ed_h(rs + pub + msg) * a) % ED_Q).to_bytes(32, 'little')
+
+
+def ed_verify(pub, msg, sig):
+    """Перевірка за RFC 8032 (s < q, точки — на кривій): True лише для справжнього підпису цього ключа."""
+    if len(pub) != 32 or len(sig) != 64:
+        return False
+    a, r = _ed_dec(pub), _ed_dec(sig[:32])
+    s_ = int.from_bytes(sig[32:], 'little')
+    if a is None or r is None or s_ >= ED_Q:
+        return False
+    sb, ha = _ed_mul(s_, _ED_G), _ed_mul(_ed_h(sig[:32] + pub + msg), a)
+    rha = _ed_add(r, ha)
+    return (sb[0] * rha[2] - rha[0] * sb[2]) % ED_P == 0 and (sb[1] * rha[2] - rha[1] * sb[2]) % ED_P == 0
+
+
+def signature_split(raw):
+    """(текст без рядка підпису, ключ hex, підпис hex) — або (raw, None, None) без підпису. Рядок підпису — лише
+    останній і рівно такої форми; інакше помилка до запуску (після підпису щось дописано чи рядок зіпсовано)."""
+    text = raw.decode('utf-8', 'surrogateescape')
+    lines = text.split('\n')
+    marks = [i for i, ln in enumerate(lines) if ln.lstrip(' ').startswith(SIG_PREFIX)]
+    if not marks:
+        return raw, None, None
+    last = len(lines) - 1 if lines[-1] != '' else len(lines) - 2
+    i = marks[-1]
+    tail = '\n'.join(lines[i:])
+    m = SIG_LINE.fullmatch(tail)
+    if len(marks) > 1 or i != last or not m:
+        e = StaticError('підпис автора: рядок «※ підпис ed25519:…» має бути один, останній і рівно такої форми '
+                        '(ключ — 64, підпис — 128 hex малими) — текст після підпису змінено чи рядок зіпсовано', (i + 1, 1))
+        e.code = 3
+        raise e
+    head = '\n'.join(lines[:i]) + ('\n' if i else '')
+    return head.encode('utf-8', 'surrogateescape'), m[1], m[2]
+
+
+def sign_message(unsigned, prog):
+    """Що підписано: версія формату й відбиток (approval_of) тексту без рядка підпису — печатка, текст і всі модулі."""
+    return f'nigredo-підпис-1\n{approval_of(unsigned, prog)}'.encode()
+
+
+def author_of(raw, prog):
+    """Підпис програми: None — без підпису; {'ключ': 'ed25519:…', 'цілий': bool}."""
+    unsigned, pub, sig = signature_split(raw)
+    if pub is None:
+        return None
+    return {'ключ': f'ed25519:{pub}', 'цілий': ed_verify(bytes.fromhex(pub), sign_message(unsigned, prog), bytes.fromhex(sig))}
 
 
 def approval_of(raw, prog):
@@ -5322,23 +5590,25 @@ def approval_of(raw, prog):
     return own if not shas else hashlib.sha256('\n'.join([own] + shas).encode()).hexdigest()
 
 
-def load_allowlist(narrow=None, cwd=None, prog=None, approval=None):
+def load_allowlist(narrow=None, cwd=None, prog=None, approval=None, author=None):
     """Дозволи власника — OWNER_HOME/дозволи.json (без нього — лише іграшкові інструменти).
     --дозволи ФАЙЛ лише звужує їх: лишається те, що є в обох."""
     try:
-        return _load_allowlist(narrow, cwd, prog, approval)
+        return _load_allowlist(narrow, cwd, prog, approval, author)
     except StaticError as e:           # квота «≤N» з помилкою у файлі дозволів
         raise Refused(f'дозволи: {e.msg}')
 
 
-def _load_allowlist(narrow, cwd, prog, approval=None):
+def _load_allowlist(narrow, cwd, prog, approval=None, author=None):
     path = os.path.join(OWNER_HOME, 'дозволи.json')
     if os.path.exists(path):
-        owner = read_allowlist(path, cwd, prog, approval)
+        owner = read_allowlist(path, cwd, prog, approval, author)
         source = f'{path} (sha256 {hashlib.sha256(open(path, "rb").read()).hexdigest()[:16]})'
         data = json.load(open(path, encoding='utf-8'))
         if approval and approval in per_programs(data):
             source += f'; схвалено власником: програма {approval[:16]}…'
+        if author and author in per_authors(data):
+            source += f'; права з підпису автора «{safe(per_authors(data)[author].get("імʼя", ""))}» ({author[:24]}…)'
         sources = sources_of(data, DEFAULT_SOURCES)
     else:
         owner, source = list(DEFAULT_ALLOWED), '(файлу власника немає: лише іграшкові інструменти)'
@@ -7118,7 +7388,7 @@ def callback_warnings(prog):
     return out
 
 
-def seal_info(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
+def seal_info(prog, allowed, source, cwd, dir_extra=None, prog_extra=None, author_info=None):
     """Усе, що отримувач має знати до запуску, — словником (для --печатка і --печатка --json)."""
     def scopes(t, sc):
         if TOOLS[t][4] == 'тека':
@@ -7170,15 +7440,17 @@ def seal_info(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
             'права_теки': [safe(x) for x in dir_extra] if dir_extra is not None else None,
             'права_схвалення': [safe(x) for x in prog_extra or []], 'тека': safe(cwd), 'в_межах': not missing,
             'бракує': missing, 'замок_ОС': {'закрито': os_closed(seal[3])},
+            'підпис': ({'ключ': author_info['ключ'], 'цілий': True, 'імʼя': author_info['імʼя'],
+                        'права': [safe(x) for x in author_info['права']]} if author_info else None),
             'попередження': lookalike_warnings(prog) + seal_warnings(prog, cwd) + (
                 [ADDR_WARNING] if any(m.get('з_мережі') for m in mods) else []),
             **({'джерела_модулів_власника': sources_text(getattr(allowed, 'sources', DEFAULT_SOURCES))}
                if any(m.get('з_мережі') for m in mods) else {})}
 
 
-def seal_report(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
+def seal_report(prog, allowed, source, cwd, dir_extra=None, prog_extra=None, author_info=None):
     """Текст для людини й моделі: слова автора (намір, імена, шляхи) — у 「」, решта — слова інтерпретатора."""
-    i = seal_info(prog, allowed, source, cwd, dir_extra, prog_extra)
+    i = seal_info(prog, allowed, source, cwd, dir_extra, prog_extra, author_info)
     q = lambda sc: ', '.join(f'「{x}」' for x in sc)
     lines = ['ПЕЧАТКА', f'  намір (слова автора): 「{i["намір"]}」' if i['намір'] else '  намір: не вказано автором',
              '  дозволи:']
@@ -7227,6 +7499,11 @@ def seal_report(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
         lines.append('  права теки: немає (для цієї теки власник нічого не дав, або це тека, куди програмам дозволено писати)')
     if i['права_схвалення']:
         lines.append(f'  права, схвалені власником саме для цієї програми («для_програм»): {", ".join(i["права_схвалення"])}')
+    if i['підпис']:                  # фаза 6.3: хто підписав і що це дало
+        g = i['підпис']
+        who = f'«{safe(g["імʼя"])}» (з «для_авторів» власника)' if g['імʼя'] is not None else 'ключ, якого власник не знає'
+        lines.append(f'  ПІДПИС АВТОРА: цілий — {g["ключ"]}, {who}; ' + (f'⚠ права з підпису: {", ".join(g["права"])}'
+                                                                      if g['права'] else 'прав підпис не додав'))
     lines.append('  ✓ печатка в межах дозволів власника' if i['в_межах'] else f'  ✗ бракує дозволу власника: {", ".join(i["бракує"])}')
     shut = i['замок_ОС']['закрито']                 # фаза 6.1: що закриє ядро (а не лише інтерпретатор)
     lines.append(f'  ЗАМОК ОС: ядро закриє {", ".join(shut)} (seccomp; чи тримає ця машина — ngr --перевірити-ізоляцію)'
@@ -7711,6 +7988,11 @@ def cheatsheet():
             '  ядро (seccomp), а не лише інтерпретатор; дочірні процеси (`🜔процес`) успадковують замок. У сліді — подія',
             '  `ізоляція` (що закрито, чи є ядро); `--печатка` каже, що закриє; `ngr --перевірити-ізоляцію` — чи тримає ядро',
             '  цієї машини. Межі всередині групи (теки, хости, команди) й читання — далі тримає інтерпретатор.',
+            '- **Підпис автора** (0.10-dev): `ngr --ключ-автора ФАЙЛ`, `ngr --підписати ПРОГРАМА --ключ ФАЙЛ` — останній',
+            '  рядок `※ підпис ed25519:…` охоплює текст із печаткою й усі модулі (sha256). Змінений байт — код 3 до запуску.',
+            '  Права за ключем дає лише власник («для_авторів» у дозволи.json); `--печатка` показує «ПІДПИС АВТОРА» і',
+            '  права з нього; `ngr --перевірити-підпис ПРОГРАМА` — чий і чи цілий. Підпис — слова про авторство, а не про',
+            '  безпечність: від того, що автор написав у печатці, він не захищає.',
             '- Впевненість відстежується через дані, керування й побічний стан, але це консервативна оцінка, а не',
             '  ймовірність. Канал завершення відстежується (див. вище); лишається лише вичерпання лімітів кроків і',
             '  розміру — їх задає той, хто запускає, однаково для всіх гілок.',
@@ -7837,6 +8119,10 @@ USAGE = f"""Nigredo {VERSION}
   ngr --отримати ПРОГРАМА | 「github.com/в/р@КОМІТ/шлях.ngr[#sha256=…]」 [--з-теки ТЕКА] [--json]
                            модулі з мережі — у сховище {MOD_STORE} (єдиний крок із мережею; нічого не
                            виконує; sha256 звірено; без хешу — друкує готовий рядок ⊃); свій слід
+  ngr --перевірити-ізоляцію [--json]   чи тримає ядро цієї машини замок ОС (seccomp): socket, запис, exec
+  ngr --ключ-автора ФАЙЛ   новий ключ автора (Ed25519, файл 0600); друкує відкритий ключ ed25519:…
+  ngr --підписати ПРОГРАМА --ключ ФАЙЛ   підписати програму з печаткою й модулями (останній рядок «※ підпис …»)
+  ngr --перевірити-підпис ПРОГРАМА [--json]   чий підпис і чи цілий (0 — цілий, 1 — немає, 3 — не збігся)
   ngr --памʼятка           згенерувати памʼятку для агентів
 """
 
@@ -8688,6 +8974,8 @@ def _main(argv, opts, it, value):
             return 0 if msg.startswith('✓') else 1
         if a == '--отримати':              # модулі з мережі — єдиний крок із мережею (модулі з git, §4)
             return fetch_main(list(it), opts, argv)
+        if a in ('--ключ-автора', '--підписати', '--перевірити-підпис'):   # підпис автора (фаза 6.3)
+            return author_main(a, list(it), opts)
         if a == '--перевірити-ізоляцію':   # чи тримає ядро цієї машини замок ОС (фаза 6.1)
             return isolation_probe('--json' in list(it) or opts['json'])
         if a == '--відбиток':              # ідентичність виконавця (Атанор друкує sha256 свого бінарника)
@@ -8810,14 +9098,29 @@ def _main(argv, opts, it, value):
             errors, more = all_static_errors(src, cwd, None if path == '<-e>' else path)
             errors = errors or [e]
     approval = approval_of(raw if path != '<-e>' else src.encode(), prog) if prog else None
+    sig = None                       # підпис автора (фаза 6.3): цілий — права «для_авторів»; зіпсований — не запускати
+    if prog:
+        try:
+            sig = author_of(raw if path != '<-e>' else src.encode(), prog)
+        except StaticError as e:
+            perr, errors = e, [e]
+        if sig and not sig['цілий']:
+            e = StaticError(f'підпис автора НЕ збігся ({sig["ключ"][:24]}…): текст програми чи її модуля змінено після '
+                            f'підпису, або підпис зроблено іншим ключем — не запускаю', (1, 1))
+            e.code = 3
+            perr, errors = e, [e]
+    author = sig['ключ'] if sig and sig['цілий'] else None
     try:
         # -e --тека: «програма» лежить у тій теці — і в теці запису прав теки не дістає, як файл там (суд 8в)
         where = (cwd if dir_rights else None, os.path.realpath(path if path != '<-e>' else cwd) if dir_rights else None)
-        allowed, source = load_allowlist(opts['allow'], *where, approval)
+        allowed, source = load_allowlist(opts['allow'], *where, approval, author)
         base, _ = load_allowlist(opts['allow'])
         by_dir, _ = load_allowlist(opts['allow'], *where)
+        by_prog, _ = load_allowlist(opts['allow'], *where, approval)
         dir_extra = [a for a in by_dir if a not in base] if dir_rights else None
-        prog_extra = [a for a in allowed if a not in by_dir]       # «для_програм»: схвалено саме цю програму
+        prog_extra = [a for a in by_prog if a not in by_dir]       # «для_програм»: схвалено саме цю програму
+        author_info = ({'ключ': author, 'імʼя': author_name(author), 'права': [a for a in allowed if a not in by_prog]}
+                       if author else None)
     except Refused as e:
         print(e, file=sys.stderr)
         return 3
@@ -8876,12 +9179,12 @@ def _main(argv, opts, it, value):
                 print('✗ програма вкладена надто глибоко для перекладу (--розбір)', file=sys.stderr)
                 return 2
             return 0
-        info = seal_info(prog, allowed, source, cwd, dir_extra, prog_extra)
+        info = seal_info(prog, allowed, source, cwd, dir_extra, prog_extra, author_info)
         info['програма'] = safe(path if path == '<-e>' else os.path.realpath(path))       # що саме перевірено
         info['sha256'] = hashlib.sha256(raw if path != '<-e>' else src.encode()).hexdigest()
         info['відбиток'] = approval            # повний — для «для_програм» (з модулями; суд 9)
         print(json.dumps(info, ensure_ascii=False, indent=1) if opts['json']
-              else seal_report(prog, allowed, source, cwd, dir_extra, prog_extra))
+              else seal_report(prog, allowed, source, cwd, dir_extra, prog_extra, author_info))
         return 0 if info['в_межах'] else 3
     # повтор нічого не робить у світі — дозволи власника не потрібні (і можуть уже змінитися)
     missing = check_program(prog, allowed, cwd) if prog and not replay else []
@@ -8933,7 +9236,8 @@ def _main(argv, opts, it, value):
               час=datetime.now(timezone.utc).isoformat(timespec='seconds'), запуск=os.urandom(6).hex(),
               тека=safe(cwd), дозволи_власника=safe(source), дозволено=allowed,
               ліміти={'кроки': opts['steps'], 'розмір': opts['size'], 'слід': opts['tsize'], 'зерно': opts['seed']},
-              **({'код': src} if path == '<-e>' else {}), **({'повтор': safe(os.path.realpath(opts['replay']))} if replay else {}))
+              **({'код': src} if path == '<-e>' else {}), **({'повтор': safe(os.path.realpath(opts['replay']))} if replay else {}),
+              **({'підпис': {'ключ': author, 'імʼя': author_info['імʼя']}} if author else {}))
         if shown_args != prog_args:
             trace('відмова', причина='аргумент — не UTF-8 (неповний символ)')
             print('✗ аргумент програми — не UTF-8 (неповний символ); запуск відхилено', file=sys.stderr)

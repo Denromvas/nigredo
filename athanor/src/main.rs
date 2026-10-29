@@ -241,6 +241,11 @@ fn run() -> i32 {
         Err(why) => hand_over(&why),
     };
     let src = o.src.clone().unwrap();
+    // підпис автора (фаза 6.3): перевірку Ed25519 і права «для_авторів» веде еталон — програму з рядком підпису
+    // (будь-де: зіпсований чи не останній — теж помилка еталона) віддати йому до будь-якої дії
+    if src.split('\n').any(|l| l.trim_start_matches(' ').starts_with("※ підпис ed25519:")) {
+        hand_over("підпис автора — еталон");
+    }
     let path = o.path.clone().unwrap();
     let is_e = path == "<-e>";
     let (cwd, dir_rights) = if is_e {
