@@ -66,6 +66,9 @@ fn per_authors(kv: &[(std::borrow::Cow<str>, bool, P)]) -> Result<Vec<Vec<String
         if *sur || hex.len() != 64 || !hex.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)) {
             return back("для_авторів — ключ не простої форми");
         }
+        if lang::ED_SMALL.contains(&hex) {
+            return back("для_авторів — ключ малого порядку"); // відмову пише еталон (суд 11)
+        }
         let vv = match v {
             P::Obj(vv) if vv.iter().all(|(f, s2, _)| !s2 && (f == "імʼя" || f == "дозволи")) => vv,
             _ => return back("для_авторів — значення не простої форми"),

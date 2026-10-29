@@ -255,6 +255,7 @@ def lang():
     out.append(f'pub static OS_OPENED_BY: [&[&str]; {len(N.OS_GROUPS)}] = [' +
                ', '.join('&[' + ', '.join(rs(t) for t in N.OS_OPENED_BY[g]) + ']' for g in N.OS_GROUPS) + '];')
     out.append(f'pub const OS_WRITE_FLAGS: u32 = {N.OS_WRITE_FLAGS};')
+    out.append(f'pub const ED_SMALL: [&str; {len(N.ED_SMALL)}] = [' + ', '.join(rs(x) for x in sorted(N.ED_SMALL)) + '];')
     out.append('pub struct OsTable {\n    pub arch: &\'static str,\n    pub audit: u32,\n    pub seccomp: i64,\n    pub x32: bool,\n'
                '    pub always: &\'static [u32],\n    pub groups: [&\'static [u32]; 3],\n    pub open: &\'static [(u32, u32)],\n'
                '    pub open2: &\'static [u32],\n}')

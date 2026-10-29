@@ -421,6 +421,7 @@ fn execute(
         dry: None,
         db_unchecked: false,
         os_mode: Some(if o.dry { "усе" } else { "печатка" }), // замок ОС ставиться на печатці (фаза 6.1)
+        write_shut: false,
     };
     let mut head = vec![
         ("версія".to_string(), J::s(lang::VERSION)),
@@ -483,7 +484,7 @@ fn execute(
             if it.rec("кінець", vec![("кроків".into(), J::Int(steps))]).is_err() {
                 return 4;
             }
-            dry_report(&mut it);
+            dry_report(&mut it, false);
             0
         }
         Err(e) if e.internal => {
@@ -510,7 +511,7 @@ fn execute(
             1
         }
         Err(e) => {
-            dry_report(&mut it);
+            dry_report(&mut it, true);
             let text = uni::safe(&e.text());
             let _ = it.rec("помилка", vec![("повідомлення".into(), J::Str(text.clone()))]);
             eprintln!("{}", text);
@@ -524,7 +525,7 @@ fn execute(
 }
 
 /// dry_report еталона: перелік придушених дій (--сухо) і попередження про невідоме — у stderr, після виводу.
-fn dry_report(it: &mut interp::Interp) {
+fn dry_report(it: &mut interp::Interp, stopped: bool) {
     let done = match it.dry.take() {
         Some(d) => d,
         None => return,
@@ -575,6 +576,10 @@ fn dry_report(it: &mut interp::Interp) {
             unsure,
             done.len()
         ));
+    }
+    if stopped {
+        // суд 11, Аудитор: прогін упав (часто — на заглушці придушеної дії), а перелік мовчав
+        err.push_str("  ⚠ сухий прогін зупинився на помилці (нижче) — дій після неї не видно: перелік неповний\n");
     }
     eprint!("{}", err);
 }

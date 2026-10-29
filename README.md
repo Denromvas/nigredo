@@ -145,12 +145,14 @@ the address still serves the pinned content; a non-zero code means do not run). 
 - **OS lock.** A group of actions the seal does not ask for at all — network, processes, writing files — is closed by
   the **kernel** (seccomp), not only by the interpreter. Child processes inherit it. `ngr --перевірити-ізоляцію` shows
   whether this machine's kernel holds it.
-- **Python bridge.** Pure functions only, from the owner's list (`🜔python 「statistics.median」 【…】`), each in a separate
-  process under the full OS lock. Data only goes in and out.
+- **Python bridge.** Only functions from the owner's list (`🜔python 「statistics.median」 【…】`), each in a separate
+  process under the full OS lock and an audit watch (reading outside Python's own folders is refused and logged). Data
+  only goes in and out. Whether a function is pure is the owner's call: one that runs arbitrary code can still read
+  any file of the user.
 - **Author signature.** Ed25519 with no dependencies, covering the seal and every module. The owner can grant rights by
   key (`"для_авторів"`).
 
-Court 11 has not judged it yet. The latest
+Court 11 is under way (round 1: the new limits hold; its findings are being fixed). The latest
 comparison report is
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols — [`konsylium/`](konsylium/).
 
@@ -310,12 +312,13 @@ UTF-8 — помилка, а 30 с —
 - **Замок ОС.** Групу дій, якої печатка не просить зовсім, — мережу, процеси, запис — закриває **ядро** (seccomp), а не
   лише інтерпретатор. Дочірні процеси його успадковують. `ngr --перевірити-ізоляцію` показує, чи тримає замок ядро
   цієї машини.
-- **Міст до Python.** Лише чисті функції за списком власника (`🜔python 「statistics.median」 【…】`), кожна в окремому
-  процесі під повним замком ОС. Туди й назад — лише дані.
+- **Міст до Python.** Лише функції за списком власника (`🜔python 「statistics.median」 【…】`), кожна в окремому
+  процесі під повним замком ОС і стеженням (читати поза теками Python не дає, спроба — у сліді). Туди й назад — лише
+  дані. Чи функція чиста — вирішує власник: функція, що виконує довільний код, прочитає будь-який файл користувача.
 - **Підпис автора.** Ed25519 без залежностей, охоплює печатку й усі модулі. Власник може дати права за ключем
   («для_авторів»).
 
-Суд 11 ще попереду. Останній звіт звірки —
+Суд 11 триває (раунд 1: нові межі тримають; знахідки виправляються). Останній звіт звірки —
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); історія й протоколи — [`konsylium/`](konsylium/).
 
 **Чесно про межі:** Nigredo — інструмент прозорості й аудиту, **не пісочниця ОС**: агент із доступом до shell може
