@@ -1712,6 +1712,9 @@ class Parser:
         if TOOLS[name][4] == 'команда' and scope.strip() and not (
                 os.path.isabs(w := scope.strip().split(' ')[0]) or '/' not in w):
             raise StaticError(f'«{name}»: команда — імʼя з PATH (git) або абсолютний шлях, не відносний', pos)
+        if TOOLS[name][4] == 'функція' and scope.strip() and not PY_NAME.fullmatch(scope.strip()):
+            raise StaticError(f'«{name}»: функція — повна назва «модуль.функція» латиницею (statistics.median), без «_» '
+                              f'на початку частин і без шаблонів', pos)
         lst = caps.setdefault(name, [])
         if (s := scope.strip()) and s not in lst:      # дубль — один раз
             lst.append(s)
@@ -1942,7 +1945,7 @@ TYPE_RES = {'∫': _N, '－': _N, '×': _N, '÷': _N, '‰': _N, '⌊': _N, '≅
 TOOL_TYPES = {'оракул': ((_A,), _B), 'жереб': ((_N,), _N), 'час': ((), _S), 'файл.читати': ((_S,), _S),
               'файл.писати': ((_S, _S), 'none'), 'файл.список': ((_S,), _L), 'мережа.взяти': ((_S,), _S),
               'мережа.послати': ((_S, _A), _S), 'бд.читати': ((_S, _S, _L), _L), 'бд.писати': ((_S, _S, _L), _N), 'процес': ((_L,), _S),
-              'агент': ((_S, _S), _S)}
+              'агент': ((_S, _S), _S), 'python': ((_S, _L), _A)}
 
 
 def lit_type(v):
@@ -4624,7 +4627,8 @@ def t_db_write(it, pos, p, sql, params):
 
 PROC_CAP, PROC_TIME = 1_000_000, 60
 DRY_SUPPRESS = {'файл.писати': None, 'бд.писати': 0, 'мережа.послати': '‹сухо›', 'мережа.взяти': '‹сухо›',
-                'процес': '‹сухо›', 'агент': '‹сухо›'}   # взяти теж: адреса сама виносить дані назовні (суд 7)
+                'процес': '‹сухо›', 'агент': '‹сухо›',   # взяти теж: адреса сама виносить дані назовні (суд 7)
+                'python': '‹сухо›'}      # міст (фаза 6.2): у --сухо процеси закрито замком ОС — функцію не виконано
 PAR_MAX = 8                    # ‖: найбільше одночасних дій
 PARALLEL_TOOLS = ('мережа.взяти', 'мережа.послати', 'агент', 'процес', 'бд.читати', 'файл.читати', 'файл.список',
                   'оракул', 'час')   # ‖: дії без спільного стану (не жереб; не запис — порядок записів був би випадковим)
@@ -4738,7 +4742,188 @@ RIGHTS = {'файл.читати': lambda it, pos, p: _path_ok(it, 'файл.ч�
           'мережа.взяти': lambda it, pos, u: _url_ok(it, pos, 'мережа.взяти', u),
           'мережа.послати': lambda it, pos, u, b: _url_ok(it, pos, 'мережа.послати', u),
           'процес': lambda it, pos, a: _cmd_ok(it, pos, a),
-          'агент': lambda it, pos, n, q: _agent_ok(it, pos, n)}
+          'агент': lambda it, pos, n, q: _agent_ok(it, pos, n),
+          'python': lambda it, pos, f, a: _py_ok(it, pos, f)}
+
+
+PY_TIME, PY_CPU, PY_MEM = 30, 10, 1 << 30    # міст до Python: строк виклику, процесор, памʼять процесу (фаза 6.2)
+PY_NAME = re.compile(r'[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+')   # модуль.функція: без «_…» (ні __dict__)
+# Процес моста: спершу повний замок ОС (той самий фільтр, що й в інтерпретатора, — байтами від батька) і межі
+# ресурсів, лише потім імпорт і виклик. Обмін — JSON з мітками типів: [тип, значення] (цілі — рядком: довгі).
+PY_WORKER = r"""
+import ctypes, json, sys
+req = json.loads(sys.stdin.buffer.read().decode('utf-8'))
+def out(o):
+    sys.stdout.write(json.dumps(o, ensure_ascii=False))
+    sys.stdout.flush()
+libc = ctypes.CDLL(None, use_errno=True)
+raw = bytes.fromhex(req['фільтр'])
+buf = ctypes.create_string_buffer(raw, len(raw))
+class F(ctypes.Structure):
+    _fields_ = [('len', ctypes.c_ushort), ('filter', ctypes.c_void_p)]
+fp = F(len(raw) // 8, ctypes.addressof(buf))
+if not (libc.prctl(38, 1, 0, 0, 0) == 0 and (libc.syscall(req['seccomp'], 1, 1, ctypes.byref(fp)) == 0
+                                             or libc.prctl(22, 2, ctypes.byref(fp), 0, 0) == 0)):
+    out({'без_замка': ctypes.get_errno()})
+    sys.exit(0)
+import resource
+for r_, v_ in ((resource.RLIMIT_CPU, req['процесор']), (resource.RLIMIT_FSIZE, 0), (resource.RLIMIT_AS, req['памʼять'])):
+    try:
+        resource.setrlimit(r_, (v_, v_))
+    except (ValueError, OSError):
+        pass
+if hasattr(sys, 'set_int_max_str_digits'):
+    sys.set_int_max_str_digits(0)
+import site              # site-packages і їхні .pth (там буває код) — лише тепер, під замком (процес — з -S)
+site.main()
+import importlib
+from decimal import Decimal, localcontext
+from fractions import Fraction
+def dec(v):
+    t, x = v
+    if t == 'ц': return int(x)
+    if t == 'д': return Decimal(x)
+    if t in ('р', 'і', 'н'): return x
+    if t == 'с': return [dec(i) for i in x]
+    if t == 'сл': return {k: dec(i) for k, i in x}
+    raise ValueError(t)
+def enc(v, d=0):
+    if d > 1000: raise TypeError('завглибоко')
+    if v is None: return ['н', None]
+    if isinstance(v, bool): return ['і', v]
+    if isinstance(v, int): return ['ц', str(v)]
+    if isinstance(v, Decimal):
+        if not v.is_finite(): raise TypeError(f'{v} — не скінченне число')
+        return ['д', str(v)]
+    if isinstance(v, float):
+        if v != v or v in (float('inf'), float('-inf')): raise TypeError(f'{v} — не скінченне число')
+        return ['д', repr(v)]
+    if isinstance(v, Fraction):
+        with localcontext() as c:
+            c.prec = 28
+            return ['д', str(Decimal(v.numerator) / Decimal(v.denominator))]
+    if isinstance(v, str): return ['р', v]
+    if isinstance(v, (list, tuple)): return ['с', [enc(i, d + 1) for i in v]]
+    if isinstance(v, dict):
+        if not all(isinstance(k, str) for k in v): raise TypeError('словник з не-рядковими ключами')
+        return ['сл', [[k, enc(i, d + 1)] for k, i in v.items()]]
+    raise TypeError(type(v).__name__)
+parts, obj, rest = req['функція'].split('.'), None, []
+try:
+    for i in range(len(parts) - 1, 0, -1):
+        try:
+            obj, rest = importlib.import_module('.'.join(parts[:i])), parts[i:]
+            break
+        except ModuleNotFoundError:
+            continue
+    if obj is None:
+        out({'помилка': 'модуля не знайдено'})
+        sys.exit(0)
+    for p_ in rest:
+        obj = getattr(obj, p_)
+    if not callable(obj):
+        out({'помилка': 'це не функція'})
+        sys.exit(0)
+    res = obj(*[dec(a) for a in req['аргументи']])
+except BaseException as e:
+    out({'помилка': f'{type(e).__name__}: {e}'[:2000]})
+    sys.exit(0)
+try:
+    out({'значення': enc(res)})
+except (TypeError, ValueError, RecursionError) as e:
+    out({'помилка': f'результат — не дані ({e})'[:2000]})
+"""
+
+
+def _py_ok(it, pos, fn):
+    if not isinstance(fn.v, str) or fn.v not in it.caps['python']:
+        it.deny(агент=it.agent, назва='python', функція=safe(show(fn)), причина='функції немає в печатці')
+        raise NgrError(f'python: «{safe(show(fn))}» поза дозволеними ({", ".join(it.caps["python"])})', pos)
+
+
+def py_enc(x, pos):
+    """Значення мови → [тип, значення] для процесу моста; функцію передати не можна."""
+    v = x.v
+    if v is None:
+        return ['н', None]
+    if isinstance(v, bool):
+        return ['і', v]
+    if isinstance(v, int):
+        return ['ц', str(v)]
+    if isinstance(v, Decimal):
+        return ['д', str(v)]
+    if isinstance(v, str):
+        return ['р', v]
+    if isinstance(v, list):
+        return ['с', [py_enc(i, pos) for i in v]]
+    if isinstance(v, dict):
+        return ['сл', [[k, py_enc(i, pos)] for k, i in v.items()]]
+    raise NgrError(f'python: аргумент — {kind(x)}, а передати можна лише дані', pos)
+
+
+def py_dec(v, pos, depth=0):
+    """[тип, значення] від процесу моста → значення мови (межі — ті самі, що в мови)."""
+    if not (isinstance(v, list) and len(v) == 2) or depth > MAX_NEST:
+        raise NgrError('python: результат — не дані', pos)
+    t, x = v
+    if t == 'н' and x is None:
+        return V(None)
+    if t == 'і' and isinstance(x, bool):
+        return V(x)
+    if t == 'р' and isinstance(x, str):
+        return V(x)
+    if t == 'ц' and isinstance(x, str) and re.fullmatch(r'-?[0-9]+', x):
+        if len(x) > MAX_INT_BITS // 3 or int(x).bit_length() > MAX_INT_BITS:
+            raise NgrError(f'python: ціле понад {MAX_INT_BITS} бітів', pos)
+        return V(int(x))
+    if t == 'д' and isinstance(x, str):
+        d = dec_of(x, 'python', pos)
+        if d is None:
+            raise NgrError('python: результат — не дані', pos)
+        d = dec_ok(d, 'python', pos)
+        return V(int(d) if d == d.to_integral_value() and 'e' not in x.lower() and '.' not in x else d)
+    if t == 'с' and isinstance(x, list):
+        return V([py_dec(i, pos, depth + 1) for i in x])
+    if t == 'сл' and isinstance(x, list) and all(isinstance(p, list) and len(p) == 2 and isinstance(p[0], str) for p in x):
+        return V({k: py_dec(i, pos, depth + 1) for k, i in x})
+    raise NgrError('python: результат — не дані', pos)
+
+
+def t_python(it, pos, fn, args):
+    """Міст до Python (фаза 6.2): функція зі списку власника — в окремому процесі під повним замком ОС."""
+    _py_ok(it, pos, fn)
+    import platform
+    import subprocess
+    arch = platform.machine()
+    if not sys.platform.startswith('linux') or arch not in OS_TABLES:
+        raise NgrError(f'python: на цій машині замка ОС немає ({safe(arch)}) — без нього міст не працює', pos)
+    import struct
+    flt = b''.join(struct.pack('HBBI', *i) for i in os_filter(arch, list(OS_GROUPS))).hex()
+    req = json.dumps({'фільтр': flt, 'seccomp': OS_TABLES[arch]['seccomp'], 'процесор': PY_CPU, 'памʼять': PY_MEM,
+                      'функція': fn.v, 'аргументи': [py_enc(a, pos) for a in args.v]}, ensure_ascii=False).encode()
+    try:
+        pr = subprocess.Popen([sys.executable, '-I', '-S', '-c', PY_WORKER], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, cwd='/', env={'LC_ALL': 'C.UTF-8'}, start_new_session=True)
+    except OSError as e:
+        raise NgrError(f'python: {e}', pos)
+    try:
+        out, err = pr.communicate(req, timeout=PY_TIME)
+    except subprocess.TimeoutExpired:
+        pr.kill()
+        pr.communicate()
+        raise NgrError(f'python: «{safe(fn.v)}» не завершилась за {PY_TIME} с', pos)
+    if len(out) > PROC_CAP:
+        raise NgrError(f'python: результат понад {PROC_CAP} байтів', pos)
+    try:
+        got = json.loads(out.decode('utf-8'))
+    except (ValueError, UnicodeDecodeError):
+        why = 'межу процесора чи памʼяті перевищено' if pr.returncode in (-9, -24, 137, 152) else f'код {pr.returncode}'
+        raise NgrError(f'python: процес моста впав ({why})', pos)
+    if 'без_замка' in got:
+        raise NgrError(f'python: ядро не дало замка ОС (errno {got["без_замка"]}) — без нього міст не працює', pos)
+    if 'помилка' in got:
+        raise NgrError(f'python: «{safe(fn.v)}»: {safe(str(got["помилка"]))}', pos)
+    return py_dec(got.get('значення'), pos)
 
 
 def t_agent(it, pos, name, prompt):
@@ -4809,6 +4994,11 @@ TOOLS = {
                'команда', t_proc),
     'агент': (2, '🜔агент 「імʼя」 「запит」 → рядок', 'спитати справжнього агента з реєстру лаунчера '
               '(claude -p у його теці; він діє з власними правами)', True, 'імʼя', t_agent),
+    'python': (2, '🜔python 「модуль.функція」 【аргументи】 → значення', 'міст до Python (фаза 6.2): лише функція зі списку '
+               'власника, точна назва (python:statistics.median); окремий процес під повним замком ОС — без мережі, процесів '
+               f'і запису, {PY_TIME} с, {PY_CPU} с процесора, 1 ГБ; аргументи й результат — дані (ціле, десяткове, рядок, '
+               '●/○, ∅, список, словник; float і Fraction → десяткове); чи функція чиста — рішення власника (читати '
+               'файли ядро не забороняє)', True, 'функція', t_python),
 }
 
 
@@ -6770,6 +6960,10 @@ def seal_warnings(prog, cwd):
     Практик: найчастіше це новий вихідний файл); тека, яку програма створить і писатиме в неї, — не він."""
     out = []
     seal = prog[2][0][3] if prog[2] else {}
+    if seal.get('python'):          # міст (фаза 6.2): чистоту функції гарантує не мова, а вибір власника
+        out.append(f'python: {", ".join(safe(x) for x in seal["python"])} — функції Python в окремому процесі під замком '
+                   f'ОС (без мережі, процесів, запису); чи вони чисті (не читають файлів, не залежать від часу) — рішення '
+                   f'власника, мова цього не доводить')
     for t, scopes in seal.items():
         for sc in scopes if t in WRITE_TOOLS else ():
             if os.path.isfile(os.path.realpath(os.path.join(cwd, sc))):
