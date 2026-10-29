@@ -135,7 +135,8 @@ pinned by hash, `⊃ 「github.com/owner/repo@COMMIT/path.ngr#sha256=CONTENT」`
 bytes (the address is only the author's words — GitHub serves fork commits under the original's name, and the store
 keeps content by hash, not where it came from), only a separate `ngr --отримати` step touches the network, never a
 run, and a module from the network only computes on what it is given (no permissions, printing, memory or program
-arguments — checked before the run and again while it runs); court 10 found no breach but untrue texts, now fixed,
+arguments — checked before the run and again while it runs); court 10 found no breach but untrue texts, now fixed;
+review 10b (4:2 «A») found more untrue texts (whose words an error is), also fixed — a narrow confirmation comes
 before 0.9 is announced. The latest
 comparison report is
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols — [`konsylium/`](konsylium/).
@@ -288,7 +289,8 @@ UTF-8 — помилка, а 30 с —
 лише слова автора: GitHub віддає за назвою оригіналу й коміти з форків, а сховище памʼятає вміст за хешем, а не звідки
 його взято), у мережу ходить лише окремий крок `ngr --отримати`, а не запуск, і модуль з мережі лише обчислює над тим,
 що йому передали (жодних дозволів, друку, памʼяті й аргументів програми — перевіряється до запуску й ще раз під час
-нього); суд 10 зламу не знайшов, неправдиві тексти виправлено — перед оголошенням 0.9 короткий повторний огляд. Останній звіт звірки —
+нього); суд 10 зламу не знайшов, неправдиві тексти виправлено; огляд 10б (4:2 «А») знайшов ще неправдиві тексти (чиї
+слова в помилці) — теж виправлено, перед оголошенням 0.9 — вузьке підтвердження. Останній звіт звірки —
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); історія й протоколи — [`konsylium/`](konsylium/).
 
 **Чесно про межі:** Nigredo — інструмент прозорості й аудиту, **не пісочниця ОС**: агент із доступом до shell може

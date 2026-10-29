@@ -61,8 +61,8 @@ class NgrError(Exception):
     def __str__(self):
         # file: None — ще не відомо, '' — код програми (λ програми, викликана з модуля, — місце в програмі, суд 10)
         where = (f'{self.file}:' if self.file else '') + (f'{self.pos[0]}:{self.pos[1]} ' if self.pos else '')
-        if self.said and self.file and '#sha256=' in self.file:     # ☠ модуля з мережі — слова його автора (суд 10)
-            return f'✗ {where}☠ модуля (слова автора модуля): {self.msg}'
+        if self.said and self.file and '#sha256=' in self.file:     # ☠ у коді модуля з мережі (суд 10): текст — його чи
+            return f'✗ {where}☠ у коді модуля (текст міг прийти з переданих йому значень): {self.msg}'   # переданий (огляд 10б)
         return f'✗ {where}{self.msg}'
 
 
@@ -1215,7 +1215,7 @@ def pure_remote(node):
                 return StaticError('модуль з мережі бачить лише те, що йому передали, — «⌂» (аргументи програми) '
                                    'заборонено й у функціях', n[1])
             if k == 'op' and n[2] in REMOTE_BANNED:
-                return StaticError(f'модуль з мережі лише обчислює — «{n[2]}» ({REMOTE_BANNED[n[2]]}) заборонено й у функціях',
+                return StaticError(f'модуль з мережі лише обчислює — {glyph_q(n[2])} ({REMOTE_BANNED[n[2]]}) заборонено й у функціях',
                                    n[1])
             if k == 'import':
                 continue
@@ -1223,6 +1223,11 @@ def pure_remote(node):
         elif isinstance(n, (tuple, list)):
             todo.extend(reversed(n))
     return None
+
+
+def glyph_q(g):
+    """Гліф у лапках тексту помилки: «»» не прочитати — тоді 「»」 (огляд 10б, Аудитор)."""
+    return f'「{g}」' if '«' in g or '»' in g else f'«{g}»'
 
 
 REMOTE_BANNED = {'»': 'друк', '🜄': 'памʼять', '🜃': 'памʼять', '≈': 'впевненість', '⚗': 'відсів', '🜍': 'перевірка',
@@ -2128,7 +2133,7 @@ def parse(src, base=None, path=None, all_errors=None, net=None):
 
 
 
-def all_static_errors(src, base=None, path=None, limit=50, log=None):
+def all_static_errors(src, base=None, path=None, limit=50, log=None, sources=None):
     """--перевірити: не лише перша помилка розбору (суд 8б: «знайти ВСІ» давало одну). Після кожної — пропустити її
     дозвіл 「…」 (печатка) чи рядок інструкції з глибшими продовженнями й розбирати далі, до limit помилок. Пізніші
     позначено after_skip — можуть бути наслідком пропуску; про імена з пропущених рядків «←» — не повідомляти. Порядок —
@@ -2145,7 +2150,7 @@ def all_static_errors(src, base=None, path=None, limit=50, log=None):
             break
         errs = []
         try:
-            parse('\n'.join(lines), base, path, errs, Net(log=log) if log is not None else None)
+            parse('\n'.join(lines), base, path, errs, Net(sources, log=log) if log is not None or sources else None)
         except StaticError as e:
             if any(e.msg == x.msg and e.pos == x.pos for x in errors) or not e.pos or e.file:   # e.file — у модулі
                 break
@@ -2346,6 +2351,9 @@ def trace_modules(tpath):
     return out
 
 
+SRC_WORD = {'файл': 'файл, записаний у сліді', 'сховище': 'зі сховища', 'СЛІД.дані': 'з СЛІД.дані'}
+
+
 def module_copy(sha, file_hint, tpath, texts=None):
     """Байти модуля з мережі для перевірки сліду й повтору (модулі з git, §9.3), по черзі: «файл» зі сліду, сховище
     поточного власника, запис «модуль» у СЛІД.дані — на кожному кроці звіряється sha256. → (байти, джерело) чи (None, None)."""
@@ -2375,7 +2383,8 @@ def _verify(path, program=None):
     перехоплені помилки, підсумовані (не повністю записані) значення, теку й аргументи запуску."""
     key, prev, n, last, head, path_ = owner_key(), '0' * 16, 0, None, None, path
     denied, caught, summed, modules, dry, raised, quota_hits, careful = [], 0, 0, [], False, 0, [], []
-    caught_mod = []        # ☂ у виклику модуля з мережі: його текст — слова автора модуля (суд 10)
+    caught_mod = []        # ☂ у виклику модуля з мережі (суд 10) — і чий текст, за місцем ☠ (огляд 10б)
+    err_mod = None         # останнє — помилка з коду модуля з мережі: котрий і чий текст (огляд 10б)
     chunks, events, rejected, running = {'виконується': 0, 'відкинуто': 0, 'помилка частини': 0}, [], [], False
     fetched, mismatched = {'отримано': 0, 'уже було': 0, 'замінено пошкоджений': 0, 'звірено': 0}, []   # слід --отримати
     info = {}
@@ -2418,8 +2427,11 @@ def _verify(path, program=None):
                                  if rec.get('аргументи') else ''))
         caught += rec.get('подія') == 'помилку перехоплено'
         if rec.get('подія') == 'помилку перехоплено' and rec.get('модуль'):
-            caught_mod.append(f'「{clip(safe(str(rec["модуль"]).partition("#")[0]), 160)}」: '
-                              f'「{clip(safe(str(rec.get("помилка", ""))), 160)}」')
+            caught_mod.append({'модуль': clip(safe(str(rec['модуль'])), 300), 'текст_від': rec.get('текст_від'),
+                               'помилка': clip(safe(str(rec.get('помилка', ''))), 160)})
+        if rec.get('подія') in ('помилка', 'помилка частини'):
+            err_mod = ({'модуль': clip(safe(str(rec['модуль'])), 300), 'текст_від': rec.get('текст_від')}
+                       if rec.get('модуль') else None)
         dry = dry or rec.get('подія') == 'сухо'
         if rec.get('подія') == 'впевненість' and isinstance(rec.get('стало'), (int, float)) and \
                 isinstance(rec.get('було'), (int, float)) and rec['стало'] > rec['було']:
@@ -2430,7 +2442,8 @@ def _verify(path, program=None):
             fetched[rec['стан']] += 1
         if rec.get('подія') == 'вміст не збігся':
             mismatched.append(f'{clip(safe(str(rec.get("адреса"))), 200)}: чекали {rec.get("чекали")}, отримано '
-                              f'{rec.get("отримано")} ({safe(str(rec.get("звідки")))})')
+                              + (f'— HTTP {rec["статус"]}, файлу немає' if rec.get('статус') else f'{rec.get("отримано")}')
+                              + f' ({safe(str(rec.get("звідки")))})')
         if rec.get('подія') == 'код' and rec.get('стан') in chunks:
             chunks[rec['стан']] += 1
             if rec['стан'] == 'відкинуто':
@@ -2490,6 +2503,7 @@ def _verify(path, program=None):
                  'записів': n, 'останній': last, 'заборонено': denied, 'квоту_вичерпано': quota_hits,
                  'запобіжні_відмови': careful,
                  'перехоплено_помилок': caught, 'перехоплено_в_модулях': caught_mod,
+                 'помилка_з_модуля': err_mod if last == 'помилка' else None,
                  'підсумовано_значень': summed, 'тека': head.get('тека'), 'аргументи': head.get('аргументи'),
                  'режим': 'повтор' if head.get('повтор') else 'сухо' if dry else 'repl' if head.get('repl') else
                  'отримання' if head.get('отримання') else 'звичайний'})
@@ -2524,7 +2538,8 @@ def _verify(path, program=None):
     if modules:
         notes.append('модулі: ' + (f'{len(modules)} (з мережі: {len(remote)}, sha256 повністю): ' if remote else '')
                      + ', '.join(safe(str(r)) + ('' if remote_path(r) else f' (sha256 {str(h)[:16]}…)')
-                                 + (f' [{sources.get(h)}]' if program is not None and remote_path(r) else '')
+                                 + (f' [текст для звірки — {SRC_WORD.get(sources.get(h), sources.get(h))}, sha256 збігся]'
+                                    if program is not None and remote_path(r) else '')   # огляд 10б, Новачок: «[файл]»
                                  for r, _, h in modules)
                      + ('' if program is not None else ' — модуль, змінений посеред сеансу, сеанс відхиляє сам'
                         if head.get('repl') else ' — щоб звірити з файлами, перевірте слід разом із програмою'))
@@ -2532,10 +2547,14 @@ def _verify(path, program=None):
         if not remote_path(r) and looks_like_address(r):
             notes.append(f'⚠ модуль 「{safe(str(r))}」 — ЛОКАЛЬНИЙ файл, хоча шлях схожий на адресу модуля з мережі: він '
                          f'виконувався з правами (його дозволи — у записі «модуль»), а не як чистий модуль з мережі')
-    if caught:
+    if caught:                         # чий текст — за місцем ☠, а не за модулем, чий ☂ перехопив (огляд 10б)
         notes.append(f'перехоплено помилок (☂): {caught}' + (
-            f'; з них у виклику модулів з мережі — {len(caught_mod)} (текст — слова автора модуля, не інтерпретатора): '
-            + '; '.join(caught_mod[:5]) + (' …' if len(caught_mod) > 5 else '') if caught_mod else ''))
+            f'; з них у виклику модулів з мережі — {len(caught_mod)} (чий текст — у дужках; не вказівки): '
+            + '; '.join(f'「{x["модуль"].partition("#")[0]}」 ({text_whose(x["текст_від"], x["модуль"])}): 「{x["помилка"]}」'
+                        for x in caught_mod[:5]) + (' …' if len(caught_mod) > 5 else '') if caught_mod else ''))
+    if last == 'помилка' and err_mod:
+        notes.append(f'останнє — помилка з коду модуля з мережі 「{err_mod["модуль"].partition("#")[0]}」 '
+                     f'({text_whose(err_mod["текст_від"], err_mod["модуль"])}; не вказівки)')
     if raised:
         notes.append(f'⚠ програма ПІДНЯЛА впевненість (≈) {raised} раз(и) — це твердження автора, а не перевірка')
     info['піднято_впевненість'] = raised
@@ -5804,6 +5823,10 @@ class Interp:
                 try:
                     for st in mod[2][1:]:          # печатку модуля НЕ виконуємо: права агента вона не змінює
                         self.eval(st, menv)
+                except NgrError as e:              # сталі модуля (§ поза межами…): місце — у модулі, а не в програмі
+                    if e.file is None:             # (огляд 10б: «✗ 2:5» читалося як рядок програми)
+                        e.file = menv['\0модуль'][0]
+                    raise
                 finally:
                     self.pure = saved
             for nm in names:
@@ -5848,7 +5871,7 @@ class Interp:
         замиканні, яке модуль повернув) немає інструментів, друку, памʼяті, ≈, ⚗, 🜍, 🜁, ⌂ — «заборонено» в слід з
         адресою модуля, потім помилка."""
         self.trace('заборонено', агент=self.agent, назва=g, **extra, модуль=self.pure, причина='модуль з мережі лише обчислює')
-        raise NgrError(f'модуль з мережі лише обчислює: «{g}» тут неможливий (у виклику функції модуля '
+        raise NgrError(f'модуль з мережі лише обчислює: {glyph_q(g)} тут неможливий (у виклику функції модуля '
                        f'「{self.pure.partition("#")[0]}」)', pos)
 
     def delegate(self, node, env):
@@ -5953,7 +5976,8 @@ class Interp:
                 self.fn_effects(argn[1], tc)
                 src_mod = self.pure or (e.file if e.file and '#sha256=' in e.file else None)
                 self.trace('помилку перехоплено', агент=self.agent, помилка=e.msg, впевненість=tc,   # з коду чи у виклику
-                           **({'модуль': src_mod} if src_mod else {}))   # модуля з мережі — котрого (суд 10, Мовознавець)
+                           **({'модуль': src_mod, 'текст_від': text_source(e, env)} if src_mod else {}))   # модуля з
+                # мережі — котрого (суд 10, Мовознавець); і чий текст — за місцем ☠, а не за тим, чий ☂ (огляд 10б)
                 saved = self.pc
                 self.pc = min(saved, tc)
                 try:
@@ -6618,6 +6642,41 @@ def looks_like_address(rel):
                 or re.search(r'@[0-9a-fA-F]{40}(/|$)', str(rel)))
 
 
+def text_source(e, env):
+    """Чий текст помилки, перехопленої ☂ у виклику модуля з мережі (огляд 10б: підпис «слова автора модуля» стояв і на
+    ☠ програми, і на відмовах інтерпретатора). ☠ — за місцем ☠: код модуля з мережі — його адреса (текст міг прийти з
+    переданих йому значень), програма чи її локальний модуль — «програми»; решта — «інтерпретатора». e.file None — ☠ у
+    тому самому тілі, що й ☂ (виклик λ проставив би файл), тож місце — там, де ☂."""
+    if not e.said:
+        return 'інтерпретатора'
+    f = e.file
+    if f is None:
+        while env is not None and '\0модуль' not in env:
+            env = env.get('\0parent')
+        f = env['\0модуль'][0] if env is not None else ''
+    return f if remote_path(f) else 'програми'
+
+
+def err_fields(e):
+    """Помилка з коду модуля з мережі — у записі «помилка» сліду: котрий модуль і чий текст (огляд 10б, Практик, Оркестратор:
+    було лише в тексті повідомлення, тож машина відрізняла справжній ☠ модуля від підробки програмою лише за префіксом)."""
+    if e.file and remote_path(e.file):
+        return {'модуль': e.file, 'текст_від': e.file if e.said else 'інтерпретатора'}
+    return {}
+
+
+def text_whose(t, mod=None):
+    """Підпис тексту за «текст_від» сліду — для людини (--перевірити-слід, MCP); mod — модуль, у виклику якого."""
+    if t == 'інтерпретатора':
+        return 'відмова чи помилка інтерпретатора'
+    if t == 'програми':
+        return '☠ програми — слова автора програми'
+    if t:
+        return ('☠ у коді цього модуля' if t == mod else f'☠ у коді модуля 「{clip(safe(str(t).partition("#")[0]), 160)}」') + \
+            ' — текст міг прийти з переданих йому значень'
+    return 'чий текст — у сліді не записано (старіша версія)'
+
+
 def remote_path(rel):
     """Запис «модуль» сліду — модуля з мережі? Його «шлях» — адреса з «#sha256=» (у локального шляху такого бути не може:
     розбір відкидає). Не за «github.com/» на початку: локальний файл із таким шляхом — локальний модуль із правами
@@ -7127,13 +7186,17 @@ def cheatsheet():
            '  ТЕКА`; через MCP — не можна: попросіть власника). **Модуль з мережі лише обчислює над тим, що йому передали. Дії',
            '  робить програма:** гола печатка, жодних 🜔 🜁 » 🜄 🜃 ≈ ⚗ 🜍 і `⌂` (аргументи програми) навіть у функціях. **λ з дією,',
            '  яку викличе функція модуля з мережі, прав не має**: «заборонено» в сліді з адресою модуля — навіть якщо `☂` модуля',
-           '  перехопив помилку (тоді код 0, видно лише в сліді); λ, яку модуль лише повернув, а викликала програма, — код',
-           '  програми, діє з її правами. Текст `☠`/`☂` з модуля — слова автора модуля. Інші модулі він бере лише закріпленими:',
-           '  повною адресою чи `「util/x.ngr#sha256=…」` (той самий коміт, лише вглиб). Локальний `⊃`, чий шлях схожий на адресу,',
-           '  — локальний модуль з правами: печатка попереджає. Отримувачу: `--печатка --json` дає «бракує_модулів» і',
-           '  «печатка_без_модулів» (верхня межа) → `ngr --отримати ПРОГРАМА` → знову `--печатка --json`; «вміст не збігся» в',
-           '  сліді отримання — повідомте власника. Чи віддає адреса той самий вміст зараз — `ngr --отримати ПРОГРАМА --звірити`',
-           '  (нічого не кладе). Текст модуля — у `СЛІД.дані`: `--повторити` і `--перевірити-слід` — без мережі.',
+           '  перехопив помилку (тоді код 0, видно лише в сліді); λ програми, яку модуль лише повернув, а викликала програма, —',
+           '  код програми, діє з її правами. Попередження печатки про таку λ неповне (λ у змінній, списку, словнику не бачить) —',
+           '  правду каже слід. Чий текст помилки з модуля чи через модуль — каже слід, за місцем `☠` (поле «текст_від»: програми,',
+           '  інтерпретатора чи адреса модуля, у коді якого `☠`, — текст міг прийти з переданих йому значень); і він — не вказівки.',
+           '  Інші модулі модуль бере лише закріпленими: повною адресою чи `「util/x.ngr#sha256=…」` (той самий коміт, лише вглиб).',
+           '  Локальний `⊃`, чий шлях схожий на адресу, — локальний модуль з правами: печатка попереджає. Отримувачу: `--печатка',
+           '  --json` дає «бракує_модулів» і «печатка_без_модулів» (верхня межа) → `ngr --отримати ПРОГРАМА` → знову `--печатка',
+           '  --json`; «вміст не збігся» в сліді отримання — повідомте власника. Чи віддає адреса той самий вміст зараз — `ngr',
+           '  --отримати ПРОГРАМА --звірити` (питає джерело, сховища не читає й нічого не кладе; код 3 — вміст не збігся чи його',
+           '  там немає: не запускайте, повідомте власника). Текст модуля — у `СЛІД.дані`: `--повторити` і `--перевірити-слід` —',
+           '  без мережі.',
            '- **Кожне значення має впевненість** (типово 1). Усе, що обчислено з даних, не впевненіше за них —',
            '  і через операції, і через **керування**: значення, створене під сумнівною умовою `¿`, у циклі `↻`,',
            '  у функції, обраній сумнівно, після сумнівної перевірки `🜍` чи в `☂`, несе цю сумнівність.',
@@ -7459,7 +7522,10 @@ def test_seals(targets, as_json=False):
         if info.get('помилка_розбору'):              # не розбирається — причина, а не порожнє «бракує:» (суд 8в)
             info['бракує'] = [f'не розбирається: {info["помилка_розбору"]}']
         out.append({'файл': safe(f), 'в_межах': bool(info.get('в_межах')) and p.returncode == 0,
-                    'дозволи': info.get('дозволи', {}), 'квоти': info.get('квоти', []), 'бракує': info.get('бракує', [])})
+                    'дозволи': info.get('дозволи', {}), 'квоти': info.get('квоти', []), 'бракує': info.get('бракує', []),
+                    'модулі': [{'шлях': m.get('адреса') or m.get('шлях'), 'sha256': m.get('sha256'),   # які модулі
+                                'з_мережі': bool(m.get('з_мережі'))} for m in info.get('модулі', [])],   # (огляд 10б)
+                    **({'бракує_модулів': info['бракує_модулів']} if info.get('бракує_модулів') else {})})
     if as_json:
         print(json.dumps({'тести': out, 'пропущено_з_тек_запису': [safe(x) for x in skipped]}, ensure_ascii=False, indent=1))
     else:
@@ -7467,7 +7533,8 @@ def test_seals(targets, as_json=False):
             caps = '; '.join(t + (':' + ','.join(v) if v else '') for t, v in r['дозволи'].items()) or 'жодних'
             print(f'{"✓" if r["в_межах"] else "✗"} {r["файл"]} — печатка: {caps}'
                   + (f'; КВОТА: {quota_text(r["квоти"])}' if r['квоти'] else '')
-                  + ('' if r['в_межах'] else f' — бракує: {", ".join(r["бракує"])}'))
+                  + ('' if r['в_межах'] else f' — бракує: {", ".join(r["бракує"])}')
+                  + (f'; модулі: {", ".join(safe(str(m["шлях"])) for m in r["модулі"])}' if r['модулі'] else ''))
         if skipped:
             print(f'пропущено {len(skipped)} файл(и) в теках, куди програмам дозволено писати')
     return 0 if all(r['в_межах'] for r in out) else 1
@@ -7952,6 +8019,11 @@ def fetch_main(rest, opts, argv):
             q = urllib.parse.quote
             url = f'{sources["github.com"]}{q(o, safe="")}/{q(r, safe="")}/{c}/{q(p, safe="/")}'
             status, raw, short = _fetch_bytes(url)
+            if status == 404 and check and sha:  # звірка: адреса не віддає закріпленого — звірку НЕ пройдено (огляд 10б)
+                trace('вміст не збігся', адреса=safe(bare), звідки=safe(url), чекали=sha, отримано=None, статус=404)
+                raise FetchError(3, f'на коміті {c[:8]}… немає «{safe(p)}» (404), а {by} {sha}: адреса не віддає '
+                                    f'закріпленого вмісту — звірку НЕ пройдено (коміт, шлях чи репозиторій хибні, приватний '
+                                    f'чи видалений, або цього вмісту там не було ніколи)')
             if status == 404:
                 raise FetchError(1, f'на коміті {c[:8]}… немає «{safe(p)}» (404): коміт, шлях чи репозиторій хибні, '
                                     f'репозиторій приватний чи видалений, або шлях у підмодулі (підмодулі не підтримуються)')
@@ -7966,8 +8038,9 @@ def fetch_main(rest, opts, argv):
             got = hashlib.sha256(raw).hexdigest()
             if sha and got != sha:
                 trace('вміст не збігся', адреса=safe(bare), звідки=safe(url), чекали=sha, отримано=got, байтів=len(raw))
-                raise FetchError(3, f'сервер віддав вміст із sha256 {got}, а {by} {sha} — у сховище НЕ '
-                                    f'покладено (підміна, помилка в програмі чи переплутано коміт)')
+                raise FetchError(3, f'сервер віддав вміст із sha256 {got}, а {by} {sha} — '
+                                    + ('звірку НЕ пройдено' if check else 'у сховище НЕ покладено')
+                                    + ' (підміна, помилка в програмі чи переплутано коміт)')
             return raw, url
 
         def ensure(bare, sha, by):
@@ -7997,10 +8070,14 @@ def fetch_main(rest, opts, argv):
                     if m.sha in done or m.sha == sha or not m.address:   # те саме знову — не по колу
                         raise FetchError(3, f'сховище змінено під час отримання ({m.sha}.ngr)')
                     ensure(m.address.partition('#')[0], m.sha, f'модуль «{bare}» закріпив')
-                except StaticError as e:
-                    got = ('у сховищі' if where == 'сховище' else 'отримано (sha256 збігся)' if sha_in
+                except StaticError as e:          # лежить у сховищі (покладено раніше), а нинішніх правил не проходить
+                    if where == 'сховище':        # (огляд 10б, Скептик: було «у сховищі, … — не покладено»)
+                        raise FetchError(2, f'лежить у сховищі (покладено раніше), але не проходить нинішніх перевірок '
+                                            f'модуля з мережі: {e.msg} — не прийнято', address=bare)
+                    got = ('звірено (адреса віддає той самий вміст)' if check else 'отримано (sha256 збігся)' if sha_in
                            else 'отримано')
-                    raise FetchError(2, f'{got}, але це не модуль з мережі: {e.msg} — не покладено', address=bare)
+                    raise FetchError(2, f'{got}, але це не модуль з мережі: {e.msg} — ' + ('не прийнято' if check else
+                                                                                         'не покладено'), address=bare)
             try:
                 state = 'звірено' if check else store_put(sha, raw)
             except OSError as e:
@@ -8033,8 +8110,9 @@ def fetch_main(rest, opts, argv):
                     report.append(('уже було', addr, s_, size, 'сховище'))
         else:
             log = {}
-            for _ in range(MOD_MAX + 2):
-                errs, _ = all_static_errors(src, cwd, prog_path, log=log)
+            for _ in range(MOD_MAX + 2):        # звірка: модулі — лише щойно отримані з мережі, сховища не читає зовсім:
+                errs, _ = all_static_errors(src, cwd, prog_path, log=log,   # дерево вкладених — з того, що віддало
+                                            sources=[('отримано', got_now)] if check else None)   # джерело (огляд 10б)
                 lacks = {}
                 for e in errs:
                     if isinstance(e, (Missing, Tampered)) and getattr(e, 'address', None):
@@ -8042,10 +8120,6 @@ def fetch_main(rest, opts, argv):
                         lacks.setdefault(e.sha, (e.address.partition('#')[0],
                                                  f'модуль «{par[-1].partition("#")[0]}» закріпив' if par
                                                  else 'програма закріпила'))
-                if check:                         # звірка: усі модулі з мережі програми (log), не лише відсутні
-                    lacks.update((s_, (a_.partition('#')[0], 'у програмі чи її модулі закріплено'))
-                                 for a_, s_ in log.items() if s_ not in done and s_ not in lacks)
-                    lacks = {s_: v_ for s_, v_ in lacks.items() if s_ not in done}
                 if not lacks:
                     others = [e for e in errs if not isinstance(e, (Missing, Tampered))]
                     break
@@ -8056,7 +8130,7 @@ def fetch_main(rest, opts, argv):
                     ensure(bare, s_, by)
             else:
                 raise FetchError(2, f'понад {MOD_MAX + 1} повторів розбору')
-            for addr, s_ in log.items():
+            for addr, s_ in ([] if check else log.items()):
                 if s_ not in done:
                     done[s_] = 'уже було'
                     size = len(store_read(s_, None) or b'')
@@ -8068,6 +8142,8 @@ def fetch_main(rest, opts, argv):
     except FetchError as e:
         whose = e.address or current          # чий файл: вкладений — сам він, а не батько (суд 10)
         what = f' «{safe(whose)}»' if whose else ''
+        if check and not e.refusal:           # звірка зупиняється на першій невдачі — решту не звірено (огляд 10б)
+            e.msg += f'; далі не звіряли (звірено до того: {len(report)} файл(и))'
         if e.refusal and trace.n == 1:
             trace('відмова', причина=safe(e.msg))
         else:
@@ -8101,9 +8177,8 @@ def fetch_main(rest, opts, argv):
                 pass
     warn = [] if 'github.com' in sources else [
         '⚠ власник не дозволив модулів з «github.com» («джерела_модулів»): програма з ними не запуститься (код 3)']
-    if others:
-        warn.append(f'⚠ у програмі є й інші помилки до запуску — ngr --перевірити: {safe(others[0].msg)[:200]}')
-    elif not is_addr:
+    bad = f'програма не розбирається — ngr --перевірити: {safe(others[0].msg)[:300]}' if others else None
+    if not bad and not is_addr:
         try:
             warn += [f'⚠ {w}' for w in lookalike_warnings(parse(src, cwd, prog_path))]
         except NgrError:
@@ -8118,14 +8193,29 @@ def fetch_main(rest, opts, argv):
                     fn_glyph_twin(nm, None)
             except StaticError as e:
                 warn.append(f'⚠ {e.msg}: програма не зможе її викликати (ні «{nm} …», ні «∘{nm}»)')
+    # програма з іншими помилками до запуску — не «✓» (огляд 10б, Практик, Аудитор: модуль у сховищі не проходив нових
+    # перевірок, а заголовок казав «✓ … у сховищі»); модулів з мережі немає — так і сказати, а не «0 файл(и) збігся»
     if as_json:
-        print(json.dumps({'гаразд': True, 'код': 0, 'модулі': [{'стан': x[0], 'адреса': x[1], 'sha256': x[2], 'байтів': x[3],
-                                                                'звідки': safe(x[4])} for x in report],
+        print(json.dumps({'гаразд': not bad, 'код': 2 if bad else 0, **({'помилка': bad} if bad else {}),
+                          'модулі': [{'стан': x[0], 'адреса': x[1], 'sha256': x[2], 'байтів': x[3],
+                                      'звідки': safe(x[4])} for x in report],
+                          **({'звірено': len(report)} if check else {}),
                           **({'рядок': line, 'sha256': sha, 'довіра_з_першого_разу': pin is None} if is_addr else {}),
                           'попередження': warn, 'слід': tpath}, ensure_ascii=False, indent=1))
-        return 0
+        return 2 if bad else 0
     n_new = sum(1 for x in report if x[0] not in ('уже було', 'звірено'))
-    if check and not as_json:             # звірка: лише правда про те, що віддає джерело зараз
+    if bad:
+        print('\n'.join([f'✗ --{"звірити" if check else "отримати"}: {bad}',
+                          f'  модулі з мережі: ' + (f'звірено {len(report)} (sha256 збігся), у сховище нічого не покладено'
+                                                    if check else f'{n_new} отримано, {len(report) - n_new} уже було')]
+                         + [f'  {w}' for w in warn] + [f'  слід: {tpath}']), file=sys.stderr)
+        return 2
+    if not report:
+        print('\n'.join([f'--{"звірити" if check else "отримати"}: модулів з мережі в програмі немає — '
+                          + ('звіряти' if check else 'отримувати') + ' нічого; нічого не виконано']
+                         + [f'  {w}' for w in warn] + [f'  слід: {tpath}']))
+        return 0
+    if check:                             # звірка: лише правда про те, що віддає джерело зараз
         print('\n'.join([f'✓ --звірити: джерело власника віддає той самий вміст — {len(report)} файл(и), sha256 збігся з '
                           'закріпленим; у сховище нічого не покладено, нічого не виконано']
                          + [f'  звірено {x[1]} — {x[3]} байтів з {safe(x[4])}' for x in report]
@@ -8504,7 +8594,7 @@ def _main(argv, opts, it, value):
         except NgrError as e:
             if interp.dry is not None:
                 dry_report(interp.dry, min(interp.decided_c, interp.halt_c, interp.pc))
-            trace('помилка', повідомлення=safe(str(e)))
+            trace('помилка', повідомлення=safe(str(e)), **err_fields(e))
             print(safe(str(e)), file=sys.stderr)
             code = 1
             if replay:
@@ -8688,7 +8778,7 @@ def repl_main(opts):
                 tc = min(interp.try_stack.pop(), e.c)
                 interp.taint_effects(tuple(stmts), tc)    # що встигла змінити частина — не певніше за її провал
                 interp.halt_c = min(interp.halt_c, tc)    # сеанс знає, що частина впала: решта — не впевненіша
-                trace('помилка частини', повідомлення=safe(str(e)), впевненість=tc, прийнято=False)
+                trace('помилка частини', повідомлення=safe(str(e)), впевненість=tc, прийнято=False, **err_fields(e))
                 if accepted is None:            # частина з печаткою впала — печатку не змінити, сеанс завершено
                     trace('кінець', кроків=opts['steps'] - interp.steps_left)
                     reply(гаразд=False, рядок=first, вивід=buf.getvalue(), помилка=safe(str(e)) +

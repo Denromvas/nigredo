@@ -296,8 +296,8 @@ def main():
             elif method == 'tools/call':
                 p = msg.get('params', {})
                 texts, is_err = call(p.get('name'), p.get('arguments') or {})
-                if any('ngr --отримати' in t for t in texts):      # суд 10, Новачок: у MCP отримання немає — так і сказати
-                    texts.append(FETCH_HINT)
+                if any('ще не отримано' in t for t in texts):      # суд 10, Новачок: у MCP отримання немає — так і
+                    texts.append(FETCH_HINT)     # сказати; лише коли модуля бракує (огляд 10б: і коли всі у сховищі)
                 reply(id_, {'content': [{'type': 'text', 'text': t} for t in texts], 'isError': is_err})
             elif method == 'ping':
                 reply(id_, {})

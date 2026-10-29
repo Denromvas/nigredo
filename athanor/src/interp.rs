@@ -681,11 +681,18 @@ impl Interp {
                                   "sha256" => J::s(&m.sha), "дозволи" => caps_json(&m.module.caps)],
                         )?;
                         let info = Rc::new(ModInfo { rel: uni::safe(&pathx::relpath(&m.real, &self.cwd)), caps: m.module.caps.clone() });
+                        let rel = info.rel.clone();
                         let menv = Rc::new(Env { vars: std::cell::RefCell::new(vec![V::none(); m.module.nslots as usize]), parent: None, module: Some(info) });
                         self.modules.insert(m.real.clone(), menv.clone());
                         if let K::Block(stmts, _) = &m.module.prog.k {
                             for st in &stmts[1..] {
-                                self.eval(st, &menv)?;
+                                // сталі модуля (§ поза межами…): місце — у модулі, а не в програмі (огляд 10б)
+                                self.eval(st, &menv).map_err(|mut e| {
+                                    if e.file.is_none() && !e.pipe && !e.internal {
+                                        e.file = Some(rel.clone());
+                                    }
+                                    e
+                                })?;
                             }
                         }
                         menv
