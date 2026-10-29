@@ -3241,6 +3241,68 @@ def main():
           'замок ОС: main(), викликана іншою програмою (тести, пісочниця), процес того, хто кличе, не замикає (фаза 6.1)',
           inproc_.stdout + inproc_.stderr)
 
+    # ------------------------------------------------------------------ фаза 6.2: міст до Python (лише чисті функції)
+    ph = tmp / 'власник_python'
+    ph.mkdir()
+    pfun_ = ['statistics.median', 'statistics.mean', 'subprocess.getoutput', 'os.mkdir', 'urllib.request.urlopen',
+             'builtins.iter', 'time.sleep', 'math.factorial']
+    (ph / 'дозволи.json').write_text(json.dumps({'дозволено': [f'python:{f_}' for f_ in pfun_]}, ensure_ascii=False),
+                                     encoding='utf-8')
+    penv = dict(env, NIGREDO_HOME=str(ph), NIGREDO_TRACE_PATH_FILE=str(tmp / 'python.слід'))
+
+    def pyrun(body, *perm, extra=()):
+        seal_ = ' '.join(f'「python:{x}」' for x in perm)
+        return run([*extra, '-e', f'🜂 【{seal_}】\n{body}'], penv)
+    got = pyrun('» 🜔python 「statistics.median」 【【3 1 2】】\n» 🜔python 「statistics.mean」 【【1.5 2.5】】\n'
+                '» 🜔python 「statistics.mean」 【【1 2 2】】\n» 🜔python 「statistics.median」 【【123456789012345678901234567890 '
+                '1 123456789012345678901234567890】】', 'statistics.median', 'statistics.mean')
+    ev_ = [r_ for r_ in recs_of(last(penv)) if r_['подія'] in ('ізоляція', 'інструмент')]
+    check(got.returncode == 0 and got.stdout == '2\n2\n1.6666666666666667\n123456789012345678901234567890\n'
+          and ev_[0] == {**ev_[0], 'ядро': ev_[0]['ядро'], 'закрито': ['мережа', 'запис']} if has_lock else got.returncode == 1,
+          '🜔python: функція зі списку власника — ціле, десяткове точно (Decimal), float → найкоротший запис, довге ціле '
+          'без втрат; замок ОС програми — мережа й запис закрито (процеси відкриває python) (фаза 6.2)',
+          got.stdout + got.stderr + str(ev_[:1]))
+    got = pyrun('» 🜔python 「statistics.mean」 【【1 2】】', 'statistics.median')
+    den_ = [r_ for r_ in recs_of(last(penv)) if r_['подія'] == 'заборонено']
+    got2 = pyrun('» 1', 'statistics')
+    got3 = pyrun('» 1', 'os._exit')
+    got4 = pyrun('» 1', 'statistics.*')
+    check(got.returncode == 1 and 'python: «statistics.mean» поза дозволеними (statistics.median)' in got.stderr and len(den_) == 1
+          and all(g_.returncode == 2 and 'функція — повна назва «модуль.функція»' in g_.stderr for g_ in (got2, got3, got4)),
+          '🜔python: функції немає в печатці — «заборонено» в сліді; у дозволі — лише повна назва (без модуля цілком, '
+          '«_…» і шаблонів) — помилка до запуску (фаза 6.2)', got.stderr + got2.stderr + got3.stderr + got4.stderr)
+    if has_lock:
+        got = pyrun(f'» ☂ 🜔python 「subprocess.getoutput」 【「echo x > {ow}/з_моста.txt」】 λe e\n'
+                    f'» ☂ 🜔python 「os.mkdir」 【「{ow}/тека_з_моста」】 λe e\n'
+                    '» ☂ 🜔python 「urllib.request.urlopen」 【「http://127.0.0.1:9/」】 λe e',
+                    'subprocess.getoutput', 'os.mkdir', 'urllib.request.urlopen')
+        lines_ = got.stdout.splitlines()
+        check(got.returncode == 0 and len(lines_) == 3 and 'Operation not permitted' in lines_[0]
+              and 'PermissionError' in lines_[1] and 'Operation not permitted' in lines_[2]
+              and not (ow / 'з_моста.txt').exists() and not (ow / 'тека_з_моста').exists(),
+              '🜔python: процес моста — під повним замком ОС: процесу, запису й мережі ядро не дає (EPERM), хоч функцію '
+              'й дозволено (фаза 6.2)', got.stdout + got.stderr)
+    got = pyrun('← f λx x\n» 🜔python 「statistics.median」 【∘f】', 'statistics.median')
+    got2 = pyrun('» 🜔python 「builtins.iter」 【【1 2】】', 'builtins.iter')
+    check(got.returncode == 1 and 'передати можна лише дані' in got.stderr and got2.returncode == 1
+          and 'результат — не дані' in got2.stderr,
+          '🜔python: функцію передати не можна; результат, що не дані (ітератор), — помилка (фаза 6.2)', got.stderr + got2.stderr)
+    if has_lock:
+        t0_ = time.monotonic()
+        got = pyrun('» 🜔python 「time.sleep」 【40】', 'time.sleep')
+        took_ = time.monotonic() - t0_
+        check(got.returncode == 1 and 'не завершилась за 30 с' in got.stderr and took_ < 40,
+              f'🜔python: строк виклику — 30 с, процес моста зупинено ({took_:.0f} с) (фаза 6.2)', got.stderr)
+    got = pyrun('» 🜔python 「statistics.median」 【【3 1 2】】', 'statistics.median', extra=('--сухо',))
+    check(got.returncode == 0 and 'python' in got.stderr and '1 дій не виконано' in got.stderr.replace('──', ''),
+          '🜔python у --сухо не виконується (процеси закрито замком ОС) — у переліку придушених дій (фаза 6.2)', got.stdout + got.stderr)
+    if os.environ.get('NGR_TEST_BIN'):
+        got = pyrun('» 🜔python 「statistics.median」 【【3 1 2】】', 'statistics.median', extra=())
+        why_ = subprocess.run([*NGR_CMD, '-e', '🜂 【「python:statistics.median」】\n» 🜔python 「statistics.median」 【【1 2】】'],
+                              capture_output=True, text=True, env=dict(penv, ATHANOR_WHY='1'))
+        check(got.stdout == '2\n' and 'атанор → еталон: інструмент python — еталон' in why_.stderr,
+              'Атанор: програму з 🜔python віддано еталону (явна причина), вивід той самий (фаза 6.2)', why_.stderr)
+
     sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',
           'перегенеруйте: ngr --памʼятка > ДЛЯ_АГЕНТІВ.md')
