@@ -777,7 +777,7 @@ def check_twins(toks):
         seen.setdefault(sk, val)
 
 
-def lex(src):
+def lex(src, module=False):
     toks, i, line, col = [], 0, 1, 1
     n = len(src)
 
@@ -866,10 +866,18 @@ def lex(src):
                 raise StaticError(unknown_char(bad[0], 'у коментарі ') if unicodedata.category(bad[0]) == 'Cn' else
                                   f'у коментарі невидимий чи керівний символ U+{ord(bad[0]):04X} (CR, ESC, bidi, '
                                   f'теги…) — ним ховають код від людини, що читає сирий текст', pos)
-            if sig_like(text) and not ((i == 0 or src[i - 1] == '\n') and SIG_LINE.fullmatch(src[i:])):
-                e = StaticError('підпис автора: коментар схожий на рядок підпису («ed25519»), але підписом не є — підпис '
-                                'лише останній рядок, з першого стовпця й рівно такої форми «※ підпис ed25519:<ключ> '
-                                '<підпис>» (людина бачила б підпис, якого мова не бачить; після підпису щось дописано?)', pos)
+            sig_line = (i == 0 or src[i - 1] == '\n') and SIG_LINE.fullmatch(src[i:])
+            if sig_line and module:                 # огляд 11б (Новачок): у модулі рядок підпису мовчки був коментарем
+                e = StaticError('підпис автора: модуль не підписують — підпис лише в програмі й покриває її модулі (у '
+                                'модулі рядок підпису був би підписом, якого мова не бачить)', pos)
+                e.code = 3
+                raise e
+            if sig_like(text) and not sig_line:
+                e = StaticError('підпис автора: у коментарі «ed25519» (чи схоже: регістр, дефіс, двійники) — так '
+                                'виглядає рядок підпису, а підпис лише один: останній рядок, з першого стовпця й рівно '
+                                'такої форми «※ підпис ed25519:<ключ> <підпис>». Людина бачила б підпис, якого мова не '
+                                'бачить, тож у коментарях цього слова не пишіть; якщо це підпис — після нього щось '
+                                'дописано чи рядок зіпсовано?', pos)
                 e.code = 3
                 raise e
             while i < n and src[i] != '\n':
@@ -1282,7 +1290,7 @@ def load_remote(parsed, net, stack, depth, pos):
                 text = raw.decode('utf-8')
             except UnicodeDecodeError:
                 raise StaticError('модуль не UTF-8', (1, 1))
-            toks = lex(text)
+            toks = lex(text, module=True)
             check_twins(toks)
             sub = Parser(toks, None, None, stack + (real,), module=True, remote=(o, r, c, p.rpartition('/')[0]), net=net,
                          depth=depth + 1)
@@ -1647,7 +1655,7 @@ class Parser:
                     if re.search(r'@[0-9a-fA-F]{7,64}(/|$)', rel) or rel.lower().startswith(('github', 'www.github')) else '')
             raise StaticError(f'⊃: модуль «{safe(rel)}» не прочитати: {getattr(e, "strerror", None) or e}{hint}', pos)
         try:
-            toks = lex(src)
+            toks = lex(src, module=True)
             check_twins(toks)
             sub = Parser(toks, os.path.dirname(real), self.root, self.stack + (real,), module=True, net=self.net)
             mod = sub.program()
@@ -4914,7 +4922,7 @@ tried = [0]
 def report(group, ev, what):
     tried[0] += 1
     if tried[0] <= req['спроб']:
-        os.write(2, ('\x1eспроба ' + json.dumps({'група': group, 'подія': ev, 'що': str(what)[:300]}) + '\n').encode())
+        os.write(2, ('\n\x1eспроба ' + json.dumps({'група': group, 'подія': ev, 'що': str(what)[:300]}) + '\n').encode())
     raise PermissionError(f'міст до Python: {group} — поза обчисленням ({ev}); функцію дозволено як чисту')
 def inside(p):
     try:
@@ -4962,7 +4970,10 @@ PY_RISKY = ('builtins.eval', 'builtins.exec', 'builtins.compile', 'builtins.__im
             'fileinput.', 'glob.', 'tempfile.', 'sqlite3.', 'socket.', 'urllib.', 'http.', 'ftplib.', 'smtplib.',
             'multiprocessing.', 'threading.', 'concurrent.', 'gc.', 'inspect.', 'types.', 'mmap.', 'resource.',
             'signal.', 'zipfile.', 'tarfile.', 'zipimport.', 'pkgutil.', 'site.', 'webbrowser.', 'platform.',
-            'xml.', 'configparser.', 'numpy.fromfile', 'numpy.load')
+            'xml.', 'configparser.', 'numpy.fromfile', 'numpy.load',
+            # виконують код із рядка (огляд 11б, знайшов автор): timeit.timeit 「…」, cProfile.run, doctest…
+            'timeit.', 'cProfile.', 'profile.', 'trace.', 'doctest.', 'pydoc.', 'unittest.', 'bdb.', 'compileall.',
+            'py_compile.', 'builtins.breakpoint')
 
 
 def _py_ok(it, pos, fn):
@@ -5050,7 +5061,8 @@ def t_python(it, pos, fn, args):
                               start_new_session=True)
     except OSError as e:
         raise NgrError(f'python: {e}', pos)
-    bufs, over = (bytearray(), bytearray()), []
+    bufs, over, marks = (bytearray(), bytearray()), [], []
+    mark = '\n\x1eспроба '.encode()
 
     def pump(f, buf, cap):          # межа — під час читання, а не після (вивід у 10 ГБ не ляже в памʼять ngr)
         for chunk in iter(lambda: f.read1(65536), b''):
@@ -5059,8 +5071,33 @@ def t_python(it, pos, fn, args):
                 pr.kill()
                 return
             buf += chunk
-    ts = [threading.Thread(target=pump, args=(f, b, c), daemon=True)
-          for f, b, c in zip((pr.stdout, pr.stderr), bufs, (PROC_CAP, PY_ERR_CAP))]
+
+    def pump_err(f, buf):           # stderr понад межу — не вбиває: далі беремо лише записи спроб (огляд 11б: функція,
+        tail = None                 # що спершу заливала stderr, ховала спробу — її запис ішов у відкинутий шматок)
+        for chunk in iter(lambda: f.read1(65536), b''):
+            if tail is None and len(buf) + len(chunk) <= PY_ERR_CAP:
+                buf += chunk
+                continue
+            if tail is None:        # з останнього рядка буфера — у хвіст: запис на межі шматків не губиться
+                k = buf.rfind(b'\n')
+                k = len(buf) if k < 0 else k
+                tail = bytes(buf[k:])
+                del buf[k:]
+            data, start = tail + chunk, 0
+            while len(marks) < PY_TRIED_CAP:
+                k = data.find(mark, start)
+                if k < 0:
+                    start = max(start, len(data) - len(mark))
+                    break
+                e = data.find(b'\n', k + len(mark))
+                if e < 0:           # запис ще не дочитано (довший за 8 КБ — не запис)
+                    start = k if len(data) - k <= 8192 else len(data) - len(mark)
+                    break
+                marks.append(data[k + 1:e])
+                start = e
+            tail = data[start:] if len(marks) < PY_TRIED_CAP else b''
+    ts = [threading.Thread(target=pump, args=(pr.stdout, bufs[0], PROC_CAP), daemon=True),
+          threading.Thread(target=pump_err, args=(pr.stderr, bufs[1]), daemon=True)]
     for t in ts:
         t.start()
     try:
@@ -5079,7 +5116,7 @@ def t_python(it, pos, fn, args):
             t.join(5)
     out, err = bytes(bufs[0]), bytes(bufs[1])
     tried = []                          # спроби поза обчисленням (стеження) — «заборонено», навіть якщо функція їх
-    for line in err.split(b'\n'):      # перехопила й повернула щось (linecache.getlines — тоді [])
+    for line in err.split(b'\n') + marks:      # перехопила й повернула щось (linecache.getlines — тоді [])
         if line.startswith('\x1eспроба '.encode()):
             try:
                 rec = json.loads(line[len('\x1eспроба '.encode()):].decode('utf-8'))
@@ -5099,9 +5136,14 @@ def t_python(it, pos, fn, args):
     except (ValueError, UnicodeDecodeError):
         got = None
     many = got.get('спроб', 0) if isinstance(got, dict) and isinstance(got.get('спроб'), int) else len(tried)
+    if many and not tried:              # лічильник є, а запису спроби немає (stderr понад межу?) — однаково «заборонено»
+        it.trace('заборонено', агент=it.agent, назва='python', функція=safe(fn.v),       # (огляд 11б, Скептик)
+                 спроба='?: запис спроби загубився',
+                 причина='функція пробувала вийти за обчислення — міст не дав (поза обчисленням)')
     if tried or many:
-        g, ev, what = tried[0] if tried else ('?', '?', '')
-        raise NgrError(f'python: «{safe(fn.v)}» пробувала {PY_TRY.get(g, g)} ({safe(ev)} {safe(what)[:160]})'
+        what_ = (f'{PY_TRY.get(tried[0][0], tried[0][0])} ({safe(tried[0][1])} {safe(tried[0][2])[:160]})' if tried else
+                 'вийти за обчислення (запис спроби загубився)')
+        raise NgrError(f'python: «{safe(fn.v)}» пробувала {what_}'
                        + (f' і ще {max(many, len(tried)) - 1} раз(и)' if max(many, len(tried)) > 1 else '')
                        + ' — міст не дав: функція не чиста (у сліді — «заборонено»)', pos)
     if got is None:
@@ -5116,7 +5158,10 @@ def t_python(it, pos, fn, args):
     if 'помилка' in got:
         raise NgrError(f'python: «{safe(fn.v)}»: {safe(str(got["помилка"]))}', pos)
     res = py_dec(got.get('значення'), pos)
-    it.sized(res, 'python', pos)        # і межа --розмір того, хто запускає (суд 11: 108 символів при --розмір 60)
+    if res.n > it.max_size:             # межа --розмір того, хто запускає (суд 11: 108 символів при --розмір 60) — як у
+        raise NgrError(f'python: відповідь понад --розмір (логічний розмір {res.n} > {it.max_size}) — частину не беру '
+                       f'мовчки', pos)  # файл.читати й взяти: помилка інструмента, її ловить ☂ (огляд 11б, Мовознавець)
+    it.sized(res, 'python', pos)
     return res
 
 
@@ -5192,11 +5237,13 @@ TOOLS = {
                'власника, точна назва (python:statistics.median; квота ≤N — як в інших); 【аргументи】 — список аргументів '
                '(один список — 【【3 1 2】】); окремий процес під повним замком ОС — ядро закриває мережу, процеси, запис і '
                f'дії над іншими процесами; тека процесу — «/» (шляхи для функції — лише дані: поза теками Python файлів міст не відкриває); '
-               f'{PY_TIME} с, {PY_CPU} с процесора, 1 ГБ, відповідь до 1 МБ; стеження sys.audit: читати поза '
+               f'{PY_TIME} с, {PY_CPU} с процесора, 1 ГБ, відповідь до 1 МБ у форматі обміну (ASCII-JSON: символ поза '
+               f'ASCII — 6 байтів, тож тексту кирилицею — до ~160 000 символів); стеження sys.audit: читати поза '
                'теками Python, мережа, процеси, запис, ctypes — відмова і «заборонено» в сліді; аргументи й результат — '
                'дані (ціле, десяткове, рядок, ●/○, ∅, список, словник; float і Fraction → десяткове), у межах --розмір; '
                'чи функція чиста — рішення власника: функцію, що виконує довільний код (eval, pickle) чи C-код, '
-               'стеження не стримає — вона прочитає й ключ власника (тоді слід можна підробити)', True, 'функція',
+               'стеження не стримає — вона прочитає й ключ власника (тоді слід можна підробити), і ключі авторів',
+               True, 'функція',
                t_python),
 }
 
@@ -5272,6 +5319,9 @@ def author_main(mode, rest, opts):
         raw = open(target, 'rb').read()
         src_all = raw.decode('utf-8')
     except (OSError, UnicodeDecodeError) as e:
+        if as_json and mode == '--перевірити-підпис':    # огляд 11б (Аудитор): JSON і на коді 2
+            print(json.dumps({'гаразд': False, 'код': 2, 'підпис': None,
+                              'помилка_розбору': safe(f'{getattr(e, "strerror", None) or e}')}, ensure_ascii=False, indent=1))
         print(f'✗ {safe(target)}: {getattr(e, "strerror", None) or e}', file=sys.stderr)
         return 2
     cwd = os.path.dirname(os.path.abspath(target))
@@ -5811,12 +5861,22 @@ def signature_split(raw):
 _SIG_SK = []
 
 
+_SIG_LOWER = str.maketrans(''.join(map(chr, range(65, 91))), ''.join(map(chr, range(97, 123))))
+
+
+def sig_skeleton(text):
+    """Як текст бачить людина, що шукає рядок підпису: скелет UTS #39 лише з літер, діакритичних знаків і цифр (пробіли,
+    розділові знаки й символи прибрано), латиниця малими («Ed25519», «ED_25519», «ed‑25519», «ｅｄ２５５１９», «𝐞𝐝𝟐𝟓𝟓𝟏𝟗» →
+    те саме; огляд 11б)."""
+    return ''.join(c for c in skeleton(''.join(text.split())) if unicodedata.category(c)[0] in 'LMN').translate(_SIG_LOWER)
+
+
 def sig_like(text):
-    """Коментар, схожий на рядок підпису: його скелет (UTS #39, без пробілів) містить «ed25519» (таб попереду, «пiдпис» з
-    латинською i, два пробіли — людина бачить підпис, а мова — коментар; суд 11)."""
+    """Коментар, схожий на рядок підпису: його sig_skeleton містить «ed25519» (таб попереду, «пiдпис» з латинською i, два
+    пробіли, регістр, дефіс, повноширинні й математичні двійники — людина бачить підпис, а мова — коментар; суд 11, 11б)."""
     if not _SIG_SK:
-        _SIG_SK.append(skeleton('ed25519'))
-    return _SIG_SK[0] in skeleton(''.join(text.split()))
+        _SIG_SK.append(sig_skeleton('ed25519'))
+    return _SIG_SK[0] in sig_skeleton(text)
 
 
 def sign_message(unsigned, prog):
@@ -7514,11 +7574,13 @@ def seal_warnings(prog, cwd):
     out = []
     seal = prog[2][0][3] if prog[2] else {}
     if seal.get('python'):          # міст (фаза 6.2): чистоту функції гарантує не мова, а вибір власника
-        out.append(f'python: {", ".join(safe(x) for x in seal["python"])} — функції Python в окремому процесі під замком '
-                   f'ОС (мережу, процеси, запис закрито ядром) і стеженням: читати поза теками Python міст не дає; чи '
-                   f'функції чисті (не залежать від часу, не виконують чужого коду) — рішення власника, мова цього не '
-                   f'доводить')
         risky = [x for x in seal['python'] if x.startswith(PY_RISKY) or x in PY_RISKY]
+        plain = [x for x in seal['python'] if x not in risky]     # огляд 11б (Аудитор): два ⚠ не суперечать одне одному
+        if plain:
+            out.append(f'python: {", ".join(safe(x) for x in plain)} — функції Python в окремому процесі під замком ОС '
+                       f'(мережу, процеси, запис закрито ядром) і стеженням: читати поза теками Python міст не дає; чи '
+                       f'функції чисті (не залежать від часу, не виконують чужого коду) — рішення власника, мова цього не '
+                       f'доводить')
         if risky:                   # суд 11: «median» і «linecache.getlines» мали те саме загальне ⚠
             out.append(f'python: {", ".join(safe(x) for x in risky)} — функції, яким стеження моста НЕ межа: виконують '
                        f'довільний код чи працюють з файлами й процесом; така функція може прочитати будь-який файл '
@@ -8291,8 +8353,10 @@ def cheatsheet():
             '  Права за ключем дає лише власник («для_авторів» у дозволи.json); `--печатка` показує «ПІДПИС АВТОРА» і',
             '  права з нього (у `--json` — «підпис», а права, яких без підпису бракувало б, — і в «попередження»);',
             '  `ngr --перевірити-підпис ПРОГРАМА` — чий і чи цілий: 0 — лише ключ з «для_авторів»; ключ, якого власник не',
-            '  знає, — код 1 (підписати своїм ключем може кожен). Коментар, схожий на підпис, — код 3. Підпис — слова про',
-            '  авторство, а не про безпечність: від того, що автор написав у печатці, він не захищає.',
+            '  знає, — код 1 (підписати своїм ключем може кожен); файл не прочитати — код 2. Будь-який коментар зі',
+            '  словом ed25519 — і в іншому регістрі, з дефісом чи двійниками (ｅｄ２５５１９), — код 3: так виглядає рядок',
+            '  підпису; рядок підпису в модулі — теж код 3 (підпис лише в програмі й покриває її модулі). Підпис — слова',
+            '  про авторство, а не про безпечність: від того, що автор написав у печатці, він не захищає.',
             '- Впевненість відстежується через дані, керування й побічний стан, але це консервативна оцінка, а не',
             '  ймовірність. Канал завершення відстежується (див. вище); лишається лише вичерпання лімітів кроків і',
             '  розміру — їх задає той, хто запускає, однаково для всіх гілок.',
@@ -8425,21 +8489,26 @@ USAGE = f"""Nigredo {VERSION}
   ngr --ключ-автора ФАЙЛ   новий ключ автора (Ed25519, файл 0600); друкує відкритий ключ ed25519:…
   ngr --підписати ПРОГРАМА --ключ ФАЙЛ   підписати програму з печаткою й модулями (останній рядок «※ підпис …»)
   ngr --перевірити-підпис ПРОГРАМА [--json]   чий підпис і чи цілий (0 — цілий і ключ з «для_авторів» власника;
-                           1 — підпису немає чи ключа власник не знає: прав підпис не дає; 3 — не збігся чи зіпсований)
+                           1 — підпису немає чи ключа власник не знає: прав підпис не дає; 2 — файл не прочитати;
+                           3 — не збігся чи зіпсований)
   ngr --памʼятка           згенерувати памʼятку для агентів
 """
 
 
 def write_dirs():
-    """Теки, куди програмам дозволено писати (з дозволів власника: «дозволено», усі «для_тек» і «для_програм»)."""
+    """Теки, куди програмам дозволено писати (з дозволів власника: «дозволено», усі «для_тек», «для_програм» і права
+    ключів «для_авторів» — підписана програма пише туди так само; огляд 11б, Аудитор і Новачок)."""
     path = os.path.join(OWNER_HOME, 'дозволи.json')
     try:
         data = json.load(open(path, encoding='utf-8'))
     except (OSError, ValueError):
         return []
     entries = list(data.get('дозволено', [])) if isinstance(data, dict) else []
-    for key in ('для_тек', 'для_програм'):
-        for extra in (data.get(key, {}) or {}).values() if isinstance(data, dict) else []:
+    for key in ('для_тек', 'для_програм', 'для_авторів'):
+        per = data.get(key, {}) if isinstance(data, dict) else {}
+        for extra in per.values() if isinstance(per, dict) else []:
+            if key == 'для_авторів':
+                extra = extra.get('дозволи') if isinstance(extra, dict) else None
             entries += extra if isinstance(extra, list) else []
     out = []
     for e in entries:
@@ -8637,7 +8706,7 @@ def load_replay(tpath, program=None):
             'модулі': Net([('файл', files), ('СЛІД.дані', mods), ('сховище', None)])}, None
 
 
-def dry_report(done, decided=1.0, stopped=False):
+def dry_report(done, decided=1.0, stopped=False, bridge=False):
     print(f'── --сухо: {len(done)} дій не виконано' + (':' if done else ' (жодної дії назовні)'), file=sys.stderr)
     unsure = 0
     for _, name, args, ac, unchecked in sorted(done, key=lambda d: d[0]):
@@ -8657,6 +8726,9 @@ def dry_report(done, decided=1.0, stopped=False):
     if unsure:
         print(f'  ⚠ {unsure} з {len(done)} дій обрано чи складено за значеннями, яких сухий прогін не знає (зокрема за '
               f'результатами придушених дій): перелік — не обіцянка того, що зробить справжній запуск', file=sys.stderr)
+    if bridge:                      # огляд 11б, Скептик: у --сухо з мостом межу процесів тримає інтерпретатор, а не ядро
+        print('  ⚠ процеси ядро в цьому прогоні не закрило: їх відкрив міст до Python (🜔python у печатці) — `процес` '
+              'придушує інтерпретатор, а сам міст — під повним замком ОС', file=sys.stderr)
     if stopped:                     # суд 11, Аудитор: прогін упав (часто — на заглушці придушеної дії), а перелік мовчав
         print('  ⚠ сухий прогін зупинився на помилці (нижче) — дій після неї не видно: перелік неповний', file=sys.stderr)
 
@@ -9598,13 +9670,16 @@ def _main(argv, opts, it, value):
             finally:
                 if replay or opts.get('dry'):
                     sys.stdout.flush()
+            bridge = bool(interp.os_shut) and 'процеси' not in interp.os_shut and 'python' in (prog[2][0][3] if prog[2] else {})
             if opts.get('dry'):
-                dry_report(interp.dry, min(interp.decided_c, interp.halt_c, interp.pc))
+                dry_report(interp.dry, min(interp.decided_c, interp.halt_c, interp.pc), bridge=bridge)
             if replay:
                 return replay_report(replay, main_trace, interp.ends)
         except NgrError as e:
             if interp.dry is not None:
-                dry_report(interp.dry, min(interp.decided_c, interp.halt_c, interp.pc), stopped=True)
+                dry_report(interp.dry, min(interp.decided_c, interp.halt_c, interp.pc), stopped=True,
+                           bridge=bool(interp.os_shut) and 'процеси' not in interp.os_shut
+                           and 'python' in (prog[2][0][3] if prog[2] else {}))
             trace('помилка', повідомлення=safe(str(e)), **err_fields(e))
             print(safe(str(e)), file=sys.stderr)
             code = 1

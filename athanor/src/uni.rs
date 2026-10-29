@@ -72,23 +72,29 @@ pub fn skeleton(s: &str) -> Option<String> {
     Some(out)
 }
 
-/// Коментар, схожий на рядок підпису (як nigredo.sig_like): скелет без пробілів містить скелет «ed25519». Символ, з яким
-/// нормалізація відрізнялася б, у збіг не входить: розклад дає діакритичний знак одразу за основою (перевірено по всьому
-/// Unicode), тож він лише розриває збіг — і тут він розрив.
+fn sig_push(sk: &mut String, x: char) {
+    if matches!(category(x).as_bytes()[0], b'L' | b'M' | b'N') {
+        sk.push(x.to_ascii_lowercase());
+    }
+}
+
+/// Коментар, схожий на рядок підпису (як nigredo.sig_like): sig_skeleton — скелет UTS #39 без пробілів, лише літери, знаки
+/// й цифри, латиниця малими — містить «ed25519». Символ, з яким нормалізація відрізнялася б, дає свій sig_skeleton із
+/// SIG_UNSAFE (повноширинні, математичні, ⅇ, ⅾ, ;…), а якого там немає — розрив: літер «ed25519» він не дає. gen_tables.py
+/// звіряє це з еталоном на кожному такому символі (огляд 11б: досі всі вони рвали збіг, і ｅｄ２５５１９ Атанор пропускав).
 pub fn sig_like(text: &str) -> bool {
-    let target = skeleton("ed25519").unwrap_or_default();
     let mut sk = String::with_capacity(text.len());
     for c in text.chars().filter(|c| !isspace(*c)) {
         if norm_unsafe(c) {
-            sk.push('\0');
+            sk.push_str(map_str(&SIG_UNSAFE, c as u32).unwrap_or("\0"));
         } else {
             match map_str(&SKELETON, c as u32) {
-                Some(t) => sk.push_str(t),
-                None => sk.push(c),
+                Some(t) => t.chars().for_each(|x| sig_push(&mut sk, x)),
+                None => sig_push(&mut sk, c),
             }
         }
     }
-    sk.contains(&target)
+    sk.contains(SIG_TARGET)
 }
 
 pub fn glyph_twin(skel: &str) -> Option<&'static str> {

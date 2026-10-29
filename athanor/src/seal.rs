@@ -341,7 +341,7 @@ pub fn approval_of(raw: &[u8], prog: &Node) -> String {
     sha::sha256_hex(text.as_bytes())
 }
 
-/// Теки, куди програмам дозволено писати (write_dirs еталона): з усіх записів власника.
+/// Теки, куди програмам дозволено писати (write_dirs еталона): з усіх записів власника, і з прав ключів «для_авторів».
 fn write_dirs(home: &str) -> Vec<String> {
     let path = pathx::join(home, "дозволи.json");
     let text = match std::fs::read_to_string(&path) {
@@ -360,9 +360,16 @@ fn write_dirs(home: &str) -> Vec<String> {
             }
         }
     }
-    for key in ["для_тек", "для_програм"] {
+    for key in ["для_тек", "для_програм", "для_авторів"] {
         if let Some(P::Obj(d)) = get(&data, key) {
             for (_, _, v) in d {
+                let v = match (key, v) {
+                    ("для_авторів", P::Obj(vv)) => match get(vv, "дозволи") {
+                        Some(x) => x,
+                        None => continue,
+                    },
+                    _ => v,
+                };
                 if let P::Arr(xs) = v {
                     for x in xs {
                         if let P::Str(s, false) = x {
