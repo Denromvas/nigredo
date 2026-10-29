@@ -3303,6 +3303,111 @@ def main():
         check(got.stdout == '2\n' and 'атанор → еталон: інструмент python — еталон' in why_.stderr,
               'Атанор: програму з 🜔python віддано еталону (явна причина), вивід той самий (фаза 6.2)', why_.stderr)
 
+    # ------------------------------------------------------------------ фаза 6.3: підпис автора (Ed25519) і «для_авторів»
+    import importlib.util as _iu
+    _sp = _iu.spec_from_file_location('nigredo_підпис', ROOT / 'interpreter' / 'nigredo.py')
+    NS = _iu.module_from_spec(_sp)
+    _sp.loader.exec_module(NS)
+    seed1 = bytes.fromhex('9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60')   # RFC 8032 §7.1, TEST 1
+    pub1, sig1 = NS.ed_public(seed1), NS.ed_sign(seed1, b'')
+    bad_sig = sig1[:32] + (int.from_bytes(sig1[32:], 'little') + NS.ED_Q).to_bytes(32, 'little')   # s ≥ q — відкинути
+    cross_ = 'немає cryptography'
+    try:
+        from cryptography.hazmat.primitives import serialization as _ser
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey as _K
+        cross_ = all(NS.ed_sign(sd_, m_) == _K.from_private_bytes(sd_).sign(m_) and NS.ed_public(sd_) == _K.from_private_bytes(
+            sd_).public_key().public_bytes(_ser.Encoding.Raw, _ser.PublicFormat.Raw)
+            for sd_, m_ in ((os.urandom(32), os.urandom(i * 7)) for i in range(12)))
+    except ImportError:
+        pass
+    check(pub1.hex() == 'd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a'
+          and sig1.hex() == ('e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e06522490155'
+                             '5fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b')
+          and NS.ed_verify(pub1, b'', sig1) and not NS.ed_verify(pub1, b'x', sig1) and not NS.ed_verify(pub1, b'', bad_sig)
+          and not NS.ed_verify(pub1, b'', sig1[:63] + bytes([sig1[63] ^ 1])) and cross_ in (True, 'немає cryptography'),
+          f'Ed25519 без залежностей: вектор RFC 8032 (TEST 1), чужий текст, s ≥ q і зламаний біт — відкинуто; звірка з '
+          f'cryptography: {cross_} (фаза 6.3)', f'{pub1.hex()} {sig1.hex()} {cross_}')
+    sh_ = tmp / 'власник_підпис'
+    sh_.mkdir()
+    sd_ = tmp / 'підписані'
+    (sd_ / 'дані').mkdir(parents=True)
+    (sd_ / 'дані' / 'а.txt').write_text('привіт', encoding='utf-8')
+    senv = dict(env, NIGREDO_HOME=str(sh_), NIGREDO_TRACE_PATH_FILE=str(tmp / 'підпис.слід'))
+    kf_ = tmp / 'автор.ключ'
+    got = run(['--ключ-автора', str(kf_)], senv)
+    got2 = run(['--ключ-автора', str(kf_)], senv)
+    key_ = got.stdout.split()[0]
+    kf2_ = tmp / 'інший.ключ'
+    key2_ = run(['--ключ-автора', str(kf2_)], senv).stdout.split()[0]
+    check(got.returncode == 0 and re.fullmatch(r'ed25519:[0-9a-f]{64}', key_) and (kf_.stat().st_mode & 0o777) == 0o600
+          and got2.returncode == 3 and 'не перезаписується' in got2.stderr,
+          '--ключ-автора: файл 0600, друкує відкритий ключ; наявного не перезаписує (фаза 6.3)', got.stdout + got2.stderr)
+    (sd_ / 'мод.ngr').write_text('🜂\n← з λx 〔[{x}]〕\n', encoding='utf-8')
+    sp_ = sd_ / 'звіт.ngr'
+    sp_.write_text(f'🜂 「звіт」 【「читати:дані」】\n⊃ 「мод.ngr」 【「з」】\n» з 🜔читати 「дані/а.txt」\n', encoding='utf-8')
+    got = run(['--підписати', str(sp_), '--ключ', str(kf_)], senv)
+    vj_ = json.loads(run(['--перевірити-підпис', str(sp_), '--json'], senv).stdout)
+    got3 = run([str(sp_)], senv)
+    check(got.returncode == 0 and sp_.read_text(encoding='utf-8').splitlines()[-1].startswith(f'※ підпис {key_} ')
+          and vj_['код'] == 0 and vj_['підпис']['цілий'] is True and vj_['підпис']['імʼя'] is None
+          and len(vj_['підпис']['модулі']) == 1 and got3.returncode == 3 and 'печатка просить більше' in got3.stderr,
+          '--підписати: рядок підпису — останній; --перевірити-підпис: цілий, ключ власнику невідомий, модуль охоплено; '
+          'прав підпис сам не дає (власник не вписав ключ) (фаза 6.3)', got.stdout + json.dumps(vj_, ensure_ascii=False) + got3.stderr)
+    (sh_ / 'дозволи.json').write_text(json.dumps({'дозволено': [], 'для_авторів': {key_: {'імʼя': 'агент звітів', 'дозволи': [
+        f'читати:{sd_}/дані']}}}, ensure_ascii=False), encoding='utf-8')
+    got = run([str(sp_)], senv)
+    head_ = recs_of(last(senv))[0]
+    vr_ = run(['--перевірити-слід', str(last(senv)), str(sp_)], senv).stdout
+    seal_ = run(['--печатка', str(sp_)], senv).stdout
+    sj_ = json.loads(run(['--печатка', '--json', str(sp_)], senv).stdout)
+    check(got.returncode == 0 and got.stdout == '[привіт]\n' and head_.get('підпис') == {'ключ': key_, 'імʼя': 'агент звітів'}
+          and 'підпис автора: ' + key_ + ' («агент звітів»)' in vr_ and 'ПІДПИС АВТОРА: цілий' in seal_
+          and '⚠ права з підпису: файл.читати:' in seal_ and sj_['підпис']['імʼя'] == 'агент звітів' and sj_['в_межах'] is True,
+          '«для_авторів»: програма з цілим підписом ключа отримує права власника для цього автора; у сліді «підпис», '
+          'у --печатка — «ПІДПИС АВТОРА» з правами (фаза 6.3)', got.stdout + got.stderr + vr_[-300:] + seal_[-500:])
+    # підробка: текст, печатка, модуль, рядок після підпису, два підписи — код 3 до запуску; чужий ключ — прав немає
+    good_ = sp_.read_bytes()
+    bad_ = []
+    for what_, mut_ in (('текст', lambda b: b.replace('дані/а.txt'.encode(), 'дані/б.txt'.encode())),
+                        ('печатка', lambda b: b.replace('「читати:дані」'.encode(), '「читати:.」'.encode())),
+                        ('рядок після підпису', lambda b: b + '» 1\n'.encode()),
+                        ('два підписи', lambda b: b + b.splitlines(True)[-1]),
+                        ('зіпсований підпис', lambda b: b[:-3] + (b'0' if b[-3:-2] != b'0' else b'1') + b[-2:])):
+        sp_.write_bytes(mut_(good_))
+        g_ = run([str(sp_)], senv)
+        if not (g_.returncode == 3 and 'підпис автора' in g_.stderr and g_.stdout == ''):
+            bad_.append((what_, g_.returncode, g_.stderr[-200:]))
+    sp_.write_bytes(good_)
+    (sd_ / 'мод.ngr').write_text('🜂\n← з λx 〔<{x}>〕\n', encoding='utf-8')
+    g_ = run([str(sp_)], senv)
+    if not (g_.returncode == 3 and 'НЕ збігся' in g_.stderr):
+        bad_.append(('модуль', g_.returncode, g_.stderr[-200:]))
+    (sd_ / 'мод.ngr').write_text('🜂\n← з λx 〔[{x}]〕\n', encoding='utf-8')
+    run(['--підписати', str(sp_), '--ключ', str(kf2_)], senv)       # той самий текст — інший автор: прав немає
+    g_ = run([str(sp_)], senv)
+    if not (g_.returncode == 3 and 'печатка просить більше' in g_.stderr):
+        bad_.append(('чужий ключ', g_.returncode, g_.stderr[-200:]))
+    resign_ = run(['--підписати', str(sp_), '--ключ', str(kf_)], senv)
+    check(not bad_ and 'старий підпис замінено' in resign_.stdout and run([str(sp_)], senv).returncode == 0
+          and sp_.read_text(encoding='utf-8').count('※ підпис') == 1,
+          'підпис: змінений текст, печатка, модуль, рядок після підпису, два підписи, зіпсований підпис — код 3 до запуску; '
+          'той самий текст, підписаний іншим ключем, — без прав; повторний підпис замінює старий (фаза 6.3)', str(bad_))
+    # «для_авторів» кривої форми — відмова власника (обома виконавцями: Атанор віддає еталону); Атанор — і підписані
+    (sh_ / 'дозволи.json').write_text(json.dumps({'дозволено': [], 'для_авторів': {'ed25519:коротко': {'дозволи': []}}},
+                                                 ensure_ascii=False), encoding='utf-8')
+    g_ = run(['-e', '🜂\n» 1'], senv)
+    check(g_.returncode == 3 and '«для_авторів»' in g_.stderr and 'ключ — «ed25519:» і 64 hex' in g_.stderr,
+          '«для_авторів» кривої форми — відмова до запуску для будь-якої програми (фаза 6.3)', g_.stderr)
+    (sh_ / 'дозволи.json').write_text(json.dumps({'дозволено': [], 'для_авторів': {key_: {'імʼя': 'агент звітів', 'дозволи': [
+        f'читати:{sd_}/дані']}}}, ensure_ascii=False), encoding='utf-8')
+    if os.environ.get('NGR_TEST_BIN'):
+        w1_ = subprocess.run([*NGR_CMD, str(sp_)], capture_output=True, text=True, env=dict(senv, ATHANOR_WHY='1'))
+        w2_ = subprocess.run([*NGR_CMD, '-e', '🜂\n» 1'], capture_output=True, text=True, env=dict(senv, ATHANOR_WHY='1'))
+        check('атанор → еталон: підпис автора — еталон' in w1_.stderr and w1_.stdout == '[привіт]\n'
+              and 'атанор → еталон: для_авторів — еталон' in w2_.stderr and w2_.stdout == '1\n',
+              'Атанор: підписану програму й будь-яку програму при «для_авторів» віддає еталону (явна причина) (фаза 6.3)',
+              w1_.stderr + w2_.stderr)
+
     sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',
           'перегенеруйте: ngr --памʼятка > ДЛЯ_АГЕНТІВ.md')
