@@ -3464,10 +3464,10 @@ def main():
               'міст: стеження sys.audit — читання поза теками Python (linecache.getlines ковтає помилку — однаково '
               '«заборонено»), os.system (а не 32512), os.kill — відмова; у сліді й підсумку --перевірити-слід — назва '
               'функції й спроба (суд 11)', g_.stdout + g_.stderr + vt_.stdout[-700:])
-        g_ = q11('» 🜔python 「unicodedata.normalize」 【「NFKD」 「' + 'ﬃ' * 25 + '」】', 'unicodedata.normalize',
-                 extra=('--розмір', '60'))
+        g_ = q11('← р 🜔python 「unicodedata.normalize」 【「NFKD」 「' + 'ﬃ' * 25 + '」】\n» 1', 'unicodedata.normalize',
+                 extra=('--розмір', '60'))      # без друку: «завелике» — саме від межі моста, а не від »
         g2_ = q11('» 🜔python 「json.loads」 【「"\\\\udc80"」】', 'json.loads')
-        check(g_.returncode != 0 and 'значення завелике' in g_.stderr and g2_.returncode == 1
+        check(g_.returncode != 0 and 'python: значення завелике' in g_.stderr and g_.stdout == '' and g2_.returncode == 1
               and 'самотнім сурогатом' in g2_.stderr and 'впав' not in g2_.stderr,
               'міст: відповідь — у межах --розмір (ﬃ × 25 → 75 символів при --розмір 60 — «завелике»); самотній сурогат — '
               '«не дані», а не «процес моста впав» (суд 11)', g_.stderr + g2_.stderr)
