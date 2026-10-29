@@ -143,8 +143,10 @@ someone else's program with network modules, agents run `ngr --отримати 
 the address still serves the pinned content; a non-zero code means do not run). **In development — 0.10-dev**
 (phase 6, the owner's decisions; proposal `spec/пропозиції/фаза6.md`):
 - **OS lock.** A group of actions the seal does not ask for at all — network, processes, writing files — is closed by
-  the **kernel** (seccomp), not only by the interpreter. Child processes inherit it. `ngr --перевірити-ізоляцію` shows
-  whether this machine's kernel holds it.
+  the **kernel** (seccomp), not only by the interpreter. Child processes inherit it. Some tools open more than their
+  own group: `процес` and `бд.читати` also open writing (commands write `/dev/null`, SQLite its temporary files), and
+  `python` opens processes (to start the bridge process). `ngr --перевірити-ізоляцію` shows whether this machine's
+  kernel holds it.
 - **Python bridge.** Only functions from the owner's list (`🜔python 「statistics.median」 【…】`), each in a separate
   process under the full OS lock and an audit watch (reading outside Python's own folders is refused and logged). Data
   only goes in and out. Whether a function is pure is the owner's call: one that runs arbitrary code can still read
@@ -152,8 +154,10 @@ the address still serves the pinned content; a non-zero code means do not run). 
 - **Author signature.** Ed25519 with no dependencies, covering the seal and every module. The owner can grant rights by
   key (`"для_авторів"`).
 
-Court 11 voted 7:0 «Б» (the kernel lock holds, the signature cannot be forged; quotas, texts and a few edge cases needed fixing). All findings are fixed with tests; a short re-review (11б) comes next. The latest
-comparison report is
+Court 11 voted 7:0 «Б» (the kernel lock holds, the signature cannot be forged; quotas, texts and a few edge cases needed
+fixing); re-review 11б gave 2 «А» and 5 narrow «Б» (no new breach; Atanor let full-width look-alikes of the signature
+line through, and a module from an author key's write folder was accepted as a module). All fixed with tests; a narrow
+confirmation (11в) comes next. The latest comparison report is
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols — [`konsylium/`](konsylium/).
 
 **Honest limits:** Nigredo is a transparency and audit tool, **not an OS sandbox** — an agent with shell access can
@@ -310,15 +314,18 @@ UTF-8 — помилка, а 30 с —
 ПРОГРАМА --звірити` (питає джерело, чи віддає адреса закріплений вміст; код ≠ 0 — не запускати). **У розробці —
 0.10-dev** (фаза 6, рішення власника; пропозиція `spec/пропозиції/фаза6.md`):
 - **Замок ОС.** Групу дій, якої печатка не просить зовсім, — мережу, процеси, запис — закриває **ядро** (seccomp), а не
-  лише інтерпретатор. Дочірні процеси його успадковують. `ngr --перевірити-ізоляцію` показує, чи тримає замок ядро
-  цієї машини.
+  лише інтерпретатор. Дочірні процеси його успадковують. Дехто відкриває більше за свою групу: `процес` і `бд.читати`
+  — ще й запис (команди пишуть `/dev/null`, SQLite — тимчасові файли), `python` — процеси (запустити процес моста).
+  `ngr --перевірити-ізоляцію` показує, чи тримає замок ядро цієї машини.
 - **Міст до Python.** Лише функції за списком власника (`🜔python 「statistics.median」 【…】`), кожна в окремому
   процесі під повним замком ОС і стеженням (читати поза теками Python не дає, спроба — у сліді). Туди й назад — лише
   дані. Чи функція чиста — вирішує власник: функція, що виконує довільний код, прочитає будь-який файл користувача.
 - **Підпис автора.** Ed25519 без залежностей, охоплює печатку й усі модулі. Власник може дати права за ключем
   («для_авторів»).
 
-Суд 11 — 7:0 «Б» (ядро тримає, підпис не підробити; квоти, тексти й кілька країв треба було виправити). Усі знахідки виправлено з тестами; далі — короткий огляд 11б. Останній звіт звірки —
+Суд 11 — 7:0 «Б» (ядро тримає, підпис не підробити; квоти, тексти й кілька країв треба було виправити), огляд 11б —
+2 «А», 5 вузьких «Б» (нового зламу немає; Атанор пропускав повноширинних двійників рядка підпису, модуль з теки запису
+ключа автора брався як модуль). Усе виправлено з тестами; далі — вузьке підтвердження 11в. Останній звіт звірки —
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); історія й протоколи — [`konsylium/`](konsylium/).
 
 **Чесно про межі:** Nigredo — інструмент прозорості й аудиту, **не пісочниця ОС**: агент із доступом до shell може

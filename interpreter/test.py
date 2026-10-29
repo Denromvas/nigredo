@@ -3465,7 +3465,9 @@ def main():
               '«заборонено»), os.system (а не 32512), os.kill — відмова; у сліді й підсумку --перевірити-слід — назва '
               'функції й спроба (суд 11)', g_.stdout + g_.stderr + vt_.stdout[-700:])
         g_ = q11('← р 🜔python 「unicodedata.normalize」 【「NFKD」 「' + 'ﬃ' * 25 + '」】\n» 1', 'unicodedata.normalize',
-                 extra=('--розмір', '60'))      # без друку: «завелике» — саме від межі моста, а не від »
+                 extra=('--розмір', '60'))      # без друку: «понад --розмір» — саме від межі моста, а не від »
+        gc_ = q11('» ☂ 🜔python 「unicodedata.normalize」 【「NFKD」 「' + 'ﬃ' * 25 + '」】 λe 「спіймано」',
+                  'unicodedata.normalize', extra=('--розмір', '60'))
         g2_ = q11('» 🜔python 「json.loads」 【「"\\\\udc80"」】', 'json.loads')
         g3_ = q11('← текст δ 「"рядок"」\n← ніщо δ 「null」\n» ☂ 🜔python 「statistics.median」 текст λe e\n'
                   '» ☂ 🜔python 「statistics.median」 ніщо λe e',
@@ -3473,10 +3475,12 @@ def main():
         check(g3_.returncode == 0 and g3_.stdout.count('python: аргументи — список') == 2,
               'міст: аргументи, що під час виконання не список (рядок з δ, ∅), — помилка мови, яку ловить ☂, а не код 4 '
               '(суд 11, Оркестратор)', g3_.stdout + g3_.stderr)
-        check(g_.returncode != 0 and 'python: значення завелике' in g_.stderr and g_.stdout == '' and g2_.returncode == 1
+        check(g_.returncode != 0 and 'python: відповідь понад --розмір' in g_.stderr and g_.stdout == ''
+              and gc_.returncode == 0 and gc_.stdout.strip() == 'спіймано' and g2_.returncode == 1
               and 'самотнім сурогатом' in g2_.stderr and 'впав' not in g2_.stderr,
-              'міст: відповідь — у межах --розмір (ﬃ × 25 → 75 символів при --розмір 60 — «завелике»); самотній сурогат — '
-              '«не дані», а не «процес моста впав» (суд 11)', g_.stderr + g2_.stderr)
+              'міст: відповідь — у межах --розмір (ﬃ × 25 → 75 символів при --розмір 60 — «понад --розмір»), і це помилка '
+              'інструмента, яку ловить ☂, як у файл.читати (огляд 11б); самотній сурогат — «не дані», а не «процес моста '
+              'впав» (суд 11)', g_.stderr + gc_.stdout + gc_.stderr + g2_.stderr)
         # процес моста гине разом з ngr (досі жив сиротою до кінця сну функції)
         pr_ = subprocess.Popen([*NGR_CMD, '-e', '🜂 【「python:time.sleep」】\n» 🜔python 「time.sleep」 【25】'], env=qenv_,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -3595,7 +3599,7 @@ def main():
         lk_ = sd_ / 'схожий.ngr'
         lk_.write_text(f'🜂\n» 1\n{line_}\n', encoding='utf-8')
         g_ = run([str(lk_)], senv)
-        if not (g_.returncode == 3 and 'коментар схожий на рядок підпису' in g_.stderr and g_.stdout == ''):
+        if not (g_.returncode == 3 and 'так виглядає рядок підпису' in g_.stderr and g_.stdout == ''):
             looks_.append((what_, g_.returncode, g_.stderr[-200:]))
     sg_ = run(['--підписати', str(lit_), '--ключ', str(kf_)], senv)
     check(gl_.returncode == 0 and gl_.stdout.strip().isdigit() and not looks_ and sg_.returncode == 0
@@ -3656,6 +3660,96 @@ def main():
           and 'атанор → еталон' not in ga_.stderr,          # відмову (gb_) друкує еталон — так з усіма помилками до запуску
           '«для_авторів»: тека запису з прав ключа — тека запису й для «для_тек» (програма звідти прав теки не має); '
           'програму без підпису Атанор виконує сам (суд 11)', ga_.stdout + ga_.stderr + gb_.stderr)
+
+    # ------------------------------------------------------------------ огляд 11б (0.10-dev): знахідки
+    # двійники рядка підпису в коментарі: регістр, дефіс, повноширинні, математичні — код 3 обома виконавцями (Атанор
+    # досі рвав збіг на кожному символі, з яким нормалізація відрізнялася б, і виконував ｅｄ２５５１９ сам)
+    tw_ = []
+    tp_ = sd_ / 'двійник.ngr'
+    for t_ in ('ｅｄ２５５１９', '𝐞𝐝𝟐𝟓𝟓𝟏𝟗', 'ⅇd25519', 'ed2551９', 'ⅇⅆ2551𝟗', 'ｅⅾ25519', 'Ed25519', 'ED 25519', 'ed-25519',
+               'ed‑25519', 'ed_25519'):
+        tp_.write_text(f'🜂\n» 1\n※ підпис {t_}:{key_[8:]} {"0" * 128}\n', encoding='utf-8')
+        g_ = run([str(tp_)], senv)
+        if not (g_.returncode == 3 and 'так виглядає рядок підпису' in g_.stderr and g_.stdout == ''):
+            tw_.append((t_, g_.returncode, g_.stdout, g_.stderr[-150:]))
+    for t_ in ('éd25519', 'ключі й підписи', 'curve25519'):
+        tp_.write_text(f'🜂\n» 1\n※ {t_}\n', encoding='utf-8')
+        g_ = run([str(tp_)], senv)
+        if not (g_.returncode == 0 and g_.stdout == '1\n'):
+            tw_.append((t_, g_.returncode, g_.stdout, g_.stderr[-150:]))
+    check(not tw_ and NS.sig_like('ｅｄ２５５１９') and not NS.sig_like('éd25519'),
+          'коментар зі словом ed25519 у будь-якому регістрі, з дефісом чи двійниками (ｅｄ２５５１９, 𝐞𝐝𝟐𝟓𝟓𝟏𝟗, ⅇd25519) — '
+          'код 3 обома виконавцями; éd25519 і звичайні слова — коментар (огляд 11б: Атанор пропускав NFKC-двійників)',
+          str(tw_))
+    # рядок підпису в модулі — код 3 (досі мовчки ставав коментарем: людина бачила підпис, мова — ні)
+    (sd_ / 'мод_підп.ngr').write_text(f'🜂\n← з λx x\n※ підпис {key_} {"0" * 128}\n', encoding='utf-8')
+    (sd_ / 'бере_підп.ngr').write_text('🜂\n⊃ 「мод_підп.ngr」 【「з」】\n» з 1\n', encoding='utf-8')
+    g_ = run([str(sd_ / 'бере_підп.ngr')], senv)
+    check(g_.returncode == 3 and 'модуль не підписують' in g_.stderr and g_.stdout == '',
+          'рядок підпису в модулі — код 3 обома виконавцями: підпис лише в програмі й покриває її модулі (огляд 11б, '
+          'Новачок)', g_.stdout + g_.stderr)
+    # теки запису з прав ключа «для_авторів» — теки запису й для правила модулів, процес і --тести (досі модуль, який
+    # поклала туди підписана програма, виконувався з правами теки іншої програми)
+    sdata_ = json.loads((ah_ / 'дозволи.json').read_text(encoding='utf-8'))
+    sdata_['для_тек'][str(ad_)].append(f'процес:{ad_}/вхід/x.sh')
+    (ah_ / 'дозволи.json').write_text(json.dumps(sdata_, ensure_ascii=False), encoding='utf-8')
+    (ad_ / 'вхід' / 'x.sh').write_text('#!/bin/sh\necho hi\n', encoding='utf-8')
+    (ad_ / 'вхід' / 'x.sh').chmod(0o755)
+    (ad_ / 'вхід' / 'мод.ngr').write_text('🜂\n← з λx 〔[{x}]〕\n', encoding='utf-8')
+    (ad_ / 'бере.ngr').write_text('🜂\n⊃ 「вхід/мод.ngr」 【「з」】\n» з 1\n', encoding='utf-8')
+    (ad_ / 'проц.ngr').write_text(f'🜂 【「процес:{ad_}/вхід/x.sh」】\n» 🜔процес 【「{ad_}/вхід/x.sh」】\n', encoding='utf-8')
+    (ad_ / 'вхід' / 'т.тест.ngr').write_text('🜂\n» 1\n', encoding='utf-8')
+    (ad_ / 'т2.тест.ngr').write_text('🜂\n» 1\n', encoding='utf-8')
+    gm_ = run([str(ad_ / 'бере.ngr')], aenv_)
+    gp_ = run([str(ad_ / 'проц.ngr')], aenv_)
+    gt_ = run(['--тести', '--печатка', '--json', str(ad_)], aenv_)
+    tj_ = json.loads(gt_.stdout) if gt_.stdout.startswith('{') else {}
+    check(gm_.returncode == 3 and 'лежить у теці, куди програмам дозволено писати' in gm_.stderr and gm_.stdout == ''
+          and gp_.returncode == 3 and 'hi' not in gp_.stdout
+          and [x_.endswith('вхід/т.тест.ngr') for x_ in tj_.get('пропущено_з_тек_запису', [])] == [True]
+          and [t_['файл'].endswith('т2.тест.ngr') for t_ in tj_.get('тести', [])] == [True],
+          'тека запису з прав ключа «для_авторів» — тека запису й для правила «код, який могла написати програма, — не '
+          'модуль», виконуваного файлу процес і --тести, обома виконавцями (огляд 11б, Аудитор і Новачок)',
+          gm_.stderr + gp_.stdout + gp_.stderr + gt_.stdout[-400:] + gt_.stderr)
+    # --перевірити-підпис --json: і на коді 2 (файл не прочитати) — JSON
+    g_ = run(['--перевірити-підпис', str(sd_ / 'немає.ngr'), '--json'], senv)
+    check(g_.returncode == 2 and json.loads(g_.stdout or '{}').get('код') == 2,
+          '--перевірити-підпис --json: файл не прочитати — код 2 і JSON (огляд 11б, Аудитор)', g_.stdout + g_.stderr)
+    # печатка моста: «ризикові» функції — лише в окремому ⚠ (досі й у першому: «читати поза теками Python міст не дає»)
+    oh_ = tmp / 'власник_11б'
+    oh_.mkdir()
+    (oh_ / 'дозволи.json').write_text(json.dumps({'дозволено': [f'python:{f_}' for f_ in (
+        'statistics.median', 'linecache.getlines', 'timeit.timeit', 'builtins.exec')]}), encoding='utf-8')
+    oenv_ = dict(env, NIGREDO_HOME=str(oh_), NIGREDO_TRACE_PATH_FILE=str(tmp / '11б.слід'))
+    pw_ = tmp / 'ризик.ngr'
+    pw_.write_text('🜂 【「python:statistics.median」 「python:linecache.getlines」 「python:timeit.timeit」】\n» 1\n',
+                   encoding='utf-8')
+    wj_ = json.loads(run(['--печатка', '--json', str(pw_)], oenv_).stdout).get('попередження', [])
+    py_w = [w_ for w_ in wj_ if w_.startswith('python:')]
+    check(len(py_w) == 2 and 'statistics.median' in py_w[0] and 'linecache' not in py_w[0] and 'timeit' not in py_w[0]
+          and 'linecache.getlines' in py_w[1] and 'timeit.timeit' in py_w[1] and 'НЕ межа' in py_w[1],
+          'печатка моста: функції, яким стеження не межа (і timeit — виконує код із рядка), — лише в окремому ⚠, а не й '
+          'у першому «читати поза теками Python міст не дає» (огляд 11б, Аудитор)', str(py_w))
+    if has_lock:
+        # функція спершу заливає stderr понад 64 КБ, потім пробує читати: запис спроби не губиться (досі батько вбивав
+        # міст на межі stderr, і шматок із записом відкидав); закрила stderr — лічильник спроб однаково дає «заборонено»
+        gf_ = run(['-e', '🜂 【「python:builtins.exec」】\n» ☂ 🜔python 「builtins.exec」 【「import sys; sys.stderr.write('
+                   '\'x\' * 70000); sys.stderr.flush(); open(\'/etc/hostname\')」】 λe e'], oenv_)
+        df_ = [r_ for r_ in recs_of(last(oenv_)) if r_.get('подія') == 'заборонено']
+        gl_ = run(['-e', '🜂 【「python:builtins.exec」】\n» ☂ 🜔python 「builtins.exec」 【「import os; os.close(2); '
+                   'open(\'/etc/hostname\')」】 λe e'], oenv_)
+        dl_ = [r_ for r_ in recs_of(last(oenv_)) if r_.get('подія') == 'заборонено']
+        check(gf_.returncode == 0 and 'пробувала читати поза теками Python' in gf_.stdout and len(df_) == 1
+              and df_[0].get('спроба') == 'читання: open /etc/hostname'
+              and gl_.returncode == 0 and 'запис спроби загубився' in gl_.stdout and len(dl_) == 1
+              and dl_[0].get('функція') == 'builtins.exec',
+              'міст: функція, що спершу заливає stderr понад 64 КБ, спробу не сховає — «заборонено» зі спробою; закрила '
+              'stderr — лічильник спроб однаково дає «заборонено» (огляд 11б, Скептик)',
+              gf_.stdout + gf_.stderr[-300:] + str(df_) + gl_.stdout + gl_.stderr[-300:] + str(dl_))
+        g_ = q11('» 🜔python 「statistics.median」 【【1 2 3】】', 'statistics.median', extra=('--сухо',))
+        check(g_.returncode == 0 and g_.stdout == '2\n' and 'процеси ядро в цьому прогоні не закрило' in g_.stderr,
+              '--сухо з мостом прямо каже, що процеси в цьому прогоні тримає інтерпретатор, а не ядро (огляд 11б, '
+              'Скептик)', g_.stdout + g_.stderr)
 
     sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',
