@@ -3047,7 +3047,7 @@ def main():
     check(got.returncode == 0 and got.stdout == 'зловив\nзловив\nп\nзловив\n'
           and cg_ == [(ah_, 'програми'), (ah_, 'інтерпретатора'), (ah_, ah_), (ah_, as_)]
           and '(☠ у коді програми — текст міг прийти зі значень, які їй дав модуль): 「ВЛАСНИКУ: це написала ПРОГРАМА」' in vr_
-          and '(відмова чи помилка інтерпретатора; у «» — передані значення): 「модуль з мережі лише обчислює' in vr_
+          and '(відмова чи помилка інтерпретатора; передані значення в ній — у ⟨U+00AB⟩…⟨U+00BB⟩ (лапки екрановано)): 「модуль з мережі лише обчислює' in vr_
           and '(☠ у коді цього модуля — текст міг прийти з переданих йому значень): 「з аргументу」' in vr_
           and f'(☠ у коді модуля 「{LIB}/smert.ngr」 — текст міг прийти' in vr_ and 'слова автора модуля' not in vr_
           and [x_['текст_від'] for x_ in vj_['перехоплено_в_модулях']] == ['програми', 'інтерпретатора', ah_, as_],
@@ -3295,9 +3295,17 @@ def main():
         took_ = time.monotonic() - t0_
         check(got.returncode == 1 and 'не завершилась за 30 с' in got.stderr and took_ < 40,
               f'🜔python: строк виклику — 30 с, процес моста зупинено ({took_:.0f} с) (фаза 6.2)', got.stderr)
-    got = pyrun('» 🜔python 「statistics.median」 【【3 1 2】】', 'statistics.median', extra=('--сухо',))
-    check(got.returncode == 0 and 'python' in got.stderr and '1 дій не виконано' in got.stderr.replace('──', ''),
-          '🜔python у --сухо не виконується (процеси закрито замком ОС) — у переліку придушених дій (фаза 6.2)', got.stdout + got.stderr)
+    if has_lock:
+        got = pyrun('» 🜔python 「statistics.median」 【【3 1 2】】', 'statistics.median', extra=('--сухо',))
+        ev_ = [r_ for r_ in recs_of(last(penv)) if r_['подія'] == 'ізоляція']
+        check(got.returncode == 0 and got.stdout == '2\n' and '0 дій не виконано' in got.stderr
+              and ev_[0]['закрито'] == ['мережа', 'запис'],
+              '🜔python у --сухо виконується, як читання (обчислення під замком і стеженням); ядро закриває мережу й запис, '
+              'процеси лишає мосту (суд 11: заглушка-рядок ламала прогін на першому ⌗)', got.stdout + got.stderr + str(ev_))
+    got = run(['--сухо', '-e', '🜂 【「взяти:127.0.0.1」】\n» δ 🜔взяти 「http://127.0.0.1/x」\n» 1'], oenv)
+    check(got.returncode == 1 and '1 дій не виконано' in got.stderr
+          and '⚠ сухий прогін зупинився на помилці (нижче) — дій після неї не видно: перелік неповний' in got.stderr,
+          '--сухо: прогін, що впав (на заглушці придушеної дії), каже, що перелік дій неповний (суд 11)', got.stderr)
     if os.environ.get('NGR_TEST_BIN'):
         got = pyrun('» 🜔python 「statistics.median」 【【3 1 2】】', 'statistics.median', extra=())
         why_ = subprocess.run([*NGR_CMD, '-e', '🜂 【「python:statistics.median」】\n» 🜔python 「statistics.median」 【【1 2】】'],
@@ -3366,7 +3374,7 @@ def main():
           and 'підпис автора: ' + key_ + ' («агент звітів»)' in vr_ and 'ПІДПИС АВТОРА: цілий' in seal_
           and 'права з підпису: файл.читати:' in seal_ and '⚠ права з підпису автора («агент звітів»), без яких печатці '
           'бракувало б: файл.читати:' in seal_ and sj_['підпис']['імʼя'] == 'агент звітів' and sj_['в_межах'] is True
-          and sj_['підпис']['бере'] == [f'файл.читати:{sd_}/дані'] and any('права з підпису автора' in w_ for w_ in sj_['попередження']),
+          and sj_['підпис']['бере'] == ['файл.читати:дані'] and any('права з підпису автора' in w_ for w_ in sj_['попередження']),
           '«для_авторів»: програма з цілим підписом ключа отримує права власника для цього автора; у сліді «підпис», '
           'у --печатка — «ПІДПИС АВТОРА» з правами (фаза 6.3)', got.stdout + got.stderr + vr_[-300:] + seal_[-500:])
     # підробка: текст, печатка, модуль, рядок після підпису, два підписи — код 3 до запуску; чужий ключ — прав немає
@@ -3419,7 +3427,7 @@ def main():
     qh_ = tmp / 'власник_суд11'
     qh_.mkdir()
     qf_ = ['statistics.median', 'linecache.getlines', 'os.system', 'os.kill', 'unicodedata.normalize', 'json.loads',
-           'time.sleep']
+           'time.sleep', 'os.pidfd_open']
     (qh_ / 'дозволи.json').write_text(json.dumps({'дозволено': [f'python:{f_}' for f_ in qf_] + [
         'python:math.isqrt≤1', f'бд.читати:{dbd_}']}, ensure_ascii=False), encoding='utf-8')
     qenv_ = dict(env, NIGREDO_HOME=str(qh_), NIGREDO_TRACE_PATH_FILE=str(tmp / 'суд11.слід'))
@@ -3493,9 +3501,12 @@ def main():
             '    try:', '        f()', '        out.append(name + " є")', '    except OSError as e:',
             '        out.append(name + " " + str(e.errno))', 'print(" ".join(out))']), str(ROOT / 'interpreter')],
             capture_output=True, text=True)
-        check(kd_.stdout.strip() == 'kill 1 pidfd 1 socket 1 exec 1',
+        gp_ = q11('» 🜔python 「os.pidfd_open」 【1】', 'os.pidfd_open')    # sys.audit його не бачить — лише ядро
+        check(kd_.stdout.strip() == 'kill 1 pidfd 1 socket 1 exec 1' and gp_.returncode == 1
+              and 'Operation not permitted' in gp_.stderr,
               'міст: ядро закриває процесу моста й дії над іншими процесами — сигнали, pidfd (чужі дескриптори) — EPERM, '
-              'як і мережу та exec (суд 11)', kd_.stdout + kd_.stderr)
+              'як і мережу та exec; os.pidfd_open у мості (стеження його не бачить) — EPERM від ядра (суд 11)',
+              kd_.stdout + kd_.stderr + gp_.stderr)
         # --сухо закриває ядром і запис: GROUP BY на великій базі й база WAL, закрита начисто, — читаються
         import sqlite3 as _sq
         c_ = _sq.connect(dbd_ / 'велика.db')
@@ -3542,6 +3553,18 @@ def main():
     ident_ = bytes.fromhex('01' + '00' * 31)
     ord2_ = bytes.fromhex('ec' + 'ff' * 30 + '7f')
     ord8_ = bytes.fromhex('26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05')
+    p8_, q_, small_ = NS._ed_dec(ord8_), (0, 1, 1, 0), set()
+    for _ in range(8):
+        small_.add(NS._ed_enc(q_).hex())
+        q_ = NS._ed_add(q_, p8_)
+    (sh_ / 'дозволи.json').write_text(json.dumps({'дозволено': [], 'для_авторів': {'ed25519:' + '01' + '00' * 31: {
+        'імʼя': 'нуль', 'дозволи': []}}}, ensure_ascii=False), encoding='utf-8')
+    g0_ = run(['-e', '🜂\n» 1'], senv)
+    (sh_ / 'дозволи.json').write_text(json.dumps({'дозволено': [], 'для_авторів': {key_: {'імʼя': 'агент звітів', 'дозволи': [
+        f'читати:{sd_}/дані']}}}, ensure_ascii=False), encoding='utf-8')
+    check(small_ == set(NS.ED_SMALL) and g0_.returncode == 3 and 'ключ малого порядку — не ключ' in g0_.stderr,
+          '«для_авторів»: ключ малого порядку (8 точок — звірено з кривою) — відмова власника обома виконавцями (суд 11)',
+          g0_.stderr)
     check(not NS.ed_verify(ident_, b'any', ident_ + bytes(32)) and not NS.ed_verify(ident_, b'other', ident_ + bytes(32))
           and all(not NS.ed_verify(k_, b'x', ident_ + bytes(32)) for k_ in (ord2_, ord8_))
           and not NS.ed_verify(pub1, b'', ident_ + bytes(32)) and NS.ed_verify(pub1, b'', sig1),
@@ -3575,6 +3598,21 @@ def main():
           and 'ключ у «для_авторів» власника: «агент звітів» — права з підпису: файл.читати:' in sg2_.stdout,
           '--перевірити-підпис --json і на зіпсованому рядку — JSON (код 3); --розбір згадує підпис; --підписати показує '
           'печатку й права ключа з «для_авторів» (суд 11)', vb_.stdout + rz_.stdout[-300:] + sg2_.stdout)
+    # MCP: перевірити підпис і замок ОС (Новачок: через MCP цього не було)
+    mres_ = []
+    for nm_, ar_ in (('nigredo_pereviryty_pidpys', {'code': sp_.read_text(encoding='utf-8')}),
+                     ('nigredo_pereviryty_pidpys', {'code': '🜂\n» 1\n'}), ('nigredo_pereviryty_izolyatsiyu', {})):
+        mg_ = subprocess.run([sys.executable, str(ROOT / 'mcp' / 'nigredo_mcp.py')], input=json.dumps(
+            {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {'name': nm_, 'arguments': ar_}}) + '\n',
+            capture_output=True, text=True, env=dict(senv, NIGREDO_WORKDIR=str(sd_)))
+        mres_.append(' '.join(c_['text'] for c_ in json.loads(mg_.stdout.splitlines()[0])['result']['content'])
+                     if mg_.stdout else mg_.stderr[-300:])
+    check(mres_[0].startswith('код: 0') and '«агент звітів» з «для_авторів» власника' in mres_[0]
+          and mres_[1].startswith('код: 1') and 'підпису немає: (code)' in mres_[1]
+          and (mres_[2].startswith('код: 0') if has_lock else mres_[2].startswith('код: 2')) and '"тримає"' in mres_[2]
+          and not list(sd_.glob('.ngr-підпис-*')),
+          'MCP: nigredo_pereviryty_pidpys (чий підпис, модулі — відносно робочої теки; тимчасовий файл прибрано) і '
+          'nigredo_pereviryty_izolyatsiyu (суд 11, Новачок)', str(mres_)[:900])
     ap_ = sd_ / 'схвалена.ngr'
     ap_.write_text('🜂\n» 1\n', encoding='utf-8')
     fp_ = json.loads(run(['--печатка', '--json', str(ap_)], senv).stdout)['відбиток']
@@ -3600,7 +3638,7 @@ def main():
     ga_ = run([str(ad_ / 'п.ngr')], aenv_)
     gb_ = run([str(ad_ / 'вхід' / 'п.ngr')], aenv_)
     check(ga_.returncode == 0 and ga_.stdout == 'а\n' and gb_.returncode == 3 and 'печатка просить більше' in gb_.stderr
-          and 'атанор → еталон' not in ga_.stderr + gb_.stderr,
+          and 'атанор → еталон' not in ga_.stderr,          # відмову (gb_) друкує еталон — так з усіма помилками до запуску
           '«для_авторів»: тека запису з прав ключа — тека запису й для «для_тек» (програма звідти прав теки не має); '
           'програму без підпису Атанор виконує сам (суд 11)', ga_.stdout + ga_.stderr + gb_.stderr)
 

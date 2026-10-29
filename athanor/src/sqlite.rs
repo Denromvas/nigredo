@@ -1497,7 +1497,19 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
         return ngr(format!("{}: немає такого файлу: {}", tool, pv), pos);
     }
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-    let uri = format!("file:{}?mode={}", quote(&real), if write { "rwc" } else { "ro" });
+    // запис закрито ядром (--сухо): база WAL без -wal і -shm (закрита начисто — уся в головному файлі) інакше не
+    // відкриється, бо SQLite створює -shm; така — незмінна (immutable), і це правда (суд 11; як в еталона)
+    let mut frozen = "";
+    if !write && it.write_shut && !pathx::exists(&format!("{}-wal", real)) && !pathx::exists(&format!("{}-shm", real)) {
+        if let Ok(mut f) = std::fs::File::open(&real) {
+            use std::io::Read;
+            let mut h = [0u8; 20];
+            if f.read_exact(&mut h).is_ok() && h[18..20] == [2, 2] {
+                frozen = "&immutable=1";
+            }
+        }
+    }
+    let uri = format!("file:{}?mode={}{}", quote(&real), if write { "rwc" } else { "ro" }, frozen);
     let db = match open(l, &uri) {
         Ok(db) => db,
         Err(PyErr::Sql(m)) => return ngr(format!("{}: {}: {}", tool, m, pv), pos),
@@ -1514,6 +1526,10 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
         let r = (|| -> Result<V, Result<PyErr, Box<E>>> {
             // page_size уже читає схему: файл — не база чи схема пошкоджена — помилка програми, а не код 4 (суд 9б)
             pragma(l, db, &format!("PRAGMA hard_heap_limit = {}", (64u64 << 20).max(32 * it.max_size))).map_err(Ok)?;
+            if !write && it.write_shut {
+                // --сухо закриває ядром і запис: GROUP BY, DISTINCT на великій базі — у памʼяті (суд 11)
+                pragma(l, db, "PRAGMA temp_store = MEMORY").map_err(Ok)?;
+            }
             if write {
                 let page = pragma(l, db, "PRAGMA page_size").map_err(Ok)?.unwrap_or(4096);
                 pragma(l, db, &format!("PRAGMA max_page_count = {}", 64 * 1024 * 1024 / page)).map_err(Ok)?;

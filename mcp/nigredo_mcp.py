@@ -155,6 +155,18 @@ def tools():
          'description': 'Хто виконує: sha256 самого виконавця (бінарника Атанора чи nigredo.py еталона) і поле '
                         '«інтерпретатор», яке він пише в слід, — щоб звірити з тим, що назвав власник (суд 9б).',
          'inputSchema': {'type': 'object', 'properties': {}}},
+        {'name': 'nigredo_pereviryty_pidpys',
+         'description': 'Чий підпис автора (останній рядок «※ підпис ed25519:…») і чи цілий — без виконання. Код 0 — '
+                        'цілий і ключ з «для_авторів» власника; 1 — підпису немає чи ключа власник не знає (прав такий '
+                        'підпис не дає: підписати своїм ключем може кожен); 3 — не збігся чи зіпсований: не запускай. '
+                        'Модулі — відносно робочої теки. Підписати через MCP не можна навмисно: ключ автора лишається '
+                        'в автора (ngr --підписати ПРОГРАМА --ключ ФАЙЛ).',
+         'inputSchema': {'type': 'object', 'properties': {'code': code}, 'required': ['code']}},
+        {'name': 'nigredo_pereviryty_izolyatsiyu',
+         'description': 'Чи ставить ядро цієї машини замок ОС (seccomp): дочірній процес під замком пробує по одному '
+                        'виклику з групи — socket, відкрити файл на запис, exec. Код 0 — усі три відмовлено, 1 — ні, '
+                        '2 — замка немає (тоді межі печатки тримає лише інтерпретатор). Текст і JSON.',
+         'inputSchema': {'type': 'object', 'properties': {}}},
         {'name': 'nigredo_pereviryty_slid',
          'description': 'Перевірити підписаний слід виконання: цілість, підписи, чи не обрізано, спроби поза '
                         'правами («заборонено»), перехоплені помилки, аргументи й тека; з code — чи слід саме від '
@@ -176,6 +188,10 @@ def call(name, a):
     if name == 'nigredo_vidbytok':
         rc, out, err = ngr('--відбиток')
         return [clean((out or err).strip())], rc != 0
+    if name == 'nigredo_pereviryty_izolyatsiyu':
+        rc, out, err = ngr('--перевірити-ізоляцію')
+        _, js, _ = ngr('--перевірити-ізоляцію', '--json')
+        return [f'код: {rc}\n' + clean((out or err).strip()) + '\n', clean(js.strip())], rc != 0
     texts = [str(a.get(k, '')) for k in ('code', 'path', 'url', 'search', 'lang')] + [str(x) for x in a.get('args', [])]
     if bad_text(*texts):
         return ['✗ у запиті неповний символ (сурогат) — це не UTF-8; нічого не виконано'], True
@@ -189,6 +205,17 @@ def call(name, a):
     if name == 'nigredo_shvalyty':
         rc, out, err = ngr('--схвалити', '--тека', WORKDIR, '-e', a['code'])
         return [clean((out or err).strip())], rc != 0
+    if name == 'nigredo_pereviryty_pidpys':          # файл — у робочій теці: модулі відносно неї, як у -e --тека
+        fd, pp = tempfile.mkstemp(prefix='.ngr-підпис-', suffix='.ngr', dir=WORKDIR)
+        with os.fdopen(fd, 'w', encoding='utf-8', newline='') as f:
+            f.write(a['code'])
+        try:
+            rc, out, err = ngr('--перевірити-підпис', pp)
+            _, js, _ = ngr('--перевірити-підпис', pp, '--json')
+        finally:
+            os.unlink(pp)
+        return [f'код: {rc}\n' + clean((out or err).strip()).replace(pp, '(code)') + '\n',
+                clean(js.strip()).replace(pp, '(code)')], rc != 0
     if name == 'nigredo_rozbir':
         rc, out, err = ngr('--розбір', '--тека', WORKDIR, '-e', a['code'])
         return [clean((out or err).strip())], rc != 0

@@ -159,6 +159,7 @@ pub struct Interp {
     pub modules: HashMap<String, Rc<Env>>,
     pub prof: Option<HashMap<String, (u64, std::time::Duration)>>,
     pub os_mode: Option<&'static str>, // замок ОС (фаза 6.1): «печатка» — закрити групи, яких печатка не просить; «усе»
+    pub write_shut: bool, // ядро справді закрило «запис» (бд.читати: тимчасове — у памʼяті, чиста база WAL — незмінна; суд 11)
     pub dry: Option<Vec<(u64, &'static str, Vec<J>, f64, bool)>>, // --сухо: придушені дії (№, назва, аргументи, впевненість, запит не скомпілювався)
     pub db_unchecked: bool, // права без дії: запит SQLite не скомпілювався на нинішній базі (огляд 0.8.1в)
 }
@@ -689,6 +690,8 @@ impl Interp {
                     // замок ОС — раз, на печатці програми (фаза 6.1; еталон: os_lock)
                     let closed = if m == "усе" { crate::lang::OS_GROUPS.to_vec() } else { crate::oslock::closed(caps) };
                     let d = crate::oslock::lock(&closed);
+                    self.write_shut = closed.contains(&"запис")
+                        && d.iter().any(|(k, v)| k == "ядро" && matches!(v, J::Str(s) if s == "seccomp"));
                     self.rec("ізоляція", d)?;
                 }
                 Ok(V::none())
