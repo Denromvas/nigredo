@@ -1,0 +1,74 @@
+{
+ "намір": "☠ у λ програми, яку викликав локальний модуль: чиє місце в помилці",
+ "дозволи": {},
+ "субагенти": [],
+ "модулі": [
+  {
+   "шлях": "лок_кличе.ngr",
+   "sha256": "f1ab61f70e6053cbe6775c955d8899a548cb2cc8a7589788ef94e2d87155ab98",
+   "намір": "локальний модуль: кличе функцію того, хто кличе",
+   "імена": [
+    "клич"
+   ],
+   "дозволи": {},
+   "квоти": [],
+   "бере_його": [
+    "програма"
+   ],
+   "з_мережі": false,
+   "файл": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/лок_кличе.ngr"
+  }
+ ],
+ "явні_зміни_впевненості": 0,
+ "дозволи_власника": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/власник/дозволи.json (sha256 9485e783bc801d76)",
+ "квоти": [],
+ "квоти_власника": [],
+ "права_теки": [
+  "файл.читати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/дані",
+  "файл.список:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/дані",
+  "файл.писати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/звіти",
+  "бд.читати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/дані",
+  "бд.писати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/звіти",
+  "мережа.взяти:127.0.0.1:28733",
+  "мережа.послати:127.0.0.1:28733",
+  "процес:echo",
+  "процес:ls",
+  "процес:sh -c echo",
+  "python:statistics.median",
+  "python:statistics.mean",
+  "python:statistics.stdev",
+  "python:statistics.pstdev",
+  "python:math.factorial",
+  "python:math.isqrt",
+  "python:json.dumps",
+  "python:json.loads",
+  "python:re.findall",
+  "python:decimal.Decimal",
+  "python:datetime.date.fromisoformat",
+  "python:unicodedata.normalize",
+  "python:time.sleep",
+  "python:subprocess.getoutput",
+  "python:os.system",
+  "python:urllib.request.urlopen",
+  "python:socket.create_connection",
+  "python:shutil.copyfile",
+  "python:builtins.open",
+  "python:linecache.getlines"
+ ],
+ "права_схвалення": [],
+ "тека": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator",
+ "в_межах": true,
+ "бракує": [],
+ "замок_ОС": {
+  "закрито": [
+   "мережа",
+   "процеси",
+   "запис"
+  ]
+ },
+ "підпис": null,
+ "попередження": [],
+ "програма": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/р0_у8_місце_лок.ngr",
+ "sha256": "188375f3474b8c5cba36d22d21859fa2dda666671378b5a807f3197d947849ec",
+ "відбиток": "13f189d2ffa610d3b3373c909b8adc97a8a4b0eae8048004cd88dbc2cd32d9f9"
+}

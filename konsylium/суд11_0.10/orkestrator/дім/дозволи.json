@@ -1,0 +1,25 @@
+{
+ "дозволено": [
+  "оракул",
+  "жереб",
+  "час"
+ ],
+ "для_тек": {
+  "/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator": [
+   "читати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/дані",
+   "список:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/дані",
+   "писати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/звіти",
+   "бд.читати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/дані",
+   "бд.писати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/звіти",
+   "взяти:127.0.0.1:28733",
+   "послати:127.0.0.1:28733",
+   "процес:echo",
+   "процес:ls",
+   "процес:sh -c echo",
+   "python:statistics.median",
+   "python:time.sleep",
+   "python:os.system",
+   "python:linecache.getlines"
+  ]
+ }
+}

@@ -1,0 +1,3 @@
+🜂 「атака Н10: потоки ‖ під замком — великий ORDER BY у двох гілках」 【「бд.читати:дані」】
+← н ν § ⌂ 0
+» ‖ 【1 2】 λi 🜔бд.читати 「дані/база.db」 「WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < CAST(? AS INTEGER)) SELECT count(*) AS k FROM (SELECT x AS y FROM c ORDER BY printf('%020d', x) DESC LIMIT -1 OFFSET 1)」 【н】

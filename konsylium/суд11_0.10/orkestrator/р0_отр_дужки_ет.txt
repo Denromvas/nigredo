@@ -1,0 +1,18 @@
+{
+ "гаразд": true,
+ "код": 0,
+ "модулі": [
+  {
+   "стан": "уже було",
+   "адреса": "github.com/nigredo/hroshi@4be41590b6d22f369abc42e49c11ed34246122ba/suma.ngr#sha256=1c6e78357d195b807853acbef25631f371b5cea37f3210b6790edf17a0808ce5",
+   "sha256": "1c6e78357d195b807853acbef25631f371b5cea37f3210b6790edf17a0808ce5",
+   "байтів": 130,
+   "звідки": "http://127.0.0.1:28733/github/nigredo/hroshi/4be41590b6d22f369abc42e49c11ed34246122ba/suma.ngr"
+  }
+ ],
+ "рядок": "⊃ 「github.com/nigredo/hroshi@4be41590b6d22f369abc42e49c11ed34246122ba/suma.ngr#sha256=1c6e78357d195b807853acbef25631f371b5cea37f3210b6790edf17a0808ce5」 【「сума」】",
+ "sha256": "1c6e78357d195b807853acbef25631f371b5cea37f3210b6790edf17a0808ce5",
+ "довіра_з_першого_разу": true,
+ "попередження": [],
+ "слід": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/власник/сліди/20261029-191601-e9f03042-10129.jsonl"
+}

@@ -1,0 +1,4 @@
+🜂 「--сухо і важке бд.читати: сортування й групування великої таблиці」 【「бд.читати:дані」】
+» ☂ 🜔бд.читати 「дані/велика.db」 「SELECT x FROM big ORDER BY x DESC LIMIT 2」 【】 λe 〔перехоплено ORDER BY: {e}〕
+» ☂ 🜔бд.читати 「дані/велика.db」 「SELECT substr(x, 1, 2) AS k, count(*) AS c FROM big GROUP BY k ORDER BY c DESC LIMIT 1」 【】 λe 〔перехоплено GROUP BY: {e}〕
+» ☂ 🜔бд.читати 「дані/велика.db」 「SELECT n FROM big ORDER BY n LIMIT 1」 【】 λe 〔перехоплено мале: {e}〕
