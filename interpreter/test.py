@@ -3400,7 +3400,7 @@ def main():
     if not (g_.returncode == 3 and 'печатка просить більше' in g_.stderr):
         bad_.append(('чужий ключ', g_.returncode, g_.stderr[-200:]))
     resign_ = run(['--підписати', str(sp_), '--ключ', str(kf_)], senv)
-    check(not bad_ and 'старий підпис замінено' in resign_.stdout and run([str(sp_)], senv).returncode == 0
+    check(not bad_ and '⚠ замінено підпис ІНШОГО ключа' in resign_.stdout and run([str(sp_)], senv).returncode == 0
           and sp_.read_text(encoding='utf-8').count('※ підпис') == 1,
           'підпис: змінений текст, печатка, модуль, рядок після підпису, два підписи, зіпсований підпис — код 3 до запуску; '
           'той самий текст, підписаний іншим ключем, — без прав; повторний підпис замінює старий (фаза 6.3)', str(bad_))
@@ -3467,6 +3467,12 @@ def main():
         g_ = q11('← р 🜔python 「unicodedata.normalize」 【「NFKD」 「' + 'ﬃ' * 25 + '」】\n» 1', 'unicodedata.normalize',
                  extra=('--розмір', '60'))      # без друку: «завелике» — саме від межі моста, а не від »
         g2_ = q11('» 🜔python 「json.loads」 【「"\\\\udc80"」】', 'json.loads')
+        g3_ = q11('← текст δ 「"рядок"」\n← ніщо δ 「null」\n» ☂ 🜔python 「statistics.median」 текст λe e\n'
+                  '» ☂ 🜔python 「statistics.median」 ніщо λe e',
+                  'statistics.median')
+        check(g3_.returncode == 0 and g3_.stdout.count('python: аргументи — список') == 2,
+              'міст: аргументи, що під час виконання не список (рядок з δ, ∅), — помилка мови, яку ловить ☂, а не код 4 '
+              '(суд 11, Оркестратор)', g3_.stdout + g3_.stderr)
         check(g_.returncode != 0 and 'python: значення завелике' in g_.stderr and g_.stdout == '' and g2_.returncode == 1
               and 'самотнім сурогатом' in g2_.stderr and 'впав' not in g2_.stderr,
               'міст: відповідь — у межах --розмір (ﬃ × 25 → 75 символів при --розмір 60 — «завелике»); самотній сурогат — '
@@ -3549,6 +3555,15 @@ def main():
           and 'ключ власника (тоді слід можна підробити)' in pw_.stdout and 'statistics.median — функції, яким' not in pw_.stdout,
           '--печатка: функції, яким стеження моста не межа (читають файли, виконують код), — окреме ⚠ з ключем власника '
           'й ключами авторів (суд 11)', pw_.stdout[-900:])
+    tdir_ = tmp / 'суд11_тести'
+    tdir_.mkdir()
+    (tdir_ / 'м.тест.ngr').write_text('🜂 【「python:statistics.median」】\n🜍 🜔python 「statistics.median」 【【1 2 3】】 λx ＝ x 2\n',
+                                     encoding='utf-8')
+    tp2_ = run(['--тести', '--печатка', str(tdir_)], qenv_)
+    tj_ = json.loads(run(['--тести', '--печатка', '--json', str(tdir_)], qenv_).stdout)['тести'][0]
+    check('ядро закриє: мережу, запис' in tp2_.stdout and '⚠ python: statistics.median' in tp2_.stdout
+          and tj_['замок_ОС'] == {'закрито': ['мережа', 'запис']} and tj_['попередження'],
+          '--тести --печатка: і замок ОС, і ⚠ мосту, як у --печатка (суд 11, Оркестратор)', tp2_.stdout)
     # Ed25519: ключ чи R малого порядку
     ident_ = bytes.fromhex('01' + '00' * 31)
     ord2_ = bytes.fromhex('ec' + 'ff' * 30 + '7f')
