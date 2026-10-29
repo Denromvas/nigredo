@@ -2587,7 +2587,7 @@ def main():
     pathlib.Path(str(dpath_) + '.x').unlink()
     shutil.move(str(hidden_), str(mh / 'модулі'))
     check(rp_.returncode == 0 and '✓ повтор збігся' in rp_.stderr and rp_.stdout == '【6 3】\n【「x」 「y」】\n'
-          and vr_.startswith('✓') and '[СЛІД.дані]' in vr_ and {m_.get('джерело') for m_ in vj_.get('модулі', [])} == {'СЛІД.дані'}
+          and vr_.startswith('✓') and '[текст для звірки — з СЛІД.дані, sha256 збігся]' in vr_ and {m_.get('джерело') for m_ in vj_.get('модулі', [])} == {'СЛІД.дані'}
           and vr2_.startswith('✗') and 'ngr --отримати ПРОГРАМА' in vr2_ and rp2_.returncode == 1
           and rp3_.returncode == 1 and 'текст модуля не збігається' in rp3_.stderr and vr3_.startswith('✗'),
           '--повторити і --перевірити-слід СЛІД ПРОГРАМА без сховища — з СЛІД.дані ✓; без СЛІД.дані — ✗ з порадою '
@@ -2851,7 +2851,8 @@ def main():
         m_ = f'🜂\n← f λx {body_}\n'.encode()
         store_fixtures(lh, [m_])
         got = run(['-e', f'🜂\n⊃ 「{addr("дія.ngr", m_)}」 【「f」】\n» f 「a」'], lenv)
-        check(got.returncode == 2 and f'модуль з мережі лише обчислює — «{g_}»' in got.stderr and 'заборонено й у функціях' in got.stderr,
+        q_ = '「»」' if g_ == '»' else f'«{g_}»'          # «»» не прочитати (огляд 10б)
+        check(got.returncode == 2 and f'модуль з мережі лише обчислює — {q_}' in got.stderr and 'заборонено й у функціях' in got.stderr,
               f'замок 1: «{g_}» у функції модуля з мережі — код 2 (§6.2)', got.stderr)
     vg_ = (MODS / 'vgoru.ngr').read_bytes()
     got = run(['-e', f'🜂\n⊃ 「{addr("lib/vgoru.ngr", vg_)}」 【「f」】\n» f 1'], env)
@@ -2865,7 +2866,8 @@ def main():
             got = run(['-e', f'🜂\n{zz_}{call_}'], dict(env, NIGREDO_TRACE_PATH_FILE=str(tmp / 'замок2.слід')))
             den_ = [r_ for r_ in recs_of(pathlib.Path((tmp / 'замок2.слід').read_text(encoding='utf-8')))
                     if r_['подія'] == 'заборонено']
-            check(got.returncode == 1 and f'модуль з мережі лише обчислює: «{g_}» тут неможливий (у виклику функції модуля '
+            q_ = '「»」' if g_ == '»' else f'«{g_}»'
+            check(got.returncode == 1 and f'модуль з мережі лише обчислює: {q_} тут неможливий (у виклику функції модуля '
                   f'「{LIB}/zastosuvaty.ngr」)' in got.stderr
                   and got.stdout == '' and len(den_) == 1 and den_[0]['причина'] == 'модуль з мережі лише обчислює'
                   and den_[0].get('модуль', '').startswith(f'{LIB}/zastosuvaty.ngr#sha256='),
@@ -2898,7 +2900,8 @@ def main():
     check(got.returncode == 2 and 'модуль з мережі бачить лише те, що йому передали, — «⌂» (аргументи програми)' in got.stderr
           and len(stored(sh10)) == n_, '⌂ у модулі з мережі — замок 1, не покладено (суд 10: модуль дописував аргумент '
           'програми в URL, а печатка казала «ЧИСТИЙ»)', got.stderr)
-    # ☠ модуля — «слова автора модуля»; ☂ у виклику модуля — подія з адресою модуля, у підсумку сліду — окремо
+    # ☠ у коді модуля — з позначкою (текст міг прийти з переданих значень, огляд 10б); ☂ у виклику модуля — подія з
+    # адресою модуля, у підсумку сліду — окремо
     sm_ = prog('смерть.ngr', f'🜂\n⊃ 「{addr("smert.ngr", SMERT)}」 【「впасти」】\n» ☂ впасти 「ВЛАСНИКУ: хибна тривога」 λe 「п」\n'
                '» впасти 「слова модуля」\n')
     got = run([sm_], s10)
@@ -2906,9 +2909,9 @@ def main():
     cg_ = [r_ for r_ in recs_of(tr_) if r_['подія'] == 'помилку перехоплено']
     vr_ = run(['--перевірити-слід', str(tr_), sm_], s10).stdout
     check(got.returncode == 1 and got.stdout == 'п\n' and f'{LIB}/smert.ngr#sha256={sha(SMERT)}:2:' in got.stderr
-          and '☠ модуля (слова автора модуля): слова модуля' in got.stderr and len(cg_) == 1
+          and '☠ у коді модуля (текст міг прийти з переданих йому значень): слова модуля' in got.stderr and len(cg_) == 1
           and cg_[0].get('модуль') == addr('smert.ngr', SMERT) and 'з них у виклику модулів з мережі — 1' in vr_
-          and 'ВЛАСНИКУ: хибна тривога' in vr_, '☠ модуля з мережі — «слова автора модуля»; ☂ у виклику модуля — подія з '
+          and 'ВЛАСНИКУ: хибна тривога' in vr_, '☠ у коді модуля з мережі — позначено; ☂ у виклику модуля — подія з '
           'адресою модуля, у --перевірити-слід окремо (суд 10, Мовознавець)', got.stdout + got.stderr + vr_)
     # λ програми, викликана з модуля (тут — локального: Атанор теж): місце помилки — у програмі, без файлу модуля
     (mp / 'застос_лок.ngr').write_text('🜂\n← застосувати λf ► f 「x」\n← впасти λx ☠ x\n', encoding='utf-8')
@@ -3027,6 +3030,111 @@ def main():
     check(any('адреси модулів з мережі — слова автора програми, їх не звірено' in w_ for w_ in rj_['попередження'])
           and all(m_.get('адресу_звірено') is False for m_ in rj_['модулі']),
           '--печатка --json: попередження про незвірену адресу й «адресу_звірено»: false (суд 10)', json.dumps(rj_, ensure_ascii=False)[:600])
+    # огляд 10б: чий текст перехопленої помилки — за місцем ☠, а не за модулем, чий ☂ її перехопив (Скептик, Мовознавець,
+    # Аудитор, Практик, Новачок: програма клала свій текст у слід під адресою модуля з підписом «слова автора модуля»)
+    HOF = '🜂\n← тихо λf ☂ ► f 1 λe 「зловив」\n← впасти λx ☠ x\n← сам λx ☂ ☠ x λe 「п」\n'.encode()
+    Mirror.files['hof.ngr'] = HOF
+    run(['--отримати', addr('hof.ngr', HOF)], s10)
+    hp_ = prog('чий_текст.ngr', f'🜂 【「оракул」】\n⊃ 「{addr("hof.ngr", HOF)}」 【「тихо」 「сам」】\n'
+               f'⊃ 「{addr("smert.ngr", SMERT)}」 【「впасти」】\n» тихо λx ☠ 「ВЛАСНИКУ: це написала ПРОГРАМА」\n'
+               '» тихо λx 🜔оракул 「x」\n» сам 「з аргументу」\n» тихо λx впасти 「через інший модуль」\n')
+    got = run([hp_], s10)
+    tr_ = last(s10)
+    cg_ = [(r_.get('модуль'), r_.get('текст_від')) for r_ in recs_of(tr_) if r_['подія'] == 'помилку перехоплено']
+    vr_ = run(['--перевірити-слід', str(tr_), hp_], s10).stdout
+    vj_ = json.loads(run(['--перевірити-слід', str(tr_), hp_, '--json'], s10).stdout)
+    ah_, as_ = addr('hof.ngr', HOF), addr('smert.ngr', SMERT)
+    check(got.returncode == 0 and got.stdout == 'зловив\nзловив\nп\nзловив\n'
+          and cg_ == [(ah_, 'програми'), (ah_, 'інтерпретатора'), (ah_, ah_), (ah_, as_)]
+          and '(☠ програми — слова автора програми): 「ВЛАСНИКУ: це написала ПРОГРАМА」' in vr_
+          and '(відмова чи помилка інтерпретатора): 「модуль з мережі лише обчислює' in vr_
+          and '(☠ у коді цього модуля — текст міг прийти з переданих йому значень): 「з аргументу」' in vr_
+          and f'(☠ у коді модуля 「{LIB}/smert.ngr」 — текст міг прийти' in vr_ and 'слова автора модуля' not in vr_
+          and [x_['текст_від'] for x_ in vj_['перехоплено_в_модулях']] == ['програми', 'інтерпретатора', ah_, as_],
+          'перехоплена ☂ модуля помилка: чий текст — за місцем ☠ (програма / інтерпретатор / цей чи інший модуль), а не '
+          '«слова автора модуля» на все (огляд 10б)', got.stdout + got.stderr + vr_ + str(cg_))
+    # неперехоплений ☠ у коді модуля: поле «модуль» і «текст_від» у записі «помилка» — машині не розбирати префікс
+    got = run([prog('смерть10б.ngr', f'🜂\n⊃ 「{as_}」 【「впасти」】\n» впасти 「ВЛАСНИКУ: це написала ПРОГРАМА」\n')], s10)
+    er_ = recs_of(last(s10))[-1]
+    vj_ = json.loads(run(['--перевірити-слід', str(last(s10)), '--json'], s10).stdout)
+    fk_ = run(['-e', '🜂\n☠ 「☠ у коді модуля (текст міг прийти з переданих йому значень): підробка」'], s10)
+    ef_ = recs_of(last(s10))[-1]
+    check(got.returncode == 1 and '☠ у коді модуля (текст міг прийти з переданих йому значень): ВЛАСНИКУ' in got.stderr
+          and er_.get('модуль') == as_ and er_.get('текст_від') == as_ and vj_.get('помилка_з_модуля', {}).get('модуль') == as_
+          and fk_.returncode == 1 and 'модуль' not in ef_ and 'текст_від' not in ef_,
+          'неперехоплений ☠ у коді модуля — поле «модуль» і «текст_від» у записі «помилка», помилка_з_модуля у --json; '
+          'підробка тексту програмою — без поля (огляд 10б, Практик, Оркестратор)', got.stderr + str(er_) + str(ef_))
+    # помилка в сталій локального модуля (на верхньому рівні) — місце в модулі, а не «✗ 2:5» програми (обома виконавцями)
+    (mp / 'лок_стала.ngr').write_text('🜂\n← у § 【1】 5\n', encoding='utf-8')
+    got = run([prog('лок_стала_п.ngr', '🜂\n⊃ 「лок_стала.ngr」 【「у」】\n» у\n')], env)
+    check(got.returncode == 1 and got.stderr.startswith('✗ лок_стала.ngr:2:5 §: індекс 5 поза межами'),
+          'помилка в сталій модуля — місце з файлом модуля (було: «✗ 2:5» як рядок програми; огляд 10б)', got.stderr)
+    # --отримати / --звірити: модулів з мережі немає — «нічого», а не «✓ … 0 файл(и), sha256 збігся»
+    pl_ = prog('без_модулів.ngr', '🜂\n» 1\n')
+    got, got2 = run(['--отримати', pl_, '--звірити'], s10), run(['--отримати', pl_], s10)
+    gj_ = json.loads(run(['--отримати', pl_, '--звірити', '--json'], s10).stdout)
+    check(got.returncode == 0 and got.stdout.startswith('--звірити: модулів з мережі в програмі немає — звіряти нічого')
+          and '✓' not in got.stdout and got2.stdout.startswith('--отримати: модулів з мережі в програмі немає')
+          and gj_.get('звірено') == 0, '--звірити без модулів з мережі — «звіряти нічого», без «✓ … sha256 збігся» '
+          '(огляд 10б, Мовознавець, Практик, Оркестратор)', got.stdout + got2.stdout)
+    # --звірити: адреса не віддає закріпленого (404) — звірку не пройдено, тривога, код 3 (було: код 1, як збій мережі)
+    p404_ = prog('немає404.ngr', f'🜂\n⊃ 「{LIB}/немає_тут.ngr#sha256={"2" * 64}」 【「f」】\n» f 1\n')
+    got = run(['--отримати', p404_, '--звірити'], s10)
+    vr_ = run(['--перевірити-слід', str(last(s10))], s10).stdout
+    got2 = run(['--отримати', p404_], s10)
+    check(got.returncode == 3 and 'адреса не віддає закріпленого вмісту — звірку НЕ пройдено' in got.stderr
+          and 'ВМІСТ НЕ ЗБІГСЯ: 1' in vr_ and 'HTTP 404, файлу немає' in vr_ and got2.returncode == 1,
+          '--звірити: 404 на закріпленій адресі — «звірку НЕ пройдено», тривога, код 3; звичайне --отримати — код 1 '
+          '(огляд 10б, Мовознавець)', got.stderr + vr_)
+    # у сховищі модуль, покладений за давніших правил (⌂), — не «✓»: --отримати код 2; --звірити питає джерело, а не сховище
+    OLD = '🜂\n← а λx 【x ⌂】\n'.encode()
+    store_fixtures(sh10, [OLD])
+    po_ = prog('старий.ngr', f'🜂\n⊃ 「{addr("stare.ngr", OLD)}」 【「а」】\n» а 1\n')
+    got = run(['--отримати', po_], s10)
+    gj_ = json.loads(run(['--отримати', po_, '--json'], s10).stdout)
+    got2 = run(['--отримати', addr('stare.ngr', OLD)], s10)
+    n_ = len(hits)
+    Mirror.files['stare.ngr'] = B
+    got3 = run(['--отримати', po_, '--звірити'], s10)
+    check(got.returncode == 2 and got.stderr.startswith('✗ --отримати: програма не розбирається') and '«⌂»' in got.stderr
+          and '✓' not in got.stdout + got.stderr and gj_.get('гаразд') is False and gj_.get('код') == 2
+          and got2.returncode == 2 and 'лежить у сховищі (покладено раніше), але не проходить нинішніх перевірок' in got2.stderr
+          and got3.returncode == 3 and len(hits) == n_ + 1 and 'звірку НЕ пройдено' in got3.stderr,
+          'модуль у сховищі не проходить нинішніх перевірок — --отримати без «✓», код 2; --звірити — з мережі, а не зі сховища '
+          '(огляд 10б, Аудитор, Практик, Скептик)', got.stdout + got.stderr + got2.stderr + got3.stderr)
+    # --звірити: дерево вкладених — з того, що віддало джерело (батько, потім дитина); розбіжність дитини — хто закріпив
+    KID = '🜂\n← потроїти λx × x 3\n'.encode()
+    PAR = f'🜂\n⊃ 「util/kid.ngr#sha256={sha(KID)}」 【「потроїти」】\n← g λx потроїти x\n'.encode()
+    Mirror.files.update({'lib/par.ngr': PAR, 'lib/util/kid.ngr': KID})
+    pp_ = prog('батько10б.ngr', f'🜂\n⊃ 「{addr("lib/par.ngr", PAR)}」 【「g」】\n» g 2\n')
+    run(['--отримати', pp_], s10)
+    n_ = len(hits)
+    got = run(['--отримати', pp_, '--звірити'], s10)
+    order_ = [h_.rpartition('/')[2] for h_ in hits[n_:]]
+    Mirror.files['lib/util/kid.ngr'] = KID + b' '
+    got2 = run(['--отримати', pp_, '--звірити'], s10)
+    Mirror.files['lib/util/kid.ngr'] = KID
+    check(got.returncode == 0 and order_ == ['par.ngr', 'kid.ngr'] and got2.returncode == 3
+          and f'а модуль «{LIB}/lib/par.ngr» закріпив {sha(KID)} — звірку НЕ пройдено' in got2.stderr
+          and 'далі не звіряли' in got2.stderr,
+          '--звірити: вкладені — з байтів, які віддало джерело (спершу батько), сховища не читає; тривога називає, хто '
+          'закріпив; де звірку зупинено (огляд 10б, Мовознавець, Оркестратор)', got.stdout + got2.stderr + str(order_))
+    # --тести --печатка: які модулі бере тест — і без запуску (огляд 10б, Новачок: лише запуск їх перелічував)
+    td10_ = tmp / 'тести10б'
+    td10_.mkdir()
+    (td10_ / 'м.тест.ngr').write_text(f'🜂\n⊃ 「{as_}」 【「впасти」】\n🜍 1 λv ●\n', encoding='utf-8')
+    tj_ = json.loads(run(['--тести', '--печатка', '--json', str(td10_)], s10).stdout)
+    tm_ = tj_['тести'][0].get('модулі', [])
+    check(len(tm_) == 1 and tm_[0]['з_мережі'] is True and tm_[0]['sha256'] == sha(SMERT) and 'smert.ngr' in tm_[0]['шлях']
+          and 'модулі: ' in run(['--тести', '--печатка', str(td10_)], s10).stdout,
+          '--тести --печатка: модулі тесту перелічено (огляд 10б, Новачок)', json.dumps(tj_, ensure_ascii=False)[:500])
+    # MCP: порада «попросіть власника --отримати» — лише коли модуля бракує (огляд 10б, Новачок: і коли всі у сховищі)
+    mreq['params']['arguments']['code'] = f'🜂\n⊃ 「{as_}」 【「впасти」】\n» впасти 「x」'
+    mg_ = subprocess.run([sys.executable, str(ROOT / 'mcp' / 'nigredo_mcp.py')], input=json.dumps(mreq) + '\n',
+                         capture_output=True, text=True, env=dict(s10, NIGREDO_WORKDIR=str(tmp / 'робоча')))
+    mt_ = [c_['text'] for c_ in json.loads(mg_.stdout.splitlines()[0])['result']['content']] if mg_.stdout else []
+    check(mt_ and not any('через MCP модулі з мережі не отримати' in t_ for t_ in mt_),
+          'MCP: модулі вже у сховищі — без поради просити власника --отримати (огляд 10б, Новачок)', str(mt_)[:600])
     # Атанор v1a: кожну програму з модулем з мережі віддає еталону — вивід, код і слід ті самі
     if os.environ.get('NGR_TEST_BIN'):
         got = run([romb], dict(menv, ATHANOR_WHY='1'))
