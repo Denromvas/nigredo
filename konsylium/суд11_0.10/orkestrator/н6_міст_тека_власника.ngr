@@ -1,0 +1,5 @@
+🜂 「атака Н6: міст читає теку власника (§7: програма не має до неї доступу)」 【「python:linecache.getlines」】
+← р 🜔python 「linecache.getlines」 【「/root/ai-agents/Nigredo/konsylium/суд11_0.10/власник/дозволи.json」】
+» 〔дозволи.json власника: рядків {ρ р}\n〕
+← с 🜔python 「linecache.getlines」 【「/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/н5_слід.jsonl」】
+» 〔копія сліду: записів {ρ с}〕

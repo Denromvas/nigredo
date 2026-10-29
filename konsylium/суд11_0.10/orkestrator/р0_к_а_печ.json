@@ -1,0 +1,109 @@
+{
+ "намір": "скільки разів «агент» і «програма» у дані/вхід.txt",
+ "дозволи": {
+  "файл.читати": [
+   "/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/дані"
+  ],
+  "файл.писати": [
+   "/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/звіти"
+  ]
+ },
+ "субагенти": [],
+ "модулі": [
+  {
+   "шлях": "github.com/nigredo/tekst@b857639070f69dae3ddbda71c10b1ea49710b6c7/slova.ngr#sha256=e5647d12cab5e2dfe2486861a5db7bad42f194e8209b78860169209740804ac2",
+   "sha256": "e5647d12cab5e2dfe2486861a5db7bad42f194e8209b78860169209740804ac2",
+   "намір": "слова тексту (малими) і скільки разів у ньому слово",
+   "імена": [
+    "слова",
+    "скільки_слова"
+   ],
+   "дозволи": {},
+   "квоти": [],
+   "бере_його": [
+    "програма"
+   ],
+   "з_мережі": true,
+   "адреса": "github.com/nigredo/tekst@b857639070f69dae3ddbda71c10b1ea49710b6c7/slova.ngr",
+   "коміт": "b857639070f69dae3ddbda71c10b1ea49710b6c7",
+   "файл": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/власник/модулі/e5647d12cab5e2dfe2486861a5db7bad42f194e8209b78860169209740804ac2.ngr",
+   "у_сховищі": true,
+   "чистий": true,
+   "адресу_звірено": false
+  },
+  {
+   "шлях": "github.com/nigredo/tekst@b857639070f69dae3ddbda71c10b1ea49710b6c7/util/lichba.ngr#sha256=db97463305cb26017da1dd489e799f980cfd099848699a37095b14062502e354",
+   "sha256": "db97463305cb26017da1dd489e799f980cfd099848699a37095b14062502e354",
+   "намір": "лічба: скільки разів значення є в списку",
+   "імена": [
+    "скільки"
+   ],
+   "дозволи": {},
+   "квоти": [],
+   "бере_його": [
+    "github.com/nigredo/tekst@b857639070f69dae3ddbda71c10b1ea49710b6c7/slova.ngr"
+   ],
+   "з_мережі": true,
+   "адреса": "github.com/nigredo/tekst@b857639070f69dae3ddbda71c10b1ea49710b6c7/util/lichba.ngr",
+   "коміт": "b857639070f69dae3ddbda71c10b1ea49710b6c7",
+   "файл": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/власник/модулі/db97463305cb26017da1dd489e799f980cfd099848699a37095b14062502e354.ngr",
+   "у_сховищі": true,
+   "чистий": true,
+   "адресу_звірено": false
+  }
+ ],
+ "явні_зміни_впевненості": 0,
+ "дозволи_власника": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/власник/дозволи.json (sha256 9485e783bc801d76)",
+ "квоти": [],
+ "квоти_власника": [],
+ "права_теки": [
+  "файл.читати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/дані",
+  "файл.список:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/дані",
+  "файл.писати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/звіти",
+  "бд.читати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/дані",
+  "бд.писати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/звіти",
+  "мережа.взяти:127.0.0.1:28733",
+  "мережа.послати:127.0.0.1:28733",
+  "процес:echo",
+  "процес:ls",
+  "процес:sh -c echo",
+  "python:statistics.median",
+  "python:statistics.mean",
+  "python:statistics.stdev",
+  "python:statistics.pstdev",
+  "python:math.factorial",
+  "python:math.isqrt",
+  "python:json.dumps",
+  "python:json.loads",
+  "python:re.findall",
+  "python:decimal.Decimal",
+  "python:datetime.date.fromisoformat",
+  "python:unicodedata.normalize",
+  "python:time.sleep",
+  "python:subprocess.getoutput",
+  "python:os.system",
+  "python:urllib.request.urlopen",
+  "python:socket.create_connection",
+  "python:shutil.copyfile",
+  "python:builtins.open",
+  "python:linecache.getlines"
+ ],
+ "права_схвалення": [],
+ "тека": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator",
+ "в_межах": true,
+ "бракує": [],
+ "замок_ОС": {
+  "закрито": [
+   "мережа",
+   "процеси"
+  ]
+ },
+ "підпис": null,
+ "попередження": [
+  "адреси модулів з мережі — слова автора програми, їх не звірено: сховище памʼятає вміст за sha256, а не звідки його взято (будь-хто міг покласти його з іншої адреси чи теки); що виконується, визначає лише sha256 — звірити з адресою: ngr --отримати ПРОГРАМА --звірити"
+ ],
+ "джерела_модулів_власника": "github.com → дзеркало http://127.0.0.1:28733/github/",
+ "програма": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/р0_к_а_лічба.ngr",
+ "sha256": "0bf597d2201405769f37136af4fc3b21234e5bc23f5dadbd408b987d39f5652e",
+ "відбиток": "eedf744527e9d86f60a3664a5c682a791f68e8b7e373ba811ab461a7360de831"
+}

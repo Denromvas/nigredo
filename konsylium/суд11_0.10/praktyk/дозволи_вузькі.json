@@ -1,0 +1,17 @@
+{
+ "дозволено": [
+  "оракул",
+  "жереб",
+  "час",
+  "читати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/praktyk/дані",
+  "список:/root/ai-agents/Nigredo/konsylium/суд11_0.10/praktyk/дані",
+  "писати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/praktyk/звіти",
+  "бд.читати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/praktyk/дані",
+  "бд.писати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/praktyk/звіти",
+  "взяти:127.0.0.1:28733",
+  "послати:127.0.0.1:28733",
+  "процес:echo",
+  "процес:ls",
+  "процес:sh -c echo"
+ ]
+}

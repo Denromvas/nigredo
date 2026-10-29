@@ -152,7 +152,7 @@ the address still serves the pinned content; a non-zero code means do not run). 
 - **Author signature.** Ed25519 with no dependencies, covering the seal and every module. The owner can grant rights by
   key (`"для_авторів"`).
 
-Court 11 is under way (round 1: the new limits hold; its findings are being fixed). The latest
+Court 11 voted 7:0 «Б» (the kernel lock holds, the signature cannot be forged; quotas, texts and a few edge cases needed fixing). All findings are fixed with tests; a short re-review (11б) comes next. The latest
 comparison report is
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols — [`konsylium/`](konsylium/).
 
@@ -318,7 +318,7 @@ UTF-8 — помилка, а 30 с —
 - **Підпис автора.** Ed25519 без залежностей, охоплює печатку й усі модулі. Власник може дати права за ключем
   («для_авторів»).
 
-Суд 11 триває (раунд 1: нові межі тримають; знахідки виправляються). Останній звіт звірки —
+Суд 11 — 7:0 «Б» (ядро тримає, підпис не підробити; квоти, тексти й кілька країв треба було виправити). Усі знахідки виправлено з тестами; далі — короткий огляд 11б. Останній звіт звірки —
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); історія й протоколи — [`konsylium/`](konsylium/).
 
 **Чесно про межі:** Nigredo — інструмент прозорості й аудиту, **не пісочниця ОС**: агент із доступом до shell може

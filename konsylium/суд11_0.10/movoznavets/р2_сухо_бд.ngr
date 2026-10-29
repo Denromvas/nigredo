@@ -1,0 +1,2 @@
+🜂 「р2: лише читання бази — DISTINCT над N рядками (N з аргументу)」 【「бд.читати:дані」】
+» 🜔бд.читати 「дані/рн2.db」 「WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < CAST(? AS INTEGER)) SELECT count(*) AS n FROM (SELECT DISTINCT printf('%040d', x) FROM c)」 【§ ⌂ 0】

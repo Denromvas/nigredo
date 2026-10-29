@@ -1,0 +1,5 @@
+🜂 【「python:subprocess.getoutput」 「python:urllib.request.urlopen」 「python:builtins.open」 「python:socket.create_connection」】
+» ☂ 🜔python 「subprocess.getoutput」 【「echo з-моста」】 λe 〔процес: {e}〕
+» ☂ 🜔python 「urllib.request.urlopen」 【「http://127.0.0.1:28733/z-mosta」】 λe 〔мережа (urlopen): {e}〕
+» ☂ 🜔python 「socket.create_connection」 【【「127.0.0.1」 28733】】 λe 〔мережа (socket): {e}〕
+» ☂ 🜔python 「builtins.open」 【「звіти/з_моста.txt」 「w」】 λe 〔запис: {e}〕

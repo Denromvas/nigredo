@@ -1,0 +1,11 @@
+🜂 「спроби вийти з процесу моста: процес, мережа, запис」 【「python:subprocess.getoutput」 「python:os.system」 「python:urllib.request.urlopen」 「python:socket.create_connection」 「python:shutil.copyfile」 「python:builtins.open」】
+← тека 「/root/ai-agents/Nigredo/konsylium/суд11_0.10/movoznavets」
+» ☂ 🜔python 「subprocess.getoutput」 【「echo vyishov」】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「os.system」 【「echo vyishov」】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「urllib.request.urlopen」 【「http://127.0.0.1:28733/movoznavets-mist-urlopen」】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「socket.create_connection」 【【「127.0.0.1」 28733】】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「shutil.copyfile」 【＋ тека 「/дані/вхід.txt」 ＋ тека 「/звіти/копія_мостом.txt」】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「builtins.open」 【＋ тека 「/звіти/відкрито_w.txt」 「w」】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「builtins.open」 【＋ тека 「/звіти/відкрито_a.txt」 「a」】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「builtins.open」 【＋ тека 「/дані/вхід.txt」 「r+」】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「builtins.open」 【＋ тека 「/дані/вхід.txt」】 λe ＋ 「помилка: 」 e

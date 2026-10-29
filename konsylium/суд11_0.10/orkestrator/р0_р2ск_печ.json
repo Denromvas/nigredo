@@ -1,0 +1,86 @@
+{
+ "намір": "сума цін із дані/ціни.json з двома знаками",
+ "дозволи": {
+  "файл.читати": [
+   "/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/дані"
+  ]
+ },
+ "субагенти": [],
+ "модулі": [
+  {
+   "шлях": "github.com/nigredo/hroshi@4be41590b6d22f369abc42e49c11ed34246122ba/suma.ngr#sha256=ad677b1737ae7823a5a36ec1f75842a6ef420f649682458be769c8e216a27c4c",
+   "sha256": "ad677b1737ae7823a5a36ec1f75842a6ef420f649682458be769c8e216a27c4c",
+   "намір": "гроші: сума списку, округлена до копійок",
+   "імена": [
+    "сума"
+   ],
+   "дозволи": {},
+   "квоти": [],
+   "бере_його": [
+    "програма"
+   ],
+   "з_мережі": true,
+   "адреса": "github.com/nigredo/hroshi@4be41590b6d22f369abc42e49c11ed34246122ba/suma.ngr",
+   "коміт": "4be41590b6d22f369abc42e49c11ed34246122ba",
+   "файл": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/власник/модулі/ad677b1737ae7823a5a36ec1f75842a6ef420f649682458be769c8e216a27c4c.ngr",
+   "у_сховищі": true,
+   "чистий": true,
+   "адресу_звірено": false
+  }
+ ],
+ "явні_зміни_впевненості": 0,
+ "дозволи_власника": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/власник/дозволи.json (sha256 9485e783bc801d76)",
+ "квоти": [],
+ "квоти_власника": [],
+ "права_теки": [
+  "файл.читати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/дані",
+  "файл.список:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/дані",
+  "файл.писати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/звіти",
+  "бд.читати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/дані",
+  "бд.писати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/звіти",
+  "мережа.взяти:127.0.0.1:28733",
+  "мережа.послати:127.0.0.1:28733",
+  "процес:echo",
+  "процес:ls",
+  "процес:sh -c echo",
+  "python:statistics.median",
+  "python:statistics.mean",
+  "python:statistics.stdev",
+  "python:statistics.pstdev",
+  "python:math.factorial",
+  "python:math.isqrt",
+  "python:json.dumps",
+  "python:json.loads",
+  "python:re.findall",
+  "python:decimal.Decimal",
+  "python:datetime.date.fromisoformat",
+  "python:unicodedata.normalize",
+  "python:time.sleep",
+  "python:subprocess.getoutput",
+  "python:os.system",
+  "python:urllib.request.urlopen",
+  "python:socket.create_connection",
+  "python:shutil.copyfile",
+  "python:builtins.open",
+  "python:linecache.getlines"
+ ],
+ "права_схвалення": [],
+ "тека": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator",
+ "в_межах": true,
+ "бракує": [],
+ "замок_ОС": {
+  "закрито": [
+   "мережа",
+   "процеси",
+   "запис"
+  ]
+ },
+ "підпис": null,
+ "попередження": [
+  "адреси модулів з мережі — слова автора програми, їх не звірено: сховище памʼятає вміст за sha256, а не звідки його взято (будь-хто міг покласти його з іншої адреси чи теки); що виконується, визначає лише sha256 — звірити з адресою: ngr --отримати ПРОГРАМА --звірити"
+ ],
+ "джерела_модулів_власника": "github.com → дзеркало http://127.0.0.1:28733/github/",
+ "програма": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/р0_р2_чужа_адреса_ск.ngr",
+ "sha256": "67e96b2f1fe874b3a576e1e7947d407f0f6a3887e7a62ebb67fabe440077a499",
+ "відбиток": "f850ee8c405f8e24d04ed3c5f05a211da98b1ab19a0a72efcd9f14971db74496"
+}

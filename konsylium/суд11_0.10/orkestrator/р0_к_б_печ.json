@@ -1,0 +1,106 @@
+{
+ "намір": "сума подвоєних цін зі свого модуля з мережі",
+ "дозволи": {
+  "файл.читати": [
+   "/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/дані"
+  ]
+ },
+ "субагенти": [],
+ "модулі": [
+  {
+   "шлях": "github.com/orkestrator/orkbib@a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/main.ngr#sha256=96aec43b78cc6ed4bd2d88e55b93515c57de65c98829450298eb258561e88048",
+   "sha256": "96aec43b78cc6ed4bd2d88e55b93515c57de65c98829450298eb258561e88048",
+   "намір": "бібліотека оркестратора: сума подвоєних»",
+   "імена": [
+    "сума_подвоєних"
+   ],
+   "дозволи": {},
+   "квоти": [],
+   "бере_його": [
+    "програма"
+   ],
+   "з_мережі": true,
+   "адреса": "github.com/orkestrator/orkbib@a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/main.ngr",
+   "коміт": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+   "файл": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/власник/модулі/96aec43b78cc6ed4bd2d88e55b93515c57de65c98829450298eb258561e88048.ngr",
+   "у_сховищі": true,
+   "чистий": true,
+   "адресу_звірено": false
+  },
+  {
+   "шлях": "github.com/orkestrator/orkbib@a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/util/dop.ngr#sha256=d55df54c216973d8ce22c39d7e06715918cc10a172f16454662abf684838518d",
+   "sha256": "d55df54c216973d8ce22c39d7e06715918cc10a172f16454662abf684838518d",
+   "намір": "допоміжне: подвоїти число",
+   "імена": [
+    "подвоїти"
+   ],
+   "дозволи": {},
+   "квоти": [],
+   "бере_його": [
+    "github.com/orkestrator/orkbib@a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/main.ngr"
+   ],
+   "з_мережі": true,
+   "адреса": "github.com/orkestrator/orkbib@a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/util/dop.ngr",
+   "коміт": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+   "файл": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/власник/модулі/d55df54c216973d8ce22c39d7e06715918cc10a172f16454662abf684838518d.ngr",
+   "у_сховищі": true,
+   "чистий": true,
+   "адресу_звірено": false
+  }
+ ],
+ "явні_зміни_впевненості": 0,
+ "дозволи_власника": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/власник/дозволи.json (sha256 9485e783bc801d76)",
+ "квоти": [],
+ "квоти_власника": [],
+ "права_теки": [
+  "файл.читати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/дані",
+  "файл.список:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/дані",
+  "файл.писати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/звіти",
+  "бд.читати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/дані",
+  "бд.писати:/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/звіти",
+  "мережа.взяти:127.0.0.1:28733",
+  "мережа.послати:127.0.0.1:28733",
+  "процес:echo",
+  "процес:ls",
+  "процес:sh -c echo",
+  "python:statistics.median",
+  "python:statistics.mean",
+  "python:statistics.stdev",
+  "python:statistics.pstdev",
+  "python:math.factorial",
+  "python:math.isqrt",
+  "python:json.dumps",
+  "python:json.loads",
+  "python:re.findall",
+  "python:decimal.Decimal",
+  "python:datetime.date.fromisoformat",
+  "python:unicodedata.normalize",
+  "python:time.sleep",
+  "python:subprocess.getoutput",
+  "python:os.system",
+  "python:urllib.request.urlopen",
+  "python:socket.create_connection",
+  "python:shutil.copyfile",
+  "python:builtins.open",
+  "python:linecache.getlines"
+ ],
+ "права_схвалення": [],
+ "тека": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator",
+ "в_межах": true,
+ "бракує": [],
+ "замок_ОС": {
+  "закрито": [
+   "мережа",
+   "процеси",
+   "запис"
+  ]
+ },
+ "підпис": null,
+ "попередження": [
+  "адреси модулів з мережі — слова автора програми, їх не звірено: сховище памʼятає вміст за sha256, а не звідки його взято (будь-хто міг покласти його з іншої адреси чи теки); що виконується, визначає лише sha256 — звірити з адресою: ngr --отримати ПРОГРАМА --звірити"
+ ],
+ "джерела_модулів_власника": "github.com → дзеркало http://127.0.0.1:28733/github/",
+ "програма": "/root/ai-agents/Nigredo/konsylium/суд11_0.10/orkestrator/р0_к_б_свій.ngr",
+ "sha256": "ab0bd41a05883a53350177e7d1f7c1b89165c39e3721fd7ba73b85cde1ce4610",
+ "відбиток": "b212ff7e1836a80e4cf6684ee4d10eee0f7245e43a802cc82936df8287ef3933"
+}

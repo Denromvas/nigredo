@@ -1,0 +1,8 @@
+🜂 「міст: urlopen з ASCII-адресою і замок батька за /proc」 【「python:urllib.request.urlopen」 「python:linecache.getlines」】
+» ☂ 🜔python 「urllib.request.urlopen」 【「http://127.0.0.1:28733/praktyk-most-urlopen」】 λe 〔✗ {e}〕
+← своє 🜔python 「linecache.getlines」 【「/proc/self/status」】
+← батько ✂ § φ своє λрядок ∋ рядок 「PPid」 0 「:」
+← номер ⊢ § батько 1
+» 〔батько моста: {номер}〕
+← статус 🜔python 「linecache.getlines」 【〔/proc/{номер}/status〕】
+» φ статус λрядок ∨ ∨ ∋ рядок 「Seccomp」 ∋ рядок 「NoNewPrivs」 ∋ рядок 「Name」
