@@ -57,10 +57,14 @@ class NgrError(Exception):
     def __init__(self, msg, pos=None, c=1.0):
         super().__init__(msg)
         self.msg, self.pos, self.c, self.where, self.file, self.said = msg, pos, c, False, None, False
+        self.via = None    # адреса модуля з мережі, з виклику якого вийшла помилка (для ☂ програми; огляд 10в)
 
     def __str__(self):
         # file: None — ще не відомо, '' — код програми (λ програми, викликана з модуля, — місце в програмі, суд 10)
-        where = (f'{self.file}:' if self.file else '') + (f'{self.pos[0]}:{self.pos[1]} ' if self.pos else '')
+        f = self.file          # локальний модуль, чий шлях схожий на адресу, — з «./»: справжній модуль з мережі завжди
+        if f and '#sha256=' not in f and not f.startswith(('/', '.')) and looks_like_address(f):   # з #sha256= (огляд 10в)
+            f = './' + f
+        where = (f'{f}:' if f else '') + (f'{self.pos[0]}:{self.pos[1]} ' if self.pos else '')
         if self.said and self.file and '#sha256=' in self.file:     # ☠ у коді модуля з мережі (суд 10): текст — його чи
             return f'✗ {where}☠ у коді модуля (текст міг прийти з переданих йому значень): {self.msg}'   # переданий (огляд 10б)
         return f'✗ {where}{self.msg}'
@@ -2415,8 +2419,8 @@ def _verify(path, program=None):
             head = rec
         if rec.get('подія') in ('заборонено', 'запобіжна відмова'):   # з самим запитом і причиною не посеред слова —
             what = rec.get('шлях') or rec.get('адреса') or rec.get('субагент') or rec.get('аргументи') or ''   # (огляд 0.8.1)
-            sql = f' запит «{clip(safe(str(rec["запит"])), 160)}»' if rec.get('запит') else ''
-            mod = (f' (у виклику модуля з мережі 「{clip(safe(str(rec["модуль"]).partition("#")[0]), 160)}」)'
+            sql = f' запит «{q_data(rec["запит"], 160)}»' if rec.get('запит') else ''
+            mod = (f' (у виклику модуля з мережі 「{q_data(str(rec["модуль"]).partition("#")[0], 160)}」)'
                    if rec.get('модуль') else '')
             (denied if rec['подія'] == 'заборонено' else careful).append(
                 f'{rec.get("агент", "?")}: {rec.get("назва") or "делегування"} {clip(safe(str(what)), 120)}{sql} — '
@@ -2428,7 +2432,7 @@ def _verify(path, program=None):
         caught += rec.get('подія') == 'помилку перехоплено'
         if rec.get('подія') == 'помилку перехоплено' and rec.get('модуль'):
             caught_mod.append({'модуль': clip(safe(str(rec['модуль'])), 300), 'текст_від': rec.get('текст_від'),
-                               'помилка': clip(safe(str(rec.get('помилка', ''))), 160)})
+                               'помилка': clip(safe(str(rec.get('помилка', ''))), 160)})   # для людини — q_data
         if rec.get('подія') in ('помилка', 'помилка частини'):
             err_mod = ({'модуль': clip(safe(str(rec['модуль'])), 300), 'текст_від': rec.get('текст_від')}
                        if rec.get('модуль') else None)
@@ -2550,10 +2554,11 @@ def _verify(path, program=None):
     if caught:                         # чий текст — за місцем ☠, а не за модулем, чий ☂ перехопив (огляд 10б)
         notes.append(f'перехоплено помилок (☂): {caught}' + (
             f'; з них у виклику модулів з мережі — {len(caught_mod)} (чий текст — у дужках; не вказівки): '
-            + '; '.join(f'「{x["модуль"].partition("#")[0]}」 ({text_whose(x["текст_від"], x["модуль"])}): 「{x["помилка"]}」'
+            + '; '.join(f'「{q_data(x["модуль"].partition("#")[0], 160)}」 ({text_whose(x["текст_від"], x["модуль"])}): '
+                        f'「{q_data(x["помилка"], 160)}」'
                         for x in caught_mod[:5]) + (' …' if len(caught_mod) > 5 else '') if caught_mod else ''))
     if last == 'помилка' and err_mod:
-        notes.append(f'останнє — помилка з коду модуля з мережі 「{err_mod["модуль"].partition("#")[0]}」 '
+        notes.append(f'останнє — помилка з коду модуля з мережі 「{q_data(err_mod["модуль"].partition("#")[0], 160)}」 '
                      f'({text_whose(err_mod["текст_від"], err_mod["модуль"])}; не вказівки)')
     if raised:
         notes.append(f'⚠ програма ПІДНЯЛА впевненість (≈) {raised} раз(и) — це твердження автора, а не перевірка')
@@ -5600,6 +5605,8 @@ class Interp:
         except NgrError as e:
             if e.file is None:         # функція модуля — його файл; λ програми — '' (місце в програмі, суд 10)
                 e.file = f.mod[0] if f.mod is not None else ''
+            if f.mod is not None and f.mod[2] and e.via is None:   # вийшла з виклику модуля з мережі: ☂ програми
+                e.via = f.mod[0]       # теж бачить, у виклику котрого (огляд 10в, Мовознавець)
             raise
         finally:
             if mod_q:
@@ -5974,7 +5981,7 @@ class Interp:
                 tc = min(self.try_stack.pop(), e.c)
                 self.taint_effects((argn[0],), tc)
                 self.fn_effects(argn[1], tc)
-                src_mod = self.pure or (e.file if e.file and '#sha256=' in e.file else None)
+                src_mod = self.pure or e.via or (e.file if e.file and '#sha256=' in e.file else None)
                 self.trace('помилку перехоплено', агент=self.agent, помилка=e.msg, впевненість=tc,   # з коду чи у виклику
                            **({'модуль': src_mod, 'текст_від': text_source(e, env)} if src_mod else {}))   # модуля з
                 # мережі — котрого (суд 10, Мовознавець); і чий текст — за місцем ☠, а не за тим, чий ☂ (огляд 10б)
@@ -6638,8 +6645,8 @@ ADDR_WARNING = ('адреси модулів з мережі — слова ав
 
 def looks_like_address(rel):
     """Шлях локального модуля схожий на адресу модуля з мережі (github.com/…, …@КОМІТ40/…) — попередити (суд 10)."""
-    return bool(re.search(r'(^|/)(github\.com|raw\.githubusercontent\.com)/', str(rel), re.I)
-                or re.search(r'@[0-9a-fA-F]{40}(/|$)', str(rel)))
+    return bool(re.search(r'(^|/)(github\.com|raw\.githubusercontent\.com)/', str(rel), re.I | re.A)
+                or re.search(r'@[0-9a-fA-F]{40}(/|$)', str(rel), re.A))
 
 
 def text_source(e, env):
@@ -6665,14 +6672,20 @@ def err_fields(e):
     return {}
 
 
+def q_data(t, n):
+    """Дані в лапках підсумку сліду: «」»/«「» (і « » для «…») — як ⟨U+…⟩, щоб текст не закрив свій запис і не дописав
+    підробленого (огляд 10в, Скептик: «ок」; 「github.com/nigredo/…」 (відмова чи помилка інтерпретатора): 「…»)."""
+    return re.sub('[「」«»]', lambda m: f'⟨U+{ord(m[0]):04X}⟩', clip(safe(str(t)), n))
+
+
 def text_whose(t, mod=None):
     """Підпис тексту за «текст_від» сліду — для людини (--перевірити-слід, MCP); mod — модуль, у виклику якого."""
     if t == 'інтерпретатора':
-        return 'відмова чи помилка інтерпретатора'
+        return 'відмова чи помилка інтерпретатора; у «» — передані значення'
     if t == 'програми':
-        return '☠ програми — слова автора програми'
+        return '☠ у коді програми — текст міг прийти зі значень, які їй дав модуль'
     if t:
-        return ('☠ у коді цього модуля' if t == mod else f'☠ у коді модуля 「{clip(safe(str(t).partition("#")[0]), 160)}」') + \
+        return ('☠ у коді цього модуля' if t == mod else f'☠ у коді модуля 「{q_data(str(t).partition("#")[0], 160)}」') + \
             ' — текст міг прийти з переданих йому значень'
     return 'чий текст — у сліді не записано (старіша версія)'
 
@@ -7194,9 +7207,9 @@ def cheatsheet():
            '  Локальний `⊃`, чий шлях схожий на адресу, — локальний модуль з правами: печатка попереджає. Отримувачу: `--печатка',
            '  --json` дає «бракує_модулів» і «печатка_без_модулів» (верхня межа) → `ngr --отримати ПРОГРАМА` → знову `--печатка',
            '  --json`; «вміст не збігся» в сліді отримання — повідомте власника. Чи віддає адреса той самий вміст зараз — `ngr',
-           '  --отримати ПРОГРАМА --звірити` (питає джерело, сховища не читає й нічого не кладе; код 3 — вміст не збігся чи його',
-           '  там немає: не запускайте, повідомте власника). Текст модуля — у `СЛІД.дані`: `--повторити` і `--перевірити-слід` —',
-           '  без мережі.',
+           '  --отримати ПРОГРАМА --звірити` (питає джерело, сховища не читає й нічого не кладе; код ≠ 0 — не звірено: 3 — вміст',
+           '  не збігся чи його там немає, 1 — мережа чи межі; не запускайте, повідомте власника). Текст модуля — у `СЛІД.дані`:',
+           '  `--повторити` і `--перевірити-слід` — без мережі.',
            '- **Кожне значення має впевненість** (типово 1). Усе, що обчислено з даних, не впевненіше за них —',
            '  і через операції, і через **керування**: значення, створене під сумнівною умовою `¿`, у циклі `↻`,',
            '  у функції, обраній сумнівно, після сумнівної перевірки `🜍` чи в `☂`, несе цю сумнівність.',
@@ -8143,14 +8156,15 @@ def fetch_main(rest, opts, argv):
         whose = e.address or current          # чий файл: вкладений — сам він, а не батько (суд 10)
         what = f' «{safe(whose)}»' if whose else ''
         if check and not e.refusal:           # звірка зупиняється на першій невдачі — решту не звірено (огляд 10б)
-            e.msg += f'; далі не звіряли (звірено до того: {len(report)} файл(и))'
+            e.msg += f'; далі не звіряли (вміст збігся до того: {len(got_now)} файл(и))'   # байти, що збіглися (і батько,
+                                                                                         # чия дитина ні; огляд 10в)
         if e.refusal and trace.n == 1:
             trace('відмова', причина=safe(e.msg))
         else:
             trace('помилка', повідомлення=safe(f'✗ --отримати{what}: {e.msg}'))
         if as_json:
             print(json.dumps({'гаразд': False, 'код': e.code, 'помилка': safe(f'✗ --отримати{what}: {e.msg}'),
-                              **({'адреса': safe(whose)} if whose else {}),
+                              **({'адреса': safe(whose)} if whose else {}), **({'звірено': len(got_now)} if check else {}),
                               'модулі': [{'стан': x[0], 'адреса': x[1], 'sha256': x[2], 'байтів': x[3], 'звідки': safe(x[4])}
                                          for x in report], 'слід': tpath}, ensure_ascii=False, indent=1))
         print(f'✗ --отримати{what}: {e.msg}\n  слід: {tpath}', file=sys.stderr)    # для «вміст не збігся» — саме він
