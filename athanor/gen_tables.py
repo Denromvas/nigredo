@@ -121,12 +121,12 @@ def main():
     # підпис автора (огляди 11б, 11в): посимвольна міра nigredo.sig_char. Атанор бере скелет із SKELETON (чи сам символ)
     # і клас (літера/знак/цифра — сам, малими; решта — межа \x01), «небезпечний» — розрив \0; де еталон бачить інакше
     # (NFKD, знак зі скелетом-розділовим, повноширинні…), — виняток SIG_CHARS. Порівнюються зведені форми: літери
-    # «ed25519» — самі, межа — \x01, решта — \0 (для пошуку з початку слова цього досить)
+    # «ed25519» — самі, межа — \x01, інша ASCII-літера чи цифра — «a» (перед «e» вона збіг вимикає), решта — \0
     sig_t = N.sig_marks('ed25519')[0]
     assert '\x01' not in sig_t and '\0' not in sig_t, ascii(sig_t)
 
     def sig_reduce(xs):
-        r = ''.join(x if x in sig_t or x == '\x01' else '\0' for x in xs)
+        r = ''.join(x if x in sig_t or x == '\x01' else 'a' if x.isascii() and x.isalnum() else '\0' for x in xs)
         while '\0\0' in r or '\x01\x01' in r:
             r = r.replace('\0\0', '\0').replace('\x01\x01', '\x01')
         return r
@@ -266,7 +266,7 @@ def main():
                 for x in smap.get(cp, c):
                     push((x.lower() if x.isascii() else x) if U.category(x)[0] in 'LMN' else '\x01')
         for p in range(len(sk)):
-            if sk[p] != tl[0] or (p > 0 and sk[p - 1] != '\x01'):
+            if sk[p] != tl[0] or (p > 0 and sk[p - 1].isascii() and sk[p - 1].isalnum()):
                 continue
             i, j = p, 0
             while i < len(sk) and j < len(tl):
@@ -289,14 +289,15 @@ def main():
                 n += 1
     marks = [cp for cp in range(0x300, 0x370)] + [0x31A, 0x32E, 0x348, 0x5B0, 0x5BC, 0x1BF3, 0x1CD8, 0x1DE8, 0x2DEE,
                                                    0x1D16D, 0x1AB0, 0x1DC0, 0x20D0, 0x302A, 0xFE20]
-    pool = ([ord(x) for x in 'edEDl1I259 -_.:rs'] + [a for a, _ in sig_u][::7] + marks +
+    pool = ([ord(x) for x in 'edEDl1I259 -_.:rsxд'] + [a for a, _ in sig_u][::7] + marks +
             [cp for cp in range(0xFF01, 0xFF5F)] + [0x2011, 0x2014, 0x00B7, 0x037E, 0x0435, 0x0501, 0x2147, 0x2146,
                                                     0x217E, 0x24D4, 0x24D3, 0x00B2, 0x00A0, 0x3000, 0x0301, 0x0306])
     for _ in range(300000):
         s = ''.join(ch(rng.choice(pool)) for _ in range(rng.randint(5, 12)))
         if rng.random() < .5:
             k = rng.randint(0, len(s))
-            s = s[:k] + rng.choice(['ed2551', 'd25519', 'ed25', '25519', 'Ed', 'ED2', ' ed-2', 'red 255', ' e d ']) + s[k:]
+            s = s[:k] + rng.choice(['ed2551', 'd25519', 'ed25', '25519', 'Ed', 'ED2', ' ed-2', 'red 255', ' e d ', 'xed',
+                                    'медed', '1ed', 'сed']) + s[k:]
         assert ath_sig(s) == N.sig_like(s), ascii(s)
         n += 1
     print(f'перевірка sig_like ({len(sig_u)} винятків у SIG_CHARS, {n} рядків): гаразд')
