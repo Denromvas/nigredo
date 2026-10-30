@@ -159,7 +159,10 @@ Court 11 voted 7:0 «Б» (the kernel lock holds, the signature cannot be forged
 fixing); re-review 11б gave 2 «А» and 5 narrow «Б» (no new breach; Atanor let full-width look-alikes of the signature
 line through, and a module from an author key's write folder was accepted as a module); the narrow confirmation 11в —
 5:0 «А». Everything, the judges' wishes included, was fixed with tests in both executors before the announcement. Agents
-run `ngr --перевірити-підпис PROGRAM` before running someone else's signed program. The latest comparison report is
+run `ngr --перевірити-підпис PROGRAM` before running someone else's signed program. **Next — 1.0-rc**, the candidate:
+a frozen specification (the norm, with everything that used to live only in the change log, and a compatibility promise
+for 1.x — `spec/SPEC.md` §9) and a compatibility suite (`tests/сумісність/`); court 12 asks whether the norm is true.
+The latest comparison report is
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols — [`konsylium/`](konsylium/).
 
 **Honest limits:** Nigredo is a transparency and audit tool, **not an OS sandbox** — an agent with shell access can
@@ -330,6 +333,8 @@ UTF-8 — помилка, а 30 с —
 2 «А», 5 вузьких «Б» (нового зламу немає; Атанор пропускав повноширинних двійників рядка підпису, модуль з теки запису
 ключа автора брався як модуль), вузьке підтвердження 11в — 5:0 «А». Усе, і побажання суддів, виправлено з тестами обома
 виконавцями до оголошення. Перед запуском чужої підписаної програми агенти виконують `ngr --перевірити-підпис ПРОГРАМА`.
+**Далі — 1.0-rc**, кандидат: заморожена специфікація (норма — і все, що досі жило лише в журналі змін, — та обіцянка
+сумісності для 1.x, `spec/SPEC.md` §9) і набір сумісності (`tests/сумісність/`); суд 12 питає, чи правдива норма.
 Останній звіт звірки —
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); історія й протоколи — [`konsylium/`](konsylium/).
 
