@@ -97,14 +97,6 @@ fn dec_ok(d: Dec, what: &str, pos: Pos) -> R<Dec> {
     Ok(d)
 }
 
-fn adjusted_of(v: &Val) -> i64 {
-    match v {
-        Val::Int(i) => Dec::from_int(i).adjusted(),
-        Val::Dec(d) => d.adjusted(),
-        _ => 0,
-    }
-}
-
 fn int_idx(v: &Val) -> Option<i64> {
     match v {
         Val::Int(Int::S(i)) => Some(*i),
@@ -198,15 +190,30 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                 }
                 return Ok(V::dec(r));
             }
-            let mut ctx = dec::dec_ctx();
-            ctx.prec = 28 + (adjusted_of(&x) - adjusted_of(&y) + 1).max(0) as u64;
             if let (Val::Int(p), Val::Int(q)) = (&x, &y) {
                 let (qq, rr) = p.divmod(q);
                 if rr.is_zero() {
                     return Ok(V::int(qq));
                 }
             }
-            match to_dec(&x).div(&to_dec(&y), &ctx) {
+            // суд 12: ціла частина частки й після неї 28 значущих цифр, разом не більше 60; e — порядок частки
+            let (dx, dy) = (to_dec(&x), to_dec(&y));
+            let mut ints = 0i64;
+            if !dx.is_zero() {
+                let mut e = dx.adjusted() - dy.adjusted();
+                let sx = Dec { neg: false, coef: dx.coef.clone(), exp: dx.exp - e };
+                let ay = Dec { neg: false, coef: dy.coef.clone(), exp: dy.exp };
+                if sx.cmp(&ay) == std::cmp::Ordering::Less {
+                    e -= 1;
+                }
+                ints = (e + 1).max(0);
+            }
+            if ints > 60 {
+                return ngr("÷: ціла частина частки довша за 60 цифр — так ділиться лише націло", pos);
+            }
+            let mut ctx = dec::dec_ctx();
+            ctx.prec = (28 + ints).min(60) as u64;
+            match dx.div(&dy, &ctx) {
                 Ok(d) => Ok(V::dec(d)),
                 Err(s) => dec_err(g, s, pos),
             }
@@ -226,7 +233,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
         '≠' => Ok(V::b(!deep_eq(&a[0], &a[1])?)),
         '‹' | '›' | '≤' | '≥' => {
             let ord = if let (Val::Str(x), Val::Str(y)) = (&a[0].v, &a[1].v) {
-                x.s.cmp(&y.s)
+                crate::sort::str_cmp(&x.s, &y.s)          // той самий порядок рядків, що й ↑ ⇅ (суд 12)
             } else {
                 let (x, y) = (n(it, a, 0, g, pos)?, n(it, a, 1, g, pos)?);
                 num_cmp(&x, &y).unwrap()
@@ -401,6 +408,9 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             }
             let t = uni::strip(&s);
             if let Some(i) = parse_py_int(t) {
+                if i.bit_length() > lang::MAX_INT_BITS as u64 {          // суд 12: помилка, яку ловить ☂
+                    return ngr(format!("ν: ціле понад {} біт", lang::MAX_INT_BITS), pos);
+                }
                 return Ok(V::int(i));
             }
             match Dec::parse(t) {
@@ -429,7 +439,11 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             if a[0].n > it.max_size {
                 return fatal(format!("Δ: значення завелике (> --розмір {})", it.max_size), Some(pos));
             }
-            Ok(V::str(to_json(&a[0])?))
+            match to_json(&a[0]) {
+                Ok(t) => Ok(V::str(t)),
+                Err(e) if !e.deep && !e.fatal && e.pos.is_none() => ngr(e.msg, pos),
+                Err(e) => Err(e),
+            }
         }
         '»' => {
             if a[0].n > it.max_size {
@@ -644,9 +658,8 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
         }
         '⊢' => {
             let x = need_str(&a[0], "⊢", pos)?;
-            let s = uni::strip(&x.s);
-            let s = uni::strip_chars(s, "\u{feff}\u{200b}");
-            Ok(V::str(uni::strip(s).to_string()))
+            // пробіли й усе невидиме за одним правилом мови (суд 12: досі лише BOM і ZWSP)
+            Ok(V::str(x.s.trim_matches(|c: char| uni::isspace(c) || uni::invisible(c)).to_string()))
         }
         '≅' | '⌗' => {
             let x = n(it, a, 0, g, pos)?;

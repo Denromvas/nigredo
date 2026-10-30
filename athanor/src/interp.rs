@@ -160,8 +160,9 @@ pub struct Interp {
     pub prof: Option<HashMap<String, (u64, std::time::Duration)>>,
     pub os_mode: Option<&'static str>, // замок ОС (фаза 6.1): «печатка» — закрити групи, яких печатка не просить; «усе»
     pub write_shut: bool, // ядро справді закрило «запис» (бд.читати: тимчасове — у памʼяті, чиста база WAL — незмінна; суд 11)
-    pub dry: Option<Vec<(u64, &'static str, Vec<J>, f64, bool)>>, // --сухо: придушені дії (№, назва, аргументи, впевненість, запит не скомпілювався)
+    pub dry: Option<Vec<(u64, &'static str, Vec<J>, f64, bool, Option<String>)>>, // --сухо: придушені дії (№, назва, аргументи, впевненість, запит не скомпілювався, що без виконання не перевірено)
     pub db_unchecked: bool, // права без дії: запит SQLite не скомпілювався на нинішній базі (огляд 0.8.1в)
+    pub db_unverified: Option<String>, // права без дії: годинник SQLite з даних — без виконання не перевірити (суд 12)
 }
 
 impl Interp {
@@ -1417,7 +1418,8 @@ impl Interp {
             }
         };
         if amin < 1.0 && !lang::is_never_fails(g) && !(g == '§' && matches!(args[0].v, Val::Dict(_))) {
-            self.halt_risk_any(amin);
+            // § і ⚗ падають лише через індекс чи поріг і будову, не через вміст (суд 12)
+            self.halt_risk_any(if g == '§' || g == '⚗' { args[0].s.min(args[1].c) } else { amin });
         }
         let mut res = res;
         if matches!(g, 'ρ' | 'κ' | '§' | '⌂' | '⚗' | '🜃') && self.cpc() < res.c {
@@ -1540,6 +1542,7 @@ impl Interp {
                 Ok(hits)
             }
             Some((who, sc, limit)) => {
+                self.db_unverified = None;
                 if name.starts_with("файл.") {
                     self.denied = false;
                     let a0 = args[0].v.clone();
@@ -1551,11 +1554,12 @@ impl Interp {
                 }
                 let q = format!("{}{}≤{}", name, if sc.is_empty() { String::new() } else { format!(":{}", sc) }, limit);
                 let agent = self.agent.clone();
-                self.rec(
-                    "квоту вичерпано",
-                    data!["агент" => J::Str(agent), "назва" => J::s(name), "аргументи" => J::Arr(targs.to_vec()),
-                          "чия" => J::Str(who.clone()), "квота" => J::Str(q.clone())],
-                )?;
+                let mut d = data!["агент" => J::Str(agent), "назва" => J::s(name), "аргументи" => J::Arr(targs.to_vec()),
+                                  "чия" => J::Str(who.clone()), "квота" => J::Str(q.clone())];
+                if let Some(uv) = self.db_unverified.clone() {
+                    d.push(("не_перевірено".into(), J::Str(uv))); // годинник SQLite з даних (суд 12)
+                }
+                self.rec("квоту вичерпано", d)?;
                 ngr(format!("{}: вичерпано квоту ({}: «{}»)", name, who, q), pos)
             }
         }
@@ -1586,6 +1590,7 @@ impl Interp {
             // «заборонено», а не «дій не виконано»; інша помилка (таблиці ще немає) — не судимо
             self.denied = false;
             self.db_unchecked = false;
+            self.db_unverified = None;
             let r = if job.name == "файл.писати" {
                 let a0 = job.args[0].v.clone();
                 self.path_ok(job.name, &a0, job.pos, true).map(|_| ())
@@ -1602,7 +1607,8 @@ impl Interp {
             }
             let n = self.ends;
             let unchecked = job.name == "бд.писати" && self.db_unchecked;
-            self.dry.as_mut().unwrap().push((n, job.name, job.targs.clone(), job.ac, unchecked));
+            let uv = if job.name == "бд.писати" { self.db_unverified.clone() } else { None };
+            self.dry.as_mut().unwrap().push((n, job.name, job.targs.clone(), job.ac, unchecked, uv));
             let v = if job.name == "файл.писати" { Val::None } else { Val::Int(Int::S(0)) };
             return (Some(V::new(v, 0.0)), None, Vec::new());
         }

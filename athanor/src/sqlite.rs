@@ -734,6 +734,12 @@ fn pragma_tables(l: &Lib, db: *mut c_void, reads: &[String]) -> Result<Vec<Strin
     Ok(out)
 }
 
+/// db_unverified: функція дат у байткоді — дата з даних у межах прав, «зараз» — ні; без виконання не розвʼязати, тож
+/// там (квота, --сухо, запобіжна відмова) — «не перевірено», а не «заборонено» (суд 12, Практик).
+pub fn unverified(why: &str) -> bool {
+    why.contains("«зараз» чи дата з даних")
+}
+
 /// db_doubts: що в запиті могло б вийти за права лише під час виконання — за байткодом (Function/PureFunc) і читанням
 /// таблиць-функцій PRAGMA; з таким запобіжна відмова не доводить, що запит у межах прав (огляд 0.8.1, Н-1 Скептика).
 fn doubts(clock_ok: bool, rand_ok: bool, ops: &[(String, Option<String>)], reads: &[String]) -> Vec<String> {
@@ -1646,10 +1652,12 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
                 svc_note(&mut auth.why, &sql);
                 // таблиця вже на межі чи системна біля неї — так у самій базі (суд 9д), — лише коли в запиті заборонених
                 // дій не знайдено (огляд 0.8.1, Н-1 Скептика)
-                let careful = auth.careful && auth.doubt.is_empty();
-                let doubted = auth.careful && !auth.doubt.is_empty();
+                let hard: Vec<String> = auth.doubt.iter().filter(|d| !unverified(d)).cloned().collect();
+                let clock = if hard.len() < auth.doubt.len() { " і годинник SQLite (дата з даних чи «зараз»)" } else { "" };
+                let careful = auth.careful && hard.is_empty();
+                let doubted = auth.careful && !hard.is_empty();
                 if doubted {
-                    let first = format!("{}; запит і не виконувався: {}", auth.doubt[0], auth.why[0]);
+                    let first = format!("{}; запит і не виконувався: {}", hard[0], auth.why[0]);
                     auth.why.insert(0, first);
                 }
                 let denied = !auth.why.is_empty() || (!write && readonly(&m));
@@ -1661,7 +1669,7 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
                         ("назва".into(), J::s(tool)),
                         ("шлях".into(), J::Str(uni::safe(&pv))),
                         ("запит".into(), J::Str(q)),
-                        ("причина".into(), J::Str(format!("стан бази: {}; запит не виконано — authorizer і байткод SQLite заборонених дій у ньому не знайшли, а rowid, який він дав би іншим таблицям, без виконання не перевірити", auth.why[0]).chars().take(1000).collect())),
+                        ("причина".into(), J::Str(format!("стан бази: {}; запит не виконано — authorizer і байткод SQLite заборонених дій у ньому не знайшли, а rowid, який він дав би іншим таблицям,{} без виконання не перевірити", auth.why[0], clock).chars().take(1000).collect())),
                     ])?;
                 } else if denied {
                     let why = match auth.why.first() {
@@ -1671,7 +1679,7 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
                     deny(it, tool, &pv, &sql, &why.chars().take(1000).collect::<String>())?;
                 }
                 let msg = if careful {
-                    format!("запобіжна відмова (так у самій базі; запит не виконано, а заборонених дій у ньому authorizer і байткод SQLite не знайшли — rowid, який він дав би іншим таблицям, не перевірено): {}", auth.why[0])
+                    format!("запобіжна відмова (так у самій базі; запит не виконано, а заборонених дій у ньому authorizer і байткод SQLite не знайшли — rowid, який він дав би іншим таблицям,{} не перевірено): {}", clock, auth.why[0])
                 } else if doubted {
                     format!("заборонено: {}", auth.why[0])
                 } else if denied {
@@ -1720,6 +1728,8 @@ pub fn rights(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) ->
         Err(_) => return Ok(()),
     };
     it.db_unchecked = false;
+    it.db_unverified = None;
+    let mut soft: Vec<String> = Vec::new();
     (l.limit)(db, 7, 0);
     match vtabs(l, db) {
         Ok(vt) => w.auth.vt = vt,
@@ -1746,7 +1756,12 @@ pub fn rights(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) ->
             Err(_) => (Vec::new(), Vec::new(), true),
         };
         it.db_unchecked = failed && denied.is_empty();
-        w.auth.why.extend(if !denied.is_empty() { denied } else if failed { Vec::new() } else { doubt });
+        if denied.is_empty() && !failed {
+            soft = doubt.iter().filter(|d| unverified(d)).cloned().collect();
+        }
+        w.auth.why.extend(if !denied.is_empty() { denied } else if failed { Vec::new() } else {
+            doubt.into_iter().filter(|d| !unverified(d)).collect()
+        });
     } else if let Some(pw) = vtab_plan(l, db, &sql, &bound, &w.auth.vt) {   // модуль під назвою таблиці — за планом (0.8.1е)
         w.auth.why.push(pw);
     } else {
@@ -1777,10 +1792,15 @@ pub fn rights(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) ->
         // random і годинник видно лише під час виконання — за байткодом, як на старій базі: інакше вичерпана квота
         // ховала б спробу, а --сухо писав би «✓» (огляд 0.8.1б, Аудитор)
         if w.auth.why.is_empty() {
-            w.auth.why.extend(if service(&ops) { vec![SVC_WHY.into()] } else { doubts(clock_ok, rand_ok, &ops, &[]) });
+            let dd = if service(&ops) { vec![SVC_WHY.into()] } else { doubts(clock_ok, rand_ok, &ops, &[]) };
+            soft = dd.iter().filter(|d| unverified(d)).cloned().collect();
+            w.auth.why.extend(dd.into_iter().filter(|d| !unverified(d)));
         }
     }
     (l.close_v2)(db);
+    if !soft.is_empty() && w.auth.why.is_empty() {
+        it.db_unverified = Some(soft[0].clone()); // «не перевірено» у сліді, не «заборонено» (суд 12)
+    }
     svc_note(&mut w.auth.why, &sql);
     if let Some(why) = w.auth.why.first().cloned() {
         deny(it, tool, &pv, &sql, &format!("дія SQLite поза дозволеним: {}", why).chars().take(1000).collect::<String>())?;
