@@ -428,6 +428,7 @@ fn execute(
         prof: if std::env::var_os("ATHANOR_PROFILE").is_some() { Some(Default::default()) } else { None },
         dry: None,
         db_unchecked: false,
+        db_unverified: None,
         os_mode: Some(if o.dry { "усе" } else { "печатка" }), // замок ОС ставиться на печатці (фаза 6.1)
         write_shut: false,
     };
@@ -545,7 +546,7 @@ fn dry_report(it: &mut interp::Interp, stopped: bool) {
     let mut done = done;
     done.sort_by_key(|d| d.0);
     let mut unsure = 0;
-    for (_, name, args, ac, unchecked) in &done {
+    for (_, name, args, ac, unchecked, uv) in &done {
         let shown: Vec<String> = args
             .iter()
             .map(|a| match a {
@@ -560,7 +561,9 @@ fn dry_report(it: &mut interp::Interp, stopped: bool) {
             mark = format!("  ⚠ залежить від невідомого (впевненість {}) — справжній запуск може зробити інше", pyf::fmt_g2(*ac));
             unsure += 1;
         }
-        if *unchecked {
+        if let Some(uv) = uv {
+            mark.push_str(&format!("  ⚠ {}", uv)); // годинник SQLite з даних: без виконання не перевірити (суд 12)
+        } else if *unchecked {
             // таблицю, певно, створила б придушена дія (огляд 0.8.1в, Практик)
             mark.push_str("  ⚠ запит не скомпілювався на нинішній базі — права в ньому без виконання не перевірено");
         }

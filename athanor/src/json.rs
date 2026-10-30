@@ -391,6 +391,11 @@ impl<'a> Parser<'a> {
             }
             return Ok(Some(P::Float(s)));
         }
+        // parse_int еталона: ціле понад MAX_INT_BITS — помилка мови одразу (суд 12); 30103 цифри — уже понад межу чи поруч
+        let d = s.trim_start_matches('-');
+        if d.len() >= 30_103 && crate::int::Int::from_dec(false, d).bit_length() > crate::lang::MAX_INT_BITS as u64 {
+            return Err(Inner::Ngr(format!("δ: ціле понад {} біт", crate::lang::MAX_INT_BITS)));
+        }
         Ok(Some(P::Int(s)))
     }
 

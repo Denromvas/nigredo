@@ -771,7 +771,20 @@ fn to_json_into(out: &mut String, x: &V, d: usize) -> crate::interp::R<()> {
             out.push('}');
         }
         Val::Dec(dd) => out.push_str(&fmt_dec(dd)),
-        Val::Fn(_) => out.push_str("\"λ\""),
+        Val::Fn(_) => {
+            // суд 12: не мовчазний рядок «λ», а помилка (місце — дає Δ)
+            return Err(Box::new(crate::interp::E {
+                msg: "Δ: функцію не записати в JSON".into(),
+                pos: None,
+                c: 1.0,
+                wh: false,
+                file: None,
+                fatal: false,
+                pipe: false,
+                internal: false,
+                deep: false,
+            }));
+        }
         Val::Str(s) => json::escape_into(out, &s.s),
         Val::None => out.push_str("null"),
         Val::Bool(b) => out.push_str(if *b { "true" } else { "false" }),

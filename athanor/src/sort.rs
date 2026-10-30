@@ -9,8 +9,9 @@ use std::cmp::Ordering;
 use std::rc::Rc;
 
 pub enum SK {
-    Num(Val),                            // (0, число) — bool теж число
-    Other(Val),                          // (0, ∅ | словник | функція)
+    Nil,                                 // (-2, 0) — ∅
+    Bool(bool),                          // (-1, ●/○) — ● не число (суд 12)
+    Num(Val),                            // (0, число)
     Str(Vec<(u32, char)>, Rc<PStr>),      // (1, [(порядок, символ)…], рядок)
     List(Vec<SK>),                       // (2, [ключі…])
 }
@@ -22,26 +23,39 @@ fn ua_order(c: char) -> u32 {
     }
 }
 
-/// Ключ списку, глибшого за WALK, — deep() (як DeepValue в sort_key еталона).
-pub fn sort_key(x: &V, d: usize) -> R<SK> {
-    Ok(match &x.v {
+/// Ключ списку, глибшого за WALK, — deep() (як DeepValue в sort_key еталона); словник чи функція — Ok(Err(вид)),
+/// як BadSortKey еталона (той самий обхід, тож і та сама перша з двох помилок).
+pub fn sort_key(x: &V, d: usize) -> R<Result<SK, &'static str>> {
+    Ok(Ok(match &x.v {
         Val::Str(s) => SK::Str(uni::casefold(&s.s).chars().map(|c| (ua_order(c), c)).collect(), s.clone()),
         Val::List(l) => {
             if d >= WALK {
                 return deep();
             }
-            SK::List(l.iter().map(|e| sort_key(e, d + 1)).collect::<R<_>>()?)
+            let mut ks = Vec::with_capacity(l.len());
+            for e in l.iter() {
+                match sort_key(e, d + 1)? {
+                    Ok(k) => ks.push(k),
+                    Err(w) => return Ok(Err(w)),
+                }
+            }
+            SK::List(ks)
         }
-        Val::Int(_) | Val::Dec(_) | Val::Float(_) | Val::Bool(_) => SK::Num(x.v.clone()),
-        v => SK::Other(v.clone()),
-    })
+        Val::None => SK::Nil,
+        Val::Bool(b) => SK::Bool(*b),
+        Val::Int(_) | Val::Dec(_) | Val::Float(_) => SK::Num(x.v.clone()),
+        Val::Dict(_) => return Ok(Err("словник")),
+        _ => return Ok(Err("функція")),
+    }))
 }
 
 fn tag(k: &SK) -> u8 {
     match k {
-        SK::Num(_) | SK::Other(_) => 0,
-        SK::Str(..) => 1,
-        SK::List(_) => 2,
+        SK::Nil => 0,
+        SK::Bool(_) => 1,
+        SK::Num(_) => 2,
+        SK::Str(..) => 3,
+        SK::List(_) => 4,
     }
 }
 
@@ -58,9 +72,9 @@ fn val_eq(a: &Val, b: &Val) -> bool {
 
 fn eq(a: &SK, b: &SK) -> bool {
     match (a, b) {
-        (SK::Num(x), SK::Num(y)) | (SK::Num(x), SK::Other(y)) | (SK::Other(x), SK::Num(y)) | (SK::Other(x), SK::Other(y)) => {
-            val_eq(x, y)
-        }
+        (SK::Nil, SK::Nil) => true,
+        (SK::Bool(x), SK::Bool(y)) => x == y,
+        (SK::Num(x), SK::Num(y)) => val_eq(x, y),
         (SK::Str(p, s), SK::Str(q, t)) => p == q && s.s == t.s,
         (SK::List(p), SK::List(q)) => p.len() == q.len() && p.iter().zip(q).all(|(x, y)| eq(x, y)),
         _ => false,
@@ -88,24 +102,21 @@ pub fn lt(a: &SK, b: &SK) -> Result<bool, ()> {
             }
             Ok(p.len() < q.len())
         }
-        (x, y) => {
-            let (va, vb) = (raw(x), raw(y));
-            if val_eq(va, vb) {
-                return Ok(false);
-            }
-            if is_num(va) && is_num(vb) {
-                return Ok(num_cmp(va, vb) == Some(Ordering::Less));
-            }
-            Err(())
-        }
+        (SK::Bool(x), SK::Bool(y)) => Ok(!x & y),
+        (SK::Num(x), SK::Num(y)) => Ok(!val_eq(x, y) && num_cmp(x, y) == Some(Ordering::Less)),
+        (SK::Nil, SK::Nil) => Ok(false),
+        _ => Err(()),
     }
 }
 
-fn raw(k: &SK) -> &Val {
-    match k {
-        SK::Num(v) | SK::Other(v) => v,
-        _ => unreachable!(),
+/// Порядок рядків мови (‹ › ≤ ≥, як ↑ ⇅): casefold за українською абеткою, далі — за кодами (рівні — Equal).
+pub fn str_cmp(x: &str, y: &str) -> Ordering {
+    let p: Vec<(u32, char)> = uni::casefold(x).chars().map(|c| (ua_order(c), c)).collect();
+    let q: Vec<(u32, char)> = uni::casefold(y).chars().map(|c| (ua_order(c), c)).collect();
+    if p != q {
+        return if pairs_lt(&p, &q) { Ordering::Less } else { Ordering::Greater };
     }
+    x.cmp(y)
 }
 
 fn pairs_lt(p: &[(u32, char)], q: &[(u32, char)]) -> bool {
@@ -119,7 +130,13 @@ fn pairs_lt(p: &[(u32, char)], q: &[(u32, char)]) -> bool {
 
 /// Порядок індексів після стабільного сортування за sort_key (як sorted у Python); помилка ⇅ — ключі не порівняти.
 pub fn sort_order(items: &[V], pos: Pos) -> R<Vec<usize>> {
-    let keys: Vec<SK> = items.iter().map(|x| sort_key(x, 0)).collect::<R<_>>()?;
+    let mut keys: Vec<SK> = Vec::with_capacity(items.len());
+    for x in items {
+        match sort_key(x, 0)? {
+            Ok(k) => keys.push(k),
+            Err(w) => return ngr(format!("⇅: ключ — ∅, ●/○, число, рядок або список із них, а не {}", w), pos),
+        }
+    }
     match timsort(&keys) {
         Ok(o) => Ok(o),
         Err(()) => ngr("⇅: ключі мають бути одного типу (числа, рядки або списки з них — поелементно)", pos),
