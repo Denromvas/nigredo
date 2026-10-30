@@ -1,6 +1,6 @@
 # ngrpy — памʼятка для агентів (Python-обгортка з гарантіями Nigredo)
 
-Звичайний Python 3 + бібліотека `ngrpy`. Запуск: `python3 /root/ai-agents/Nigredo/porivniannia/ngrpy.py скрипт.py [--дозволи F] [--слід F] [-- аргументи]`.
+Звичайний Python 3 + бібліотека `ngrpy`. Запуск: `python3 porivniannia/ngrpy.py скрипт.py [--дозволи F] [--слід F] [-- аргументи]`.
 
 ## Правила
 
