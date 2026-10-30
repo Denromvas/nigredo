@@ -43,7 +43,8 @@ TEMP = []
 
 
 def home(perms):
-    h = pathlib.Path(tempfile.mkdtemp(prefix='сумісність-'))
+    # власник — поруч із зразками (і видаляється): слід записує шлях його дозволів, а тимчасова тека ОС — внутрішня
+    h = pathlib.Path(tempfile.mkdtemp(prefix='.власник-', dir=D))
     TEMP.append(h)
     (h / 'ключ').write_text(TRACE_KEY + '\n', encoding='utf-8')
     (h / 'дозволи.json').write_text(json.dumps(perms, ensure_ascii=False), encoding='utf-8')
