@@ -1,0 +1,5 @@
+🜂 「огляд 11в: міст заливає stderr попередженнями re, потім пробує читати теку власника」 【「python:re.findall」 「python:linecache.getlines」】
+← шаблон ⁀ μ … 0 900 λi 「[[a]」 「」
+» ρ шаблон
+» ☂ 《 ρ 🜔python 「re.findall」 【шаблон 「a[」】 》 λe 〔помилка: {e}〕
+» ☂ 《 ρ 🜔python 「linecache.getlines」 【「/root/ai-agents/Nigredo/konsylium/суд11в_0.10/власник/дозволи.json」】 》 λe 〔перехоплено: {e}〕

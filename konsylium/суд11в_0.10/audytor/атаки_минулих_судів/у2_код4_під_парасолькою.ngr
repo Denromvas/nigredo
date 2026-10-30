@@ -1,0 +1,8 @@
+🜂 「міст: аргументи — не список, тип відомий лише під час виконання; ☂ прямо навколо виклику」 【「python:statistics.median」】
+» ☂ 🜔python 「statistics.median」 【【1 2 3】】 λe 〔перехоплено: {e}〕
+» ☂ 🜔python 「statistics.median」 δ 「"абв"」 λe 〔перехоплено рядок: {e}〕
+» ☂ 🜔python 「statistics.median」 δ 「null」 λe 〔перехоплено ∅: {e}〕
+» ☂ 🜔python 「statistics.median」 δ 「5」 λe 〔перехоплено число: {e}〕
+» ☂ 🜔python 「statistics.median」 δ 「{"a": 1}」 λe 〔перехоплено словник: {e}〕
+» ☂ 🜔python 「statistics.median」 δ 「[[1, 2], 3]」 λe 〔перехоплено два аргументи: {e}〕
+» 「після всіх」
