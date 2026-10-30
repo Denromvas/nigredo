@@ -282,6 +282,9 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Back> {
                 }
                 break;
             }
+            if i < n && is_name_start(s[i]) {
+                return back("число впритул до імені"); // помилку пише еталон (суд 12)
+            }
             let lit = if frac {
                 let mut d = Dec::parse(&num).map_err(|_| Back("число".into()))?;
                 if neg {
