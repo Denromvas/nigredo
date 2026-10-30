@@ -1,0 +1,2 @@
+🜂 「11б: читання бази у режимі WAL」 【「бд.читати:дані」】
+» 🜔бд.читати 「дані/у_wal.db」 「SELECT type, name FROM sqlite_master ORDER BY name」 【】

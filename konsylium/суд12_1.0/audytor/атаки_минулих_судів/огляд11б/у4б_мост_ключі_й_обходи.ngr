@@ -1,0 +1,12 @@
+🜂 「міст: ключі, відносні шляхи, /proc, дескриптори, pidfd (вмісту не друкую)」 【「python:builtins.open」 「python:linecache.getlines」 「python:os.pidfd_open」】
+» 〔1 автор.ключ: {☂ 🜔python 「builtins.open」 【「/root/ai-agents/Nigredo/konsylium/суд12_1.0/audytor/автор.ключ」】 λe e}〕
+» 〔2 власник/ключ: {☂ 🜔python 「builtins.open」 【「/root/ai-agents/Nigredo/konsylium/суд12_1.0/власник/ключ」】 λe e}〕
+» 〔3 відносний: {☂ 🜔python 「linecache.getlines」 【「root/ai-agents/Nigredo/konsylium/суд12_1.0/audytor/дані/вхід.txt」】 λe e}〕
+» 〔4 через /proc/self/root: {☂ 🜔python 「linecache.getlines」 【「/proc/self/root/root/ai-agents/Nigredo/konsylium/суд12_1.0/audytor/дані/вхід.txt」】 λe e}〕
+» 〔5 через .. з теки Python: {☂ 🜔python 「linecache.getlines」 【「/usr/lib/python3.13/../../../root/ai-agents/Nigredo/konsylium/суд12_1.0/audytor/дані/вхід.txt」】 λe e}〕
+» 〔6 /proc/self/environ: {☂ 🜔python 「linecache.getlines」 【「/proc/self/environ」】 λe e}〕
+» 〔7 дескриптор 3: {☂ 🜔python 「builtins.open」 【3】 λe e}〕
+» 〔8 дескриптор 0: {☂ 🜔python 「builtins.open」 【0】 λe e}〕
+» 〔9 pidfd батька 1: {☂ 🜔python 「os.pidfd_open」 【1】 λe e}〕
+» 〔10 контроль — файл у теці Python: рядків {ρ 🜔python 「linecache.getlines」 【「/usr/lib/python3.13/statistics.py」】}〕
+» 〔11 bytes-шлях: {☂ 🜔python 「builtins.open」 【「/etc/hostname」 「rb」】 λe e}〕

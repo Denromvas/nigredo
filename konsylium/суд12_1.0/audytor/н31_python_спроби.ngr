@@ -1,0 +1,5 @@
+🜂 「спроби моста вийти за обчислення — нешкідливі цілі」 【「python:subprocess.getoutput」 「python:linecache.getlines」 「python:socket.create_connection」】
+» ☂ 🜔python 「subprocess.getoutput」 【「echo привіт」】 λe ＋ 「спіймано процес: 」 e
+» ☂ ρ 🜔python 「linecache.getlines」 【「/root/ai-agents/Nigredo/konsylium/суд12_1.0/audytor/дані/вхід.txt」】 λe ＋ 「спіймано читання: 」 e
+» ☂ 🜔python 「socket.create_connection」 【【「127.0.0.1」 28736】】 λe ＋ 「спіймано мережа: 」 e
+» 「далі」

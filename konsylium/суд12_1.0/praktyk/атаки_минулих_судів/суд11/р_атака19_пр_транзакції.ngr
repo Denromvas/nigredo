@@ -1,0 +1,16 @@
+🜂 「атака19 (практик): запис тепер іде в транзакції інтерпретатора — що програмі скажуть власні BEGIN, COMMIT, SAVEPOINT, ROLLBACK, і чи лишається після них звичайний запис; поряд — невинні INSERT」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「INSERT INTO t(x) VALUES (1)」
+» з 「BEGIN」
+» з 「COMMIT」
+» з 「END」
+» з 「SAVEPOINT с1」
+» з 「RELEASE с1」
+» з 「ROLLBACK」
+» з 「INSERT INTO t(x) VALUES (2)」
+» з 「CREATE TABLE ун(к INTEGER UNIQUE)」
+» з 「INSERT INTO ун VALUES (1)」
+» з 「INSERT OR ROLLBACK INTO ун VALUES (1)」
+» з 「INSERT INTO t(x) VALUES (3)」
+» з 「SELECT count(*) FROM t」

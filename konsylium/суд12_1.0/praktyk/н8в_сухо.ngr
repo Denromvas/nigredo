@@ -1,0 +1,7 @@
+🜂 「--сухо: права бд.писати без «час» і «жереб» перевіряються»」 【「бд.писати:звіти」】
+» ☂ 🜔бд.писати 「н2_копія.db」 「INSERT INTO t(к) VALUES (date('now'))」 【】 λe ＋ 「Г1 годинник: ✗ 」 e
+» ☂ 🜔бд.писати 「н2_копія.db」 「INSERT INTO t(к) VALUES (random())」 【】 λe ＋ 「Г2 random: ✗ 」 e
+» ☂ 🜔бд.писати 「н2_копія.db」 「ATTACH 'x.db' AS x」 【】 λe ＋ 「Г3 ATTACH: ✗ 」 e
+» ☂ 🜔бд.писати 「н2_копія.db」 「INSERT INTO t(id, назва) VALUES (9223372036854775807, 'межа')」 【】 λe ＋ 「Г4 rowid межа: ✗ 」 e
+» ☂ 🜔бд.писати 「н2_копія.db」 「INSERT INTO d(x) VALUES (1)」 【】 λe ＋ 「Г5 DEFAULT CURRENT_TIMESTAMP: ✗ 」 e
+» 「кінець」

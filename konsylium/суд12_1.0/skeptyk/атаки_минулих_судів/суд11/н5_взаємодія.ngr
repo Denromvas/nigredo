@@ -1,0 +1,6 @@
+🜂 「міст: паралель, квота, субагент」 【「python:math.isqrt≤2」 「python:statistics.mean」】
+» 〔квота 1: {☂ σ 🜔python 「math.isqrt」 【49】 λe 〔ПОМИЛКА: {e}〕}〕
+» 〔квота 2: {☂ σ 🜔python 「math.isqrt」 【64】 λe 〔ПОМИЛКА: {e}〕}〕
+» 〔квота 3: {☂ σ 🜔python 「math.isqrt」 【81】 λe 〔ПОМИЛКА: {e}〕}〕
+» 〔субагент з python: {☂ σ 🜁 「рахівник2」 「середнє」 【「python:statistics.mean」】 🜔python 「statistics.mean」 【【1 2】】 λe 〔ПОМИЛКА: {e}〕}〕
+» 〔поза печаткою: {☂ σ 🜔python 「statistics.median」 【【1 2】】 λe 〔ПОМИЛКА: {e}〕}〕

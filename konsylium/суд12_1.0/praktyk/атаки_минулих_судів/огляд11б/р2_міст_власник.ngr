@@ -1,0 +1,5 @@
+🜂 「р2: міст читає теку власника (§7 каже — ні); ключ сліду лише відкриваємо, вміст не читаємо」 【「python:linecache.getlines」 「python:builtins.open」】
+← рядки 🜔python 「linecache.getlines」 【「/root/ai-agents/Nigredo/konsylium/суд12_1.0/власник/дозволи.json」】
+» 〔дозволи власника: рядків {ρ рядки}〕
+» ☂ 🜔python 「builtins.open」 【「/root/ai-agents/Nigredo/konsylium/суд12_1.0/власник/ключ」】 λe 〔ключ сліду власника: {e}〕
+» ☂ 🜔python 「builtins.open」 【「/root/ai-agents/Nigredo/konsylium/суд12_1.0/власник/немає_такого」】 λe 〔контроль: {e}〕

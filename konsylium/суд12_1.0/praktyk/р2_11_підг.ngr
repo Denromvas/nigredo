@@ -1,0 +1,6 @@
+🜂 「база для Н-1: таблиця t і тригер з julianday('now'), гілка якого спрацьовує лише для 'зараз'」 【「бд.писати:звіти」】
+← база § ⌂ 0
+» 🜔бд.писати база 「CREATE TABLE t(id INTEGER PRIMARY KEY, назва TEXT, к)」 【】
+» 🜔бд.писати база 「CREATE TRIGGER тр AFTER INSERT ON t WHEN NEW.назва = 'зараз' BEGIN UPDATE t SET к = julianday('now') WHERE id = NEW.id; END」 【】
+» 🜔бд.писати база 「INSERT INTO t(назва) VALUES ('перший')」 【】
+» 🜔бд.писати база 「INSERT INTO t(назва) VALUES ('другий')」 【】

@@ -1,0 +1,14 @@
+🜂 「SQLite: VIEW з random, сховані rowid, RAISE списує квоту」 【「бд.писати:звіти≤9」】
+← база § ⌂ 0
+← пиши Λміт q ☂ ＋ 〔{міт}: 〕 σ 🜔бд.писати база q 【】 λe ＋ 〔{міт}: ✗ 〕 e
+» пиши 「К1 таблиця」 「CREATE TABLE t(id INTEGER PRIMARY KEY, назва TEXT)」
+» пиши 「К2 VIEW з random」 「CREATE VIEW vr AS SELECT random() AS r」
+» пиши 「К3 сховані всі три rowid — створити」 「CREATE TABLE h3(rowid, _rowid_, oid, x)」
+» пиши 「К3b вставити в h3」 「INSERT INTO h3(x) VALUES (1)」
+» пиши 「К4 тригер RAISE」 「CREATE TRIGGER тр BEFORE INSERT ON t WHEN NEW.назва = 'заборона' BEGIN SELECT RAISE(ABORT, 'не можна'); END」
+» пиши 「К5 RAISE」 「INSERT INTO t(назва) VALUES ('заборона')」
+» пиши 「К6 звичайна вставка」 「INSERT INTO t(назва) VALUES ('так')」
+» пиши 「К7 ATTACH (відмова повертає квоту)」 「ATTACH 'x.db' AS x」
+» пиши 「К8 восьма дія」 「INSERT INTO t(назва) VALUES ('8')」
+» пиши 「К9 девʼята дія」 「INSERT INTO t(назва) VALUES ('9')」
+» пиши 「К10 десята — понад квоту?」 「INSERT INTO t(назва) VALUES ('10')」
