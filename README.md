@@ -89,7 +89,8 @@ claude mcp add nigredo -- python3 mcp/nigredo_mcp.py   # give it to any MCP-capa
 
 The owner's permissions live in `~/.nigredo/дозволи.json`, e.g. `{"дозволено": ["оракул", "файл.читати:/home/me/data"]}`;
 without it only toy tools are available. [`ДЛЯ_АГЕНТІВ.md`](ДЛЯ_АГЕНТІВ.md) — the cheat sheet with every glyph;
-[`spec/SPEC.md`](spec/SPEC.md) — the specification (Ukrainian, like the language's own words).
+[`spec/SPEC.md`](spec/SPEC.md) — the specification (Ukrainian, like the language's own words): the norm and the
+compatibility promise; how it got there, court by court — [`spec/ІСТОРІЯ.md`](spec/ІСТОРІЯ.md).
 
 Also in the repo: a text browser for agents written in Nigredo itself ([`браузер/`](браузер/)), the MCP server
 ([`mcp/`](mcp/)), syntax highlighting for VS Code ([`editors/vscode/`](editors/vscode/)).
@@ -265,7 +266,8 @@ claude mcp add nigredo -- python3 mcp/nigredo_mcp.py   # дати мову бу�
 
 Дозволи власника — `~/.nigredo/дозволи.json`, наприклад `{"дозволено": ["оракул", "файл.читати:/home/я/дані"]}`; без нього
 доступні лише іграшкові інструменти. [`ДЛЯ_АГЕНТІВ.md`](ДЛЯ_АГЕНТІВ.md) — памʼятка з усіма гліфами;
-[`spec/SPEC.md`](spec/SPEC.md) — специфікація.
+[`spec/SPEC.md`](spec/SPEC.md) — специфікація: норма й обіцянка сумісності; як мова до неї дійшла, суд за судом, —
+[`spec/ІСТОРІЯ.md`](spec/ІСТОРІЯ.md).
 
 Ще в репозиторії: текстовий браузер для агентів, написаний самою Nigredo ([`браузер/`](браузер/)), MCP-сервер
 ([`mcp/`](mcp/)), підсвітка для VS Code ([`editors/vscode/`](editors/vscode/)).
