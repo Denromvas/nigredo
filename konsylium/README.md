@@ -21,11 +21,24 @@
 | 0.6 заморожена (фази 1б–3: SQLite, процеси, паралельні `‖`, повтор, сухий прогін) → 0.7 | 7:0 «спершу виправити» (Gemini перейшов з А на Б після запусків інших) | Дії поза печаткою — жодної. Знайдене — про те, що *бачить* власник: сліди повтору й сухого прогону проходили перевірку як справжні, відмови мережі не позначалися «заборонено», переклад для людини обдурювали лапками, `процес` передавав ціль симлінка як argv[0] (на busybox `echo` міг стати оболонкою). Усе виправлено з тестами й мутаційною перевіркою. |
 | 0.7 заморожена (XML, контракти `✓`, квоти `≤N`, тести мовою) → 0.7 | 7:0 «спершу виправити» (Gemini знову А → Б) | Дії поза печаткою — жодної; протекло нове: запис XML дозволяв даним вставити елементи, підмножина XPath не рахувала кроків і двоїла вузли, квота модуля не діяла, `--тести` зараховував провалену перевірку під `☂`, README подавав М2 «після» без «до». Усе виправлено з негативними тестами з атак суддів; кожен новий захист — мутаційна перевірка. |
 | 0.7-dev після виправлень суду 8 → **0.7** | суд 8б: 6:1 «спершу виправити» (Gemini — А); суд 8в (один суддя — Аудитор — на атаках усіх; 3 короткі раунди): Б → Б → **А** | Усе знайдене в суді 8 закрито — судді перевірили запусками; дії поза печаткою — жодної. На виправленнях знайдено: вичерпана квота ховала «заборонено», SQLite «заборонено» бралося з тексту помилки, `--дозволи` і вкладені «для_тек» давали коду з теки запису права теки чи робили його модулем, код 4 від даних (глибокий JSON, `]` у шляху, адреси, яких не розбирає urllib). Усе виправлено з тестами; кожен захист — мутаційна перевірка. |
+| 0.8 заморожена (обидва виконавці — еталон і нативний Атанор; SQLite за замовчуванням закритий) → **0.8** | суд 9 — 7:0 «Б»; повторні огляди 9б (2 «А», 5 «Б»), 9в (2:5), 9г (3:4) → **9д — 7:0 «А»** | Розбіжності виконавців (кінцева сигма, `\N{…}` у шаблоні з даних, межа сліду, кроки SQLite, глибина стеку) і SQLite, що давав програмі годинник і випадковість без прав: через `DEFAULT` стовпця, тригер з rowid 2⁶³−1, `;` на початку запиту, `sqlite_sequence`. Усе виправлено з тестами обома виконавцями. |
+| 0.8.1 (побажання 0.8) | шість оглядів: 0.8.1 (1:6), 0.8.1б (1:6), 0.8.1в (2:5), 0.8.1г (5:2), 0.8.1д (5:2) → **0.8.1е — 7:0 «А»** з умовою, закритою до оголошення | Загартовано сторожа SQLite: службова функція через `DEFAULT`, `CHECK`, `sqlite_stmt` і віртуальні таблиці; перелік таблиць — за планом запиту, а не за назвою; мережа без тихих втрат. |
+| 0.9-dev (модулі з git за хешем) → **0.9** | суд 10 — 7:0 «Б»; огляд 10б — 4:2 «А»; вузьке підтвердження 10в — **2:0 «А»** | Зламу немає; неправдиві тексти ключа власника, прихований вхід `⌂` у «лише обчислює», чиї слова в помилці з модуля, лапки в підсумку сліду. Усе виправлено з тестами до оголошення. |
+| 0.10-dev (замок ОС seccomp, міст до Python, підпис автора Ed25519) → **0.10** | суд 11 — 7:0 «Б»; огляд 11б — 2 «А», 5 «Б»; вузьке підтвердження 11в — **5:0 «А»** | Ядро тримає, підпис не підробити. Знайдено: квота `python:…≤N` не діяла, міст читав теку власника, код 4, точки малого порядку Ed25519, Атанор пропускав двійників рядка підпису (`ｅｄ２５５１９`), модуль з теки ключа автора брався як модуль, хибні тривоги на числах у коментарях. Усе виправлено з тестами й мутаціями до оголошення. |
 
 Висновок третього суду: Nigredo краща за Python там, де агент **отримує чужу програму** й мусить вирішити,
 чи її запускати, — для цього досить рядка печатки; у Python — лише читати весь код, і навіть тоді обхід можливий.
 
 Засуджені версії — [`../архів/`](../архів/).
+
+Починаючи з 0.8, після суду йдуть **повторні огляди**: судять ті самі ролі, і щоразу коротше — лише те, що змінилось,
+і умови тих, хто голосував «Б». Версію оголошують, коли «А» дали всі, а побажання виправлено з тестами.
+
+**Про шляхи.** Матеріали судів збережено дослівно: у програмах і звітах — абсолютні шляхи машини, де йшов суд
+(`/root/ai-agents/Nigredo/…` — це корінь цього репозиторію). Їх не переписано свідомо: підписані програми, модулі,
+закріплені sha256, й атаки саме на абсолютні шляхи залежать від точних байтів. Переписаний текст був би вже не тим,
+що запускав суддя. Жива частина репозиторію — інтерпретатор, Атанор, тести, приклади, мірило, сайт — абсолютних шляхів
+не має.
 
 Як проходить суд: версію заморожують (хеш коміту й інтерпретатора), кожен суддя в окремій теці розвʼязує ті самі
 завдання справжнім інтерпретатором, атакує межу (печатка → інструменти → файли) і пише звіт; у другому раунді судді
@@ -54,5 +67,18 @@ interpreter, attacked it, then debated the others' reports.
 | 0.6 frozen (phases 1b–3: SQLite, processes, parallel `‖`, replay, dry run) → 0.7 | 7:0 "fix first" (Gemini switched A → B after the others' runs) | Nobody acted outside the seal. Findings were about what the owner *sees*: replay and dry-run traces passed verification as real runs, network refusals weren't marked "forbidden", the human translation could be spoofed with quotes, `процес` passed the symlink target as argv[0] (busybox could turn `echo` into a shell). All fixed with tests and mutation checks |
 | 0.7 frozen (XML, data contracts `✓`, quotas `≤N`, tests in the language) → 0.7 | 7:0 "fix first" (Gemini again A → B) | Nobody acted outside the seal; the new features leaked: XML writing let data inject elements, the XPath subset ignored step limits and double-counted nodes, a module's quota didn't apply, `--тести` passed a failed check caught by `☂`, and the README showed M2 "after" without "before". All fixed with negative tests from the judges' attacks; every new guard mutation-checked |
 | 0.7-dev after court-8 fixes → **0.7** | court 8b: 6:1 "fix first" (Gemini A); court 8c (one judge, the Auditor, on all judges' attacks; 3 short rounds): B → B → **A** | All court-8 findings confirmed closed by runs; nobody acted outside the seal. Found on the fixes: an exhausted quota masked "forbidden", SQLite "forbidden" was read from error text, `--дозволи` and nested folder rules let code from a write folder get folder rights or become a module, crash code 4 from data (deep JSON, `]` in a path, URLs urllib can't parse). All fixed with tests; every guard mutation-checked |
+| 0.8 frozen (both executors — the reference and native Atanor; SQLite closed by default) → **0.8** | court 9: 7:0 "fix first"; re-reviews 9b (2:5), 9c (2:5), 9d (3:4) → **9e: 7:0 A** | Executor divergences (final sigma, `\N{…}` in a pattern from data, the trace limit, SQLite steps, stack depth) and SQLite handing a program the clock and randomness without rights — via a column `DEFAULT`, a trigger with rowid 2⁶³−1, a leading `;`, `sqlite_sequence`. All fixed with tests in both executors |
+| 0.8.1 (0.8 wishes) | six reviews: 0.8.1 (1:6), b (1:6), c (2:5), d (5:2), e (5:2) → **0.8.1f: 7:0 A** with a condition closed before the announcement | The SQLite guard hardened: internal functions via `DEFAULT`, `CHECK`, `sqlite_stmt` and virtual tables; tables listed by the query plan, not by name; no silent network losses |
+| 0.9-dev (git modules pinned by hash) → **0.9** | court 10: 7:0 "fix first"; review 10b: 4:2 A; narrow confirmation 10c: **2:0 A** | No breach; untrue texts in the owner's key, a hidden input `⌂` in "only computes", whose words an error from a module is, quotes in the trace summary. All fixed with tests before the announcement |
+| 0.10-dev (seccomp OS lock, Python bridge, Ed25519 author signature) → **0.10** | court 11: 7:0 "fix first"; review 11b: 2 A, 5 B; narrow confirmation 11c: **5:0 A** | The kernel lock holds, the signature can't be forged. Found: the `python:…≤N` quota didn't apply, the bridge could read the owner's folder, a crash code 4, small-order Ed25519 points, Atanor let full-width look-alikes of the signature line through (`ｅｄ２５５１９`), a module from an author key's write folder was accepted, false alarms on numbers in comments. All fixed with tests and mutation checks before the announcement |
 
 Each `суд*/` folder holds the protocol, every participant's report and solutions; rejected versions are in [`../архів/`](../архів/).
+
+Since 0.8 every court is followed by **re-reviews**: the same roles, shorter each time — only what changed and the
+conditions of those who voted B. A version is announced when everyone votes A and the wishes are fixed with tests.
+
+**About paths.** Court materials are kept verbatim: programs and reports contain absolute paths of the machine the court
+ran on (`/root/ai-agents/Nigredo/…` is the root of this repository). They are deliberately not rewritten: signed
+programs, modules pinned by sha256 and attacks on absolute paths depend on the exact bytes — a rewritten text would no
+longer be what the judge ran. The living part of the repository (interpreter, Atanor, tests, examples, benchmark, site)
+has no absolute paths.
