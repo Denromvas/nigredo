@@ -1,0 +1,6 @@
+🜂 【「читати:дані」 「писати:звіти」 「python:statistics.median」 「python:statistics.stdev」】
+← ціни δ 🜔читати 「дані/ціни.json」
+← м 🜔python 「statistics.median」 【ціни】
+← с 🜔python 「statistics.stdev」 【ціни】
+🜔писати 「звіти/статистика.txt」 〔медіана: {⌗ м 2}\nstdev: {⌗ с 2}〕
+» 〔медіана: {⌗ м 2}, stdev: {⌗ с 2}〕

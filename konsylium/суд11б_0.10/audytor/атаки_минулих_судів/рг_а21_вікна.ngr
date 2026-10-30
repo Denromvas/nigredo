@@ -1,0 +1,18 @@
+🜂 「атака21 (аудитор): інші вікна на саме зʼєднання — лічильники змін, rowid, версія й збірка SQLite, рядки схеми temp; чи однакові в обох виконавців і чи без випадковості」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+← з λq ☂ ＋ 「✓ 」 σ 🜔бд.писати бд q 【】 λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS v(k, s)」
+» з 「INSERT INTO v(k, s) VALUES ('перший', 1)」
+» з 「INSERT INTO v(k, s) SELECT 'total_changes', total_changes()」
+» з 「INSERT INTO v(k, s) SELECT 'changes', changes()」
+» з 「INSERT INTO v(k, s) SELECT 'last_insert_rowid', last_insert_rowid()」
+» з 「INSERT INTO v(k, s) SELECT 'sqlite_version', sqlite_version()」
+» з 「INSERT INTO v(k, s) SELECT 'sqlite_source_id', sqlite_source_id()」
+» з 「INSERT INTO v(k, s) SELECT 'compileoption0', sqlite_compileoption_get(0)」
+» з 「INSERT INTO v(k, s) SELECT 'temp_master', type || char(58) || name || char(58) || tbl_name || char(58) || rootpage || char(58) || coalesce(sql, 'NULL') FROM temp.sqlite_master」
+» з 「INSERT INTO v(k, s) SELECT 'temp_info', group_concat(name) FROM pragma_table_info('sqlite_temp_master')」
+» з 「UPDATE v SET s = s WHERE k = 'перший'」
+» з 「INSERT INTO v(k, s) SELECT 'total_changes2', total_changes()」
+» з 「INSERT INTO v(k, s) SELECT 'json', count(*) FROM json_each('[1,2,3]')」
+» з 「INSERT INTO v(k, s) SELECT 'stmt', count(*) FROM temp.sqlite_stmt」
+» з 「INSERT INTO v(k, s) SELECT 'dbstat', count(*) FROM dbstat」

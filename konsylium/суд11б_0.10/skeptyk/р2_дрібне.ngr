@@ -1,0 +1,6 @@
+🜂 「р2: квота моста, не-UTF-8 з моста, назва забороненої функції」 【「python:math.isqrt≤1」 「python:json.loads」】
+» 〔квота 1: {☂ σ 🜔python 「math.isqrt」 【49】 λe 〔ПЕРЕХОПЛЕНО: {e}〕}〕
+» 〔квота 2: {☂ σ 🜔python 「math.isqrt」 【64】 λe 〔ПЕРЕХОПЛЕНО: {e}〕}〕
+» 〔udcff: {☂ σ 🜔python 「json.loads」 【「"\\udcff"」】 λe 〔ПЕРЕХОПЛЕНО: {e}〕}〕
+← назва ＋ 「os.」 「system」
+» 〔поза печаткою: {☂ σ 🜔python назва 【「echo x」】 λe 〔ПЕРЕХОПЛЕНО: {e}〕}〕

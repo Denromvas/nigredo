@@ -1,0 +1,3 @@
+🜂 「зробити велику базу для --сухо (Практик Н-2, Оркестратор Н2)」 【「бд.писати:звіти」】
+» 🜔бд.писати 「звіти/велика.db」 「CREATE TABLE big(n INTEGER, x TEXT)」 【】
+» 🜔бд.писати 「звіти/велика.db」 「WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c WHERE n < 300000) INSERT INTO big SELECT n, (n * 7919 % 100003) || '-рядок-' || n FROM c」 【】

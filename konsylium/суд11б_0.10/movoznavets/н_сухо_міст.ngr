@@ -1,0 +1,10 @@
+🜂 「--сухо виконує міст: чи не стало це шляхом до дії」 【「python:subprocess.getoutput」 「python:os.system」 「python:urllib.request.urlopen」 「python:socket.create_connection」 「python:shutil.copyfile」 「python:builtins.open」 「python:os.pidfd_open」 「python:time.sleep」】
+← тека 「/root/ai-agents/Nigredo/konsylium/суд11б_0.10/movoznavets」
+» ☂ 🜔python 「subprocess.getoutput」 【「echo suho > /root/ai-agents/Nigredo/konsylium/суд11б_0.10/movoznavets/звіти/suho_sh.txt」】 λe ＋ 「помилка: 」 ⊏ e 0 150
+» ☂ 🜔python 「os.system」 【「echo suho」】 λe ＋ 「помилка: 」 ⊏ e 0 150
+» ☂ 🜔python 「urllib.request.urlopen」 【「http://127.0.0.1:28734/movoznavets-11b-suho-urlopen」】 λe ＋ 「помилка: 」 ⊏ e 0 150
+» ☂ 🜔python 「socket.create_connection」 【【「127.0.0.1」 28734】】 λe ＋ 「помилка: 」 ⊏ e 0 150
+» ☂ 🜔python 「shutil.copyfile」 【＋ тека 「/дані/вхід.txt」 ＋ тека 「/звіти/suho_copy.txt」】 λe ＋ 「помилка: 」 ⊏ e 0 150
+» ☂ 🜔python 「builtins.open」 【＋ тека 「/звіти/suho_open.txt」 「w」】 λe ＋ 「помилка: 」 ⊏ e 0 150
+» ☂ 🜔python 「os.pidfd_open」 【1】 λe ＋ 「помилка: 」 ⊏ e 0 150
+» 「далі」

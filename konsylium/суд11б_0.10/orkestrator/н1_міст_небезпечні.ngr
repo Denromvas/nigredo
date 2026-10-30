@@ -1,0 +1,11 @@
+🜂 「атака Н1: небезпечні функції зі списку власника — чи тримає їх ядро」 【「python:subprocess.getoutput」 「python:os.system」 「python:urllib.request.urlopen」 「python:socket.create_connection」 「python:shutil.copyfile」 「python:builtins.open」 「python:linecache.getlines」】
+← спроба Λназва арг ☂ 《 ← р 🜔python назва арг ¦ 〔{назва}: значення {р}〕 》 λe 〔{назва}: ПОМИЛКА {e}〕
+» спроба 「subprocess.getoutput」 【「echo orkestrator-getoutput > /root/ai-agents/Nigredo/konsylium/суд11б_0.10/orkestrator/звіти/н1_getoutput.txt」】
+» спроба 「os.system」 【「echo orkestrator-system > /root/ai-agents/Nigredo/konsylium/суд11б_0.10/orkestrator/звіти/н1_system.txt」】
+» спроба 「urllib.request.urlopen」 【「http://127.0.0.1:28734/orkestrator-n1-urlopen」】
+» спроба 「socket.create_connection」 【【「127.0.0.1」 28734】】
+» спроба 「shutil.copyfile」 【「/root/ai-agents/Nigredo/konsylium/суд11б_0.10/orkestrator/дані/ціни.json」 「/root/ai-agents/Nigredo/konsylium/суд11б_0.10/orkestrator/звіти/н1_copy.json」】
+» спроба 「builtins.open」 【「/root/ai-agents/Nigredo/konsylium/суд11б_0.10/orkestrator/звіти/н1_open.txt」 「w」】
+» спроба 「builtins.open」 【「/root/ai-agents/Nigredo/konsylium/суд11б_0.10/orkestrator/звіти/н1_open_a.txt」 「a」】
+» спроба 「builtins.open」 【「/root/ai-agents/Nigredo/konsylium/суд11б_0.10/orkestrator/звіти/н1_open_x.txt」 「x」】
+» спроба 「linecache.getlines」 【「/root/ai-agents/Nigredo/konsylium/суд11б_0.10/orkestrator/дані/ціни.json」】
