@@ -1,0 +1,4 @@
+🜂 「контроль журналу: свій запит, потім журнал」 【「взяти:127.0.0.1:28735」】
+← в ☂ 🜔взяти 「http://127.0.0.1:28735/movoznavets-11v-kontrol」 λe 「(404 чи помилка — байдуже)」
+← ж 🜔взяти 「http://127.0.0.1:28735/журнал」
+» 〔у журналі є movoznavets-11v-kontrol: {∋ ж 「movoznavets-11v-kontrol」}; є movoznavets-11b-suho: {∋ ж 「movoznavets-11b-suho」}〕
