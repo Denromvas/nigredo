@@ -140,8 +140,8 @@ arguments — checked before the run and again while it runs). Court 10 (7:0 «B
 owner's key; review 10b (4:2 «A») found more (whose words an error is), and the narrow confirmation 10c (2:0 «A») one more
 (quotes in the trace summary) — all fixed with tests in both executors before the announcement. Before the first run of
 someone else's program with network modules, agents run `ngr --отримати PROGRAM --звірити` (it asks the source whether
-the address still serves the pinned content; a non-zero code means do not run). **In development — 0.10-dev**
-(phase 6, the owner's decisions; proposal `spec/пропозиції/фаза6.md`):
+the address still serves the pinned content; a non-zero code means do not run). **0.10 (announced 2026-10-30)** —
+phase 6, the owner's decisions (proposal `spec/пропозиції/фаза6.md`):
 - **OS lock.** A group of actions the seal does not ask for at all — network, processes, writing files — is closed by
   the **kernel** (seccomp), not only by the interpreter. Child processes inherit it. Some tools open more than their
   own group: `процес` and `бд.читати` also open writing (commands write `/dev/null`, SQLite its temporary files), and
@@ -156,8 +156,9 @@ the address still serves the pinned content; a non-zero code means do not run). 
 
 Court 11 voted 7:0 «Б» (the kernel lock holds, the signature cannot be forged; quotas, texts and a few edge cases needed
 fixing); re-review 11б gave 2 «А» and 5 narrow «Б» (no new breach; Atanor let full-width look-alikes of the signature
-line through, and a module from an author key's write folder was accepted as a module). All fixed with tests; a narrow
-confirmation (11в) comes next. The latest comparison report is
+line through, and a module from an author key's write folder was accepted as a module); the narrow confirmation 11в —
+5:0 «А». Everything, the judges' wishes included, was fixed with tests in both executors before the announcement. Agents
+run `ngr --перевірити-підпис PROGRAM` before running someone else's signed program. The latest comparison report is
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols — [`konsylium/`](konsylium/).
 
 **Honest limits:** Nigredo is a transparency and audit tool, **not an OS sandbox** — an agent with shell access can
@@ -311,8 +312,8 @@ UTF-8 — помилка, а 30 с —
 нього). Суд 10 (7:0 «Б») зламу не знайшов, лише неправдиві тексти ключа власника; огляд 10б (4:2 «А») знайшов ще (чиї
 слова в помилці), вузьке підтвердження 10в (2:0 «А») — ще одне (лапки в підсумку сліду): усе виправлено з тестами обома
 виконавцями до оголошення. Перед першим запуском чужої програми з модулями з мережі агенти виконують `ngr --отримати
-ПРОГРАМА --звірити` (питає джерело, чи віддає адреса закріплений вміст; код ≠ 0 — не запускати). **У розробці —
-0.10-dev** (фаза 6, рішення власника; пропозиція `spec/пропозиції/фаза6.md`):
+ПРОГРАМА --звірити` (питає джерело, чи віддає адреса закріплений вміст; код ≠ 0 — не запускати). **0.10 (оголошено
+2026-10-30)** — фаза 6, рішення власника (пропозиція `spec/пропозиції/фаза6.md`):
 - **Замок ОС.** Групу дій, якої печатка не просить зовсім, — мережу, процеси, запис — закриває **ядро** (seccomp), а не
   лише інтерпретатор. Дочірні процеси його успадковують. Дехто відкриває більше за свою групу: `процес` і `бд.читати`
   — ще й запис (команди пишуть `/dev/null`, SQLite — тимчасові файли), `python` — процеси (запустити процес моста).
@@ -325,7 +326,9 @@ UTF-8 — помилка, а 30 с —
 
 Суд 11 — 7:0 «Б» (ядро тримає, підпис не підробити; квоти, тексти й кілька країв треба було виправити), огляд 11б —
 2 «А», 5 вузьких «Б» (нового зламу немає; Атанор пропускав повноширинних двійників рядка підпису, модуль з теки запису
-ключа автора брався як модуль). Усе виправлено з тестами; далі — вузьке підтвердження 11в. Останній звіт звірки —
+ключа автора брався як модуль), вузьке підтвердження 11в — 5:0 «А». Усе, і побажання суддів, виправлено з тестами обома
+виконавцями до оголошення. Перед запуском чужої підписаної програми агенти виконують `ngr --перевірити-підпис ПРОГРАМА`.
+Останній звіт звірки —
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); історія й протоколи — [`konsylium/`](konsylium/).
 
 **Чесно про межі:** Nigredo — інструмент прозорості й аудиту, **не пісочниця ОС**: агент із доступом до shell може

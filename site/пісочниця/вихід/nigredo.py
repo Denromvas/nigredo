@@ -21,7 +21,7 @@ import decimal
 import math
 from decimal import ROUND_HALF_UP, Decimal
 
-VERSION = '0.9'
+VERSION = '0.10'
 MAX_DEPTH = 2000
 WALK_MAX_DEPTH = 2000     # показ, порівняння, JSON, ключі ⇅ обходять значення не глибше: далі — «вкладене надто глибоко»
 #                           (межа мови, а не стека CPython — та сама в еталоні й Атанорі, від версії Python не залежить)
@@ -777,7 +777,7 @@ def check_twins(toks):
         seen.setdefault(sk, val)
 
 
-def lex(src):
+def lex(src, module=False):
     toks, i, line, col = [], 0, 1, 1
     n = len(src)
 
@@ -866,6 +866,23 @@ def lex(src):
                 raise StaticError(unknown_char(bad[0], 'у коментарі ') if unicodedata.category(bad[0]) == 'Cn' else
                                   f'у коментарі невидимий чи керівний символ U+{ord(bad[0]):04X} (CR, ESC, bidi, '
                                   f'теги…) — ним ховають код від людини, що читає сирий текст', pos)
+            sig_line = (i == 0 or src[i - 1] == '\n') and SIG_LINE.fullmatch(src[i:])
+            if sig_line and module:                 # огляд 11б (Новачок): у модулі рядок підпису мовчки був коментарем
+                e = StaticError('підпис автора: модуль не підписують — підпис лише в програмі й покриває її модулі (у '
+                                'модулі рядок підпису був би підписом, якого мова не бачить)', pos)
+                e.code = 3
+                raise e
+            hit = None if sig_line else sig_match(text)
+            if hit is not None:
+                e = StaticError(f'підпис автора: у коментарі «{safe(hit)[:60]}» схоже на «ed25519» (не в кінці '
+                                f'латинського слова; регістр, двійники й розділові між літерами не важать) — так виглядає '
+                                f'рядок підпису, а '
+                                f'підпис лише один: останній рядок, з першого стовпця й рівно такої форми «※ підпис '
+                                f'ed25519:<ключ> <підпис>». Людина бачила б підпис, якого мова не бачить, тож у '
+                                f'коментарях цього слова не пишіть; якщо це підпис — після нього щось дописано чи рядок '
+                                f'зіпсовано?', pos)
+                e.code = 3
+                raise e
             while i < n and src[i] != '\n':
                 adv()
         elif ch == STR_OPEN:
@@ -1276,7 +1293,7 @@ def load_remote(parsed, net, stack, depth, pos):
                 text = raw.decode('utf-8')
             except UnicodeDecodeError:
                 raise StaticError('модуль не UTF-8', (1, 1))
-            toks = lex(text)
+            toks = lex(text, module=True)
             check_twins(toks)
             sub = Parser(toks, None, None, stack + (real,), module=True, remote=(o, r, c, p.rpartition('/')[0]), net=net,
                          depth=depth + 1)
@@ -1641,7 +1658,7 @@ class Parser:
                     if re.search(r'@[0-9a-fA-F]{7,64}(/|$)', rel) or rel.lower().startswith(('github', 'www.github')) else '')
             raise StaticError(f'⊃: модуль «{safe(rel)}» не прочитати: {getattr(e, "strerror", None) or e}{hint}', pos)
         try:
-            toks = lex(src)
+            toks = lex(src, module=True)
             check_twins(toks)
             sub = Parser(toks, os.path.dirname(real), self.root, self.stack + (real,), module=True, net=self.net)
             mod = sub.program()
@@ -1712,6 +1729,9 @@ class Parser:
         if TOOLS[name][4] == 'команда' and scope.strip() and not (
                 os.path.isabs(w := scope.strip().split(' ')[0]) or '/' not in w):
             raise StaticError(f'«{name}»: команда — імʼя з PATH (git) або абсолютний шлях, не відносний', pos)
+        if TOOLS[name][4] == 'функція' and scope.strip() and not PY_NAME.fullmatch(scope.strip()):
+            raise StaticError(f'«{name}»: функція — повна назва «модуль.функція» латиницею (statistics.median), без «_» '
+                              f'на початку частин і без шаблонів', pos)
         lst = caps.setdefault(name, [])
         if (s := scope.strip()) and s not in lst:      # дубль — один раз
             lst.append(s)
@@ -1942,7 +1962,7 @@ TYPE_RES = {'∫': _N, '－': _N, '×': _N, '÷': _N, '‰': _N, '⌊': _N, '≅
 TOOL_TYPES = {'оракул': ((_A,), _B), 'жереб': ((_N,), _N), 'час': ((), _S), 'файл.читати': ((_S,), _S),
               'файл.писати': ((_S, _S), 'none'), 'файл.список': ((_S,), _L), 'мережа.взяти': ((_S,), _S),
               'мережа.послати': ((_S, _A), _S), 'бд.читати': ((_S, _S, _L), _L), 'бд.писати': ((_S, _S, _L), _N), 'процес': ((_L,), _S),
-              'агент': ((_S, _S), _S)}
+              'агент': ((_S, _S), _S), 'python': ((_S, _L), _A)}
 
 
 def lit_type(v):
@@ -2391,6 +2411,7 @@ def _verify(path, program=None):
     err_mod = None         # останнє — помилка з коду модуля з мережі: котрий і чий текст (огляд 10б)
     chunks, events, rejected, running = {'виконується': 0, 'відкинуто': 0, 'помилка частини': 0}, [], [], False
     fetched, mismatched = {'отримано': 0, 'уже було': 0, 'замінено пошкоджений': 0, 'звірено': 0}, []   # слід --отримати
+    iso = None             # подія «ізоляція» (замок ОС, фаза 6.1) — що закрило ядро чи чому не закрило (суд 11)
     info = {}
     try:
         st = os.stat(path)
@@ -2418,7 +2439,9 @@ def _verify(path, program=None):
         if n == 0:
             head = rec
         if rec.get('подія') in ('заборонено', 'запобіжна відмова'):   # з самим запитом і причиною не посеред слова —
-            what = rec.get('шлях') or rec.get('адреса') or rec.get('субагент') or rec.get('аргументи') or ''   # (огляд 0.8.1)
+            what = (rec.get('шлях') or rec.get('адреса') or                                               # (огляд 0.8.1)
+                    (f'{rec["функція"]}' + (f' ({rec["спроба"]})' if rec.get('спроба') else '') if rec.get('функція')
+                     else None) or rec.get('субагент') or rec.get('аргументи') or '')   # функція моста — суд 11
             sql = f' запит «{q_data(rec["запит"], 160)}»' if rec.get('запит') else ''
             mod = (f' (у виклику модуля з мережі 「{q_data(str(rec["модуль"]).partition("#")[0], 160)}」)'
                    if rec.get('модуль') else '')
@@ -2437,6 +2460,8 @@ def _verify(path, program=None):
             err_mod = ({'модуль': clip(safe(str(rec['модуль'])), 300), 'текст_від': rec.get('текст_від')}
                        if rec.get('модуль') else None)
         dry = dry or rec.get('подія') == 'сухо'
+        if rec.get('подія') == 'ізоляція' and iso is None:
+            iso = {'ядро': rec.get('ядро'), 'закрито': rec.get('закрито'), 'причина': rec.get('причина')}
         if rec.get('подія') == 'впевненість' and isinstance(rec.get('стало'), (int, float)) and \
                 isinstance(rec.get('було'), (int, float)) and rec['стало'] > rec['було']:
             raised += 1
@@ -2518,6 +2543,26 @@ def _verify(path, program=None):
     notes = [f'виконавець: {engine} (' + ('sha256 джерел ' if engine == 'Атанор' else 'sha256 nigredo.py ')
              + str(head.get('інтерпретатор', '')).removeprefix('атанор:')[:16] + '…; ngr --відбиток — для порівняння)', f'тека {safe(str(head.get("тека", "—")))}',
              f'аргументи {safe(json.dumps(head.get("аргументи"), ensure_ascii=False))}']
+    if isinstance(head.get('підпис'), dict):    # фаза 6.3: програму підписано — чий ключ (імʼя — з дозволів власника)
+        g = head['підпис']
+        notes.append(f'підпис автора: {safe(str(g.get("ключ")))}'
+                     + (f' («{safe(str(g["імʼя"]))}»)' if g.get('імʼя') is not None else ' (ключ, якого власник не знав)'))
+    info['підпис'] = head.get('підпис')
+    shut = iso.get('закрито') if iso and isinstance(iso.get('закрито'), list) else []
+    if iso and iso.get('ядро') == 'seccomp':     # що закрило ядро, а не лише інтерпретатор (суд 11)
+        notes.append(f'замок ОС: ядро (seccomp) закрило {os_acc(shut)}' + (
+            '' if len(shut) == len(OS_GROUPS) else f'; решту ({os_acc([g for g in OS_GROUPS if g not in shut])}) '
+                                                     f'відкрила печатка — там межі тримав інтерпретатор'))
+    elif iso and iso.get('ядро') == 'не потрібне':
+        notes.append('замок ОС: не потрібен — печатка відкриває мережу, процеси й запис (межі тримав інтерпретатор)')
+    elif iso:
+        notes.append(f'⚠ замок ОС: ядро нічого не закрило ({safe(str(iso.get("причина") or "?"))}) — межі печатки тримав '
+                     f'лише інтерпретатор')
+    elif head.get('repl'):
+        notes.append('⚠ замок ОС: у REPL його немає (v1) — межі печатки тримав лише інтерпретатор')
+    elif 'печатка' in events and not head.get('отримання'):
+        notes.append('⚠ замок ОС: події «ізоляція» в сліді немає (слід до 0.10?) — чи закривало щось ядро, не відомо')
+    info['ізоляція'] = iso
     approved = 'схвалено власником' in str(head.get('дозволи_власника', ''))
     if approved:                       # права саме цій програмі («для_програм») — власник має це бачити (суд 9)
         notes.append('⚠ права схвалено власником саме для цієї програми («для_програм»)')
@@ -2584,7 +2629,7 @@ def _verify(path, program=None):
             + ' — жодна програма не виконувалась' if head.get('отримання') else
             f' — ПОВТОР сліду {safe(str(head.get("повтор")))}: жоден інструмент не діяв, «інструмент» — записані значення'
             if head.get('повтор') else ' — СУХИЙ ПРОГІН: записи, надсилання, процеси й агенти НЕ виконувалися, їхні '
-            '«інструмент» — заглушки з впевненістю 0' if dry else ' — СЕАНС REPL: код надходив частинами, кожен рядок '
+            '«інструмент» — заглушки з впевненістю 0 (читання й функції Python — виконано)' if dry else ' — СЕАНС REPL: код надходив частинами, кожен рядок '
             'входу — у записі «код»' if head.get('repl') else '')
     return f'✓ слід цілий і завершений ({last}){mode}: {n} записів; {about}\n  ' + '\n  '.join(notes), info
 
@@ -3765,9 +3810,18 @@ def _db(it, pos, tool, p, sql, params, write):
         it.steps_left -= 10 + timed
         last[0] = now
         return it.steps_left < 0 or time.monotonic() > deadline
+    # --сухо закриває ядром і запис: база WAL без -wal і -shm (закрита начисто — уся в головному файлі) інакше не
+    # відкриється, бо SQLite створює -shm; така — незмінна (immutable), і це правда (суд 11)
+    frozen = ''
+    if not write and 'запис' in it.os_shut and not os.path.exists(real + '-wal') and not os.path.exists(real + '-shm'):
+        try:
+            with open(real, 'rb') as f:
+                frozen = '&immutable=1' if f.read(20)[18:20] == b'\x02\x02' else ''
+        except OSError:
+            pass
     try:
-        con = sqlite3.connect(f'file:{urllib.request.pathname2url(real)}?mode={"rwc" if write else "ro"}', uri=True,
-                              isolation_level=None, timeout=5)
+        con = sqlite3.connect(f'file:{urllib.request.pathname2url(real)}?mode={"rwc" if write else "ro"}{frozen}',
+                              uri=True, isolation_level=None, timeout=5)
     except sqlite3.Error as e:
         raise NgrError(f'{tool}: {e}: {p.v}', pos)
     cur, helper, mark = None, [], {'запобіжна': False, 'сумнів': [], 'тригери': ours, 'функція': svc}
@@ -3776,6 +3830,8 @@ def _db(it, pos, tool, p, sql, params, write):
         con.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 4 * it.max_size)      # одне значення — не більше за --розмір (суд 7)
         try:
             con.execute(f'PRAGMA hard_heap_limit = {max(64 << 20, 32 * it.max_size)}')   # і памʼять SQLite (суд 7)
+            if 'запис' in it.os_shut:    # --сухо закриває ядром і запис: GROUP BY, DISTINCT на великій базі — у памʼяті,
+                con.execute('PRAGMA temp_store = MEMORY')   # а не тимчасовим файлом (суд 11: «не вдалося відкрити базу»)
             if write:                    # база не росте без меж (zeroblob заповнив би диск телефона); page_size уже
                 page = con.execute('PRAGMA page_size').fetchone()[0]   # читає схему: файл — не база чи схема
                 con.execute(f'PRAGMA max_page_count = {DB_MAX_BYTES // page}')   # пошкоджена — помилка програми (9б)
@@ -4625,6 +4681,8 @@ def t_db_write(it, pos, p, sql, params):
 PROC_CAP, PROC_TIME = 1_000_000, 60
 DRY_SUPPRESS = {'файл.писати': None, 'бд.писати': 0, 'мережа.послати': '‹сухо›', 'мережа.взяти': '‹сухо›',
                 'процес': '‹сухо›', 'агент': '‹сухо›'}   # взяти теж: адреса сама виносить дані назовні (суд 7)
+# міст до Python (фаза 6.2) у --сухо ВИКОНУЄТЬСЯ, як читання: функція — обчислення під повним замком ОС і стеженням, а
+# заглушка-рядок ламала прогін на першому ⌗ (суд 11, Аудитор, Практик); для цього сухий прогін не закриває «процеси»
 PAR_MAX = 8                    # ‖: найбільше одночасних дій
 PARALLEL_TOOLS = ('мережа.взяти', 'мережа.послати', 'агент', 'процес', 'бд.читати', 'файл.читати', 'файл.список',
                   'оракул', 'час')   # ‖: дії без спільного стану (не жереб; не запис — порядок записів був би випадковим)
@@ -4738,7 +4796,382 @@ RIGHTS = {'файл.читати': lambda it, pos, p: _path_ok(it, 'файл.ч�
           'мережа.взяти': lambda it, pos, u: _url_ok(it, pos, 'мережа.взяти', u),
           'мережа.послати': lambda it, pos, u, b: _url_ok(it, pos, 'мережа.послати', u),
           'процес': lambda it, pos, a: _cmd_ok(it, pos, a),
-          'агент': lambda it, pos, n, q: _agent_ok(it, pos, n)}
+          'агент': lambda it, pos, n, q: _agent_ok(it, pos, n),
+          'python': lambda it, pos, f, a: _py_ok(it, pos, f)}
+
+
+PY_TIME, PY_CPU, PY_MEM = 30, 10, 1 << 30    # міст до Python: строк виклику, процесор, памʼять процесу (фаза 6.2)
+PY_NAME = re.compile(r'[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+')   # модуль.функція: без «_…» (ні __dict__)
+PY_ERR_CAP, PY_TRIED_CAP = 65536, 20           # stderr процесу моста; спроб, які він описує (далі — лише лічба)
+PY_TRY = {'мережа': 'вийти в мережу', 'процеси': 'запустити процес чи діяти на інший', 'запис': 'писати',
+          'читання': 'читати поза теками Python', 'код': 'машинний код (ctypes) чи код в обхід компілятора'}
+# Процесу моста ядро закриває, крім трьох груп, ще й дії над ІНШИМИ процесами (суд 11): сигнали (kill(-1) — усім процесам
+# користувача), ptrace, читання й запис чужої памʼяті, чужі дескриптори (pidfd_getfd — файл сліду батька), межі чужих
+# процесів (prlimit64; свої межі міст ставить до замка)
+PY_DENY = {'aarch64': (129, 130, 131, 138, 240, 117, 270, 271, 261, 424, 434, 438),
+           # kill tkill tgkill rt_sigqueueinfo rt_tgsigqueueinfo ptrace process_vm_readv/writev prlimit64 pidfd_*
+           'x86_64': (62, 200, 234, 129, 297, 101, 310, 311, 302, 424, 434, 438)}
+# Процес моста: межі ресурсів (і процесів — 0: ні fork, ні потоків), загибель разом із батьком, повний замок ОС (той
+# самий фільтр, що й в інтерпретатора, і PY_DENY — байтами від батька); лише потім site, імпорт функції й — під
+# стеженням sys.audit — виклик. Стеження (суд 11): мережа, процеси, запис, читання поза теками Python (sys.path), ctypes і
+# створення коду в обхід компілятора — відмова, і кожна спроба одразу рядком у stderr (батько робить з неї «заборонено»).
+# Це друга лінія: мережу, процеси й запис тримає ядро; файли читає й код C-розширення без sys.audit, а функцію, що
+# виконує довільний код (eval, exec, pickle), стеження не стримає — її печатка позначає окремо (PY_RISKY).
+# marshal (ним імпорт читає .pyc) не відмовляє: створений ним код однаково виконує лише та функція, що вже виконує код.
+# Обмін — JSON з мітками типів: [тип, значення] (цілі — рядком: довгі), лише ASCII (\uXXXX): сурогат не ламає обміну.
+PY_WORKER = r"""
+import ctypes, json, os, sys
+req = json.loads(sys.stdin.buffer.read().decode('utf-8'))
+def out(o):
+    sys.stdout.buffer.write(json.dumps(o).encode('ascii'))
+    sys.stdout.buffer.flush()
+libc = ctypes.CDLL(None, use_errno=True)
+libc.prctl(1, 9, 0, 0, 0)                          # PR_SET_PDEATHSIG: ngr помер — міст теж (суд 11: жив сиротою)
+if os.getppid() != req['батько']:
+    sys.exit(0)
+import resource
+try:
+    for r_, v_ in ((resource.RLIMIT_CPU, req['процесор']), (resource.RLIMIT_FSIZE, 0), (resource.RLIMIT_AS, req['памʼять']),
+                   (resource.RLIMIT_NPROC, 0)):
+        resource.setrlimit(r_, (v_, v_))
+except (ValueError, OSError) as e:
+    out({'без_меж': str(e)})
+    sys.exit(0)
+raw = bytes.fromhex(req['фільтр'])
+buf = ctypes.create_string_buffer(raw, len(raw))
+class F(ctypes.Structure):
+    _fields_ = [('len', ctypes.c_ushort), ('filter', ctypes.c_void_p)]
+fp = F(len(raw) // 8, ctypes.addressof(buf))
+if not (libc.prctl(38, 1, 0, 0, 0) == 0 and (libc.syscall(req['seccomp'], 1, 1, ctypes.byref(fp)) == 0
+                                             or libc.prctl(22, 2, ctypes.byref(fp), 0, 0) == 0)):
+    out({'без_замка': ctypes.get_errno()})
+    sys.exit(0)
+if hasattr(sys, 'set_int_max_str_digits'):
+    sys.set_int_max_str_digits(0)
+import site              # site-packages і їхні .pth (там буває код) — лише тепер, під замком (процес — з -S)
+site.main()
+import importlib
+from decimal import Decimal, localcontext
+from fractions import Fraction
+def dec(v):
+    t, x = v
+    if t == 'ц': return int(x)
+    if t == 'д': return Decimal(x)
+    if t in ('р', 'і', 'н'): return x
+    if t == 'с': return [dec(i) for i in x]
+    if t == 'сл': return {k: dec(i) for k, i in x}
+    raise ValueError(t)
+def text(v):
+    try:
+        v.encode('utf-8')
+    except UnicodeEncodeError:
+        raise TypeError('рядок із самотнім сурогатом (не UTF-8)')
+    return v
+def enc(v, d=0):
+    if d > 1000: raise TypeError('завглибоко')
+    if v is None: return ['н', None]
+    if isinstance(v, bool): return ['і', v]
+    if isinstance(v, int): return ['ц', str(v)]
+    if isinstance(v, Decimal):
+        if not v.is_finite(): raise TypeError(f'{v} — не скінченне число')
+        return ['д', str(v)]
+    if isinstance(v, float):
+        if v != v or v in (float('inf'), float('-inf')): raise TypeError(f'{v} — не скінченне число')
+        return ['д', repr(v)]
+    if isinstance(v, Fraction):
+        with localcontext() as c:
+            c.prec = 28
+            return ['д', str(Decimal(v.numerator) / Decimal(v.denominator))]
+    if isinstance(v, str): return ['р', text(v)]
+    if isinstance(v, (list, tuple)): return ['с', [enc(i, d + 1) for i in v]]
+    if isinstance(v, dict):
+        if not all(isinstance(k, str) for k in v): raise TypeError('словник з не-рядковими ключами')
+        return ['сл', [[text(k), enc(i, d + 1)] for k, i in v.items()]]
+    raise TypeError(type(v).__name__)
+parts, obj, rest = req['функція'].split('.'), None, []
+try:
+    for i in range(len(parts) - 1, 0, -1):
+        try:
+            obj, rest = importlib.import_module('.'.join(parts[:i])), parts[i:]
+            break
+        except ModuleNotFoundError:
+            continue
+    if obj is None:
+        out({'помилка': 'модуля не знайдено'})
+        sys.exit(0)
+    for p_ in rest:
+        obj = getattr(obj, p_)
+    if not callable(obj):
+        out({'помилка': 'це не функція'})
+        sys.exit(0)
+    args = [dec(a) for a in req['аргументи']]
+except BaseException as e:
+    out({'помилка': f'{type(e).__name__}: {e}'[:2000]})
+    sys.exit(0)
+ROOTS = tuple(sorted({os.path.realpath(p) for p in sys.path if p.startswith('/') and os.path.isdir(p)} - {'/'}))
+GROUPS = (('мережа', ('socket.', 'urllib.', 'http.client.', 'ftplib.', 'smtplib.', 'poplib.', 'imaplib.', 'nntplib.',
+                      'telnetlib.', 'webbrowser.', 'ssl.')),
+          ('процеси', ('subprocess.', 'os.system', 'os.exec', 'os.posix_spawn', 'os.spawn', 'os.fork', 'os.forkpty',
+                       'os.kill', 'os.killpg', 'os.startfile', 'pty.', 'signal.pthread_kill', 'resource.', 'ensurepip.')),
+          ('запис', ('os.remove', 'os.rename', 'os.mkdir', 'os.rmdir', 'os.chmod', 'os.chown', 'os.chflags', 'os.link',
+                     'os.symlink', 'os.truncate', 'os.utime', 'os.mkfifo', 'os.mknod', 'os.setxattr', 'os.removexattr',
+                     'shutil.', 'tempfile.', 'syslog.')),
+          ('код', ('ctypes.', 'code.__new__', 'pickle.find_class', 'sys.addaudithook', 'gc.get_',
+                   'sqlite3.enable_load_extension', 'sqlite3.load_extension')))
+PATHS = ('open', 'os.listdir', 'os.scandir', 'glob.glob', 'glob.glob/2', 'pathlib.Path.glob', 'pathlib.Path.rglob',
+         'os.getxattr', 'os.listxattr', 'os.chdir', 'sqlite3.connect')
+WFLAGS = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND
+tried = [0]
+def report(group, ev, what):
+    tried[0] += 1
+    if tried[0] <= req['спроб']:
+        os.write(2, ('\n\x1eспроба ' + json.dumps({'група': group, 'подія': ev, 'що': str(what)[:300]}) + '\n').encode())
+    raise PermissionError(f'міст до Python: {group} — поза обчисленням ({ev}); функцію дозволено як чисту')
+def inside(p):
+    try:
+        p = os.fsdecode(os.fspath(p))
+    except TypeError:
+        return False
+    if not p.startswith('/'):
+        return False                              # відносний шлях (і dir_fd) — не перевірити, отже ні
+    r = os.path.realpath(p)
+    return any(r == x or r.startswith(x + '/') for x in ROOTS)
+def hook(ev, a):
+    for group, names in GROUPS:
+        if ev.startswith(names):
+            report(group, ev, a[0] if a else '')
+    if ev in PATHS:
+        p = a[0] if a else None
+        if ev == 'open':
+            mode, flags = (a[1] if len(a) > 1 else None), (a[2] if len(a) > 2 else 0)
+            if isinstance(p, int) and not isinstance(p, bool):
+                return                                # уже відкритий дескриптор (0–2)
+            if (isinstance(mode, str) and any(c in mode for c in 'wax+')) or (isinstance(flags, int) and flags & WFLAGS):
+                report('запис', ev, p)
+        if ev == 'sqlite3.connect' and p in (':memory:', '', b':memory:', b''):
+            return
+        if ev != 'os.chdir' and isinstance(p, int) and not isinstance(p, bool):
+            return
+        if not inside(p):
+            report('читання', ev, p)
+sys.addaudithook(hook)
+try:
+    res = obj(*args)
+except BaseException as e:
+    out({'помилка': f'{type(e).__name__}: {e}'[:2000], 'спроб': tried[0]})
+    sys.exit(0)
+try:
+    out({'значення': enc(res), 'спроб': tried[0]})
+except (TypeError, ValueError, RecursionError) as e:
+    out({'помилка': f'результат — не дані ({e})'[:2000], 'спроб': tried[0]})
+"""
+# Функції, яким стеження моста не межа (виконують довільний код, читають файли в обхід sys.audit чи змінюють процес):
+# печатка позначає їх окремо — суд 11, Скептик: «median» і «linecache.getlines» мали те саме загальне ⚠
+PY_RISKY = ('builtins.eval', 'builtins.exec', 'builtins.compile', 'builtins.__import__', 'builtins.open', 'builtins.input',
+            'pickle.', '_pickle.', 'marshal.', 'shelve.', 'ctypes.', 'importlib.', 'runpy.', 'code.', 'codeop.', 'pdb.',
+            'os.', 'posix.', 'sys.', 'subprocess.', 'shutil.', 'io.', '_io.', 'pathlib.', 'linecache.', 'tokenize.',
+            'fileinput.', 'glob.', 'tempfile.', 'sqlite3.', 'socket.', 'urllib.', 'http.', 'ftplib.', 'smtplib.',
+            'multiprocessing.', 'threading.', 'concurrent.', 'gc.', 'inspect.', 'types.', 'mmap.', 'resource.',
+            'signal.', 'zipfile.', 'tarfile.', 'zipimport.', 'pkgutil.', 'site.', 'webbrowser.', 'platform.',
+            'xml.', 'configparser.', 'numpy.fromfile', 'numpy.load',
+            # виконують код із рядка (огляд 11б, знайшов автор): timeit.timeit 「…」, cProfile.run, doctest…
+            'timeit.', 'cProfile.', 'profile.', 'trace.', 'doctest.', 'pydoc.', 'unittest.', 'bdb.', 'compileall.',
+            'py_compile.', 'builtins.breakpoint',
+            # та сама функція під іншою назвою чи з тим самим доступом (огляд 11в, Скептик): posixpath = os.path,
+            # help = pydoc, logging.config.dictConfig кличе будь-яку функцію за назвою з даних
+            'posixpath.', 'ntpath.', 'genericpath.', 'logging.', 'builtins.help', 'builtins.globals', 'builtins.vars',
+            'builtins.getattr', 'builtins.setattr', 'builtins.delattr', 'sysconfig.', 'zipapp.', 'venv.', 'ensurepip.',
+            'asyncio.', 'ssl.', 'socketserver.', 'xmlrpc.', 'wsgiref.', 'imaplib.', 'poplib.', 'telnetlib.', 'nntplib.',
+            'mimetypes.', 'netrc.', 'mailbox.', 'filecmp.', 'dbm.', 'atexit.', 'faulthandler.', 'shlex.', 'selectors.')
+
+
+def _py_ok(it, pos, fn):
+    if not isinstance(fn.v, str) or fn.v not in it.caps['python']:
+        it.deny(агент=it.agent, назва='python', функція=safe(show(fn)), причина='функції немає в печатці')
+        raise NgrError(f'python: «{safe(show(fn))}» поза дозволеними ({", ".join(it.caps["python"])})', pos)
+
+
+def py_enc(x, pos):
+    """Значення мови → [тип, значення] для процесу моста; функцію передати не можна."""
+    v = x.v
+    if v is None:
+        return ['н', None]
+    if isinstance(v, bool):
+        return ['і', v]
+    if isinstance(v, int):
+        return ['ц', str(v)]
+    if isinstance(v, Decimal):
+        return ['д', str(v)]
+    if isinstance(v, str):
+        return ['р', v]
+    if isinstance(v, list):
+        return ['с', [py_enc(i, pos) for i in v]]
+    if isinstance(v, dict):
+        return ['сл', [[k, py_enc(i, pos)] for k, i in v.items()]]
+    raise NgrError(f'python: аргумент — {kind(x)}, а передати можна лише дані', pos)
+
+
+def _utf8(x):
+    """Рядок без самотніх сурогатів (з JSON \\udc80 приходить і такий)."""
+    try:
+        x.encode('utf-8')
+        return True
+    except UnicodeEncodeError:
+        return False
+
+
+def py_dec(v, pos, depth=0):
+    """[тип, значення] від процесу моста → значення мови (межі — ті самі, що в мови)."""
+    if not (isinstance(v, list) and len(v) == 2) or depth > MAX_NEST:
+        raise NgrError('python: результат — не дані', pos)
+    t, x = v
+    if t == 'н' and x is None:
+        return V(None)
+    if t == 'і' and isinstance(x, bool):
+        return V(x)
+    if t == 'р' and isinstance(x, str) and _utf8(x):
+        return V(x)
+    if t == 'ц' and isinstance(x, str) and re.fullmatch(r'-?[0-9]+', x):
+        if len(x) > MAX_INT_BITS // 3 or int(x).bit_length() > MAX_INT_BITS:
+            raise NgrError(f'python: ціле понад {MAX_INT_BITS} бітів', pos)
+        return V(int(x))
+    if t == 'д' and isinstance(x, str):
+        d = dec_of(x, 'python', pos)
+        if d is None:
+            raise NgrError('python: результат — не дані', pos)
+        d = dec_ok(d, 'python', pos)
+        return V(int(d) if d == d.to_integral_value() and 'e' not in x.lower() and '.' not in x else d)
+    if t == 'с' and isinstance(x, list):
+        return V([py_dec(i, pos, depth + 1) for i in x])
+    if t == 'сл' and isinstance(x, list) and all(isinstance(p, list) and len(p) == 2 and isinstance(p[0], str)
+                                                 and _utf8(p[0]) for p in x):
+        return V({k: py_dec(i, pos, depth + 1) for k, i in x})
+    raise NgrError('python: результат — не дані', pos)
+
+
+def t_python(it, pos, fn, args):
+    """Міст до Python (фаза 6.2): функція зі списку власника — в окремому процесі під повним замком ОС і стеженням."""
+    _py_ok(it, pos, fn)
+    if not isinstance(args.v, list):     # тип відомий лише під час виконання — помилка мови, а не код 4 (суд 11)
+        raise NgrError(f'python: аргументи — список (【…】), а не {kind(args)}', pos)
+    import platform
+    import subprocess
+    arch = platform.machine()
+    if not sys.platform.startswith('linux') or arch not in OS_TABLES:
+        raise NgrError(f'python: на цій машині замка ОС немає ({safe(arch)}) — без нього міст не працює', pos)
+    import struct
+    flt = b''.join(struct.pack('HBBI', *i) for i in os_filter(arch, list(OS_GROUPS), PY_DENY[arch])).hex()
+    req = json.dumps({'фільтр': flt, 'seccomp': OS_TABLES[arch]['seccomp'], 'процесор': PY_CPU, 'памʼять': PY_MEM,
+                      'батько': os.getpid(), 'спроб': PY_TRIED_CAP,
+                      'функція': fn.v, 'аргументи': [py_enc(a, pos) for a in args.v]}, ensure_ascii=False).encode()
+    try:                  # -B: .pyc не пишуться (запис закрито — і стеження не плутає їх зі спробою функції)
+        pr = subprocess.Popen([sys.executable, '-I', '-S', '-B', '-c', PY_WORKER], stdin=subprocess.PIPE,
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd='/', env={'LC_ALL': 'C.UTF-8'},
+                              start_new_session=True)
+    except OSError as e:
+        raise NgrError(f'python: {e}', pos)
+    bufs, over, marks = (bytearray(), bytearray()), [], []
+    mark = '\n\x1eспроба '.encode()
+
+    def pump(f, buf, cap):          # межа — під час читання, а не після (вивід у 10 ГБ не ляже в памʼять ngr)
+        for chunk in iter(lambda: f.read1(65536), b''):
+            if len(buf) + len(chunk) > cap:
+                over.append(cap)
+                pr.kill()
+                return
+            buf += chunk
+
+    def pump_err(f, buf):           # stderr понад межу — не вбиває: далі беремо лише записи спроб (огляд 11б: функція,
+        tail = None                 # що спершу заливала stderr, ховала спробу — її запис ішов у відкинутий шматок)
+        for chunk in iter(lambda: f.read1(65536), b''):
+            if tail is None and len(buf) + len(chunk) <= PY_ERR_CAP:
+                buf += chunk
+                continue
+            if tail is None:        # з останнього рядка буфера — у хвіст: запис на межі шматків не губиться
+                k = buf.rfind(b'\n')
+                k = len(buf) if k < 0 else k
+                tail = bytes(buf[k:])
+                del buf[k:]
+            data, start = tail + chunk, 0
+            while len(marks) < PY_TRIED_CAP:
+                k = data.find(mark, start)
+                if k < 0:
+                    start = max(start, len(data) - len(mark))
+                    break
+                e = data.find(b'\n', k + len(mark))
+                if e < 0:           # запис ще не дочитано (довший за 8 КБ — не запис)
+                    start = k if len(data) - k <= 8192 else len(data) - len(mark)
+                    break
+                marks.append(data[k + 1:e])
+                start = e
+            tail = data[start:] if len(marks) < PY_TRIED_CAP else b''
+    ts = [threading.Thread(target=pump, args=(pr.stdout, bufs[0], PROC_CAP), daemon=True),
+          threading.Thread(target=pump_err, args=(pr.stderr, bufs[1]), daemon=True)]
+    for t in ts:
+        t.start()
+    try:
+        pr.stdin.write(req)
+        pr.stdin.close()
+    except OSError:
+        pass                            # процес моста вже вийшов — скаже його вивід
+    try:
+        pr.wait(timeout=PY_TIME)
+    except subprocess.TimeoutExpired:
+        pr.kill()
+        pr.wait()
+        raise NgrError(f'python: «{safe(fn.v)}» не завершилась за {PY_TIME} с', pos)
+    finally:
+        for t in ts:
+            t.join(5)
+    out, err = bytes(bufs[0]), bytes(bufs[1])
+    tried = []                          # спроби поза обчисленням (стеження) — «заборонено», навіть якщо функція їх
+    for line in err.split(b'\n') + marks:      # перехопила й повернула щось (linecache.getlines — тоді [])
+        if line.startswith('\x1eспроба '.encode()):
+            try:
+                rec = json.loads(line[len('\x1eспроба '.encode()):].decode('utf-8'))
+                tried.append((str(rec['група']), str(rec['подія']), str(rec['що'])))
+            except (ValueError, KeyError, TypeError, UnicodeDecodeError):
+                tried.append(('?', '?', 'нерозбірний запис стеження'))
+    for g, ev, what in tried:           # не it.deny: функцію виконано (квоту списано), відмовлено лише в її спробі
+        it.trace('заборонено', агент=it.agent, назва='python', функція=safe(fn.v),
+                 спроба=f'{g}: {safe(ev)} {safe(what)}'.strip(),
+                 причина=f'функція пробувала {PY_TRY.get(g, g)} — міст не дав (поза обчисленням)')
+    if PROC_CAP in over:
+        raise NgrError(f'python: результат понад {PROC_CAP} байтів', pos)
+    try:
+        got = json.loads(out.decode('ascii'))
+        if not isinstance(got, dict):
+            raise ValueError
+    except (ValueError, UnicodeDecodeError):
+        got = None
+    many = got.get('спроб', 0) if isinstance(got, dict) and isinstance(got.get('спроб'), int) else len(tried)
+    if many and not tried:              # лічильник є, а запису спроби немає (stderr понад межу?) — однаково «заборонено»
+        it.trace('заборонено', агент=it.agent, назва='python', функція=safe(fn.v),       # (огляд 11б, Скептик)
+                 спроба='?: запис спроби загубився',
+                 причина='функція пробувала вийти за обчислення — міст не дав (поза обчисленням)')
+    if tried or many:
+        what_ = (f'{PY_TRY.get(tried[0][0], tried[0][0])} ({safe(tried[0][1])} {safe(tried[0][2])[:160]})' if tried else
+                 'вийти за обчислення (запис спроби загубився)')
+        raise NgrError(f'python: «{safe(fn.v)}» пробувала {what_}'
+                       + (f' і ще {max(many, len(tried)) - 1} раз(и)' if max(many, len(tried)) > 1 else '')
+                       + ' — міст не дав: функція не чиста (у сліді — «заборонено»)', pos)
+    if got is None:
+        why = ('межу процесора чи памʼяті перевищено' if pr.returncode in (-9, -24, 137, 152) else
+               f'код {pr.returncode}' if pr.returncode else 'вивід — не дані моста')
+        raise NgrError(f'python: процес моста впав ({why})', pos)
+    if 'без_меж' in got:
+        raise NgrError(f'python: не вдалося поставити межі ресурсів ({safe(str(got["без_меж"]))}) — без них міст не '
+                       f'працює', pos)
+    if 'без_замка' in got:
+        raise NgrError(f'python: ядро не дало замка ОС (errno {got["без_замка"]}) — без нього міст не працює', pos)
+    if 'помилка' in got:
+        raise NgrError(f'python: «{safe(fn.v)}»: {safe(str(got["помилка"]))}', pos)
+    res = py_dec(got.get('значення'), pos)
+    if res.n > it.max_size:             # межа --розмір того, хто запускає (суд 11: 108 символів при --розмір 60) — як у
+        raise NgrError(f'python: відповідь понад --розмір (логічний розмір {res.n} > {it.max_size}) — частину не беру '
+                       f'мовчки', pos)  # файл.читати й взяти: помилка інструмента, її ловить ☂ (огляд 11б, Мовознавець)
+    it.sized(res, 'python', pos)
+    return res
 
 
 def t_agent(it, pos, name, prompt):
@@ -4809,6 +5242,19 @@ TOOLS = {
                'команда', t_proc),
     'агент': (2, '🜔агент 「імʼя」 「запит」 → рядок', 'спитати справжнього агента з реєстру лаунчера '
               '(claude -p у його теці; він діє з власними правами)', True, 'імʼя', t_agent),
+    'python': (2, '🜔python 「модуль.функція」 【аргументи】 → значення', 'міст до Python (фаза 6.2): лише функція зі списку '
+               'власника, точна назва (python:statistics.median; квота ≤N — як в інших); 【аргументи】 — список аргументів '
+               '(один список — 【【3 1 2】】); окремий процес під повним замком ОС — ядро закриває мережу, процеси, запис і '
+               f'дії над іншими процесами; тека процесу — «/» (шляхи для функції — лише дані: поза теками Python файлів '
+               f'стеження не відкриває; функціям, яким воно не межа, — окреме ⚠ печатки); '
+               f'{PY_TIME} с, {PY_CPU} с процесора, 1 ГБ, відповідь до 1 МБ у форматі обміну (ASCII-JSON: символ поза '
+               f'ASCII — 6 байтів, тож тексту кирилицею — до ~160 000 символів); стеження sys.audit: читати поза '
+               'теками Python, мережа, процеси, запис, ctypes — відмова і «заборонено» в сліді; аргументи й результат — '
+               'дані (ціле, десяткове, рядок, ●/○, ∅, список, словник; float і Fraction → десяткове), у межах --розмір; '
+               'чи функція чиста — рішення власника: функцію, що виконує довільний код (eval, pickle) чи C-код, '
+               'стеження не стримає — вона прочитає й ключ власника (тоді слід можна підробити), і ключі авторів',
+               True, 'функція',
+               t_python),
 }
 
 
@@ -4818,8 +5264,307 @@ TOOL_ALIASES = {'читати': 'файл.читати', 'писати': 'фай
 TOOL_SHORT = {v: k for k, v in TOOL_ALIASES.items()}
 WRITE_TOOLS = ('файл.писати', 'бд.писати')          # теки, куди програма може писати (і звідки не беруть код)
 
+# ---- Замок ОС (фаза 6.1, spec/пропозиції/фаза6.md §1): групи дій, яких печатка не просить зовсім, закриває ядро
+# (seccomp-bpf), а не лише чесність інтерпретатора. Теки, хости, команди всередині групи — далі інтерпретатор.
+OS_GROUPS = ('мережа', 'процеси', 'запис')
+OS_OPENED_BY = {'мережа': ('мережа.взяти', 'мережа.послати', 'агент'), 'процеси': ('процес', 'агент', 'python'),
+                'запис': ('файл.писати', 'бд.писати', 'бд.читати', 'процес', 'агент')}   # бд.читати: WAL і тимчасові
+#   таблиці SQLite; процес: команди пишуть /dev/null і тимчасові файли (шляху seccomp не бачить) — мережу ж без дозволу
+#   ядро закриває й командам: фільтр успадковують дочірні процеси
+OS_TABLES = {   # номери системних викликів; «відкрити» — (номер, який аргумент — прапорці)
+    'aarch64': {'audit': 0xC00000B7, 'seccomp': 277, 'x32': False,
+                'завжди': (425, 426, 427, 265),                       # io_uring_* (обхід фільтра), open_by_handle_at
+                'мережа': (198, 199, 200, 201, 202, 203, 242),        # socket socketpair bind listen accept connect accept4
+                'процеси': (221, 281),                                # execve execveat
+                'запис': (33, 34, 35, 36, 37, 38, 45, 46, 47, 52, 53, 54, 55, 88, 276, 452, 5, 6, 7, 14, 15, 16, 463, 466),
+                'відкрити': ((56, 2),), 'відкрити2': (437,)},         # openat (прапорці — arg2), openat2 (у структурі)
+    'x86_64': {'audit': 0xC000003E, 'seccomp': 317, 'x32': True,
+               'завжди': (425, 426, 427, 304),
+               'мережа': (41, 42, 43, 49, 50, 53, 288),
+               'процеси': (59, 322),
+               'запис': (85, 76, 77, 82, 83, 84, 86, 87, 88, 90, 91, 92, 93, 94, 133, 132, 235, 261, 258, 259, 260, 263,
+                         264, 265, 266, 268, 280, 285, 316, 452, 188, 189, 190, 197, 198, 199, 463, 466),
+               'відкрити': ((2, 1), (257, 2)), 'відкрити2': (437,)},
+}
+OS_WRITE_FLAGS = 0o1 | 0o2 | 0o100 | 0o1000      # O_WRONLY O_RDWR O_CREAT O_TRUNC (однакові на aarch64 і x86_64)
+OS_LOCK_PROCESS = False      # замок ставить лише окремий процес ngr (entry): main(), викликаний іншою програмою
+#                              (тести, пісочниця), не має права замкнути процес того, хто кличе
 
-def read_allowlist(path, cwd=None, prog=None, approval=None):
+
+def read_author_key(path):
+    """Насіння (32 байти) з файлу ключа автора: «nigredo-ключ-автора-1» і 64 hex."""
+    lines = open(path, encoding='utf-8').read().split('\n')
+    if len(lines) < 2 or lines[0] != KEY_HEAD or not re.fullmatch(r'[0-9a-f]{64}', lines[1]):
+        raise ValueError(f'це не ключ автора Nigredo (перший рядок — «{KEY_HEAD}», другий — 64 hex)')
+    return bytes.fromhex(lines[1])
+
+
+def author_main(mode, rest, opts):
+    """ngr --ключ-автора ФАЙЛ | --підписати ПРОГРАМА --ключ ФАЙЛ | --перевірити-підпис ПРОГРАМА [--json] (фаза 6.3)."""
+    as_json = opts['json'] or '--json' in rest
+    rest = [r for r in rest if r != '--json']
+    keyf = None
+    if '--ключ' in rest:
+        i = rest.index('--ключ')
+        keyf = rest[i + 1] if i + 1 < len(rest) else None
+        rest = rest[:i] + rest[i + 2:]
+    if len(rest) != 1 or (mode == '--підписати' and not keyf):
+        print('✗ ngr --ключ-автора ФАЙЛ | --підписати ПРОГРАМА --ключ ФАЙЛ | --перевірити-підпис ПРОГРАМА [--json]',
+              file=sys.stderr)
+        return 2
+    target = rest[0]
+    if mode == '--ключ-автора':
+        seed = os.urandom(32)
+        try:
+            fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        except OSError as e:
+            print(f'✗ --ключ-автора: {safe(target)}: {e.strerror} (ключ не перезаписується)', file=sys.stderr)
+            return 3
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(f'{KEY_HEAD}\n{seed.hex()}\n')
+        print(f'ed25519:{ed_public(seed).hex()}\n  ключ автора — {safe(os.path.realpath(target))} (0600; не давайте його '
+              f'нікому: хто має файл, той підписує від вашого імені)')
+        return 0
+    try:
+        raw = open(target, 'rb').read()
+        src_all = raw.decode('utf-8')
+    except (OSError, UnicodeDecodeError) as e:
+        if as_json and mode == '--перевірити-підпис':    # огляд 11б (Аудитор): JSON і на коді 2
+            print(json.dumps({'гаразд': False, 'код': 2, 'підпис': None,
+                              'помилка_розбору': safe(f'{getattr(e, "strerror", None) or e}')}, ensure_ascii=False, indent=1))
+        print(f'✗ {safe(target)}: {getattr(e, "strerror", None) or e}', file=sys.stderr)
+        return 2
+    cwd = os.path.dirname(os.path.abspath(target))
+    try:
+        unsigned, pub, sig = signature_split(raw)
+        prog = parse(src_all, cwd, target)     # увесь файл, як запуск (огляд 11в: другий рядок підпису — код 3, а не ✓)
+    except StaticError as e:
+        if as_json and mode == '--перевірити-підпис':    # і зіпсований рядок — JSON, як у --печатка --json (суд 11)
+            print(json.dumps({'гаразд': False, 'код': getattr(e, 'code', 2), 'підпис': None,
+                              'помилка_розбору': safe(str(e))}, ensure_ascii=False, indent=1))
+        print(safe(str(e)), file=sys.stderr)
+        return getattr(e, 'code', 2)
+    mods = []
+
+    def walk(n):
+        if isinstance(n, tuple) and n:
+            if n[0] == 'import':
+                mods.append((safe(n[2]), n[5]))
+            for x in n:
+                walk(x)
+        elif isinstance(n, list):
+            for x in n:
+                walk(x)
+    walk(prog)
+    covered = (f'програма з печаткою (sha256 тексту без рядка підпису {hashlib.sha256(unsigned).hexdigest()[:16]}…; слід '
+               f'і --печатка дають sha256 файлу з ним) і модулів: {len(mods)}')
+    if mode == '--підписати':
+        try:
+            seed = read_author_key(keyf)
+        except (OSError, ValueError) as e:
+            print(f'✗ --ключ {safe(keyf)}: {getattr(e, "strerror", None) or e}', file=sys.stderr)
+            return 2
+        head = unsigned if not unsigned or unsigned.endswith(b'\n') else unsigned + b'\n'
+        pubk = ed_public(seed)
+        line = f'{SIG_PREFIX}{pubk.hex()} {ed_sign(seed, sign_message(head, prog)).hex()}\n'.encode()
+        tmp = f'{target}.підпис-{os.getpid()}'
+        try:
+            with open(tmp, 'xb') as f:
+                f.write(head + line)
+            os.chmod(tmp, os.stat(target).st_mode & 0o7777)
+            os.replace(tmp, target)
+        except OSError as e:
+            print(f'✗ --підписати: {e}', file=sys.stderr)
+            return 3
+        key = f'ed25519:{pubk.hex()}'
+        old = ('' if not pub else ' (старий підпис тим самим ключем замінено)' if f'ed25519:{pub}' == key else
+               f' (⚠ замінено підпис ІНШОГО ключа ed25519:{pub}: права, які давав той ключ, ця програма втратила)')
+        print(f'✓ підписано {safe(target)} ключем {key}{old}\n'
+              f'  охоплено: {covered}; змінений байт програми чи модуля — підпис не збіжеться')
+        seal = prog[2][0][3] if prog[2] else {}      # за що ручається підпис (суд 11, Мовознавець): печатка й права ключа
+        print('  печатка: ' + ('; '.join(t + (f' → {", ".join(f"「{safe(x)}」" for x in sc)}' if sc else '')
+                                         for t, sc in seal.items()) or 'жодних дозволів — програма лише обчислює'))
+        try:
+            data = json.load(open(os.path.join(OWNER_HOME, 'дозволи.json'), encoding='utf-8'))
+            per_a, per_p = per_authors(data), per_programs(data)
+        except (OSError, ValueError, AttributeError):
+            per_a, per_p = {}, {}
+        if key in per_a:
+            print(f'  ключ у «для_авторів» власника: «{safe(str(per_a[key].get("імʼя", "")))}» — права з підпису: '
+                  f'{", ".join(safe(canon_perm(x)) for x in per_a[key]["дозволи"]) or "жодних"}')
+        else:
+            print('  ключа немає в «для_авторів» власника: прав підпис не дає (вписати його може лише власник)')
+        if approval_of(raw, prog) in per_p:          # модулі ті самі: рядок підпису — лише коментар
+            print('  ⚠ власник схвалив цю програму («для_програм») — відбиток охоплює й рядок підпису, тож для '
+                  'підписаної схвалення вже не діє: потрібне нове (ngr --схвалити)')
+        return 0
+    if pub is None:                       # --перевірити-підпис
+        msg, code, info = f'підпису немає: {safe(target)}', 1, {'підпис': None}
+    else:
+        ok = ed_verify(bytes.fromhex(pub), sign_message(unsigned, prog), bytes.fromhex(sig))
+        key = f'ed25519:{pub}'
+        name = author_name(key) if ok else None
+        info = {'підпис': {'ключ': key, 'цілий': ok, 'імʼя': name, 'модулі': [{'шлях': m, 'sha256': h} for m, h in mods]}}
+        if ok and name is not None:
+            msg, code = f'✓ підпис цілий: {key} — «{safe(name)}» з «для_авторів» власника\n  охоплено: {covered}', 0
+        elif ok:        # підписати своїм ключем може кожен: «цілий» тут — лише «текст не змінено», прав немає (суд 11)
+            msg, code = (f'підпис цілий, але ключ, якого власник не знає: {key} — прав підпис не дає (код 1)\n'
+                         f'  охоплено: {covered}'), 1
+        else:
+            msg, code = (f'✗ підпис НЕ збігся: {key} — текст програми чи її модуля змінено після підпису, або підпис '
+                         f'зроблено іншим ключем'), 3
+    if as_json:
+        print(json.dumps({'гаразд': code == 0, 'код': code, **info}, ensure_ascii=False, indent=1))
+    else:
+        print(msg)
+    return code
+
+
+def isolation_probe(as_json=False):
+    """ngr --перевірити-ізоляцію: дочірній процес ставить замок ОС із закритими всіма трьома групами й пробує socket(),
+    відкрити файл на запис (у тимчасовій теці) і exec /bin/sh — що з цього ядро відмовило. Код: 0 — тримає все, 1 — ні,
+    2 — замка немає (ядро, архітектура, не Linux)."""
+    import shutil
+    import tempfile
+    d = tempfile.mkdtemp(prefix='ngr-ізоляція-')
+    r, w = os.pipe()
+    pid = os.fork()
+    if pid == 0:                      # дитина: замок, проби — рядками JSON у трубу
+        try:
+            os.close(r)
+            lock = os_lock(list(OS_GROUPS))
+            os.write(w, (json.dumps({'замок': lock}, ensure_ascii=False) + '\n').encode())
+            if lock.get('ядро') == 'seccomp':
+                def err(e):
+                    return 'EPERM' if e.errno == 1 else f'errno {e.errno}'
+                import socket
+                try:
+                    socket.socket().close()
+                    res = 'дозволено'
+                except OSError as e:
+                    res = err(e)
+                os.write(w, (json.dumps({'мережа': res}, ensure_ascii=False) + '\n').encode())
+                try:
+                    os.close(os.open(os.path.join(d, 'спроба'), os.O_WRONLY | os.O_CREAT, 0o600))
+                    res = 'дозволено'
+                except OSError as e:
+                    res = err(e)
+                os.write(w, (json.dumps({'запис': res}, ensure_ascii=False) + '\n').encode())
+                try:
+                    os.execv('/bin/sh', ['sh', '-c', 'exit 0'])   # вдалося — дитина стала sh: «процеси» не напише
+                except OSError as e:
+                    os.write(w, (json.dumps({'процеси': err(e)}, ensure_ascii=False) + '\n').encode())
+        finally:
+            os._exit(0)
+    os.close(w)
+    data = b''
+    while True:
+        chunk = os.read(r, 4096)
+        if not chunk:
+            break
+        data += chunk
+    os.close(r)
+    os.waitpid(pid, 0)
+    shutil.rmtree(d, ignore_errors=True)
+    got = {}
+    for line in data.decode('utf-8', 'replace').splitlines():
+        got.update(json.loads(line))
+    lock = got.get('замок', {})
+    held = {g: got.get(g, 'дозволено') for g in OS_GROUPS} if lock.get('ядро') == 'seccomp' else {}
+    code = 2 if not held else 0 if all(v != 'дозволено' for v in held.values()) else 1
+    import platform
+    if as_json:
+        print(json.dumps({'ядро': lock.get('ядро'), 'причина': lock.get('причина'), 'архітектура': safe(platform.machine()),
+                          'групи': held, 'тримає': code == 0}, ensure_ascii=False, indent=1))
+        return code
+    if not held:
+        print(f'✗ замка ОС на цій машині немає: {lock.get("причина", "?")} — межі печатки тримає лише інтерпретатор')
+        return code
+    what = {'мережа': 'socket()', 'запис': 'відкрити файл на запис', 'процеси': 'exec /bin/sh'}
+    print(f'замок ОС на цій машині: seccomp ({safe(platform.machine())}) — '
+          + ('ядро тримає всі три групи' if code == 0 else 'ядро тримає НЕ все'))
+    for g in OS_GROUPS:
+        print(f'  {"✓" if held[g] != "дозволено" else "✗"} {g}: {what[g]} → '
+              + ('відмова (' + held[g] + ')' if held[g] != 'дозволено' else 'ДОЗВОЛЕНО'))
+    return code
+
+
+def os_acc(groups):
+    """Групи замка для речення «ядро закриє …»: мережу, процеси, запис."""
+    return ', '.join({'мережа': 'мережу'}.get(g, g) for g in groups)
+
+
+def os_closed(caps):
+    """Які групи закриває ядро: ті, жодного інструмента яких печатка не має."""
+    return [g for g in OS_GROUPS if not any(t in caps for t in OS_OPENED_BY[g])]
+
+
+def os_filter(arch, closed, extra=()):
+    """Програма seccomp-bpf — [(code, jt, jf, k)]: чужа архітектура (і x32) — убити; io_uring, open_by_handle_at —
+    ENOSYS; закриті групи (і extra — процес моста, PY_DENY) — EPERM; openat/open з прапорцями запису — EPERM, openat2 —
+    ENOSYS; решта — дозволено. Атанор будує ту саму програму з тих самих таблиць (gen_tables.py)."""
+    T = OS_TABLES[arch]
+    LD, JEQ, JGE, JSET, RET = 0x20, 0x15, 0x35, 0x45, 0x06
+    ALLOW, KILL, ERRNO = 0x7FFF0000, 0x80000000, 0x00050000
+    prog = [(LD, 0, 0, 4), (JEQ, 1, 0, T['audit']), (RET, 0, 0, KILL), (LD, 0, 0, 0)]
+    if T['x32']:
+        prog += [(JGE, 0, 1, 0x40000000), (RET, 0, 0, KILL)]
+    deny = [(n, 38) for n in T['завжди']]
+    for g in OS_GROUPS:
+        if g in closed:
+            deny += [(n, 1) for n in T[g]]
+    if 'запис' in closed:
+        deny += [(n, 38) for n in T['відкрити2']]
+    deny += [(n, 1) for n in extra]
+    for n, err in deny:
+        prog += [(JEQ, 0, 1, n), (RET, 0, 0, ERRNO | err)]
+    if 'запис' in closed:
+        for n, arg in T['відкрити']:
+            prog += [(JEQ, 0, 4, n), (LD, 0, 0, 16 + 8 * arg), (JSET, 0, 1, OS_WRITE_FLAGS), (RET, 0, 0, ERRNO | 1),
+                     (RET, 0, 0, ALLOW)]
+    return prog + [(RET, 0, 0, ALLOW)]
+
+
+def os_lock(closed):
+    """Поставити замок ОС на весь процес (усі потоки — TSYNC; успадковують і дочірні процеси). → поля події «ізоляція»
+    сліду: {"ядро": "seccomp", "закрито": […]}, {"ядро": "не потрібне", …} чи {"ядро": "немає", "причина": …}."""
+    if not closed:
+        return {'ядро': 'не потрібне', 'закрито': []}
+    if not OS_LOCK_PROCESS:
+        return {'ядро': 'немає', 'причина': 'не окремий процес ngr (main викликала інша програма)', 'закрито': []}
+    import platform
+    arch = platform.machine()
+    if not sys.platform.startswith('linux'):
+        return {'ядро': 'немає', 'причина': 'не Linux', 'закрито': []}
+    if arch not in OS_TABLES:
+        return {'ядро': 'немає', 'причина': f'архітектура {safe(arch)} без таблиці замка', 'закрито': []}
+    import ctypes
+    import struct
+    libc = ctypes.CDLL(None, use_errno=True)
+    raw = b''.join(struct.pack('HBBI', *i) for i in os_filter(arch, closed))
+    buf = ctypes.create_string_buffer(raw, len(raw))
+
+    class Fprog(ctypes.Structure):
+        _fields_ = [('len', ctypes.c_ushort), ('filter', ctypes.c_void_p)]
+    fp = Fprog(len(raw) // 8, ctypes.addressof(buf))
+    if libc.prctl(38, 1, 0, 0, 0) != 0:          # PR_SET_NO_NEW_PRIVS
+        return {'ядро': 'немає', 'причина': f'ядро відмовило (errno {ctypes.get_errno()})', 'закрито': []}
+    r = libc.syscall(OS_TABLES[arch]['seccomp'], 1, 1, ctypes.byref(fp))   # SET_MODE_FILTER, FILTER_FLAG_TSYNC
+    if r != 0:              # без TSYNC фільтр ляже лише на цей потік: так — лише коли потік один (суд 11, Мовознавець)
+        try:
+            alone = len(os.listdir('/proc/self/task')) == 1
+        except OSError:
+            alone = False
+        if not alone:
+            return {'ядро': 'немає', 'причина': 'TSYNC недоступний, а потоків більше одного — замок ліг би лише на один',
+                    'закрито': []}
+        r = libc.prctl(22, 2, ctypes.byref(fp), 0, 0)                     # PR_SET_SECCOMP, MODE_FILTER
+    if r != 0:
+        return {'ядро': 'немає', 'причина': f'ядро відмовило (errno {ctypes.get_errno()})', 'закрито': []}
+    return {'ядро': 'seccomp', 'закрито': list(closed)}
+
+
+def read_allowlist(path, cwd=None, prog=None, approval=None, author=None):
     """«дозволено» — для всіх програм; «для_тек» — {"/абсолютна/тека": [дозволи]} лише для програм у цій теці;
     «для_програм» — {"відбиток": [дозволи]} лише програмі саме з таким текстом (і модулями) — approval_of."""
     try:
@@ -4833,11 +5578,13 @@ def read_allowlist(path, cwd=None, prog=None, approval=None):
             if not isinstance(extra, list):
                 raise ValueError(f'«для_тек» → «{d}»: потрібен список')
         per_prog = per_programs(data)
+        per_auth = per_authors(data)         # «для_авторів» (фаза 6.3): права програмам із цілим підписом ключа
         sources_of(data, {})                 # «джерела_модулів» — лише відомої форми (модулі з git, §4.2)
         # теки запису — з УСІХ записів власника, а не лише цієї теки (суд 8в: програма з теки C, якій дано писати в
         # A/вхідні, клала туди програму — і та діставала права теки A); схвалені програми — теж записи власника
         writable = [split_quota(e)[0].partition(':')[2].strip()
-                    for e in lst + [canon_perm(a) for x in [*per_dir.values(), *per_prog.values()] for a in x]
+                    for e in lst + [canon_perm(a) for x in [*per_dir.values(), *per_prog.values(),
+                                                            *(v['дозволи'] for v in per_auth.values())] for a in x]
                     if e.partition(':')[0].strip() in WRITE_TOOLS]
         for d, extra in per_dir.items():
             extra = [canon_perm(a) for a in extra]
@@ -4850,6 +5597,8 @@ def read_allowlist(path, cwd=None, prog=None, approval=None):
                 lst += extra
         if approval and approval in per_prog:
             lst += [canon_perm(a) for a in per_prog[approval]]
+        if author and author in per_auth:     # підпис перевірено до виклику (author — лише цілий)
+            lst += [canon_perm(a) for a in per_auth[author]['дозволи']]
         if not all(isinstance(x, str) for x in lst):
             raise ValueError('дозволи мають бути рядками')
         return lst
@@ -4941,6 +5690,37 @@ def sources_text(sources):
                      for h, b in sources.items())
 
 
+def per_authors(data):
+    """«для_авторів» з дозволів власника (фаза 6.3): «ed25519:<64 hex>» → {"імʼя": рядок, "дозволи": [рядки]}."""
+    per = data.get('для_авторів', {})
+    if not isinstance(per, dict):
+        raise ValueError('«для_авторів» має бути словником ключ → {"імʼя", "дозволи"}')
+    out = {}
+    for k, v in per.items():
+        if not isinstance(k, str) or not re.fullmatch(r'ed25519:[0-9a-f]{64}', k.strip().lower()):
+            raise ValueError(f'«для_авторів» → «{safe(str(k))[:80]}»: ключ — «ed25519:» і 64 hex')
+        if not (isinstance(v, dict) and set(v) <= {'імʼя', 'дозволи'} and isinstance(v.get('імʼя', ''), str)
+                and isinstance(v.get('дозволи'), list) and all(isinstance(x, str) for x in v['дозволи'])):
+            raise ValueError(f'«для_авторів» → «{safe(k)[:80]}»: потрібно {{"імʼя": рядок, "дозволи": [рядки]}}')
+        if k.strip().lower()[8:] in ED_SMALL:
+            raise ValueError(f'«для_авторів» → «{safe(k)[:80]}»: ключ малого порядку — не ключ (з ним «підпис» сходиться '
+                             f'для будь-якого тексту, без секрету)')
+        if k.strip().lower() in out:
+            raise ValueError('у «для_авторів» той самий ключ двічі (регістр і пробіли по краях не важать)')
+        out[k.strip().lower()] = v
+    return out
+
+
+def author_name(key):
+    """Імʼя автора з «для_авторів» власника — або None, якщо ключа там немає."""
+    try:
+        data = json.load(open(os.path.join(OWNER_HOME, 'дозволи.json'), encoding='utf-8'))
+        v = per_authors(data).get(key)
+    except (OSError, ValueError, AttributeError):
+        return None
+    return None if v is None else str(v.get('імʼя', ''))
+
+
 def per_programs(data):
     """«для_програм» з дозволів власника: відбиток (малими літерами) → список дозволів."""
     per_prog = data.get('для_програм', {})
@@ -4953,6 +5733,209 @@ def per_programs(data):
     if len(out) != len(per_prog):          # «AB…» і «ab…» — той самий відбиток: мовчки перемагав би останній (суд 9б)
         raise ValueError('у «для_програм» той самий відбиток двічі (регістр і пробіли по краях не важать)')
     return out
+
+
+# ---- Підпис автора (фаза 6.3, spec/пропозиції/фаза6.md §3): Ed25519 за RFC 8032 (§5.1, еталонний код §6) — без
+# залежностей. Підпис — останній рядок програми «※ підпис ed25519:<ключ 64 hex> <підпис 128 hex>»; підписано
+# «nigredo-підпис-1\n» + відбиток (approval_of) тексту без цього рядка: програма з печаткою й усі модулі за sha256.
+ED_P = 2 ** 255 - 19
+ED_Q = 2 ** 252 + 27742317777372353535851937790883648493
+ED_D = -121665 * pow(121666, ED_P - 2, ED_P) % ED_P
+ED_I = pow(2, (ED_P - 1) // 4, ED_P)
+SIG_PREFIX = '※ підпис ed25519:'
+SIG_LINE = re.compile(r'※ підпис ed25519:([0-9a-f]{64}) ([0-9a-f]{128})\n?')
+KEY_HEAD = 'nigredo-ключ-автора-1'
+# 8 точок малого порядку (канонічні кодування; неканонічні _ed_x відкидає сам): такий «ключ» у «для_авторів» — не ключ,
+# бо «підпис» з ним (R малого порядку, s = 0) сходиться для будь-якого тексту без секрету (суд 11; тест — звіряє з кривою)
+ED_SMALL = frozenset(('0100000000000000000000000000000000000000000000000000000000000000',
+                      '0000000000000000000000000000000000000000000000000000000000000000',
+                      '0000000000000000000000000000000000000000000000000000000000000080',
+                      'ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f',
+                      '26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05',
+                      '26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85',
+                      'c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a',
+                      'c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa'))
+
+
+def _ed_add(a, b):
+    A = (a[1] - a[0]) * (b[1] - b[0]) % ED_P
+    B = (a[1] + a[0]) * (b[1] + b[0]) % ED_P
+    C = 2 * a[3] * b[3] * ED_D % ED_P
+    D = 2 * a[2] * b[2] % ED_P
+    E, F, G, H = B - A, D - C, D + C, B + A
+    return E * F % ED_P, G * H % ED_P, F * G % ED_P, E * H % ED_P
+
+
+def _ed_mul(n, a):
+    q = (0, 1, 1, 0)
+    while n > 0:
+        if n & 1:
+            q = _ed_add(q, a)
+        a, n = _ed_add(a, a), n >> 1
+    return q
+
+
+def _ed_x(y, sign):
+    if y >= ED_P:
+        return None
+    x2 = (y * y - 1) * pow(ED_D * y * y + 1, ED_P - 2, ED_P) % ED_P
+    if x2 == 0:
+        return None if sign else 0
+    x = pow(x2, (ED_P + 3) // 8, ED_P)
+    if (x * x - x2) % ED_P:
+        x = x * ED_I % ED_P
+    if (x * x - x2) % ED_P:
+        return None
+    return ED_P - x if (x & 1) != sign else x
+
+
+_ED_GY = 4 * pow(5, ED_P - 2, ED_P) % ED_P
+_ED_G = (_ed_x(_ED_GY, 0), _ED_GY, 1, _ed_x(_ED_GY, 0) * _ED_GY % ED_P)
+
+
+def _ed_enc(a):
+    z = pow(a[2], ED_P - 2, ED_P)
+    x, y = a[0] * z % ED_P, a[1] * z % ED_P
+    return (y | ((x & 1) << 255)).to_bytes(32, 'little')
+
+
+def _ed_dec(b):
+    y = int.from_bytes(b, 'little')
+    sign, y = y >> 255, y & ((1 << 255) - 1)
+    x = _ed_x(y, sign)
+    return None if x is None else (x, y, 1, x * y % ED_P)
+
+
+def _ed_h(b):
+    return int.from_bytes(hashlib.sha512(b).digest(), 'little') % ED_Q
+
+
+def _ed_secret(seed):
+    h = hashlib.sha512(seed).digest()
+    return (int.from_bytes(h[:32], 'little') & ((1 << 254) - 8)) | (1 << 254), h[32:]
+
+
+def ed_public(seed):
+    """Відкритий ключ (32 байти) з насіння (32 байти)."""
+    return _ed_enc(_ed_mul(_ed_secret(seed)[0], _ED_G))
+
+
+def ed_sign(seed, msg):
+    a, prefix = _ed_secret(seed)
+    pub = _ed_enc(_ed_mul(a, _ED_G))
+    r = _ed_h(prefix + msg)
+    rs = _ed_enc(_ed_mul(r, _ED_G))
+    return rs + ((r + _ed_h(rs + pub + msg) * a) % ED_Q).to_bytes(32, 'little')
+
+
+def _ed_small(a):
+    """Точка малого порядку (8·A — нейтральна): з таким ключем чи R «підпис» сходиться для будь-якого тексту (суд 11)."""
+    e = _ed_mul(8, a)
+    return e[0] % ED_P == 0 and (e[1] - e[2]) % ED_P == 0
+
+
+def ed_verify(pub, msg, sig):
+    """Перевірка за RFC 8032 (s < q, точки — на кривій, кодування канонічні) і без точок малого порядку (ключ чи R
+    малого порядку дав би «цілий» підпис без секрету, суд 11): True лише для справжнього підпису цього ключа."""
+    if len(pub) != 32 or len(sig) != 64:
+        return False
+    a, r = _ed_dec(pub), _ed_dec(sig[:32])
+    s_ = int.from_bytes(sig[32:], 'little')
+    if a is None or r is None or s_ >= ED_Q or _ed_small(a) or _ed_small(r):
+        return False
+    sb, ha = _ed_mul(s_, _ED_G), _ed_mul(_ed_h(sig[:32] + pub + msg), a)
+    rha = _ed_add(r, ha)
+    return (sb[0] * rha[2] - rha[0] * sb[2]) % ED_P == 0 and (sb[1] * rha[2] - rha[1] * sb[2]) % ED_P == 0
+
+
+def signature_split(raw):
+    """(текст без рядка підпису, ключ hex, підпис hex) — або (raw, None, None) без підпису. Підпис — лише останній рядок,
+    що починається з «※ підпис ed25519:», і рівно такої форми (зіпсований — помилка до запуску). Такий рядок деінде — у
+    рядку-літералі це дані (суд 11: програма без підпису не запускалась); коментар, схожий на підпис, ловить розбір
+    (sig_like)."""
+    text = raw.decode('utf-8', 'surrogateescape')
+    lines = text.split('\n')
+    last = len(lines) - 1 if lines[-1] != '' else len(lines) - 2
+    if last < 0 or not lines[last].startswith(SIG_PREFIX):
+        hit = sig_match(lines[last]) if last >= 0 and lines[last].startswith(COMMENT) else None
+        if hit is not None:             # огляд 11в (Оркестратор): останній рядок файлу — рядок підпису й у літералі
+            e = StaticError(f'підпис автора: останній рядок схожий на рядок підпису («{safe(hit)[:60]}»), але підписом '
+                            f'не є — підпис рівно такої форми «※ підпис ed25519:<ключ> <підпис>»', (last + 1, 1))
+            e.code = 3
+            raise e
+        return raw, None, None
+    m = SIG_LINE.fullmatch('\n'.join(lines[last:]))
+    if not m:
+        e = StaticError('підпис автора: рядок «※ підпис ed25519:…» має бути останнім і рівно такої форми (ключ — 64, '
+                        'підпис — 128 hex малими) — рядок зіпсовано', (last + 1, 1))
+        e.code = 3
+        raise e
+    head = '\n'.join(lines[:last]) + ('\n' if last else '')
+    return head.encode('utf-8', 'surrogateescape'), m[1], m[2]
+
+
+_SIG_SK = []
+_SIG_CACHE = {}
+_SIG_LOWER = str.maketrans(''.join(map(chr, range(65, 91))), ''.join(map(chr, range(97, 123))))
+
+
+def sig_char(ch):
+    """Як символ бачить людина, що шукає рядок підпису: кожен символ його NFKD — скелет UTS #39 (діакритичний знак — сам
+    собою: він лише рве збіг); літери, знаки й цифри лишаються (латиниця малими), решта (пробіли, розділові, символи) —
+    межа «\x01». Посимвольно — тож Атанор має ту саму міру таблицею (gen_tables.py звіряє кожен символ)."""
+    r = _SIG_CACHE.get(ch)
+    if r is None:
+        out = []
+        for d in unicodedata.normalize('NFKD', ch):
+            for c in (d,) if unicodedata.combining(d) else skeleton(d):
+                out.append(c.translate(_SIG_LOWER) if unicodedata.category(c)[0] in 'LMN' else '\x01')
+        r = _SIG_CACHE[ch] = ''.join(out)
+    return r
+
+
+def sig_marks(text):
+    """(позначки тексту за sig_char, межі злито; звідки кожна — індекс символу тексту)."""
+    out, src = [], []
+    for i, ch in enumerate(text):
+        for c in sig_char(ch):
+            if c == '\x01' and out and out[-1] == '\x01':
+                continue
+            out.append(c)
+            src.append(i)
+    return ''.join(out), src
+
+
+def sig_match(text):
+    """Шматок тексту, схожий на «ed25519»: не в кінці латинського слова (перед «e» — не латинська літера чи цифра за
+    скелетом; межа, інше письмо чи знак — так), регістр, двійники (ｅｄ２５５１９, 𝐞𝐝, ⓔⓓ, ed²⁵⁵¹⁹) і межі між літерами
+    (Ed-25519, ED 25519, ed_25519) не важать; «processed 25519», «red: 255, 19» — ні, «підпис ed25519» — так (суд 11,
+    огляди 11б і 11в). None — не схожий."""
+    if not _SIG_SK:
+        t = sig_marks('ed25519')[0]
+        _SIG_SK.append(re.compile('(?<![a-z0-9])' + '\x01?'.join(map(re.escape, t))))
+    m, src = sig_marks(text)
+    k = _SIG_SK[0].search(m)
+    if not k:
+        return None
+    return text[src[k.start()]:src[k.end() - 1] + 1]
+
+
+def sig_like(text):
+    """Коментар, схожий на рядок підпису (sig_match): людина бачила б підпис, а мова — коментар."""
+    return sig_match(text) is not None
+
+
+def sign_message(unsigned, prog):
+    """Що підписано: версія формату й відбиток (approval_of) тексту без рядка підпису — печатка, текст і всі модулі."""
+    return f'nigredo-підпис-1\n{approval_of(unsigned, prog)}'.encode()
+
+
+def author_of(raw, prog):
+    """Підпис програми: None — без підпису; {'ключ': 'ed25519:…', 'цілий': bool}."""
+    unsigned, pub, sig = signature_split(raw)
+    if pub is None:
+        return None
+    return {'ключ': f'ed25519:{pub}', 'цілий': ed_verify(bytes.fromhex(pub), sign_message(unsigned, prog), bytes.fromhex(sig))}
 
 
 def approval_of(raw, prog):
@@ -4975,23 +5958,25 @@ def approval_of(raw, prog):
     return own if not shas else hashlib.sha256('\n'.join([own] + shas).encode()).hexdigest()
 
 
-def load_allowlist(narrow=None, cwd=None, prog=None, approval=None):
+def load_allowlist(narrow=None, cwd=None, prog=None, approval=None, author=None):
     """Дозволи власника — OWNER_HOME/дозволи.json (без нього — лише іграшкові інструменти).
     --дозволи ФАЙЛ лише звужує їх: лишається те, що є в обох."""
     try:
-        return _load_allowlist(narrow, cwd, prog, approval)
+        return _load_allowlist(narrow, cwd, prog, approval, author)
     except StaticError as e:           # квота «≤N» з помилкою у файлі дозволів
         raise Refused(f'дозволи: {e.msg}')
 
 
-def _load_allowlist(narrow, cwd, prog, approval=None):
+def _load_allowlist(narrow, cwd, prog, approval=None, author=None):
     path = os.path.join(OWNER_HOME, 'дозволи.json')
     if os.path.exists(path):
-        owner = read_allowlist(path, cwd, prog, approval)
+        owner = read_allowlist(path, cwd, prog, approval, author)
         source = f'{path} (sha256 {hashlib.sha256(open(path, "rb").read()).hexdigest()[:16]})'
         data = json.load(open(path, encoding='utf-8'))
         if approval and approval in per_programs(data):
             source += f'; схвалено власником: програма {approval[:16]}…'
+        if author and author in per_authors(data):
+            source += f'; права з підпису автора «{safe(per_authors(data)[author].get("імʼя", ""))}» ({author[:24]}…)'
         sources = sources_of(data, DEFAULT_SOURCES)
     else:
         owner, source = list(DEFAULT_ALLOWED), '(файлу власника немає: лише іграшкові інструменти)'
@@ -5153,6 +6138,18 @@ def check_program(prog, allowed, cwd):
     return sorted(set(missing))
 
 
+def author_takes(prog, without, allowed, cwd):
+    """Записи печатки, яких без підпису (without) бракувало б, а з ним (allowed) — ні: що програмі дав саме ключ автора
+    (суд 11: печатка перелічувала всі права ключа, а не ті, що бере програма)."""
+    out = []
+    for t, scs in prog[2][0][3].items():
+        for sc in scs or ['']:
+            one = {t: [sc] if sc else []}
+            if check_allowlist(one, without, cwd) and not check_allowlist(one, allowed, cwd):
+                out.append(f'{t}:{sc}' if sc else t)
+    return out
+
+
 def check_allowlist(caps, allowed, cwd):
     """Печатка ⊆ дозволи власника. Теки — вкладеність, хости й агенти — точний збіг."""
     granted = {}
@@ -5223,6 +6220,8 @@ class Interp:
         self.dry = None         # --сухо: список придушених дій (записи, надсилання, процеси, агенти)
         self.pure = False       # замок 2 (модулі з git, §6.2): виконується код з функції модуля з мережі — лише обчислення;
         #                         не False — адреса того модуля (у слід і в помилку: власник бачить, котрий модуль)
+        self.os_shut = []       # які групи ядро справді закрило (бд.читати: без «запис» — тимчасове в памʼяті)
+        self.os_mode = None     # замок ОС (фаза 6.1): 'печатка' — закрити групи, яких печатка не просить; 'усе' — усі
 
     def tool_begin(self, name, args, pos):
         """Перевірка прав, впевненість аргументів і запис «виклик» — до дії (для ‖ — по черзі, до паралельних дій)."""
@@ -5248,7 +6247,8 @@ class Interp:
         return {'назва': name, 'аргументи': args, 'слід': targs, 'ac': ac, 'pos': pos, 'агент': self.agent, 'квота': hits}
 
     def quota_covers(self, tool, scope, args):
-        """Чи підпадає виклик під обмеження scope (для квоти): тека — шлях у ній, хост — та адреса, імʼя, команда."""
+        """Чи підпадає виклик під обмеження scope (для квоти): тека — шлях у ній, хост — та адреса, імʼя, команда,
+        функція."""
         kind_ = TOOLS[tool][4] if TOOLS[tool][3] else ''
         if not scope or not kind_:
             return True
@@ -5264,7 +6264,7 @@ class Interp:
                 return scope in (u.hostname, f'{u.hostname}:{u.port}')
             except ValueError:
                 return False
-        if kind_ == 'імʼя':
+        if kind_ in ('імʼя', 'функція'):        # функція моста — точна назва (суд 11: квота «python:…≤N» не рахувалась)
             return a0 == scope
         if kind_ == 'команда' and isinstance(a0, list):
             return [x.v for x in a0][:len(scope.split(' '))] == scope.split(' ')
@@ -5844,6 +6844,16 @@ class Interp:
             if getattr(node[3], 'quotas', None):
                 self.quota_stack.append(('печатка', node[3], id(node[3])))
             self.trace('печатка', агент=self.agent, намір=node[2], дозволи=node[3])
+            if self.os_mode == 'repl':            # сеанс: частини діють по одній, печатка — з першої; замка немає
+                self.os_mode = None
+                self.trace('ізоляція', ядро='немає', причина='сеанс REPL — замка ОС у ньому немає (v1)', закрито=[])
+            if self.os_mode is not None:          # замок ОС — раз, на печатці програми (фаза 6.1)
+                closed = (list(OS_GROUPS) if self.os_mode == 'усе' else os_closed(node[3]) if self.os_mode == 'печатка'
+                          else [g for g in OS_GROUPS if g != 'процеси' or 'python' not in node[3]])   # --сухо: усе, крім
+                self.os_mode = None               # процесів для моста, якщо печатка його має (суд 11)
+                lock = os_lock(closed)
+                self.os_shut = lock['закрито']
+                self.trace('ізоляція', **lock)
             return V(None)
         if k == 'tool':
             job = self.tool_begin(node[2], [self.eval(a, env) for a in node[3]], pos)
@@ -6609,6 +7619,19 @@ def seal_warnings(prog, cwd):
     Практик: найчастіше це новий вихідний файл); тека, яку програма створить і писатиме в неї, — не він."""
     out = []
     seal = prog[2][0][3] if prog[2] else {}
+    if seal.get('python'):          # міст (фаза 6.2): чистоту функції гарантує не мова, а вибір власника
+        risky = [x for x in seal['python'] if x.startswith(PY_RISKY) or x in PY_RISKY]
+        plain = [x for x in seal['python'] if x not in risky]     # огляд 11б (Аудитор): два ⚠ не суперечать одне одному
+        if plain:
+            out.append(f'python: {", ".join(safe(x) for x in plain)} — функції Python в окремому процесі під замком ОС '
+                       f'(мережу, процеси, запис закрито ядром) і стеженням: читати поза теками Python міст не дає; чи '
+                       f'функції чисті (не залежать від часу, не виконують чужого коду) — рішення власника, мова цього не '
+                       f'доводить')
+        if risky:                   # суд 11: «median» і «linecache.getlines» мали те саме загальне ⚠
+            out.append(f'python: {", ".join(safe(x) for x in risky)} — функції, яким стеження моста НЕ межа: виконують '
+                       f'довільний код чи працюють з файлами й процесом; така функція може прочитати будь-який файл '
+                       f'користувача — і ключ власника (тоді слід можна підробити), і ключі авторів (права з «для_авторів»); '
+                       f'мережу, процеси й запис і їй закриває ядро')
     for t, scopes in seal.items():
         for sc in scopes if t in WRITE_TOOLS else ():
             if os.path.isfile(os.path.realpath(os.path.join(cwd, sc))):
@@ -6681,7 +7704,7 @@ def q_data(t, n):
 def text_whose(t, mod=None):
     """Підпис тексту за «текст_від» сліду — для людини (--перевірити-слід, MCP); mod — модуль, у виклику якого."""
     if t == 'інтерпретатора':
-        return 'відмова чи помилка інтерпретатора; у «» — передані значення'
+        return 'відмова чи помилка інтерпретатора; передані значення в ній — у ⟨U+00AB⟩…⟨U+00BB⟩ (лапки екрановано)'
     if t == 'програми':
         return '☠ у коді програми — текст міг прийти зі значень, які їй дав модуль'
     if t:
@@ -6763,7 +7786,7 @@ def callback_warnings(prog):
     return out
 
 
-def seal_info(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
+def seal_info(prog, allowed, source, cwd, dir_extra=None, prog_extra=None, author_info=None):
     """Усе, що отримувач має знати до запуску, — словником (для --печатка і --печатка --json)."""
     def scopes(t, sc):
         if TOOLS[t][4] == 'тека':
@@ -6814,15 +7837,22 @@ def seal_info(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
             'квоти_власника': [{'інструмент': t, 'обмеження': safe(sc), 'не_більше': n} for t, sc, n in owner_quotas(allowed)],
             'права_теки': [safe(x) for x in dir_extra] if dir_extra is not None else None,
             'права_схвалення': [safe(x) for x in prog_extra or []], 'тека': safe(cwd), 'в_межах': not missing,
-            'бракує': missing, 'попередження': lookalike_warnings(prog) + seal_warnings(prog, cwd) + (
-                [ADDR_WARNING] if any(m.get('з_мережі') for m in mods) else []),
+            'бракує': missing, 'замок_ОС': {'закрито': os_closed(seal[3])},
+            'підпис': ({'ключ': author_info['ключ'], 'цілий': True, 'імʼя': author_info['імʼя'],
+                        'права': [safe(x) for x in author_info['права']],
+                        'бере': [safe(x) for x in author_info.get('бере', [])]} if author_info else None),
+            'попередження': lookalike_warnings(prog) + seal_warnings(prog, cwd) + (
+                [ADDR_WARNING] if any(m.get('з_мережі') for m in mods) else []) + (
+                [f'права з підпису автора («{safe(str(author_info["імʼя"]))}»), без яких печатці бракувало б: '
+                 f'{", ".join(safe(x) for x in author_info["бере"])} — їх дає ключ, а не тека чи схвалення: копія цього '
+                 f'тексту діятиме з ними будь-де'] if author_info and author_info.get('бере') else []),
             **({'джерела_модулів_власника': sources_text(getattr(allowed, 'sources', DEFAULT_SOURCES))}
                if any(m.get('з_мережі') for m in mods) else {})}
 
 
-def seal_report(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
+def seal_report(prog, allowed, source, cwd, dir_extra=None, prog_extra=None, author_info=None):
     """Текст для людини й моделі: слова автора (намір, імена, шляхи) — у 「」, решта — слова інтерпретатора."""
-    i = seal_info(prog, allowed, source, cwd, dir_extra, prog_extra)
+    i = seal_info(prog, allowed, source, cwd, dir_extra, prog_extra, author_info)
     q = lambda sc: ', '.join(f'「{x}」' for x in sc)
     lines = ['ПЕЧАТКА', f'  намір (слова автора): 「{i["намір"]}」' if i['намір'] else '  намір: не вказано автором',
              '  дозволи:']
@@ -6871,7 +7901,15 @@ def seal_report(prog, allowed, source, cwd, dir_extra=None, prog_extra=None):
         lines.append('  права теки: немає (для цієї теки власник нічого не дав, або це тека, куди програмам дозволено писати)')
     if i['права_схвалення']:
         lines.append(f'  права, схвалені власником саме для цієї програми («для_програм»): {", ".join(i["права_схвалення"])}')
+    if i['підпис']:                  # фаза 6.3: хто підписав і що це дало
+        g = i['підпис']
+        who = f'«{safe(g["імʼя"])}» (з «для_авторів» власника)' if g['імʼя'] is not None else 'ключ, якого власник не знає'
+        lines.append(f'  ПІДПИС АВТОРА: цілий — {g["ключ"]}, {who}; ' + (f'права з підпису: {", ".join(g["права"])}'
+                                                                      if g['права'] else 'прав підпис не додав'))
     lines.append('  ✓ печатка в межах дозволів власника' if i['в_межах'] else f'  ✗ бракує дозволу власника: {", ".join(i["бракує"])}')
+    shut = i['замок_ОС']['закрито']                 # фаза 6.1: що закриє ядро (а не лише інтерпретатор)
+    lines.append(f'  ЗАМОК ОС: ядро закриє {os_acc(shut)} (seccomp; чи тримає ця машина — ngr --перевірити-ізоляцію)'
+                 if shut else '  ЗАМОК ОС: не потрібен — печатка відкриває мережу, процеси й запис')
     lines += [f'  ⚠ {w}' for w in i['попередження']]
     lines.append('  (права перевіряються й під час виконання: кожен інструмент і кожен субагент — лише в межах агента, '
                  'що його викликає. Цього необхідно, але не досить: намір, імена й вивід — слова автора програми)')
@@ -7348,6 +8386,24 @@ def cheatsheet():
             '  не зробить нічого поза печаткою і не допише, не змінить і не обріже свій слід непомітно. Але *агент*,',
             '  що має shell, може обійти Nigredo взагалі чи змінити `~/.nigredo` (дозволи, ключ сліду). Від такого',
             '  агента захищають права процесу й пісочниця ОС, а не мова.',
+            '- **Замок ОС** (0.10-dev): групу дій, якої печатка не просить зовсім — мережа, процеси, запис, — закриває',
+            '  ядро (seccomp), а не лише інтерпретатор; дочірні процеси (`🜔процес`) успадковують замок. `🜔процес` і',
+            '  `бд.читати` відкривають і запис (команди пишуть /dev/null, SQLite — тимчасові файли), `🜔python` — процеси',
+            '  (запустити процес моста), тож з ними ядро закриває менше. У сліді — подія `ізоляція` (що закрито, чи є',
+            '  ядро); `--печатка` каже, що закриє;',
+            '  `--перевірити-слід` — що закрило; `ngr --перевірити-ізоляцію` — чи ставить ядро цієї машини фільтр (по одній',
+            '  пробі з групи). У `--repl` замка немає (v1) — слід це каже. Межі всередині групи (теки, хости, команди) й',
+            '  читання — далі тримає інтерпретатор.',
+            '- **Підпис автора** (0.10-dev): `ngr --ключ-автора ФАЙЛ`, `ngr --підписати ПРОГРАМА --ключ ФАЙЛ` — останній',
+            '  рядок `※ підпис ed25519:…` охоплює текст із печаткою й усі модулі (sha256). Змінений байт — код 3 до запуску.',
+            '  Права за ключем дає лише власник («для_авторів» у дозволи.json); `--печатка` показує «ПІДПИС АВТОРА» і',
+            '  права з нього (у `--json` — «підпис», а права, яких без підпису бракувало б, — і в «попередження»);',
+            '  `ngr --перевірити-підпис ПРОГРАМА` — чий і чи цілий: 0 — лише ключ з «для_авторів»; ключ, якого власник не',
+            '  знає, — код 1 (підписати своїм ключем може кожен); файл не прочитати чи не розбирається — код 2. Коментар',
+            '  зі словом ed25519 не в кінці латинського слова — і в іншому регістрі, з дефісом чи пробілом усередині, двійниками',
+            '  (ｅｄ２５５１９, ⓔⓓ) — код 3 (помилка цитує шматок): так виглядає рядок підпису; «processed 25519», «255.19» —',
+            '  ні. Рядок підпису в модулі — теж код 3 (підпис лише в програмі й покриває її модулі). Підпис — слова',
+            '  про авторство, а не про безпечність: від того, що автор написав у печатці, він не захищає.',
             '- Впевненість відстежується через дані, керування й побічний стан, але це консервативна оцінка, а не',
             '  ймовірність. Канал завершення відстежується (див. вище); лишається лише вичерпання лімітів кроків і',
             '  розміру — їх задає той, хто запускає, однаково для всіх гілок.',
@@ -7355,7 +8411,8 @@ def cheatsheet():
             '  межах дозволів; `--печатка --json` для машин) необхідна, але не досить; довіряй ще сліду, перевіреному',
             '  разом із програмою.',
             '- Ліміти: `--кроки` (обчислення; створення великих значень теж коштує кроків), `--розмір` (логічний',
-            '  розмір значення — символи й елементи разом зі спільними посиланнями, і цілі), сумарно створене за запуск',
+            '  розмір значення — символи й елементи разом зі спільними посиланнями, і цілі; відповідь інструмента понад',
+            '  нього — помилка інструмента, її ловить `☂`, а значення, яке створює сама програма, — ні), сумарно створене за запуск',
             '  ≤ 20 × `--розмір`, `--слід-розмір` (байти сліду після запису «початок»), глибина рекурсії (2000 викликів',
             '  і 200 000 рівнів: виклики × вкладеність їхнього коду).',
             '- Точкові права одній програмі: `ngr --схвалити файл.ngr` друкує відбиток і запис «для_програм» — його',
@@ -7369,7 +8426,8 @@ def cheatsheet():
             '- `оракул` — імітація; `агент` — справжній виклик Claude (коштує грошей і часу).',
             '- Порівняно з Python: без печатки — приблизно стільки ж токенів; печатка додає фіксовану ціну.',
             '- `ngr` — нативний Атанор: той самий вивід і слід, що в еталона (`interpreter/ngr.py`); чого не вміє (мережа,',
-            '  процес, агент, `‖`, модулі з мережі, режими, крім `--сухо`), віддає еталону ще до будь-якої дії. `--сухо` і `--тести`',
+            '  процес, агент, `🜔python`, `‖`, модулі з мережі, програми з підписом автора, режими, крім `--сухо`), віддає',
+            '  еталону ще до будь-якої дії. `--сухо` і `--тести`',
             '  виконує той самий виконавець, що й справжній запуск; розбіжність виконавців — вада мови.',
             '',
             '## Прозорість', '',
@@ -7465,8 +8523,8 @@ USAGE = f"""Nigredo {VERSION}
                            розбір дає те саме дерево
   ngr --схвалити ФАЙЛ.ngr  для власника: відбиток програми, печатка, переклад і запис «для_програм» — права саме цій
                            програмі (змінений байт її чи модуля — і схвалення не діє); файл дозволів пише власник
-  ngr --сухо ФАЙЛ.ngr      виконати без записів, надсилань, процесів, агентів і взяти (читання — так): результат —
-                           невідомий (впевненість 0); наприкінці — перелік дій, які програма зробила б
+  ngr --сухо ФАЙЛ.ngr      виконати без записів, надсилань, процесів, агентів і взяти (читання й функції Python —
+                           так): результат — невідомий (впевненість 0); наприкінці — перелік дій, які програма зробила б
   ngr --тести [ТЕКА|ФАЙЛ …] [--json]   прогнати всі *.тест.ngr (кожен — програма з 🜍-перевірками; код 0 — пройшов)
   ngr --тести --печатка [ТЕКА …]   лише печатки тестів і чи в межах дозволів власника — без запуску
   ngr --повторити СЛІД [ПРОГРАМА]   виконати знову без дій у світі: інструменти повертають записане (СЛІД.дані);
@@ -7474,20 +8532,31 @@ USAGE = f"""Nigredo {VERSION}
   ngr --отримати ПРОГРАМА | 「github.com/в/р@КОМІТ/шлях.ngr[#sha256=…]」 [--з-теки ТЕКА] [--json]
                            модулі з мережі — у сховище {MOD_STORE} (єдиний крок із мережею; нічого не
                            виконує; sha256 звірено; без хешу — друкує готовий рядок ⊃); свій слід
+  ngr --перевірити-ізоляцію [--json]   чи ставить ядро цієї машини замок ОС (seccomp): по одній пробі з групи —
+                           socket, відкрити файл на запис, exec (повну таблицю викликів звіряють тести)
+  ngr --ключ-автора ФАЙЛ   новий ключ автора (Ed25519, файл 0600); друкує відкритий ключ ed25519:…
+  ngr --підписати ПРОГРАМА --ключ ФАЙЛ   підписати програму з печаткою й модулями (останній рядок «※ підпис …»)
+  ngr --перевірити-підпис ПРОГРАМА [--json]   чий підпис і чи цілий (0 — цілий і ключ з «для_авторів» власника;
+                           1 — підпису немає чи ключа власник не знає: прав підпис не дає; 2 — файл не прочитати
+                           чи не розбирається; 3 — не збігся чи зіпсований)
   ngr --памʼятка           згенерувати памʼятку для агентів
 """
 
 
 def write_dirs():
-    """Теки, куди програмам дозволено писати (з дозволів власника: «дозволено», усі «для_тек» і «для_програм»)."""
+    """Теки, куди програмам дозволено писати (з дозволів власника: «дозволено», усі «для_тек», «для_програм» і права
+    ключів «для_авторів» — підписана програма пише туди так само; огляд 11б, Аудитор і Новачок)."""
     path = os.path.join(OWNER_HOME, 'дозволи.json')
     try:
         data = json.load(open(path, encoding='utf-8'))
     except (OSError, ValueError):
         return []
     entries = list(data.get('дозволено', [])) if isinstance(data, dict) else []
-    for key in ('для_тек', 'для_програм'):
-        for extra in (data.get(key, {}) or {}).values() if isinstance(data, dict) else []:
+    for key in ('для_тек', 'для_програм', 'для_авторів'):
+        per = data.get(key, {}) if isinstance(data, dict) else {}
+        for extra in per.values() if isinstance(per, dict) else []:
+            if key == 'для_авторів':
+                extra = extra.get('дозволи') if isinstance(extra, dict) else None
             entries += extra if isinstance(extra, list) else []
     out = []
     for e in entries:
@@ -7538,6 +8607,9 @@ def test_seals(targets, as_json=False):
                     'дозволи': info.get('дозволи', {}), 'квоти': info.get('квоти', []), 'бракує': info.get('бракує', []),
                     'модулі': [{'шлях': m.get('адреса') or m.get('шлях'), 'sha256': m.get('sha256'),   # які модулі
                                 'з_мережі': bool(m.get('з_мережі'))} for m in info.get('модулі', [])],   # (огляд 10б)
+                    # замок ОС, підпис і попередження (⚠ мосту) — як у --печатка (суд 11, Оркестратор)
+                    'замок_ОС': info.get('замок_ОС'), 'підпис': info.get('підпис'),
+                    'попередження': info.get('попередження', []),
                     **({'бракує_модулів': info['бракує_модулів']} if info.get('бракує_модулів') else {})})
     if as_json:
         print(json.dumps({'тести': out, 'пропущено_з_тек_запису': [safe(x) for x in skipped]}, ensure_ascii=False, indent=1))
@@ -7547,7 +8619,12 @@ def test_seals(targets, as_json=False):
             print(f'{"✓" if r["в_межах"] else "✗"} {r["файл"]} — печатка: {caps}'
                   + (f'; КВОТА: {quota_text(r["квоти"])}' if r['квоти'] else '')
                   + ('' if r['в_межах'] else f' — бракує: {", ".join(r["бракує"])}')
-                  + (f'; модулі: {", ".join(safe(str(m["шлях"])) for m in r["модулі"])}' if r['модулі'] else ''))
+                  + (f'; модулі: {", ".join(safe(str(m["шлях"])) for m in r["модулі"])}' if r['модулі'] else '')
+                  + (f'; ядро закриє: {os_acc(r["замок_ОС"]["закрито"]) or "нічого"}'
+                     if isinstance(r['замок_ОС'], dict) and isinstance(r['замок_ОС'].get('закрито'), list) else '')
+                  + (f'; ПІДПИС АВТОРА: {r["підпис"].get("ключ")}' if isinstance(r['підпис'], dict) else ''))
+            for w in r['попередження']:
+                print(f'    ⚠ {w}')
         if skipped:
             print(f'пропущено {len(skipped)} файл(и) в теках, куди програмам дозволено писати')
     return 0 if all(r['в_межах'] for r in out) else 1
@@ -7677,7 +8754,7 @@ def load_replay(tpath, program=None):
             'модулі': Net([('файл', files), ('СЛІД.дані', mods), ('сховище', None)])}, None
 
 
-def dry_report(done, decided=1.0):
+def dry_report(done, decided=1.0, stopped=False, bridge=False):
     print(f'── --сухо: {len(done)} дій не виконано' + (':' if done else ' (жодної дії назовні)'), file=sys.stderr)
     unsure = 0
     for _, name, args, ac, unchecked in sorted(done, key=lambda d: d[0]):
@@ -7697,6 +8774,11 @@ def dry_report(done, decided=1.0):
     if unsure:
         print(f'  ⚠ {unsure} з {len(done)} дій обрано чи складено за значеннями, яких сухий прогін не знає (зокрема за '
               f'результатами придушених дій): перелік — не обіцянка того, що зробить справжній запуск', file=sys.stderr)
+    if bridge:                      # огляд 11б, Скептик: у --сухо з мостом межу процесів тримає інтерпретатор, а не ядро
+        print('  ⚠ процеси ядро в цьому прогоні не закрило: їх відкрив міст до Python (🜔python у печатці) — `процес` '
+              'придушує інтерпретатор, а сам міст — під повним замком ОС', file=sys.stderr)
+    if stopped:                     # суд 11, Аудитор: прогін упав (часто — на заглушці придушеної дії), а перелік мовчав
+        print('  ⚠ сухий прогін зупинився на помилці (нижче) — дій після неї не видно: перелік неповний', file=sys.stderr)
 
 
 def replay_report(replay, new_trace, ends):
@@ -8325,6 +9407,10 @@ def _main(argv, opts, it, value):
             return 0 if msg.startswith('✓') else 1
         if a == '--отримати':              # модулі з мережі — єдиний крок із мережею (модулі з git, §4)
             return fetch_main(list(it), opts, argv)
+        if a in ('--ключ-автора', '--підписати', '--перевірити-підпис'):   # підпис автора (фаза 6.3)
+            return author_main(a, list(it), opts)
+        if a == '--перевірити-ізоляцію':   # чи тримає ядро цієї машини замок ОС (фаза 6.1)
+            return isolation_probe('--json' in list(it) or opts['json'])
         if a == '--відбиток':              # ідентичність виконавця (Атанор друкує sha256 свого бінарника)
             print(f'еталон {os.path.realpath(__file__)}\n  sha256 nigredo.py (поле «інтерпретатор» сліду) {INTERP_SHA}')
             return 0
@@ -8445,14 +9531,30 @@ def _main(argv, opts, it, value):
             errors, more = all_static_errors(src, cwd, None if path == '<-e>' else path)
             errors = errors or [e]
     approval = approval_of(raw if path != '<-e>' else src.encode(), prog) if prog else None
+    sig = None                       # підпис автора (фаза 6.3): цілий — права «для_авторів»; зіпсований — не запускати
+    if prog:
+        try:
+            sig = author_of(raw if path != '<-e>' else src.encode(), prog)
+        except StaticError as e:
+            perr, errors = e, [e]
+        if sig and not sig['цілий']:
+            e = StaticError(f'підпис автора НЕ збігся ({sig["ключ"][:24]}…): текст програми чи її модуля змінено після '
+                            f'підпису, або підпис зроблено іншим ключем — не запускаю', (1, 1))
+            e.code = 3
+            perr, errors = e, [e]
+    author = sig['ключ'] if sig and sig['цілий'] else None
     try:
         # -e --тека: «програма» лежить у тій теці — і в теці запису прав теки не дістає, як файл там (суд 8в)
         where = (cwd if dir_rights else None, os.path.realpath(path if path != '<-e>' else cwd) if dir_rights else None)
-        allowed, source = load_allowlist(opts['allow'], *where, approval)
+        allowed, source = load_allowlist(opts['allow'], *where, approval, author)
         base, _ = load_allowlist(opts['allow'])
         by_dir, _ = load_allowlist(opts['allow'], *where)
+        by_prog, _ = load_allowlist(opts['allow'], *where, approval)
         dir_extra = [a for a in by_dir if a not in base] if dir_rights else None
-        prog_extra = [a for a in allowed if a not in by_dir]       # «для_програм»: схвалено саме цю програму
+        prog_extra = [a for a in by_prog if a not in by_dir]       # «для_програм»: схвалено саме цю програму
+        author_info = ({'ключ': author, 'імʼя': author_name(author), 'права': [a for a in allowed if a not in by_prog],
+                        # що з них бере саме ця програма: чого без підпису бракувало б (суд 11, Мовознавець)
+                        'бере': author_takes(prog, by_prog, allowed, cwd) if prog else []} if author else None)
     except Refused as e:
         print(e, file=sys.stderr)
         return 3
@@ -8510,13 +9612,18 @@ def _main(argv, opts, it, value):
             except RecursionError:
                 print('✗ програма вкладена надто глибоко для перекладу (--розбір)', file=sys.stderr)
                 return 2
+            if sig:                         # рядок підпису — коментар, але ручається за весь текст (суд 11, Практик)
+                nm = author_name(sig['ключ'])
+                print(f'останній рядок — ПІДПИС АВТОРА {sig["ключ"]} (цілий; '
+                      + (f'«{safe(nm)}» з «для_авторів» власника' if nm is not None else 'ключ, якого власник не знає')
+                      + '): охоплює весь текст і модулі; які права він дає — ngr --печатка')
             return 0
-        info = seal_info(prog, allowed, source, cwd, dir_extra, prog_extra)
+        info = seal_info(prog, allowed, source, cwd, dir_extra, prog_extra, author_info)
         info['програма'] = safe(path if path == '<-e>' else os.path.realpath(path))       # що саме перевірено
         info['sha256'] = hashlib.sha256(raw if path != '<-e>' else src.encode()).hexdigest()
         info['відбиток'] = approval            # повний — для «для_програм» (з модулями; суд 9)
         print(json.dumps(info, ensure_ascii=False, indent=1) if opts['json']
-              else seal_report(prog, allowed, source, cwd, dir_extra, prog_extra))
+              else seal_report(prog, allowed, source, cwd, dir_extra, prog_extra, author_info))
         return 0 if info['в_межах'] else 3
     # повтор нічого не робить у світі — дозволи власника не потрібні (і можуть уже змінитися)
     missing = check_program(prog, allowed, cwd) if prog and not replay else []
@@ -8568,7 +9675,8 @@ def _main(argv, opts, it, value):
               час=datetime.now(timezone.utc).isoformat(timespec='seconds'), запуск=os.urandom(6).hex(),
               тека=safe(cwd), дозволи_власника=safe(source), дозволено=allowed,
               ліміти={'кроки': opts['steps'], 'розмір': opts['size'], 'слід': opts['tsize'], 'зерно': opts['seed']},
-              **({'код': src} if path == '<-e>' else {}), **({'повтор': safe(os.path.realpath(opts['replay']))} if replay else {}))
+              **({'код': src} if path == '<-e>' else {}), **({'повтор': safe(os.path.realpath(opts['replay']))} if replay else {}),
+              **({'підпис': {'ключ': author, 'імʼя': author_info['імʼя']}} if author else {}))
         if shown_args != prog_args:
             trace('відмова', причина='аргумент — не UTF-8 (неповний символ)')
             print('✗ аргумент програми — не UTF-8 (неповний символ); запуск відхилено', file=sys.stderr)
@@ -8594,6 +9702,15 @@ def _main(argv, opts, it, value):
         if opts.get('dry'):
             interp.dry = []
             trace('сухо', причина='--сухо: записи, надсилання, процеси й агенти не виконуються')
+        # замок ОС ставиться на печатці; що треба писати після неї (шлях сліду для тестів, /dev/null для обірваної
+        # труби) — відкрити зараз
+        interp.os_mode = 'усе' if replay else 'сухо' if opts.get('dry') else 'печатка'
+        devnull_w = os.open(os.devnull, os.O_WRONLY | os.O_CLOEXEC)
+        if os.environ.get('NIGREDO_TRACE_PATH_FILE'):
+            try:
+                tpf = open(os.environ['NIGREDO_TRACE_PATH_FILE'], 'w', encoding='utf-8')
+            except OSError:
+                pass
         try:
             try:
                 interp.run(prog)
@@ -8601,20 +9718,23 @@ def _main(argv, opts, it, value):
             finally:
                 if replay or opts.get('dry'):
                     sys.stdout.flush()
+            bridge = bool(interp.os_shut) and 'процеси' not in interp.os_shut and 'python' in (prog[2][0][3] if prog[2] else {})
             if opts.get('dry'):
-                dry_report(interp.dry, min(interp.decided_c, interp.halt_c, interp.pc))
+                dry_report(interp.dry, min(interp.decided_c, interp.halt_c, interp.pc), bridge=bridge)
             if replay:
                 return replay_report(replay, main_trace, interp.ends)
         except NgrError as e:
             if interp.dry is not None:
-                dry_report(interp.dry, min(interp.decided_c, interp.halt_c, interp.pc))
+                dry_report(interp.dry, min(interp.decided_c, interp.halt_c, interp.pc), stopped=True,
+                           bridge=bool(interp.os_shut) and 'процеси' not in interp.os_shut
+                           and 'python' in (prog[2][0][3] if prog[2] else {}))
             trace('помилка', повідомлення=safe(str(e)), **err_fields(e))
             print(safe(str(e)), file=sys.stderr)
             code = 1
             if replay:
                 return replay_report(replay, main_trace, interp.ends)
         except BrokenPipeError:                      # читач закрив вивід (| head) — тихо, без «вади мови»
-            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+            os.dup2(devnull_w, sys.stdout.fileno())
             trace('помилка', повідомлення='вивід обірвано: читач закрив трубу')
             code = 1
         except Exception as e:                       # вада інтерпретатора: чесно, без трасування Python
@@ -8625,7 +9745,11 @@ def _main(argv, opts, it, value):
             code = 4
         return code
     finally:
-        if os.environ.get('NIGREDO_TRACE_PATH_FILE'):
+        tpf = locals().get('tpf')                    # відкрито до замка ОС
+        if tpf is not None:
+            tpf.write(main_trace)
+            tpf.close()
+        elif os.environ.get('NIGREDO_TRACE_PATH_FILE'):
             try:
                 with open(os.environ['NIGREDO_TRACE_PATH_FILE'], 'w', encoding='utf-8') as f:
                     f.write(main_trace)
@@ -8770,6 +9894,7 @@ def repl_main(opts):
             if interp is None:                  # перша частина: печатка діє на весь сеанс
                 interp = Interp(trace, seed=opts['seed'], steps=opts['steps'], cwd=cwd, argv=[],
                                 protected=paths + [tp + '.дані' for tp in paths], max_size=opts['size'])
+                interp.os_mode = 'repl'         # замка ОС у сеансі немає (v1) — і слід це каже (суд 11)
                 owner_q = Caps()
                 for t, sc, q in owner_quotas(allowed):
                     owner_q.quotas[(t, sc)] = min(q, owner_q.quotas.get((t, sc), q))
@@ -8876,6 +10001,8 @@ def entry():
     """Точка входу: глибока рекурсія — в окремому потоці з великим стеком. Запускач — interpreter/ngr.py.
     Межа мови — MAX_WORK (200 000 рівнів: виклики × висота їхніх тіл) і ще MAX_NEST верхнього рівня; Python мусить
     витримати їх усі, а не впасти з кодом 4 (суд 9: 1900 викликів × 60 вкладених ＋ — ~114 тис.)."""
+    global OS_LOCK_PROCESS
+    OS_LOCK_PROCESS = True                       # окремий процес ngr — замок ОС можна ставити (фаза 6.1)
     sys.setrecursionlimit(10_000_000)
     threading.stack_size(1024 * 1024 * 1024 - 4096)
     result = [1]
