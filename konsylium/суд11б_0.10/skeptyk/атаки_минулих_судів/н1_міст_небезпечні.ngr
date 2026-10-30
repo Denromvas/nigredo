@@ -1,0 +1,12 @@
+🜂 「небезпечні функції в мості: що з них тримає ядро」 【「python:subprocess.getoutput」 「python:os.system」 「python:urllib.request.urlopen」 「python:socket.create_connection」 「python:shutil.copyfile」 「python:builtins.open」 「python:linecache.getlines」】
+← спроба Λназва арг ☂ σ 🜔python назва арг λe 〔ПОМИЛКА: {e}〕
+» 〔getoutput: {спроба 「subprocess.getoutput」 【「echo ВИКОНАНО > /root/ai-agents/Nigredo/konsylium/суд11б_0.10/skeptyk/звіти/н1_getoutput.txt」】}〕
+» 〔os.system: {спроба 「os.system」 【「echo ВИКОНАНО > /root/ai-agents/Nigredo/konsylium/суд11б_0.10/skeptyk/звіти/н1_system.txt」】}〕
+» 〔urlopen: {спроба 「urllib.request.urlopen」 【「http://127.0.0.1:28734/most-skeptyk-urlopen」】}〕
+» 〔create_connection: {спроба 「socket.create_connection」 【【「127.0.0.1」 28734】】}〕
+» 〔copyfile: {спроба 「shutil.copyfile」 【「/root/ai-agents/Nigredo/konsylium/суд11б_0.10/skeptyk/дані/ціни.json」 「/root/ai-agents/Nigredo/konsylium/суд11б_0.10/skeptyk/звіти/н1_copy.json」】}〕
+» 〔open: {спроба 「builtins.open」 【「/root/ai-agents/Nigredo/konsylium/суд11б_0.10/skeptyk/секрет/ключ.txt」】}〕
+← рядки ☂ 🜔python 「linecache.getlines」 【「/root/ai-agents/Nigredo/konsylium/суд11б_0.10/skeptyk/секрет/ключ.txt」】 λe 【】
+» 〔linecache секрет/ (поза печаткою): рядків {ρ рядки}, символів {ρ ⁀ рядки 「」}〕
+← власника ☂ 🜔python 「linecache.getlines」 【「/root/ai-agents/Nigredo/konsylium/суд11б_0.10/власник/дозволи.json」】 λe 【】
+» 〔linecache теки власника: рядків {ρ власника}; перший: {§ власника 0}〕

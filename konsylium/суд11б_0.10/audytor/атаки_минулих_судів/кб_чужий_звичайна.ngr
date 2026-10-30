@@ -1,0 +1,7 @@
+🜂 「медіана й стандартне відхилення цін через міст до Python」 【「читати:дані」 「писати:звіти」 「python:statistics.median」 「python:statistics.stdev」】
+← ц δ 🜔читати 「дані/ціни.json」
+← мед ⌗ 🜔python 「statistics.median」 【ц】 2
+← відх ⌗ 🜔python 「statistics.stdev」 【ц】 2
+🜔писати 「звіти/статистика.txt」 〔медіана: {мед}\nстандартне відхилення: {відх}\n〕
+» 〔медіана {мед}, стандартне відхилення {відх}〕
+※ підпис ed25519:49690d17a0f959f3c964877c6215273f180ed83e8a6a75b66f3f52b6a1e1d56b c8a0dfb114ad61ec1243f7bfb7a1d7e17e24cf85674fdfbea0f880c81e20f75763b7c360be8fdae5259ad81f41c5065ecd0419400e3ef496477d89f443bc6905

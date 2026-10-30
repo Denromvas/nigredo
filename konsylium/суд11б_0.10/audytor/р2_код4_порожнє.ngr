@@ -1,0 +1,6 @@
+🜂 「міст: аргументи — ∅, число, словник з δ」 【「python:statistics.median」】
+← спр λa ☂ a λe 〔перехоплено: {e}〕
+» спр 🜔python 「statistics.median」 δ 「null」
+» спр 🜔python 「statistics.median」 δ 「5」
+» спр 🜔python 「statistics.median」 δ 「{"a": 1}」
+» 「після ∅, числа, словника」

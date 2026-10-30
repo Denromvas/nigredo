@@ -1,0 +1,19 @@
+🜂 「міст: краї обміну даними」 【「python:json.loads」 「python:decimal.Decimal」 「python:math.factorial」 「python:datetime.date.fromisoformat」 「python:json.dumps」】
+← спр Λf a ☂ 〔ок: {🜔python f a}〕 λe 〔помилка: {e}〕
+» спр 「json.loads」 【「"\\ud800"」】
+» спр 「json.loads」 【「"\\udcff"」】
+» спр 「json.loads」 【「NaN」】
+» спр 「json.loads」 【「1e400」】
+» спр 「json.loads」 【「-0.0」】
+» спр 「json.loads」 【「1e16」】
+» спр 「json.loads」 【「0.1」】
+» спр 「json.loads」 【「{"1": [true, null, 1.5]}」】
+» спр 「decimal.Decimal」 【「sNaN」】
+» спр 「decimal.Decimal」 【「1E+40000」】
+» спр 「decimal.Decimal」 【「-0」】
+» спр 「decimal.Decimal」 【「1_000」】
+» спр 「decimal.Decimal」 【「1E-40000」】
+» спр 「datetime.date.fromisoformat」 【「2026-10-29」】
+» спр 「json.dumps」 【【「a」 1】】
+» ρ σ 🜔python 「math.factorial」 【8000】
+» спр 「math.factorial」 【10000】

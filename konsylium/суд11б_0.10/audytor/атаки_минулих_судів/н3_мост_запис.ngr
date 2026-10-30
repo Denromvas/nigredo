@@ -1,0 +1,4 @@
+🜂 「міст: запис із процесу моста」 【「python:shutil.copyfile」 「python:builtins.open」】
+» ☂ 🜔python 「shutil.copyfile」 【「/root/ai-agents/Nigredo/konsylium/суд11б_0.10/audytor/дані/вхід.txt」 「/root/ai-agents/Nigredo/konsylium/суд11б_0.10/audytor/звіти/н3_копія.txt」】 λe 〔copyfile: {e}〕
+» ☂ 🜔python 「builtins.open」 【「/root/ai-agents/Nigredo/konsylium/суд11б_0.10/audytor/звіти/н3_open.txt」 「w」】 λe 〔open w: {e}〕
+» ☂ 🜔python 「builtins.open」 【「/root/ai-agents/Nigredo/konsylium/суд11б_0.10/audytor/дані/вхід.txt」】 λe 〔open r: {e}〕
