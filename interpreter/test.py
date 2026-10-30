@@ -3803,6 +3803,50 @@ def main():
           'печатка моста: posixpath (= os.path), logging.config.dictConfig, builtins.help (= pydoc) — у ⚠ «стеження НЕ '
           'межа» (огляд 11в, Скептик)', str(wj2_))
 
+    # ------------------------------------------------------------------ набір сумісності 1.0 (spec/пропозиції/1.0.md §5)
+    # зразки 1.0 — у копії в іншій теці: слід перевіряється й повторюється, підпис цілий, печатка — ті самі поля
+    cs_ = tmp / 'сумісність'
+    shutil.copytree(ROOT / 'tests' / 'сумісність', cs_)
+    ch_ = tmp / 'власник_сумісність'
+    ch_.mkdir()
+    shutil.copy(cs_ / 'власник' / 'ключ', ch_ / 'ключ')
+
+    def compat_home(perms):
+        (ch_ / 'дозволи.json').write_text(json.dumps(perms, ensure_ascii=False), encoding='utf-8')
+        return dict(env, NIGREDO_HOME=str(ch_), NIGREDO_TRACE_PATH_FILE=str(tmp / 'сумісність.слід'))
+    cenv_ = compat_home({'дозволено': []})
+    sl_ = cs_ / 'слід'
+    cv_ = run(['--перевірити-слід', str(sl_ / 'слід.jsonl'), str(sl_ / 'програма.ngr')], cenv_)
+    cr_ = run(['--повторити', str(sl_ / 'слід.jsonl'), str(sl_ / 'програма.ngr')], cenv_)
+    pd_ = cs_ / 'підпис'
+    pub_ = (pd_ / 'ключ.txt').read_text(encoding='utf-8').strip()
+    cenv2_ = compat_home({'дозволено': [], 'для_авторів': {pub_: {'імʼя': 'зразок 1.0', 'дозволи': [f'читати:{pd_}/дані']}}})
+    cp_ = run(['--перевірити-підпис', str(pd_ / 'програма.ngr'), '--json'], cenv2_)
+    cg_ = run([str(pd_ / 'програма.ngr')], cenv2_)
+    qd_ = cs_ / 'печатка'
+    cenv3_ = compat_home({'дозволено': [f'читати:{qd_}', 'жереб', 'python:statistics.median']})
+
+    def cnorm(v):
+        if isinstance(v, dict):
+            return {k: cnorm(x) for k, x in v.items() if k not in ('тека', 'програма', 'дозволи_власника')}
+        if isinstance(v, list):
+            return [cnorm(x) for x in v]
+        return v.replace(str(qd_), '<тека>') if isinstance(v, str) else v
+    seal_bad_ = []
+    for f_ in sorted(qd_.glob('*.ngr')):
+        want_ = json.loads(f_.with_suffix('.json').read_text(encoding='utf-8'))
+        got_ = cnorm(json.loads(run(['--печатка', '--json', str(f_)], cenv3_).stdout or '{}'))
+        seal_bad_ += [(f_.name, k_) for k_, v_ in want_.items() if got_.get(k_, '∅∅') != v_]
+    cpj_ = json.loads(cp_.stdout or '{}')
+    check(cv_.returncode == 0 and cv_.stdout.startswith('✓') and cr_.returncode == 0
+          and cr_.stdout == (sl_ / 'вивід.txt').read_text(encoding='utf-8')
+          and cp_.returncode == 0 and (cpj_.get('підпис') or {}).get('цілий') is True
+          and cg_.returncode == 0 and cg_.stdout == (pd_ / 'вивід.txt').read_text(encoding='utf-8') and not seal_bad_,
+          'набір сумісності 1.0 (у копії в іншій теці): слід 1.0 — «✓» і повтор з тим самим виводом; підписана програма '
+          '1.0 — «підпис цілий» і той самий вивід; --печатка --json — ті самі поля й значення',
+          cv_.stdout[:300] + cv_.stderr[-200:] + cr_.stdout[-200:] + cr_.stderr[-200:] + cp_.stdout[-300:]
+          + cg_.stderr[-200:] + str(seal_bad_))
+
     sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',
           'перегенеруйте: ngr --памʼятка > ДЛЯ_АГЕНТІВ.md')
