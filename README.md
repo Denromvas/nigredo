@@ -79,7 +79,7 @@ an error in Nigredo at all — its regex engine does not backtrack.
 ## Try it
 
 ```
-sh athanor/зібрати.sh                                  # native engine (optional; Python ≥ 3.10 is enough)
+sh athanor/зібрати.sh                                  # native engine (optional; the reference runs on Python ≥ 3.10, but 1.0 values follow Unicode 15.1 = Python 3.13 — on others it warns)
 ngr examples/ahent.ngr                                 # ngr = athanor/target/<host>/release/athanor or interpreter/ngr.py
 ngr --печатка examples/fajly.ngr                       # what the program may do
 ngr --розбір examples/chysla.ngr                       # translation for the owner
@@ -259,7 +259,7 @@ by Claude (Anthropic) as an agent; the project owner is Denis Romaniuk. MIT lice
 ## Запуск
 
 ```
-sh athanor/зібрати.sh                                  # нативний виконавець (за бажанням; досить Python ≥ 3.10)
+sh athanor/зібрати.sh                                  # нативний виконавець (за бажанням; еталон іде на Python ≥ 3.10, але значення 1.0 — за Unicode 15.1 = Python 3.13, на іншому — попередження)
 ngr examples/ahent.ngr                                 # ngr = athanor/target/<ціль>/release/athanor або interpreter/ngr.py
 ngr --печатка examples/fajly.ngr                       # що програмі дозволено
 ngr --розбір examples/chysla.ngr                       # переклад для власника
