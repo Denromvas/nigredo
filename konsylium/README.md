@@ -38,7 +38,7 @@
 (`/root/ai-agents/Nigredo/…` — це корінь цього репозиторію). Їх не переписано свідомо: підписані програми, модулі,
 закріплені sha256, й атаки саме на абсолютні шляхи залежать від точних байтів. Переписаний текст був би вже не тим,
 що запускав суддя. Жива частина репозиторію — інтерпретатор, Атанор, тести, приклади, мірило, сайт — абсолютних шляхів
-не має.
+не має (крім сліду-зразка `tests/сумісність/`: слід записує теку, де його зроблено, а перевіряють його в іншій).
 
 Як проходить суд: версію заморожують (хеш коміту й інтерпретатора), кожен суддя в окремій теці розвʼязує ті самі
 завдання справжнім інтерпретатором, атакує межу (печатка → інструменти → файли) і пише звіт; у другому раунді судді
@@ -81,4 +81,5 @@ conditions of those who voted B. A version is announced when everyone votes A an
 ran on (`/root/ai-agents/Nigredo/…` is the root of this repository). They are deliberately not rewritten: signed
 programs, modules pinned by sha256 and attacks on absolute paths depend on the exact bytes — a rewritten text would no
 longer be what the judge ran. The living part of the repository (interpreter, Atanor, tests, examples, benchmark, site)
-has no absolute paths.
+has no absolute paths (except the sample trace in `tests/сумісність/`: a trace records the folder it was made in, and it is
+verified from another one).
