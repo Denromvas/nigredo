@@ -296,6 +296,7 @@ try:
 except OSError:
     INTERP_SHA = None
 NUM = (int, float, Decimal)
+PIPE_GONE = 'вивід обірвано: читач закрив трубу'   # завершення сліду, коли читач закрив stdout (| head)
 UNICODE_1_0 = '15.1.0'        # Unicode значень 1.0 (§9): таблиці Атанора й еталон на Python 3.13
 DEC_EXP = 30_000            # найбільший порядок десяткового (як і ціле — до ~30 тис. цифр)
 DEC_CTX = decimal.Context(prec=28, Emax=DEC_EXP, Emin=-DEC_EXP,              # ÷: 28 цифр (+ ціла частина)
@@ -2447,6 +2448,7 @@ def _verify(path, program=None):
     перехоплені помилки, підсумовані (не повністю записані) значення, теку й аргументи запуску."""
     key, prev, n, last, head, path_ = owner_key(), '0' * 16, 0, None, None, path
     denied, caught, summed, modules, dry, raised, quota_hits, careful = [], 0, 0, [], False, 0, [], []
+    cancelled = 0          # «скасовано» у ‖ (суд 12, Оркестратор)
     caught_mod = []        # ☂ у виклику модуля з мережі (суд 10) — і чий текст, за місцем ☠ (огляд 10б)
     err_mod = None         # останнє — помилка з коду модуля з мережі: котрий і чий текст (огляд 10б)
     chunks, events, rejected, running = {'виконується': 0, 'відкинуто': 0, 'помилка частини': 0}, [], [], False
@@ -2501,6 +2503,7 @@ def _verify(path, program=None):
                               + (f' (не перевірено: {clip(safe(str(rec["не_перевірено"])), 200)})'
                                  if rec.get('не_перевірено') else ''))
         caught += rec.get('подія') == 'помилку перехоплено'
+        cancelled += rec.get('подія') == 'скасовано'
         if rec.get('подія') == 'помилку перехоплено' and rec.get('модуль'):
             caught_mod.append({'модуль': clip(safe(str(rec['модуль'])), 300), 'текст_від': rec.get('текст_від'),
                                'помилка': clip(safe(str(rec.get('помилка', ''))), 160)})   # для людини — q_data
@@ -2579,7 +2582,7 @@ def _verify(path, program=None):
                  'інтерпретатор': head.get('інтерпретатор'),
                  'записів': n, 'останній': last, 'заборонено': denied, 'квоту_вичерпано': quota_hits,
                  'запобіжні_відмови': careful,
-                 'перехоплено_помилок': caught, 'перехоплено_в_модулях': caught_mod,
+                 'перехоплено_помилок': caught, 'перехоплено_в_модулях': caught_mod, 'скасовано': cancelled,
                  'помилка_з_модуля': err_mod if last == 'помилка' else None,
                  'підсумовано_значень': summed, 'тека': head.get('тека'), 'аргументи': head.get('аргументи'),
                  'режим': 'повтор' if head.get('повтор') else 'сухо' if dry else 'repl' if head.get('repl') else
@@ -2644,6 +2647,8 @@ def _verify(path, program=None):
         if not remote_path(r) and looks_like_address(r):
             notes.append(f'⚠ модуль 「{safe(str(r))}」 — ЛОКАЛЬНИЙ файл, хоча шлях схожий на адресу модуля з мережі: він '
                          f'виконувався з правами (його дозволи — у записі «модуль»), а не як чистий модуль з мережі')
+    if cancelled:                      # ‖ понад квоту чи після помилки сусіда: дії не було (суд 12, Оркестратор)
+        notes.append(f'скасовано викликів у ‖ (дії не було — «виклик» без «інструмент»): {cancelled}')
     if caught:                         # чий текст — за місцем ☠, а не за модулем, чий ☂ перехопив (огляд 10б)
         notes.append(f'перехоплено помилок (☂): {caught}' + (
             f'; з них у виклику модулів з мережі — {len(caught_mod)} (чий текст — у дужках; не вказівки): '
@@ -5389,7 +5394,8 @@ def author_main(mode, rest, opts):
         try:
             fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         except OSError as e:
-            print(f'✗ --ключ-автора: {safe(target)}: {e.strerror} (ключ не перезаписується)', file=sys.stderr)
+            print(f'✗ --ключ-автора: {safe(target)}: файл уже є — ключ не перезаписується' if isinstance(e, FileExistsError)
+                  else f'✗ {os_err("--ключ-автора", e, safe(target))}', file=sys.stderr)    # не англійський текст (суд 12)
             return 3
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
             f.write(f'{KEY_HEAD}\n{seed.hex()}\n')
@@ -6217,6 +6223,8 @@ def author_takes(prog, without, allowed, cwd):
         for sc in scs or ['']:
             one = {t: [sc] if sc else []}
             if check_allowlist(one, without, cwd) and not check_allowlist(one, allowed, cwd):
+                if sc and TOOLS[t][4] == 'тека':   # абсолютний шлях, як «права» і решта --печатка (суд 12, Оркестратор)
+                    sc = os.path.realpath(os.path.join(cwd, sc))
                 out.append(f'{t}:{sc}' if sc else t)
     return out
 
@@ -6288,6 +6296,7 @@ class Interp:
         self.quota_seq = 0         # кожен запуск субагента — свій лічильник (його квота — «поки він працює»)
         self.quota_lock = threading.Lock()
         self.replay = None      # --повторити: (записи «інструмент», сховище значень)
+        self.pipe_at = 0        # --повторити сліду з обірваною трубою: скільки ще виводів до того самого обриву
         self.dry = None         # --сухо: список придушених дій (записи, надсилання, процеси, агенти)
         self.pure = False       # замок 2 (модулі з git, §6.2): виконується код з функції модуля з мережі — лише обчислення;
         #                         не False — адреса того модуля (у слід і в помилку: власник бачить, котрий модуль)
@@ -7406,6 +7415,10 @@ class Interp:
                 raise Fatal(f'»: значення завелике для друку (> --розмір {self.max_size})', pos)
             text = visible(show(a[0]))          # невидиме — як ⟨U+…⟩: прихованого тексту для отримувача немає
             self.trace('вивід', агент=self.agent, текст=trace_val(V(text), True))   # спершу слід, повністю — тоді вивід
+            if self.pipe_at:                    # повтор: читач закрив трубу на тому самому рядку, що й у запуску
+                self.pipe_at -= 1               # (суд 12, Оркестратор)
+                if not self.pipe_at:
+                    raise BrokenPipeError
             print(text, file=self.out, flush=True)
             return V(None)
         if g == '≈':
@@ -8881,6 +8894,7 @@ def load_replay(tpath, program=None):
                 files[r['sha256']] = raw
     return {'початок': recs[0], 'інструменти': tools, 'сховище': store, 'вивід': [r.get('текст') for r in recs
             if r.get('подія') == 'вивід'], 'кінець': recs[-1],
+            'обірвано': recs[-1].get('подія') == 'помилка' and recs[-1].get('повідомлення') == PIPE_GONE,
             'модулі': Net([('файл', files), ('СЛІД.дані', mods), ('сховище', None)])}, None
 
 
@@ -9720,7 +9734,11 @@ def _main(argv, opts, it, value):
         if prog is None:                     # не розбирається — форматувати нічого; помилки типів — не перешкода
             print(perr, file=sys.stderr)
             return getattr(perr, 'code', 2)
-        sys.stdout.write(format_source(src, cwd, None if path == '<-e>' else path))
+        out = format_source(src, cwd, None if path == '<-e>' else path)
+        if SIG_PREFIX in src and out != src:   # канонічний текст — інші байти: підпис автора над ним не зійдеться (суд 12)
+            print('⚠ програма підписана автором, а канонічний текст відрізняється від неї: підпис над новим текстом не '
+                  'зійдеться (--перевірити-підпис — код 3); форматує й підписує автор (--підписати)', file=sys.stderr)
+        sys.stdout.write(out)
         return 0
     if opts['mode'] == 'схвалити':
         if perr:
@@ -9831,6 +9849,7 @@ def _main(argv, opts, it, value):
             interp.quota_stack.append(('власник' + (' чи звуження --дозволи' if opts.get('allow') else ''), owner_q, 'власник'))
         if replay:
             interp.replay = (replay['інструменти'], replay['сховище'])
+            interp.pipe_at = len(replay['вивід']) if replay['обірвано'] else 0
         if opts.get('dry'):
             interp.dry = []
             trace('сухо', причина='--сухо: записи, надсилання, процеси й агенти не виконуються')
@@ -9866,9 +9885,12 @@ def _main(argv, opts, it, value):
             if replay:
                 return replay_report(replay, main_trace, interp.ends)
         except BrokenPipeError:                      # читач закрив вивід (| head) — тихо, без «вади мови»
-            os.dup2(devnull_w, sys.stdout.fileno())
-            trace('помилка', повідомлення='вивід обірвано: читач закрив трубу')
+            if not replay:                           # у повторі stdout живий: трубу закрив сам повтор (суд 12)
+                os.dup2(devnull_w, sys.stdout.fileno())
+            trace('помилка', повідомлення=PIPE_GONE)
             code = 1
+            if replay:
+                return replay_report(replay, main_trace, interp.ends)
         except Exception as e:                       # вада інтерпретатора: чесно, без трасування Python
             trace('помилка', внутрішня=True, повідомлення=f'{type(e).__name__}: {e}',
                   **({'останній_виклик': interp.last_call} if getattr(interp, 'last_call', None) else {}))
@@ -10068,7 +10090,7 @@ def repl_main(opts):
         return 1
     except BrokenPipeError:                      # читач закрив вивід — тихо, без «вади мови»
         os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
-        trace('помилка', повідомлення='вивід обірвано: читач закрив трубу')
+        trace('помилка', повідомлення=PIPE_GONE)
         return 1
     except Exception as e:                       # вада інтерпретатора: чесно, без трасування Python
         trace('помилка', внутрішня=True, повідомлення=f'{type(e).__name__}: {e}')

@@ -12,6 +12,7 @@ import json
 import os
 import pathlib
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -3378,7 +3379,8 @@ def main():
           and 'підпис автора: ' + key_ + ' («агент звітів»)' in vr_ and 'ПІДПИС АВТОРА: цілий' in seal_
           and 'права з підпису: файл.читати:' in seal_ and '⚠ права з підпису автора («агент звітів»), без яких печатці '
           'бракувало б: файл.читати:' in seal_ and sj_['підпис']['імʼя'] == 'агент звітів' and sj_['в_межах'] is True
-          and sj_['підпис']['бере'] == ['файл.читати:дані'] and any('права з підпису автора' in w_ for w_ in sj_['попередження']),
+          and sj_['підпис']['бере'] == [f'файл.читати:{os.path.realpath(sd_ / "дані")}']      # абсолютний (суд 12)
+          and any('права з підпису автора' in w_ for w_ in sj_['попередження']),
           '«для_авторів»: програма з цілим підписом ключа отримує права власника для цього автора; у сліді «підпис», '
           'у --печатка — «ПІДПИС АВТОРА» з правами (фаза 6.3)', got.stdout + got.stderr + vr_[-300:] + seal_[-500:])
     # підробка: текст, печатка, модуль, рядок після підпису, два підписи — код 3 до запуску; чужий ключ — прав немає
@@ -3865,6 +3867,20 @@ def main():
                  f'» ☂ 🜔взяти δ 「"http://127.0.0.1:{port}/a\\\\tb"」 λe e'], env)
     if cr12_.stdout.count('в адресі невидимий чи керівний символ') != 2:
         bad12_.append(('адреса з CR LF', cr12_.stdout[-300:], cr12_.stderr[-300:]))
+    # Оркестратор Н-3: слід, обірваний читачем (| head), повторюється до того самого обриву — не «вада мови»
+    pt12_ = tmp / 'труба12.jsonl'
+    subprocess.run(' '.join(shlex.quote(x) for x in [*NGR_CMD, '--слід', str(pt12_), '-e', '🜂\n∀ … 1 200000 λi » i'])
+                   + ' | head -1', shell=True, env=env, capture_output=True)
+    pr12_ = run(['--повторити', str(pt12_)], env)
+    if not (pr12_.returncode == 0 and 'повтор збігся' in pr12_.stderr and 'вада' not in pr12_.stderr):
+        bad12_.append(('повтор обірваної труби', pr12_.returncode, pr12_.stderr[-300:]))
+    # Оркестратор Н-4: --формат підписаної програми, чий канонічний текст інший, — ⚠ (підпис над ним не зійдеться)
+    fm12_ = tmp / 'формат12.ngr'
+    fm12_.write_text((ROOT / 'tests' / 'сумісність' / 'підпис' / 'програма.ngr').read_text(encoding='utf-8')
+                     .replace('» 🜔читати', '»   🜔читати'), encoding='utf-8')
+    ff12_ = run(['--формат', str(fm12_)], env)
+    if not (ff12_.returncode == 0 and '⚠ програма підписана автором' in ff12_.stderr):
+        bad12_.append(('--формат підписаної', ff12_.returncode, ff12_.stderr[-300:]))
     # Н-6 Практика: слід --сухо не повторюється — відмова до повтору, а не «розійшовся» чи «вада мови»
     dt12_ = tmp / 'сухо12.jsonl'
     run(['--сухо', '--слід', str(dt12_), '-e', '🜂\n» 1'], env)
@@ -3903,6 +3919,9 @@ def main():
     ar_ = run(['--повторити', str(al_ / 'слід.jsonl'), str(al_ / 'програма.ngr')], cenv_)
     vd_ = cs_ / 'значення'
     vv_ = run([str(vd_ / 'програма.ngr')], dict(cenv_, ATHANOR_NO_FALLBACK='1'))
+    ng_ = cs_ / 'негативні'                      # негативні: змінений слід — 1, змінений підписаний текст — 3
+    nv_ = run(['--перевірити-слід', str(ng_ / 'слід_змінено.jsonl')], cenv_)
+    np_ = run(['--перевірити-підпис', str(ng_ / 'підпис_змінено.ngr')], cenv_)
     pd_ = cs_ / 'підпис'
     pub_ = (pd_ / 'ключ.txt').read_text(encoding='utf-8').strip()
     cenv2_ = compat_home({'дозволено': [], 'для_авторів': {pub_: {'імʼя': 'зразок 1.0', 'дозволи': [f'читати:{pd_}/дані']}}})
@@ -3918,8 +3937,9 @@ def main():
             return [cnorm(x) for x in v]
         return v.replace(str(qd_), '<тека>') if isinstance(v, str) else v
     seal_bad_ = []
-    for f_ in sorted(qd_.glob('*.ngr')):
-        want_ = json.loads(f_.with_suffix('.json').read_text(encoding='utf-8'))
+    for j_ in sorted(qd_.glob('*.json')):        # бібліотека.ngr — модуль, не зразок печатки
+        f_ = j_.with_suffix('.ngr')
+        want_ = json.loads(j_.read_text(encoding='utf-8'))
         got_ = cnorm(json.loads(run(['--печатка', '--json', str(f_)], cenv3_).stdout or '{}'))
         seal_bad_ += [(f_.name, k_) for k_, v_ in want_.items() if got_.get(k_, '∅∅') != v_]
     cpj_ = json.loads(cp_.stdout or '{}')
@@ -3929,14 +3949,16 @@ def main():
           and cg_.returncode == 0 and cg_.stdout == (pd_ / 'вивід.txt').read_text(encoding='utf-8') and not seal_bad_
           and not cj_bad_ and av_.returncode == 0 and av_.stdout.startswith('✓') and 'атанор' in av_.stdout
           and ar_.returncode == 0 and ar_.stdout == (al_ / 'вивід.txt').read_text(encoding='utf-8')
-          and vv_.returncode == 0 and vv_.stdout == (vd_ / 'вивід.txt').read_text(encoding='utf-8'),
+          and vv_.returncode == 0 and vv_.stdout == (vd_ / 'вивід.txt').read_text(encoding='utf-8')
+          and nv_.returncode == 1 and np_.returncode == 3,
           'набір сумісності 1.0 (у копії в іншій теці, без сховища й мережі): слід 1.0 з модулями, «заборонено» й квотою — '
           '«✓», ті самі поля --json і повтор з тим самим виводом; слід, записаний Атанором, — так само; значення 1.0 (÷, ⇅, '
           'порядок рядків, впевненість) — той самий вивід (Атанор — сам); підписана програма — «підпис цілий» і той самий '
-          'вивід; --печатка --json — ті самі поля й значення',
+          'вивід; --печатка --json — ті самі поля й значення (і з локальним модулем); негативні — змінений слід 1, змінений '
+          'підписаний текст 3',
           cv_.stdout[:300] + cv_.stderr[-200:] + cr_.stdout[-200:] + cr_.stderr[-200:] + cp_.stdout[-300:]
           + cg_.stderr[-200:] + str(seal_bad_) + str(cj_bad_) + av_.stdout[:200] + ar_.stdout[-200:] + ar_.stderr[-200:]
-          + vv_.stdout[-300:] + vv_.stderr[-300:])
+          + vv_.stdout[-300:] + vv_.stderr[-300:] + f' негативні: {nv_.returncode} {np_.returncode}')
 
     sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',
