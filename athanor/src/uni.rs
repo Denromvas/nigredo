@@ -72,29 +72,59 @@ pub fn skeleton(s: &str) -> Option<String> {
     Some(out)
 }
 
-fn sig_push(sk: &mut String, x: char) {
-    if matches!(category(x).as_bytes()[0], b'L' | b'M' | b'N') {
-        sk.push(x.to_ascii_lowercase());
+const SIG_SEP: char = '\u{1}';
+
+fn sig_push(sk: &mut Vec<char>, x: char) {
+    if x != SIG_SEP || sk.last() != Some(&SIG_SEP) {
+        sk.push(x);
     }
 }
 
-/// Коментар, схожий на рядок підпису (як nigredo.sig_like): sig_skeleton — скелет UTS #39 без пробілів, лише літери, знаки
-/// й цифри, латиниця малими — містить «ed25519». Символ, з яким нормалізація відрізнялася б, дає свій sig_skeleton із
-/// SIG_UNSAFE (повноширинні, математичні, ⅇ, ⅾ, ;…), а якого там немає — розрив: літер «ed25519» він не дає. gen_tables.py
-/// звіряє це з еталоном на кожному такому символі (огляд 11б: досі всі вони рвали збіг, і ｅｄ２５５１９ Атанор пропускав).
+fn sig_class(x: char) -> char {
+    if matches!(category(x).as_bytes()[0], b'L' | b'M' | b'N') {
+        x.to_ascii_lowercase()
+    } else {
+        SIG_SEP
+    }
+}
+
+/// Коментар, схожий на рядок підпису (як nigredo.sig_like): та сама посимвольна міра sig_char — літери, знаки й цифри
+/// скелета (латиниця малими), решта — межа; «ed25519» з початку слова, межі між літерами не важать. Символ, для якого
+/// скелет із SKELETON (чи сам символ) дав би не те, що еталон (NFKD, повноширинні, математичні, ⅇ, ⅾ, ⓔ, знак зі скелетом-
+/// розділовим…), — із таблиці SIG_CHARS; решта «небезпечних» — розрив. gen_tables.py звіряє кожен символ Unicode й
+/// контексти (огляди 11б, 11в).
 pub fn sig_like(text: &str) -> bool {
-    let mut sk = String::with_capacity(text.len());
-    for c in text.chars().filter(|c| !isspace(*c)) {
-        if norm_unsafe(c) {
-            sk.push_str(map_str(&SIG_UNSAFE, c as u32).unwrap_or("\0"));
+    let mut sk: Vec<char> = Vec::with_capacity(text.len());
+    for c in text.chars() {
+        if let Some(t) = map_str(&SIG_CHARS, c as u32) {
+            t.chars().for_each(|x| sig_push(&mut sk, x));
+        } else if norm_unsafe(c) {
+            sig_push(&mut sk, '\0');
         } else {
             match map_str(&SKELETON, c as u32) {
-                Some(t) => t.chars().for_each(|x| sig_push(&mut sk, x)),
-                None => sig_push(&mut sk, c),
+                Some(t) => t.chars().for_each(|x| sig_push(&mut sk, sig_class(x))),
+                None => sig_push(&mut sk, sig_class(c)),
             }
         }
     }
-    sk.contains(SIG_TARGET)
+    let t: Vec<char> = SIG_TARGET.chars().collect();
+    (0..sk.len()).any(|p| {
+        if sk[p] != t[0] || (p > 0 && sk[p - 1] != SIG_SEP) {
+            return false;
+        }
+        let (mut i, mut j) = (p, 0);
+        while i < sk.len() && j < t.len() {
+            if sk[i] == t[j] {
+                i += 1;
+                j += 1;
+            } else if sk[i] == SIG_SEP && j > 0 {
+                i += 1;
+            } else {
+                break;
+            }
+        }
+        j == t.len()
+    })
 }
 
 pub fn glyph_twin(skel: &str) -> Option<&'static str> {

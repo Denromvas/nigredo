@@ -3751,6 +3751,52 @@ def main():
               '--сухо з мостом прямо каже, що процеси в цьому прогоні тримає інтерпретатор, а не ядро (огляд 11б, '
               'Скептик)', g_.stdout + g_.stderr)
 
+    # ------------------------------------------------------------------ огляд 11в (0.10-dev): побажання до оголошення
+    # міра двійників — з початку слова й посимвольно через NFKD: числа в коментарях — не підпис, ⓔⓓ і ed²⁵⁵¹⁹ — так;
+    # помилка цитує шматок (обома виконавцями: Атанор віддає еталону, з тією самою мірою таблицею SIG_CHARS)
+    tv_ = []
+    for t_ in ('elapsed 255.19 s', 'red: 255, 19, 0', 'processed 25 519 rows', 'seed 25519', 'éd25519', 'curve25519'):
+        tp_.write_text(f'🜂\n» 1\n※ {t_}\n', encoding='utf-8')
+        g_ = run([str(tp_)], senv)
+        if not (g_.returncode == 0 and g_.stdout == '1\n'):
+            tv_.append((t_, g_.returncode, g_.stderr[-150:]))
+    for t_, frag_ in (('ⓔⓓ②⑤⑤①⑨ ключ', 'ⓔⓓ②⑤⑤①⑨'), ('ключ ed²⁵⁵¹⁹', 'ed²⁵⁵¹⁹'), ('це e d 2 5 5 1 9', 'e d 2 5 5 1 9'),
+                      ('ключ — ED-25519 автора', 'ED-25519')):
+        tp_.write_text(f'🜂\n» 1\n※ {t_}\n', encoding='utf-8')
+        g_ = run([str(tp_)], senv)
+        if not (g_.returncode == 3 and f'у коментарі «{frag_}» схоже на «ed25519»' in g_.stderr and g_.stdout == ''):
+            tv_.append((t_, g_.returncode, g_.stderr[-200:]))
+    check(not tv_, 'двійники підпису — з початку слова й через NFKD: «elapsed 255.19», «red: 255, 19» — коментар, '
+          '«ⓔⓓ②⑤⑤①⑨», «ed²⁵⁵¹⁹» — код 3 з шматком у помилці, обома виконавцями (огляд 11в)', str(tv_))
+    # два рядки підпису: --перевірити-підпис і --підписати розбирають увесь файл, як запуск (досі «✓ код 0»)
+    sig_line_ = sp_.read_text(encoding='utf-8').rstrip('\n').split('\n')[-1]
+    two_ = sd_ / 'два_підписи.ngr'
+    two_.write_text(sp_.read_text(encoding='utf-8') + sig_line_ + '\n', encoding='utf-8')
+    v2_ = run(['--перевірити-підпис', str(two_), '--json'], senv)
+    s2_ = run(['--підписати', str(two_), '--ключ', str(kf_)], senv)
+    r2_ = run([str(two_)], senv)
+    check(v2_.returncode == 3 and json.loads(v2_.stdout).get('код') == 3 and s2_.returncode == 3 and r2_.returncode == 3,
+          'два рядки підпису: --перевірити-підпис і --підписати — код 3, як запуск (огляд 11в, Скептик і Аудитор)',
+          v2_.stdout[-300:] + s2_.stdout[-200:] + s2_.stderr[-200:] + r2_.stderr[-200:])
+    # останній рядок файлу — двійник рядка підпису в літералі: код 3 обома (досі — дані)
+    tp_.write_text('🜂\n» ρ 「текст\n※ підпис ｅｄ２５５１９:00」\n', encoding='utf-8')
+    gq_ = run([str(tp_)], senv)
+    tp_.write_text('🜂\n» ρ 「текст\n※ звичайний рядок」\n', encoding='utf-8')
+    gq2_ = run([str(tp_)], senv)
+    check(gq_.returncode == 3 and 'останній рядок схожий на рядок підпису' in gq_.stderr and gq_.stdout == ''
+          and gq2_.returncode == 0 and gq2_.stdout.strip().isdigit(),
+          'останній рядок файлу, схожий на рядок підпису, — код 3 і в рядку-літералі, обома виконавцями (огляд 11в, '
+          'Оркестратор)', gq_.stdout + gq_.stderr + gq2_.stdout + gq2_.stderr)
+    # PY_RISKY: та сама функція під іншою назвою — теж у ⚠ «стеження НЕ межа»
+    pw_.write_text('🜂 【「python:posixpath.getsize」 「python:logging.config.dictConfig」 「python:builtins.help」 '
+                   '「python:statistics.median」】\n» 1\n', encoding='utf-8')
+    wj2_ = [w_ for w_ in json.loads(run(['--печатка', '--json', str(pw_)], oenv_).stdout).get('попередження', [])
+            if w_.startswith('python:')]
+    check(len(wj2_) == 2 and all(f_ in wj2_[1] for f_ in ('posixpath.getsize', 'logging.config.dictConfig',
+                                                         'builtins.help')) and 'posixpath' not in wj2_[0],
+          'печатка моста: posixpath (= os.path), logging.config.dictConfig, builtins.help (= pydoc) — у ⚠ «стеження НЕ '
+          'межа» (огляд 11в, Скептик)', str(wj2_))
+
     sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',
           'перегенеруйте: ngr --памʼятка > ДЛЯ_АГЕНТІВ.md')

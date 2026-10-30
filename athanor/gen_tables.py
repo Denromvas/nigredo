@@ -118,22 +118,36 @@ def main():
             skel.append((cp, s))
     out.append(f'pub static SKELETON: [(u32, &str); {len(skel)}] = [' +
                ', '.join(f'({a}, {rs(b)})' for a, b in skel) + '];')
-    # підпис автора (огляд 11б): sig_skeleton «небезпечних» символів — лише тих, що дають літери «ed25519» чи зникають
-    # (решта — розрив збігу, \0). Діакритичний знак літер «ed25519» не дає: переставляння знаків NFD збігу не змінює
-    sig_t = N.sig_skeleton('ed25519')
+    # підпис автора (огляди 11б, 11в): посимвольна міра nigredo.sig_char. Атанор бере скелет із SKELETON (чи сам символ)
+    # і клас (літера/знак/цифра — сам, малими; решта — межа \x01), «небезпечний» — розрив \0; де еталон бачить інакше
+    # (NFKD, знак зі скелетом-розділовим, повноширинні…), — виняток SIG_CHARS. Порівнюються зведені форми: літери
+    # «ed25519» — самі, межа — \x01, решта — \0 (для пошуку з початку слова цього досить)
+    sig_t = N.sig_marks('ed25519')[0]
+    assert '\x01' not in sig_t and '\0' not in sig_t, ascii(sig_t)
+
+    def sig_reduce(xs):
+        r = ''.join(x if x in sig_t or x == '\x01' else '\0' for x in xs)
+        while '\0\0' in r or '\x01\x01' in r:
+            r = r.replace('\0\0', '\0').replace('\x01\x01', '\x01')
+        return r
+    smap0 = dict(skel)
+
+    def sig_default(cp):
+        if unsafe(cp):
+            return '\0'
+        return ''.join(x.lower() if x.isascii() and U.category(x)[0] in 'LMN' else
+                       x if U.category(x)[0] in 'LMN' else '\x01' for x in smap0.get(cp, ch(cp)))
     sig_u = []
     for cp in range(MAXCP):
-        if 0xD800 <= cp <= 0xDFFF or not unsafe(cp) or ch(cp).isspace():
+        if 0xD800 <= cp <= 0xDFFF:
             continue
-        r = ''.join(x if x in sig_t else '\0' for x in N.sig_skeleton(ch(cp)))
-        while '\0\0' in r:
-            r = r.replace('\0\0', '\0')
+        ref = sig_reduce(N.sig_char(ch(cp)))
         if U.combining(ch(cp)):
-            assert set(r) <= {'\0'}, hex(cp)
-        if r != '\0':
-            sig_u.append((cp, r))
+            assert not set(ref) & set(sig_t), hex(cp)        # знак літер «ed25519» не дає
+        if sig_reduce(sig_default(cp)) != ref:
+            sig_u.append((cp, ref))
     out.append(f'pub static SIG_TARGET: &str = {rs(sig_t)};')
-    out.append(f'pub static SIG_UNSAFE: [(u32, &str); {len(sig_u)}] = [' +
+    out.append(f'pub static SIG_CHARS: [(u32, &str); {len(sig_u)}] = [' +
                ', '.join(f'({a}, {rs(b)})' for a, b in sig_u) + '];')
     twins = sorted(N.glyph_twin_table().items())
     out.append(f'pub static DIGIT_SKELETON: &str = {rs(N.digit_skeleton())};')
@@ -223,8 +237,9 @@ def main():
         assert N.skeleton(s) == ''.join(smap.get(ord(c), c) for c in s), ascii(s)
     print('перевірка нормалізації й скелетів: гаразд')
 
-    # перевірка sig_like Атанора (uni::sig_like) проти еталона: кожен «небезпечний» символ у кожному місці «ed25519» і
-    # замість кожної його літери, і випадкові рядки з двійників, знаків, розділових і пробілів (огляд 11б)
+    # перевірка sig_like Атанора (uni::sig_like) проти еталона: кожен символ, де Атанор бере SIG_CHARS чи розрив, — у
+    # кожному місці «ed25519», замість кожної його літери й перед ним; і випадкові рядки з двійників, знаків (і тих, чий
+    # скелет — розділовий), розділових, пробілів і слів, що закінчуються на «ed» (огляди 11б, 11в)
     import bisect
     starts = [a for a, _ in unsafe_r]
     sig_map = dict(sig_u)
@@ -232,38 +247,59 @@ def main():
     def is_unsafe(cp):
         i = bisect.bisect_right(starts, cp) - 1
         return i >= 0 and unsafe_r[i][0] <= cp <= unsafe_r[i][1]
+    tl = list(sig_t)
 
     def ath_sig(text):
         sk = []
+
+        def push(x):
+            if x != '\x01' or not sk or sk[-1] != '\x01':
+                sk.append(x)
         for c in text:
-            if c.isspace():
-                continue
-            if is_unsafe(ord(c)):
-                sk.append(sig_map.get(ord(c), '\0'))
+            cp = ord(c)
+            if cp in sig_map:
+                for x in sig_map[cp]:
+                    push(x)
+            elif is_unsafe(cp):
+                push('\0')
             else:
-                sk += [x.lower() if x.isascii() else x for x in smap.get(ord(c), c) if U.category(x)[0] in 'LMN']
-        return sig_t in ''.join(sk)
+                for x in smap.get(cp, c):
+                    push((x.lower() if x.isascii() else x) if U.category(x)[0] in 'LMN' else '\x01')
+        for p in range(len(sk)):
+            if sk[p] != tl[0] or (p > 0 and sk[p - 1] != '\x01'):
+                continue
+            i, j = p, 0
+            while i < len(sk) and j < len(tl):
+                if sk[i] == tl[j]:
+                    i, j = i + 1, j + 1
+                elif sk[i] == '\x01' and j > 0:
+                    i += 1
+                else:
+                    break
+            if j == len(tl):
+                return True
+        return False
     base = 'ed25519'
     n = 0
-    for cp in range(MAXCP):
-        if 0xD800 <= cp <= 0xDFFF or not is_unsafe(cp):
-            continue
+    for cp in sorted(set(sig_map) | {cp for cp in range(0x300, 0x370)}):
         c = ch(cp)
         for i in range(len(base) + 1):
-            for s in (base[:i] + c + base[i:], base[:i] + c + base[i + 1:]):
+            for s in (base[:i] + c + base[i:], base[:i] + c + base[i + 1:], 'x' + c + base, c + ' ' + base):
                 assert ath_sig(s) == N.sig_like(s), (hex(cp), ascii(s))
                 n += 1
-    marks = [cp for cp in range(0x300, 0x370)] + [0x1AB0, 0x1DC0, 0x20D0, 0x302A, 0xFE20]
-    pool = ([ord(x) for x in 'edEDl1I259 -_.:'] + [a for a, _ in sig_u] + marks +
-            [cp for cp in range(0xFF01, 0xFF5F)] + [0x2011, 0x2014, 0x00B7, 0x037E, 0x0435, 0x0501, 0x2147, 0x2146, 0x217E])
+    marks = [cp for cp in range(0x300, 0x370)] + [0x31A, 0x32E, 0x348, 0x5B0, 0x5BC, 0x1BF3, 0x1CD8, 0x1DE8, 0x2DEE,
+                                                   0x1D16D, 0x1AB0, 0x1DC0, 0x20D0, 0x302A, 0xFE20]
+    pool = ([ord(x) for x in 'edEDl1I259 -_.:rs'] + [a for a, _ in sig_u][::7] + marks +
+            [cp for cp in range(0xFF01, 0xFF5F)] + [0x2011, 0x2014, 0x00B7, 0x037E, 0x0435, 0x0501, 0x2147, 0x2146,
+                                                    0x217E, 0x24D4, 0x24D3, 0x00B2, 0x00A0, 0x3000, 0x0301, 0x0306])
     for _ in range(300000):
         s = ''.join(ch(rng.choice(pool)) for _ in range(rng.randint(5, 12)))
         if rng.random() < .5:
             k = rng.randint(0, len(s))
-            s = s[:k] + rng.choice(['ed2551', 'd25519', 'ed25', '25519', 'Ed', 'ED2']) + s[k:]
+            s = s[:k] + rng.choice(['ed2551', 'd25519', 'ed25', '25519', 'Ed', 'ED2', ' ed-2', 'red 255', ' e d ']) + s[k:]
         assert ath_sig(s) == N.sig_like(s), ascii(s)
         n += 1
-    print(f'перевірка sig_like ({len(sig_u)} символів у SIG_UNSAFE, {n} рядків): гаразд')
+    print(f'перевірка sig_like ({len(sig_u)} винятків у SIG_CHARS, {n} рядків): гаразд')
 
 
 def lang():

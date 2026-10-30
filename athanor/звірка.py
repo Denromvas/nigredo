@@ -13,6 +13,7 @@ import argparse
 import concurrent.futures as cf
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -167,12 +168,16 @@ def main():
     rev = subprocess.run(['git', '-C', ROOT, 'rev-parse', '--short', 'HEAD'], capture_output=True, text=True).stdout.strip()
     dirty = subprocess.run(['git', '-C', ROOT, 'status', '--porcelain', '--untracked-files=no'], capture_output=True,
                            text=True).stdout.strip()
-    sha = (subprocess.run([BIN, '--відбиток'], capture_output=True, text=True).stdout.split('бінарника') + [' ?'])[1].split()
+    vb = subprocess.run([BIN, '--відбиток'], capture_output=True, text=True).stdout
+    sha = (vb.split('бінарника') + [' ?'])[1].split()
+    src_sha = (re.findall(r'джерел[^0-9a-f]*([0-9a-f]{64})', vb) + ['?'])[0]   # збірка в іншій теці — інший бінарник,
+    #                                                                          а джерела ті самі (огляд 11в)
     groups = Counter(os.path.relpath(r[0], ROOT).split('/')[0] + ('/' + os.path.relpath(r[0], ROOT).split('/')[1]
                      if os.path.relpath(r[0], ROOT).startswith('konsylium/') else '') for r in res)
     lines = [f'# Звірка Атанора з еталоном', '',
              f'Прогін {time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())}, коміт `{rev}`{" + незакомічені зміни" if dirty else ""}; '
-             f'бінарник Атанора — sha256 `{sha[0][:16]}…` (`ngr --відбиток`). Корпус: '
+             f'бінарник Атанора — sha256 `{sha[0][:16]}…`, джерела — `{src_sha[:16]}…` (поле «інтерпретатор» сліду; '
+             f'`ngr --відбиток`). Корпус: '
              + ('усі `.ngr`, які відстежує git (крім архіву), — будь-хто відтворить той самий прогін з того самого коміту.'
                 if not a.шляхи else f'шляхи {", ".join(a.шляхи)}.'),
              '', 'За теками: ' + ', '.join(f'{k} — {n}' for k, n in sorted(groups.items())) + '.', '',
