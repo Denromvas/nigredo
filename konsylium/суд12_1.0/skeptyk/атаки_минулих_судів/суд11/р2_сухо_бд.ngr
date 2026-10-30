@@ -1,0 +1,2 @@
+🜂 「р2: важке групування в бд.читати — справжній запуск і сухий прогін」 【「бд.читати:дані」】
+» 🜔бд.читати 「дані/порожня.db」 「WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < 400000) SELECT count(*) AS n FROM (SELECT x % 300000 AS k, count(*) FROM c GROUP BY k)」 【】

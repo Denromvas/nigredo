@@ -1,0 +1,4 @@
+🜂 「база з тригером, чия гілка «зараз» не виконується для звичайних рядків」 【「бд.писати:звіти」】
+← база ＋ 「звіти/」 § ⌂ 0
+» 🜔бд.писати база 「CREATE TABLE IF NOT EXISTS т(назва TEXT, к REAL, д TEXT)」 【】
+» 🜔бд.писати база 「CREATE TRIGGER IF NOT EXISTS тр AFTER INSERT ON т WHEN NEW.назва = 'зараз' BEGIN UPDATE т SET к = julianday('now') WHERE rowid = NEW.rowid; END」 【】

@@ -1,0 +1,5 @@
+{
+ "дозволено": [
+  "python:statistics.median≤1"
+ ]
+}

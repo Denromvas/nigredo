@@ -1,0 +1,5 @@
+🜂 「бд: записати й прочитати; важке читання великої бази」 【「бд.писати:звіти」 「бд.читати:дані」 「жереб」】
+» 🜔бд.писати 「звіти/а2.db」 「CREATE TABLE IF NOT EXISTS t(n INTEGER PRIMARY KEY, x TEXT)」 【】
+» 🜔бд.писати 「звіти/а2.db」 「INSERT INTO t(x) VALUES (?), (?)」 【「один」 「два」】
+» 🜔бд.читати 「дані/велика.db」 「SELECT substr(x, 1, 2) AS k, count(*) AS c FROM big GROUP BY k ORDER BY c DESC LIMIT 2」 【】
+» 🜔жереб 6

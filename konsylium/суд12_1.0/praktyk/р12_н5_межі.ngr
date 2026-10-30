@@ -1,0 +1,8 @@
+🜂 「міст: межі часу й процесора」 【「python:time.sleep」 「python:math.factorial」 「час」】
+← t0 🜔час
+» ☂ 🜔python 「time.sleep」 【35】 λe e
+← t1 🜔час
+» 〔сон: {× 86400 ◷ t0 t1} с〕
+» ☂ ρ 〔{🜔python 「math.factorial」 【5000000】}〕 λe e
+← t2 🜔час
+» 〔факторіал: {× 86400 ◷ t1 t2} с〕

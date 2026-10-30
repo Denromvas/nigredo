@@ -1,0 +1,6 @@
+🜂 「допоміжна: база в звіти/ (аргумент 0) зі схемою дані/т.db — для атаки 20」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+» 🜔бд.писати бд 「CREATE TABLE t (id INTEGER PRIMARY KEY, n INTEGER, r REAL, s TEXT, b BLOB, x)」 【】
+» 🜔бд.писати бд 「CREATE TABLE u (k TEXT)」 【】
+» 🜔бд.писати бд 「CREATE TRIGGER tr AFTER INSERT ON u BEGIN INSERT INTO t (n) VALUES (99); END」 【】
+» 🜔бд.писати бд 「CREATE VIEW v AS SELECT n FROM t」 【】

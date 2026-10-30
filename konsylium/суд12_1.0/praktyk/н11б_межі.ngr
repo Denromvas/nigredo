@@ -1,0 +1,5 @@
+🜂 「‖ з двома нескінченними запитами SQLite: спільні 30 с」 【「бд.читати:дані」 「час」】
+← q 「WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT count(*) AS n FROM c」
+← т0 🜔час
+» ☂ ‖ 【q q】 λз 🜔бд.читати 「н2_а.db」 з 【】 λe ＋ 「Л1 ‖ SQLite: ✗ 」 e
+» ＋ 「Л1 секунд: 」 σ ⌊ × 86400 ◷ т0 🜔час

@@ -1,0 +1,14 @@
+🜂 「чисті функції зі списку власника — без хибних тривог」 【「python:statistics.median」 「python:statistics.mean」 「python:statistics.stdev」 「python:statistics.pstdev」 「python:math.factorial」 「python:math.isqrt」 「python:json.dumps」 「python:json.loads」 「python:re.findall」 「python:decimal.Decimal」 「python:datetime.date.fromisoformat」 「python:unicodedata.normalize」 「python:time.sleep」】
+» 🜔python 「statistics.median」 【【1 2 3 4】】
+» 🜔python 「statistics.mean」 【【1.5 2.5 4】】
+» 🜔python 「statistics.stdev」 【【1 2 3 4】】
+» 🜔python 「statistics.pstdev」 【【1 2 3 4】】
+» 🜔python 「math.factorial」 【25】
+» 🜔python 「math.isqrt」 【1000001】
+» 🜔python 「json.dumps」 【『「a」 【1 2】』】
+» 🜔python 「json.loads」 【「{"b": [true, null]}」】
+» 🜔python 「re.findall」 【「\\w+」 「агент читає програму」】
+» 🜔python 「decimal.Decimal」 【「12.50」】
+» ☂ 🜔python 「datetime.date.fromisoformat」 【「2026-10-29」】 λe 〔очікувано: {e}〕
+» 🜔python 「unicodedata.normalize」 【「NFC」 「é」】
+» 🜔python 「time.sleep」 【0】

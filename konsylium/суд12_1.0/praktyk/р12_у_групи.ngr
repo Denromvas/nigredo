@@ -1,0 +1,3 @@
+🜂 「11б: звіт із групуванням на великій базі (тимчасові таблиці SQLite)」 【「бд.читати:дані」】
+» 🜔бд.читати 「дані/велика.db」 「SELECT substr(x, 1, 3) AS k, count(*) AS n FROM big GROUP BY k ORDER BY n DESC, k LIMIT 2」 【】
+» 🜔бд.читати 「дані/велика.db」 「SELECT x FROM big ORDER BY substr(x, 5) DESC, x LIMIT 1」 【】

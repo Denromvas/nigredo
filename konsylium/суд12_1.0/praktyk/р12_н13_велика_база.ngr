@@ -1,0 +1,3 @@
+🜂 「велика база для перевірки сортування в --сухо」 【「бд.писати:звіти」】
+» 🜔бд.писати 「звіти/велика.db」 「CREATE TABLE big(x)」 【】
+» 🜔бд.писати 「звіти/велика.db」 「WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM c WHERE i < 400000) INSERT INTO big SELECT printf('%08d-%s', (i * 7919) % 400000, substr('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 1, 90)) FROM c」 【】
