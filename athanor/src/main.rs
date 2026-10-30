@@ -246,6 +246,14 @@ fn run() -> i32 {
     if src.split('\n').any(|l| l.trim_start_matches(' ').starts_with("※ підпис ed25519:")) {
         hand_over("підпис автора — еталон");
     }
+    // останній рядок файлу, схожий на рядок підпису, — помилка еталона й у рядку-літералі (огляд 11в, Оркестратор)
+    let lines: Vec<&str> = src.split('\n').collect();
+    let last = if lines.last() == Some(&"") { lines.len().checked_sub(2) } else { lines.len().checked_sub(1) };
+    if let Some(l) = last.map(|i| lines[i]) {
+        if l.starts_with('※') && uni::sig_like(l) {
+            hand_over("останній рядок схожий на рядок підпису — еталон");
+        }
+    }
     let path = o.path.clone().unwrap();
     let is_e = path == "<-e>";
     let (cwd, dir_rights) = if is_e {
