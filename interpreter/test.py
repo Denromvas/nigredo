@@ -3772,9 +3772,12 @@ def main():
           '«xed25519» — коментар; «ⓔⓓ②⑤⑤①⑨», «ed²⁵⁵¹⁹», «ʹed25519», приклеєний до кирилиці «медed25519» — код 3 з '
           'шматком у помилці, обома виконавцями (огляд 11в)', str(tv_))
     # два рядки підпису: --перевірити-підпис і --підписати розбирають увесь файл, як запуск (досі «✓ код 0»)
-    sig_line_ = sp_.read_text(encoding='utf-8').rstrip('\n').split('\n')[-1]
+    # (другий підпис — справжній, над текстом із першим рядком підпису: так його робив Скептик)
     two_ = sd_ / 'два_підписи.ngr'
-    two_.write_text(sp_.read_text(encoding='utf-8') + sig_line_ + '\n', encoding='utf-8')
+    head_ = sp_.read_text(encoding='utf-8')
+    seed_ = bytes.fromhex(kf_.read_text(encoding='utf-8').split()[-1])
+    sig2_ = NS.ed_sign(seed_, NS.sign_message(head_.encode(), NS.parse(head_, str(sd_), str(two_))))
+    two_.write_text(f'{head_}{NS.SIG_PREFIX}{NS.ed_public(seed_).hex()} {sig2_.hex()}\n', encoding='utf-8')
     v2_ = run(['--перевірити-підпис', str(two_), '--json'], senv)
     s2_ = run(['--підписати', str(two_), '--ключ', str(kf_)], senv)
     r2_ = run([str(two_)], senv)
