@@ -1,0 +1,2 @@
+✗ python: «urllib.request.urlopen» пробувала вийти в мережу (urllib.Request http://127.0.0.1:28737/praktyk-most-urlopen) — міст не дав: функція не чиста (у сліді — «заборонено»)
+✗ 3:8 python: «linecache.getlines» пробувала читати поза теками Python (open /proc/self/status) — міст не дав: функція не чиста (у сліді — «заборонено»)

@@ -1,0 +1,23 @@
+✓ math.factorial → 5736 симв.: 331627509245063324117539338057632403828111720810578039457193
+✓ math.isqrt → 5736 симв.: 331627509245063324117539338057632403828111720810578039457193
+✗ json.loads: python: «json.loads»: результат — не дані (nan — не скінченне число)
+✗ json.loads: python: «json.loads»: результат — не дані (inf — не скінченне число)
+✓ json.loads → 1 симв.: 0
+✓ json.loads → 1 симв.: 0
+✓ json.loads → 3 симв.: 0.1
+✗ json.loads: python: «json.loads»: результат — не дані (рядок із самотнім сурогатом (не UTF-8))
+✗ json.loads: python: «json.loads»: результат — не дані (рядок із самотнім сурогатом (не UTF-8))
+✓ json.loads → 3 симв.: a⟨U+0000⟩b
+✓ json.loads → 1 симв.: ⟨U+202E⟩
+✓ json.loads → 21 симв.: 【【【【【【【【【【1】】】】】】】】】】
+✓ json.loads → 7 симв.: 『「a」 2』
+✗ decimal.Decimal: python: «decimal.Decimal»: результат — не дані (NaN — не скінченне число)
+✗ decimal.Decimal: python: порядок числа понад 30000 цифр
+✓ decimal.Decimal → 1 симв.: 0
+✓ decimal.Decimal → 6 симв.: 100000
+✗ datetime.date.fromisoformat: python: «datetime.date.fromisoformat»: результат — не дані (date)
+✓ statistics.mean → 3 симв.: 1.5
+✗ statistics.mean: python: «statistics.mean»: StatisticsError: mean requires at least one data point
+✓ re.findall → 21 симв.: 【【「a」 「b」】 【「a」 「b」】】
+✓ unicodedata.normalize → 3 симв.: fi1
+✗ json.dumps: python: «json.dumps»: TypeError: Object of type Decimal is not JSON serializable

@@ -1,0 +1,11 @@
+🜂 「нові речення §5 про SQLite: CREATE TEMP, rowid трьома стовпцями, ngr_rowid, дробовий параметр」 【「бд.писати:звіти」】
+← база § ⌂ 0
+» ☂ 🜔бд.писати база 「CREATE TEMP TABLE тм(x)」 【】 λe ＋ 「Б1 CREATE TEMP: 」 e
+» ☂ 🜔бд.писати база 「CREATE TABLE h1(rowid TEXT, x)」 【】 λe ＋ 「Б2 h1: 」 e
+» ☂ 🜔бд.писати база 「INSERT INTO h1 VALUES ('a', 1)」 【】 λe ＋ 「Б2 вставка h1: 」 e
+» ☂ 🜔бд.писати база 「CREATE TABLE h3(rowid, _rowid_, oid, x)」 【】 λe ＋ 「Б3 h3: 」 e
+» ☂ 🜔бд.писати база 「INSERT INTO h3 VALUES (1, 2, 3, 4)」 【】 λe ＋ 「Б3 вставка h3: 」 e
+» ☂ 🜔бд.писати база 「SELECT ngr_rowid()」 【】 λe ＋ 「Б4 ngr_rowid(): 」 e
+» ☂ 🜔бд.писати база 「SELECT ngr_rowid(1, 2)」 【】 λe ＋ 「Б4 ngr_rowid(1,2): 」 e
+» 🜔бд.писати база 「CREATE TABLE г(сума)」 【】
+» 🜔бд.писати база 「INSERT INTO г VALUES (?)」 【12.50】

@@ -1,0 +1,47 @@
+🜂 「проби бд.писати і сторожа SQLite §5」 【「бд.писати:звіти」】
+← база § ⌂ 0
+← пиши Λміт q ☂ ＋ 〔{міт}: 〕 σ 🜔бд.писати база q 【】 λe ＋ 〔{міт}: ✗ 〕 e
+← пишип Λq пар ☂ σ 🜔бд.писати база q пар λe ＋ 「✗ 」 e
+» пиши 「Д1 створити」 「CREATE TABLE t(id INTEGER PRIMARY KEY, назва TEXT, сума, ціна REAL, к NUMERIC)」
+» ＋ 「Д2 дробові параметри: 」 пишип 「INSERT INTO t(назва, сума, ціна, к) VALUES (?, ?, ?, ?)」 【「хліб」 12.50 12.50 12.50】
+» ＋ 「Д2b дріб 0.1: 」 пишип 「INSERT INTO t(назва, сума, ціна, к) VALUES (?, ?, ?, ?)」 【「чай」 0.1 0.1 0.1】
+» ＋ 「Д2c іменований параметр: 」 пишип 「INSERT INTO t(назва) VALUES (:н)」 『「н」 「x」』
+» ＋ 「Д2d параметр-словник у списку: 」 пишип 「INSERT INTO t(назва) VALUES (?)」 【『「н」 「x」』】
+» пиши 「Д3 DEFAULT CURRENT_TIMESTAMP — створити」 「CREATE TABLE d(x, коли DEFAULT CURRENT_TIMESTAMP)」
+» пиши 「Д3b вставити в d」 「INSERT INTO d(x) VALUES (1)」
+» пиши 「Д4 CHECK з now — створити」 「CREATE TABLE c(x, CHECK (x < date('now')))」
+» пиши 「Д4b вставити в c」 「INSERT INTO c(x) VALUES ('2000-01-01')」
+» пиши 「Д5 згенерований стовпець з random — створити」 「CREATE TABLE g(x, y AS (random()))」
+» пиши 「Д5b вставити в g」 「INSERT INTO g(x) VALUES (1)」
+» пиши 「Д6 VIEW з random — створити」 「CREATE VIEW v AS SELECT random() AS r」
+» пиши 「Д6b VIEW з датою з даних」 「CREATE VIEW vd AS SELECT date('2026-10-15', '+1 day') AS дн」
+» пиши 「Д7 тригер з now — створити」 「CREATE TRIGGER тн AFTER INSERT ON t WHEN NEW.назва = 'зараз' BEGIN UPDATE t SET к = julianday('now') WHERE id = NEW.id; END」
+» пиши 「Д7b тригер спрацьовує」 「INSERT INTO t(назва) VALUES ('зараз')」
+» пиши 「Д7c тригер не спрацьовує (WHEN хибне)」 「INSERT INTO t(назва) VALUES ('звичайно')」
+» пиши 「Д8 ховає rowid — створити」 「CREATE TABLE h(rowid TEXT, x)」
+» пиши 「Д8b ховає oid — вставити」 「INSERT INTO h(rowid, x) VALUES ('a', 1)」
+» пиши 「Д9 ngr_rowid()」 「SELECT ngr_rowid()」
+» пиши 「Д9b ngr_rowid(1, 2)」 「SELECT ngr_rowid(1, 2)」
+» пиши 「Д10 PRAGMA TABLE_INFO великими」 「pragma TABLE_INFO(t)」
+» пиши 「Д10b PRAGMA main.table_xinfo」 「PRAGMA main.table_xinfo(t)」
+» пиши 「Д10c PRAGMA user_version читати」 「PRAGMA user_version」
+» пиши 「Д10d PRAGMA index_list」 「PRAGMA index_list('t')」
+» пиши 「Д11 SAVEPOINT」 「SAVEPOINT a」
+» пиши 「Д11b COMMIT」 「COMMIT」
+» пиши 「Д12 крапка з комою в кінці」 「INSERT INTO t(назва) VALUES ('кінець');」
+» пиши 「Д12b коментар після ;」 「INSERT INTO t(назва) VALUES ('коментар'); -- кінець」
+» пиши 「Д12c коментар на початку」 「-- вставка\nINSERT INTO t(назва) VALUES ('поч')」
+» пиши 「Д13 UPDATE sqlite_master」 「UPDATE sqlite_master SET sql = sql」
+» пиши 「Д13b SELECT з sqlite_master через писати」 「SELECT name FROM sqlite_master」
+» пиши 「Д14 тригер RAISE — створити」 「CREATE TRIGGER тр BEFORE INSERT ON t WHEN NEW.назва = 'заборона' BEGIN SELECT RAISE(ABORT, 'не можна'); END」
+» пиши 「Д14b RAISE спрацював」 「INSERT INTO t(назва) VALUES ('заборона')」
+» пиши 「Д15 REPLACE」 「REPLACE INTO t(id, назва) VALUES (1, 'хліб2')」
+» пиши 「Д15b INSERT OR IGNORE」 「INSERT OR IGNORE INTO t(id, назва) VALUES (1, 'хліб3')」
+» пиши 「Д15c UPSERT」 「INSERT INTO t(id, назва) VALUES (1, 'хліб4') ON CONFLICT(id) DO UPDATE SET назва = excluded.назва」
+» пиши 「Д15d RETURNING」 「INSERT INTO t(назва) VALUES ('ret') RETURNING id」
+» пиши 「Д16 json_each у запиті」 「INSERT INTO t(назва) SELECT value FROM json_each('["a","b"]')」
+» пиши 「Д17 CREATE INDEX」 「CREATE INDEX і_назва ON t(назва)」
+» пиши 「Д17b ALTER TABLE ADD」 「ALTER TABLE t ADD COLUMN нова TEXT」
+» пиши 「Д17c DROP VIEW」 「DROP VIEW v」
+» пиши 「Д18 CREATE TEMP TABLE」 「CREATE TEMP TABLE тм(x)」
+» пиши 「Д19 WITH RECURSIVE INSERT 1000」 「INSERT INTO t(назва) WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 1000) SELECT 'р' || x FROM c」

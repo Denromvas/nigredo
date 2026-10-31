@@ -1,0 +1,15 @@
+А0 таблиця: 0
+А1 pragma_journal_mode('wal') через читати: ✗ бд.читати: unknown database 'wal'
+А1b pragma_journal_mode('wal') через писати: ✗ бд.писати: unknown database 'wal'
+А1c INSERT … SELECT з pragma_journal_mode: ✗ бд.писати: unknown database 'wal'
+А2 pragma_user_version: ✗ бд.читати: дія поза дозволеним (лише SELECT; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+А2b pragma_user_version(7): ✗ бд.писати: too many arguments on pragma_user_version() - max 0
+А3 pragma_table_info — дозволено: 【『「name」 「id」』 『「name」 「назва」』 『「name」 「сума」』 『「name」 「ціна」』 『「name」 「к」』 『「name」 「нова」』】
+А4 pragma_function_list: ✗ бд.читати: дія поза дозволеним (лише SELECT; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+А5 pragma_database_list: ✗ бд.читати: дія поза дозволеним (лише SELECT; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+А6 pragma_wal_checkpoint: ✗ бд.писати: немає такої таблиці (no such table: pragma_wal_checkpoint)
+А7 pragma_writable_schema(1): ✗ бд.писати: too many arguments on pragma_writable_schema() - max 0
+А8 тригер з pragma-функцією: 0
+А8b вставка запускає тригер: ✗ бд.писати: unknown database 'wal'
+А9: ✗ бд.писати: «file:дані/../а9uri.db?mode=rwc» поза дозволеним (звіти)
+А10: ✗ бд.читати: немає такого файлу: file:н2_а.db?immutable=1

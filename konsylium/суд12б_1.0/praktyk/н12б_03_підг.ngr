@@ -1,0 +1,5 @@
+🜂 「база: тригер з random() у гілці, що спрацьовує лише для 'жереб'」 【「бд.писати:звіти」】
+← база § ⌂ 0
+» 🜔бд.писати база 「CREATE TABLE t(id INTEGER PRIMARY KEY, назва TEXT, к)」 【】
+» ☂ 🜔бд.писати база 「CREATE TRIGGER тр AFTER INSERT ON t WHEN NEW.назва = 'жереб' BEGIN UPDATE t SET к = random() WHERE id = NEW.id; END」 【】 λe ＋ 「П1 створити тригер: ✗ 」 e
+» 🜔бд.писати база 「INSERT INTO t(назва) VALUES ('перший')」 【】

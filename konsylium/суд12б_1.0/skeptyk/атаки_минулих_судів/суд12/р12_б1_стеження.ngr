@@ -1,0 +1,14 @@
+🜂 「огляд 11б: обійти стеження моста функціями зі списку власника」 【「python:linecache.getlines」 「python:os.pidfd_open」 「python:builtins.open」】
+← спроба Λназва арг ☂ σ 🜔python назва арг λe 〔ПОМИЛКА: {e}〕
+← рядки Λшлях мітка ☂ 〔{мітка}: рядків {ρ 🜔python 「linecache.getlines」 【шлях】}〕 λe 〔{мітка}: ПОМИЛКА: {e}〕
+» рядки 「root/ai-agents/Nigredo/konsylium/суд12б_1.0/skeptyk/секрет/ключ.txt」 「відносний від /」
+» рядки 「/usr/lib/python3.13/../../../root/ai-agents/Nigredo/konsylium/суд12б_1.0/skeptyk/секрет/ключ.txt」 「.. з теки Python」
+» рядки 「/proc/self/root/root/ai-agents/Nigredo/konsylium/суд12б_1.0/skeptyk/секрет/ключ.txt」 「/proc/self/root」
+» рядки 「/proc/self/cwd/root/ai-agents/Nigredo/konsylium/суд12б_1.0/skeptyk/секрет/ключ.txt」 「/proc/self/cwd」
+» рядки 「/usr/lib/python3.13/sitecustomize.py」 「симлінк у теці Python」
+» рядки 「/proc/self/environ」 「environ」
+» рядки 「/usr/lib/python3.13/this.py」 「контроль: файл теки Python」
+» рядки 「os.py」 「контроль: відносне імʼя модуля」
+» 〔pidfd_open 1: {спроба 「os.pidfd_open」 【1】}〕
+» 〔open дескриптор 0: {спроба 「builtins.open」 【0】}〕
+» 〔open /dev/stdin: {спроба 「builtins.open」 【「/dev/stdin」】}〕

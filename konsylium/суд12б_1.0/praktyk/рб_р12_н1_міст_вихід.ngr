@@ -1,0 +1,12 @@
+🜂 「міст до Python: чи вийде дозволена небезпечна функція з процесу моста」 【「python:os.system」 「python:subprocess.getoutput」 「python:urllib.request.urlopen」 「python:socket.create_connection」 「python:shutil.copyfile」 「python:builtins.open」 「python:linecache.getlines」】
+← спроба Λфункція аргументи ☂ 〔✓ {функція} → {🜔python функція аргументи}〕 λe 〔✗ {функція}: {e}〕
+» спроба 「os.system」 【「echo міст-os-system > /root/ai-agents/Nigredo/konsylium/суд12б_1.0/praktyk/звіти/os_system.txt」】
+» спроба 「subprocess.getoutput」 【「echo міст-getoutput」】
+» спроба 「urllib.request.urlopen」 【「http://127.0.0.1:28737/praktyk-міст-urlopen」】
+» спроба 「socket.create_connection」 【【「127.0.0.1」 28737】】
+» спроба 「shutil.copyfile」 【「/root/ai-agents/Nigredo/konsylium/суд12б_1.0/praktyk/дані/вхід.txt」 「/root/ai-agents/Nigredo/konsylium/суд12б_1.0/praktyk/звіти/копія_моста.txt」】
+» спроба 「builtins.open」 【「/root/ai-agents/Nigredo/konsylium/суд12б_1.0/praktyk/звіти/відкрито_мостом.txt」 「w」】
+» спроба 「builtins.open」 【「/root/ai-agents/Nigredo/konsylium/суд12б_1.0/praktyk/звіти/відкрито_мостом.txt」 「a」】
+» спроба 「builtins.open」 【「/root/ai-agents/Nigredo/konsylium/суд12б_1.0/praktyk/дані/вхід.txt」】
+← статус 🜔python 「linecache.getlines」 【「/proc/self/status」】
+» φ статус λрядок ∨ ∋ рядок 「Seccomp」 ∋ рядок 「NoNewPrivs」

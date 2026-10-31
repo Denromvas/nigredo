@@ -1,0 +1,26 @@
+ВІДБИТОК b55b6b67b7cdf158d5f9ac5b0c6bdc0602f68d3ce6c56d01661fbd3ba6f02f5a (sha256 програми й 1 модулів)
+
+ПЕЧАТКА
+  намір (слова автора): 「схвалена власником програма судді orkestrator: прочитати секрет і записати його довжину」
+  дозволи:
+    файл.читати → 「/root/ai-agents/Nigredo/konsylium/суд12б_1.0/orkestrator/секрет」   (прочитати текстовий файл (UTF-8; \r\n і \r стають \n); довший за --розмір символів — помилка, а не обрізаний)
+    файл.писати → 「/root/ai-agents/Nigredo/konsylium/суд12б_1.0/orkestrator/схвалене」   (записати (перезаписати) текстовий файл)
+  модуль 「модуль_схвалений.ngr」 (локальний файл 「/root/ai-agents/Nigredo/konsylium/суд12б_1.0/orkestrator/модуль_схвалений.ngr」, sha256 3d50e4b131913a25…): бере довжина; дозволи: жодних; намір 「довжина рядка」
+  дозволи власника: /root/ai-agents/Nigredo/konsylium/суд12б_1.0/власник/дозволи.json (sha256 c2514f24e41bf09a); схвалено власником: програма b55b6b67b7cdf158…
+  права теки /root/ai-agents/Nigredo/konsylium/суд12б_1.0/orkestrator: файл.читати:/root/ai-agents/Nigredo/konsylium/суд12б_1.0/orkestrator/дані, файл.список:/root/ai-agents/Nigredo/konsylium/суд12б_1.0/orkestrator/дані, файл.писати:/root/ai-agents/Nigredo/konsylium/суд12б_1.0/orkestrator/звіти, бд.читати:/root/ai-agents/Nigredo/konsylium/суд12б_1.0/orkestrator/дані, бд.писати:/root/ai-agents/Nigredo/konsylium/суд12б_1.0/orkestrator/звіти, мережа.взяти:127.0.0.1:28737, мережа.послати:127.0.0.1:28737, процес:echo, процес:ls, процес:sh -c echo, python:statistics.median, python:statistics.mean, python:statistics.stdev, python:statistics.pstdev, python:math.factorial, python:math.isqrt, python:json.dumps, python:json.loads, python:re.findall, python:decimal.Decimal, python:datetime.date.fromisoformat, python:unicodedata.normalize, python:time.sleep, python:subprocess.getoutput, python:os.system, python:urllib.request.urlopen, python:socket.create_connection, python:shutil.copyfile, python:builtins.open, python:linecache.getlines, python:os.pidfd_open
+  права, схвалені власником саме для цієї програми («для_програм»): файл.читати:/root/ai-agents/Nigredo/konsylium/суд12б_1.0/orkestrator/секрет, файл.писати:/root/ai-agents/Nigredo/konsylium/суд12б_1.0/orkestrator/схвалене
+  ✓ печатка в межах дозволів власника
+  ЗАМОК ОС: ядро закриє мережу, процеси (seccomp; чи тримає ця машина — ngr --перевірити-ізоляцію)
+  (права перевіряються й під час виконання: кожен інструмент і кожен субагент — лише в межах агента, що його викликає. Цього необхідно, але не досить: намір, імена й вивід — слова автора програми)
+
+ПЕРЕКЛАД
+ПЕЧАТКА — намір: «схвалена власником програма судді orkestrator: прочитати секрет і записати його довжину»; дозволи: файл.читати [секрет]; файл.писати [схвалене]
+(шляхи файл.читати, файл.писати: від теки програми; якщо там такого шляху немає — від єдиної теки з печатки; справжній шлях — у сліді, поле «шлях»)
+з модуля «модуль_схвалений.ngr» (sha256 3d50e4b131913a25…, дозволи: жодних) взяти: довжина; модуль:
+  довжина ← (s) ↦ довжина(s)
+текст ← інструмент файл.читати(«секрет/ключ.txt»)
+надрукувати (інструмент файл.писати(«схвалене/довжина.txt», рядок(довжина(текст))))
+надрукувати «готово»
+
+Ця програма вже схвалена саме цими правами в /root/ai-agents/Nigredo/konsylium/суд12б_1.0/власник/дозволи.json — додавати нічого.
+Схвалення — для ТЕКСТУ: будь-яка байт-у-байт копія (в іншій теці, через -e чи MCP) отримає ці права; змінений байт програми чи її модуля — інший відбиток, і схвалення не діє. Агенти цей файл не пишуть.

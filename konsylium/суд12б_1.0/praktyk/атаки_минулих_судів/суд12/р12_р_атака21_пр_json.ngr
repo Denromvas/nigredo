@@ -1,0 +1,12 @@
+🜂 「атака21 (практик): перелік дозволених віртуальних таблиць у звичайній роботі — масова вставка накладних з JSON через json_each(?), json_tree, своя таблиця dbstat; temp.dbstat (знахідка Скептика) — скільки рядків дає」 【「бд.писати:звіти」】
+← база § ⌂ 0
+← з Λq п ☂ ＋ 「✓ 」 σ 🜔бд.писати база q п λпом ＋ 「✗ 」 пом
+» з 「CREATE TABLE IF NOT EXISTS накл(ном TEXT, сума INTEGER)」 【】
+» з 「INSERT INTO накл(ном, сума) SELECT json_extract(value, '$.н'), json_extract(value, '$.с') FROM json_each(?)」 【「[{"н":"Н-1","с":100},{"н":"Н-2","с":250},{"н":"Н-3","с":75}]」】
+» з 「INSERT INTO накл(ном, сума) SELECT key, value FROM json_tree(?) WHERE type = 'integer'」 【「{"Н-4":10,"Н-5":20}」】
+» з 「UPDATE накл SET сума = сума + 1 WHERE ном IN (SELECT value FROM json_each(?))」 【「["Н-1","Н-5"]」】
+» з 「CREATE TABLE IF NOT EXISTS dbstat(x)」 【】
+» з 「INSERT INTO dbstat VALUES (7)」 【】
+» з 「INSERT INTO накл(ном, сума) SELECT 'з dbstat', x FROM dbstat」 【】
+» з 「INSERT INTO накл(ном, сума) SELECT 'temp.dbstat', 1 FROM temp.dbstat」 【】
+» з 「INSERT INTO накл(ном, сума) SELECT 'sqlite_stmt', 1 FROM sqlite_stmt」 【】

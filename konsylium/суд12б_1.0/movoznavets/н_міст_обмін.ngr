@@ -1,0 +1,15 @@
+🜂 「обмін даними з мостом: краї」 【「python:json.loads」 「python:json.dumps」 「python:decimal.Decimal」 「python:statistics.mean」 「python:unicodedata.normalize」 「python:math.factorial」】
+» ☂ 🜔python 「statistics.mean」 【【1 2】】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「json.loads」 【「0.1」】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「json.loads」 【「1e400」】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「json.loads」 【「-0.0」】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「decimal.Decimal」 【「1e999999」】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「decimal.Decimal」 【「-0」】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「decimal.Decimal」 【「1.10」】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「json.loads」 【「"\\\\ud800"」】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「json.loads」 【「{"1": 2, "1": 3}」】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「json.dumps」 【1.5】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「json.dumps」 【『「a」 ∅ 「b」 ●』】 λe ＋ 「помилка: 」 e
+» ☂ ρ σ 🜔python 「math.factorial」 【3000】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「math.factorial」 【200000】 λe ＋ 「помилка: 」 e
+» ☂ 🜔python 「unicodedata.normalize」 【「NFC」 δ 「"\\ud800"」】 λe ＋ 「помилка: 」 e

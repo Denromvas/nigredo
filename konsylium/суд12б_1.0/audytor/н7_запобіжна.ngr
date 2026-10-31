@@ -1,0 +1,7 @@
+🜂 「база на межі rowid: запобіжна відмова з датою й без дати」 【「бд.писати:звіти」】
+← база § ⌂ 0
+← спроба λq ☂ ＋ 「✓ 」 σ 🜔бд.писати база q 【】 λпом ＋ 「✗ 」 пом
+» спроба 「INSERT INTO s(a) VALUES ('z')」
+» спроба 「INSERT INTO s(a) VALUES (date('2026-10-15'))」
+» спроба 「INSERT INTO s(a) VALUES (date('now'))」
+» спроба 「INSERT INTO s(a) VALUES (random())」

@@ -1,0 +1,11 @@
+🜂 「огляд 11б: хибні тривоги стеження на чистих функціях зі списку власника」 【「python:json.loads」 「python:json.dumps」 「python:re.findall」 「python:decimal.Decimal」 「python:datetime.date.fromisoformat」 「python:unicodedata.normalize」 「python:math.isqrt」 「python:statistics.pstdev」 「python:statistics.mean」】
+← спроба Λназва арг ☂ 《 ← р 🜔python назва арг ¦ 〔{назва}: {р}〕 》 λe 〔{назва}: ПОМИЛКА {e}〕
+» спроба 「json.loads」 【「{\"a\": [1, 2.5, null]}」】
+» спроба 「json.dumps」 【【1 2 3】】
+» спроба 「re.findall」 【「\\d+」 「a1b22c333」】
+» спроба 「decimal.Decimal」 【「1.10」】
+» спроба 「datetime.date.fromisoformat」 【「2026-10-29」】
+» спроба 「unicodedata.normalize」 【「NFKC」 「ﬁ」】
+» спроба 「math.isqrt」 【1000000】
+» спроба 「statistics.pstdev」 【【1 2 3 4】】
+» спроба 「statistics.mean」 【【1 2 3 4】】

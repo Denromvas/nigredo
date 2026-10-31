@@ -1,0 +1,10 @@
+🜂 「огляд 11в: міст — stderr понад 64 КБ (попередження re), спроба після нього, --розмір під ☂」 【「python:re.findall」 「python:os.system」 「python:unicodedata.normalize」】
+← шаблон ⁀ μ … 0 1500 λi 「[[a]」 「」
+» 〔довжина шаблону: {ρ шаблон}〕
+← знайдено ☂ 🜔python 「re.findall」 【шаблон 「a[a」】 λe 〔ПЕРЕХОПЛЕНО re: {e}〕
+» 〔re.findall: {ρ знайдено}〕
+← с ☂ σ 🜔python 「os.system」 【「echo ВИКОНАНО > /root/ai-agents/Nigredo/konsylium/суд12б_1.0/skeptyk/звіти/в7_system.txt」】 λe 〔ПЕРЕХОПЛЕНО system: {e}〕
+» с
+← довге ☂ 🜔python 「unicodedata.normalize」 【「NFKD」 「ﷺﷺﷺﷺﷺﷺ」】 λe 〔ПЕРЕХОПЛЕНО розмір: {e}〕
+» 〔normalize: {ρ довге}〕
+» 「далі」

@@ -1,0 +1,7 @@
+🜂 「після квоти і насправді: PRAGMA поза довідковими」 【「бд.писати:звіти≤1」】
+← база § ⌂ 0
+← спроба λq ☂ ＋ 「✓ 」 σ 🜔бд.писати база q 【】 λпом ＋ 「✗ 」 пом
+» спроба 「INSERT INTO t2(назва) SELECT name FROM pragma_database_list」
+» спроба 「INSERT INTO t2(назва) VALUES ('перша')」
+» спроба 「INSERT INTO t2(назва) SELECT name FROM pragma_database_list」
+» спроба 「ATTACH DATABASE 'звіти/x.db' AS x」

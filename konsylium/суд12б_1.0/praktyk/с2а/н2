@@ -1,0 +1,43 @@
+Д1 створити: 0
+Д2 дробові параметри: 1
+Д2b дріб 0.1: 1
+Д2c іменований параметр: ✗ бд.писати: параметри — список (для ? у запиті), а не словник
+Д2d параметр-словник у списку: ✗ бд.писати: параметр — рядок, число, істинність чи ∅, а не словник
+Д3 DEFAULT CURRENT_TIMESTAMP — створити: 0
+Д3b вставити в d: ✗ бд.писати: заборонено: годинник SQLite (current_timestamp) без права «час» (з квотою «час≤N» — лише 🜔час) — дати рахуйте в Nigredo (◷) чи дайте «час» у печатці
+Д4 CHECK з now — створити: 0
+Д4b вставити в c: ✗ бд.писати: заборонено: годинник SQLite (date — поточний час чи часовий пояс) без права «час» (з квотою «час≤N» — лише 🜔час) — дати з даних рахуються, «зараз» — лише з «час» у печатці
+Д5 згенерований стовпець з random — створити: ✗ бд.писати: недетермінована функція (random(), CURRENT_* тощо) у згенерованому стовпці чи індексі (non-deterministic functions prohibited in generated columns)
+Д5b вставити в g: ✗ бд.писати: немає такої таблиці (no such table: g)
+Д6 VIEW з random — створити: 0
+Д6b VIEW з датою з даних: 0
+Д7 тригер з now — створити: 0
+Д7b тригер спрацьовує: ✗ бд.писати: заборонено: годинник SQLite (julianday — поточний час чи часовий пояс) без права «час» (з квотою «час≤N» — лише 🜔час) — дати з даних рахуються, «зараз» — лише з «час» у печатці
+Д7c тригер не спрацьовує (WHEN хибне): 1
+Д8 ховає rowid — створити: 0
+Д8b ховає oid — вставити: 1
+Д9 ngr_rowid(): ✗ бд.писати: хибна кількість аргументів функції (wrong number of arguments to function ngr_rowid())
+Д9b ngr_rowid(1, 2): ✗ бд.писати: заборонено: службова функція інтерпретатора (ngr_rowid) — її кличуть лише його тимчасові тригери
+Д10 PRAGMA TABLE_INFO великими: 0
+Д10b PRAGMA main.table_xinfo: 0
+Д10c PRAGMA user_version читати: ✗ бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+Д10d PRAGMA index_list: 0
+Д11 SAVEPOINT: ✗ бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+Д11b COMMIT: ✗ бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+Д12 крапка з комою в кінці: 1
+Д12b коментар після ;: 1
+Д12c коментар на початку: 1
+Д13 UPDATE sqlite_master: ✗ бд.писати: table sqlite_master may not be modified
+Д13b SELECT з sqlite_master через писати: 0
+Д14 тригер RAISE — створити: 0
+Д14b RAISE спрацював: ✗ бд.писати: тригер бази зупинив запит: «не можна»
+Д15 REPLACE: 1
+Д15b INSERT OR IGNORE: 0
+Д15c UPSERT: 1
+Д15d RETURNING: 1
+Д16 json_each у запиті: 2
+Д17 CREATE INDEX: 0
+Д17b ALTER TABLE ADD: 0
+Д17c DROP VIEW: 0
+Д18 CREATE TEMP TABLE: ✗ бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+Д19 WITH RECURSIVE INSERT 1000: 1000

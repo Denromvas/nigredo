@@ -1,0 +1,8 @@
+✗ json.dumps: python: аргумент — функція, а передати можна лише дані
+✗ json.dumps: python: «json.dumps»: TypeError: Object of type Decimal is not JSON serializable
+✓ json.dumps → {"a": [1, {"b": null}]}
+✗ statistics.median: python: «statistics.median»: TypeError: '<' not supported between instances of 'str' and 'int'
+✗ statistics.median: python: «statistics.median»: StatisticsError: no median for empty data
+✓ json.dumps → "\\ud800"
+✓ json.dumps → 0
+кінець

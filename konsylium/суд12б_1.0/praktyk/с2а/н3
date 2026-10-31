@@ -1,0 +1,28 @@
+Ч1 дробові назад (сума без типу, ціна REAL, к NUMERIC): 【『「назва」 「хліб4」 「сума」 ∅ 「тс」 「null」 「ціна」 ∅ 「тц」 「null」 「к」 ∅ 「тк」 「null」』 『「назва」 「чай」 「сума」 「0.1」 「тс」 「text」 「ціна」 0.1 「тц」 「real」 「к」 0.1 「тк」 「real」』】
+Ч1b сума SUM над текстом і REAL: 【『「с1」 0.1 「с2」 0.1 「с3」 0.1』】
+Ч1c 0.1 + 0.2 у SQLite: 【『「s」 0.30000000000000004』】
+Ч2 VIEW з random: ✗ бд.читати: немає такої таблиці (no such table: v)
+Ч2b VIEW з датою з даних: 【『「дн」 「2026-10-16」』】
+Ч3 sqlite_master: 【『「name」 「c」 「type」 「table」』 『「name」 「d」 「type」 「table」』 『「name」 「h」 「type」 「table」』 『「name」 「t」 「type」 「table」』 『「name」 「vd」 「type」 「view」』 『「name」 「тн」 「type」 「trigger」』 『「name」 「тр」 「type」 「trigger」』 『「name」 「і_назва」 「type」 「index」』】
+Ч3b sqlite_schema sql: 【『「sql」 「CREATE TABLE t(id INTEGER PRIMARY KEY, назва TEXT, сума, ціна REAL, к NUMERIC, нова TEXT)」』】
+Ч3c pragma_table_list: 【『「name」 「c」』 『「name」 「d」』 『「name」 「h」』 『「name」 「sqlite_schema」』 『「name」 「t」』 『「name」 「vd」』】
+Ч3d PRAGMA table_list: 【『「schema」 「main」 「name」 「h」 「type」 「table」 「ncol」 2 「wr」 0 「strict」 0』 『「schema」 「main」 「name」 「vd」 「type」 「view」 「ncol」 1 「wr」 0 「strict」 0』 『「schema」 「main」 「name」 「c」 「type」 「table」 「ncol」 1 「wr」 0 「strict」 0』 『「schema」 「main」 「name」 「d」 「type」 「table」 「ncol」 2 「wr」 0 「strict」 0』 『「schema」 「main」 「name」 「t」 「type」 「table」 「ncol」 6 「wr」 0 「strict」 0』 『「schema」 「main」 「name」 「sqlite_schema」 「type」 「table」 「ncol」 5 「wr」 0 「strict」 0』 『「schema」 「temp」 「name」 「sqlite_temp_schema」 「type」 「table」 「ncol」 5 「wr」 0 「strict」 0』】
+Ч4 запис через WITH: ✗ бд.читати: дія поза дозволеним (лише SELECT; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+Ч4b перше слово EXPLAIN: ✗ бд.читати: «explain» поза дозволеним — лише SELECT (WITH, VALUES) і довідкові PRAGMA (table_info …); для змін — бд.писати
+Ч4c коментар і ; на початку: 【『「один」 1』】
+Ч4d VALUES: 【『「column1」 1 「column2」 「a」』 『「column1」 2 「column2」 「b」』】
+Ч5 однакові назви стовпців: ✗ бд.читати: однакові назви стовпців (a, a) — дайте різні через AS
+Ч5b двійкові дані: ✗ бд.читати: стовпець «b» — двійкові дані; візьміть hex(b)
+Ч5c NaN/Infinity: ✗ бд.читати: стовпець «inf» — не число (inf); SQLite переповнився
+Ч5d ділення на 0: 【『「z」 ∅』】
+Ч5e велике ціле: 【『「m」 9223372036854775807 「n」 -9223372036854775808』】
+Ч5f дріб з 17 знаками: 【『「d」 0.12345678901234568』】
+Ч6 json_tree: 【『「key」 0 「value」 1』 『「key」 1 「value」 2』】
+Ч6b dbstat: ✗ бд.читати: заборонено: віртуальна таблиця SQLite «dbstat» — програмі лише json_each, json_tree і таблиці самої бази
+Ч6c sqlite_dbpage: ✗ бд.читати: заборонено: сирі сторінки бази (sqlite_dbpage): вміст файлу повз SQL, authorizer і тригери
+Ч7 now: ✗ бд.читати: заборонено: годинник SQLite (date — поточний час чи часовий пояс) без права «час» (з квотою «час≤N» — лише 🜔час) — дати з даних рахуються, «зараз» — лише з «час» у печатці
+Ч7b дата з даних: 【『「d」 「2026-11-15」 「дні」 287』】
+Ч7c strftime %s з даних: 【『「s」 「1792022400」』】
+Ч7d unixepoch без аргументу: ✗ бд.читати: заборонено: годинник SQLite (unixepoch — поточний час чи часовий пояс) без права «час» (з квотою «час≤N» — лише 🜔час) — дати з даних рахуються, «зараз» — лише з «час» у печатці
+Ч8 немає файлу: ✗ бд.читати: немає такого файлу: нема_н3.db
+Ч9 1000 рядків: 【『「n」 1000』】

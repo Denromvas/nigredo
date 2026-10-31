@@ -1,0 +1,1 @@
+✗ 2:9 python: «linecache.getlines» пробувала читати поза теками Python (open /root/ai-agents/Nigredo/konsylium/суд12б_1.0/praktyk/чужий.ключ) — міст не дав: функція не чиста (у сліді — «заборонено»)

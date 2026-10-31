@@ -1,0 +1,14 @@
+1.5
+0.1
+помилка: python: «json.loads»: результат — не дані (inf — не скінченне число)
+0
+помилка: python: порядок числа понад 30000 цифр
+0
+1.1
+\ud800
+『「1」 3』
+помилка: python: «json.dumps»: TypeError: Object of type Decimal is not JSON serializable
+{"a": null, "b": true}
+9131
+помилка: python: ціле понад 100000 бітів
+помилка: δ: не JSON: у рядку неповний символ (сурогат)

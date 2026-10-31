@@ -1,0 +1,9 @@
+🜂 「після вичерпаної квоти: годинник, дата, random, PRAGMA і запит із датою з даних」 【「бд.писати:звіти≤1」】
+← база § ⌂ 0
+← спроба λq ☂ ＋ 「✓ 」 σ 🜔бд.писати база q 【】 λпом ＋ 「✗ 」 пом
+» спроба 「INSERT INTO t(назва) VALUES ('перша')」
+» спроба 「INSERT INTO t(назва, д) VALUES ('з даних', date('2026-10-15', '+1 day'))」
+» спроба 「INSERT INTO t(назва, д) VALUES ('зараз1', date('now'))」
+» спроба 「INSERT INTO t(назва, д) VALUES ('с', CURRENT_TIMESTAMP)」
+» спроба 「INSERT INTO t(назва, д) VALUES ('в', random())」
+» спроба 「INSERT INTO t(назва, д) SELECT 'п', count(*) FROM pragma_table_info('t')」

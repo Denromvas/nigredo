@@ -1,0 +1,18 @@
+🜂 「тексти помилок SQLite під ☂ і версія SQLite」 【「бд.читати:дані」 「бд.писати:звіти」 「читати:дані」 「список:дані」 「писати:звіти」】
+← база ＋ 「звіти/」 § ⌂ 0
+» 🜔бд.читати 「дані/чужа_default.db」 「SELECT sqlite_version() AS в」 【】
+← скл 【「CREATE TABLE IF NOT EXISTS т1(a INTEGER PRIMARY KEY, b TEXT UNIQUE, c INTEGER NOT NULL DEFAULT 0 CHECK (c >= 0))」 「INSERT INTO т1 VALUES (1, 'x', 1)」 「INSERT INTO т1 VALUES (1, 'y', 1)」 「INSERT INTO т1 VALUES (2, 'x', 1)」 「INSERT INTO т1(b, c) VALUES ('q', NULL)」 「INSERT INTO т1(b, c) VALUES ('q', -1)」 「INSERT INTO т1 VALUES ('рядок', 'z', 1)」 「INSERT INTO т1 VALUES (1, 2)」 「INSERT INTO т2 VALUES (1)」 「SELEC 1」 「SELECT」 「SELECT 1 FROM」 「SELECT нема FROM т1」 「SELECT нема(1)」 「SELECT abs(1, 2)」 「SELECT a FROM т1, т1 AS x」 「SELECT sum(sum(a)) FROM т1」 「SELECT a FROM т1 GROUP BY 99」 「SELECT a FROM т1 ORDER BY 99」 「SELECT 1 UNION SELECT 1, 2」 「SELECT 1; SELECT 2」 「CREATE TABLE т1(a)」 「DROP TABLE нема」 「DROP INDEX нема」 「ALTER TABLE нема ADD x」 「ALTER TABLE т1 ADD COLUMN b」 「CREATE INDEX і ON т1(нема)」 「CREATE UNIQUE INDEX і2 ON т1(c)」 「CREATE TRIGGER тр BEFORE INSERT ON нема BEGIN SELECT 1; END」 「CREATE VIEW в AS SELECT нема」 「SELECT * FROM (SELECT 1」 「SELECT 'a」 「SELECT "a」 「SELECT ?」 「SELECT ?1, ?2」 「SELECT json('{')」 「SELECT json_extract('{}', '$[')」 「SELECT substr()」 「SELECT 1 LIMIT 'a'」 「INSERT INTO т1 DEFAULT VALUES」 「BEGIN」 「COMMIT」 「ROLLBACK」 「SAVEPOINT с」 「RELEASE с」 「WITH RECURSIVE r(x) AS (SELECT 1 UNION ALL SELECT x FROM r) SELECT nosuch FROM r」】
+∀ скл λз 《
+  » ☂ ＋ 「ok пис 」 σ 🜔бд.писати база з 【】 λe ＋ 「пис 」 e
+  » ☂ ＋ 「ok чит 」 Δ 🜔бд.читати 「дані/чужа_default.db」 з 【】 λe ＋ 「чит 」 e
+》
+» ☂ 🜔бд.читати 「дані/немає.db」 「SELECT 1」 【】 λe ＋ 「нема 」 e
+» ☂ 🜔бд.читати 「дані/вхід.txt」 「SELECT 1」 【】 λe ＋ 「не база 」 e
+» ☂ 🜔бд.читати 「дані」 「SELECT 1」 【】 λe ＋ 「тека 」 e
+» ☂ 🜔читати 「дані/немає.txt」 λe ＋ 「чит нема 」 e
+» ☂ 🜔читати 「дані」 λe ＋ 「чит тека 」 e
+» ☂ 🜔читати 「дані/wal0.db」 λe ＋ 「чит не utf8 」 e
+» ☂ 🜔список 「дані/немає」 λe ＋ 「спис 」 e
+» ☂ 🜔список 「дані/вхід.txt」 λe ＋ 「спис файл 」 e
+» ☂ 🜔писати 「звіти/немає_теки/x.txt」 「a」 λe ＋ 「пис нема 」 e
+» ☂ 🜔писати 「звіти」 「a」 λe ＋ 「пис тека 」 e

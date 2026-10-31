@@ -1,0 +1,14 @@
+🜂 「огляд 11б: чисті функції — без хибних тривог」 【「python:statistics.median」 「python:statistics.stdev」 「python:statistics.pstdev」 「python:statistics.mean」 「python:json.loads」 「python:json.dumps」 「python:decimal.Decimal」 「python:datetime.date.fromisoformat」 「python:re.findall」 「python:unicodedata.normalize」 「python:math.factorial」】
+← спроба Λназва арг ☂ σ 🜔python назва арг λe 〔ПОМИЛКА: {e}〕
+» 〔median: {спроба 「statistics.median」 【【3 1 2】】}〕
+» 〔stdev: {спроба 「statistics.stdev」 【【1.5 2.5 9】】}〕
+» 〔pstdev: {спроба 「statistics.pstdev」 【【1 2 3 4】】}〕
+» 〔mean: {спроба 「statistics.mean」 【【0.1 0.2】】}〕
+» 〔loads: {спроба 「json.loads」 【「{\"a\": [1, 2.5, null]}」】}〕
+» 〔dumps: {спроба 「json.dumps」 【【1 「ї」】】}〕
+» 〔Decimal: {спроба 「decimal.Decimal」 【「1.10」】}〕
+» 〔fromisoformat: {спроба 「datetime.date.fromisoformat」 【「2026-10-29」】}〕
+» 〔findall: {спроба 「re.findall」 【「\\d+」 「a1b22c333」】}〕
+» 〔findall FutureWarning: {спроба 「re.findall」 【「[[a]」 「[a]」】}〕
+» 〔normalize: {спроба 「unicodedata.normalize」 【「NFC」 「е́」】}〕
+» 〔factorial: {ρ ⊢ спроба 「math.factorial」 【500】}〕

@@ -1,0 +1,4 @@
+🜂 「підготувати базу: таблиця і тригер, гілка з годинником якого не виконується для звичайних назв」 【「бд.писати:звіти」】
+← бд § ⌂ 0
+» 🜔бд.писати бд 「CREATE TABLE t(назва TEXT, д TEXT)」 【】
+» 🜔бд.писати бд 「CREATE TRIGGER тр AFTER INSERT ON t WHEN NEW.назва = 'зараз' BEGIN UPDATE t SET д = julianday('now'); END」 【】

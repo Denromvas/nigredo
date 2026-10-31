@@ -1,0 +1,5 @@
+🜂 「міст: самотній сурогат з мови в процес моста」 【「python:json.dumps」 「python:unicodedata.normalize」】
+← с δ 「"a\\ud800b"」
+» ρ с
+» ☂ 🜔python 「json.dumps」 【с】 λe 〔помилка: {e}〕
+» ☂ 🜔python 「unicodedata.normalize」 【「NFC」 с】 λe 〔помилка: {e}〕
