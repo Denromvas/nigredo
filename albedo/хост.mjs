@@ -30,13 +30,22 @@ if (strange.length) fail(4, `✗ модуль просить невідоме: $
 if (WebAssembly.Module.exports(mod).some((e) => e.kind === 'memory') || !WebAssembly.Module.imports(mod).some((i) => i.kind === 'memory')) fail(4, '✗ модуль має власну памʼять: її дає лише господар');
 const sha256 = (b) => crypto.createHash('sha256').update(b).digest('hex');
 const HOME = process.env.NIGREDO_HOME || path.join(process.env.HOME || '/', '.nigredo');
-const real = (p) => {                // як os.path.realpath: хвоста, якого немає, просто не торкаємось
-  let cur = path.resolve(p), tail = [];
-  for (;;) {
-    try { return path.join(fs.realpathSync(cur), ...tail); }
-    catch { const up = path.dirname(cur); if (up === cur) return path.resolve(p); tail.unshift(path.basename(cur)); cur = up; }
+// як os.path.realpath, покомпонентно: посилання розгортаємо й тоді, коли його цілі немає (інакше запис через висяче посилання вийшов би
+// за теку, хоч перевірка бачила шлях усередині), а «..» — після розгортання, як ОС. Чого немає, просто лишається як є.
+function real(p) {
+  let done = '/', parts = (p.startsWith('/') ? p : `${process.cwd()}/${p}`).split('/').filter((c) => c && c !== '.'), links = 0;
+  while (parts.length) {
+    const c = parts.shift();
+    if (c === '..') { done = path.dirname(done); continue; }
+    const next = path.join(done, c);
+    let to;
+    try { to = fs.readlinkSync(next); } catch { done = next; continue; }
+    if (++links > 40) return path.join(next, ...parts);          // петля: далі не йдемо, відкриття скаже ELOOP
+    if (to.startsWith('/')) done = '/';
+    parts = [...to.split('/').filter((x) => x && x !== '.'), ...parts];
   }
-};
+  return done;
+}
 const inside = (p, base) => p === base || p.startsWith(base.endsWith('/') ? base : base + '/');
 
 // ---- печатка: читає господар сам, ядру не вірить
@@ -239,9 +248,10 @@ function fsCall(op, p, l, q, m) {
     if (op === 2) {                         // писати: теку перевіряємо, як нативно
       const dir = real(path.dirname(name)), target = path.join(dir, path.basename(name));
       const r = permit('файл.писати', dir, name); if (r) return BigInt(r);
-      if (fs.existsSync(target) && fs.lstatSync(target).isSymbolicLink()) return BigInt(deny('файл.писати', name, 'символьне посилання'));
+      if (fs.lstatSync(target, { throwIfNoEntry: false })?.isSymbolicLink()) return BigInt(deny('файл.писати', name, 'символьне посилання'));
       fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(target, bytes(q, m));
+      const { O_WRONLY, O_CREAT, O_TRUNC, O_NOFOLLOW } = fs.constants;   // і між перевіркою й записом посилання не підставити
+      fs.writeFileSync(target, bytes(q, m), { flag: O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, mode: 0o644 });
       did('файл.писати', target, m);
       return reply(Buffer.alloc(0));
     }
