@@ -206,6 +206,10 @@ with tempfile.TemporaryDirectory(prefix='альбедо-') as t:
     use.write_text('🜂 「з модулем」 【】\n⊃ 「модулі/м.ngr」\n» 1\n', encoding='utf-8')
     x = host(owner({'дозволено': [f'писати:{p}/модулі']}), W, use)
     check(x.returncode == 3 and 'модуль лежить' in x.stderr, 'модуль з теки, куди можуть писати програми, не запускається', x.stdout + x.stderr)
+    odd = p / 'дивна.ngr'
+    odd.write_text('🜂 「х」 【】\n» 「⊃ 「.」 — це лише рядок」\n', encoding='utf-8')
+    x = host(owner({'дозволено': [], 'для_програм': {'0' * 64: []}}), W, odd)
+    check('Error' not in x.stderr and x.returncode in (0, 120), '«⊃» у рядку з текою не валить господаря', x.stdout + x.stderr)
     sg = p / 'підписана.ngr'
     sg.write_text('🜂 「х」 【】\n» 1\n※ підпис ed25519:' + 'a' * 64 + ':' + 'b' * 128 + '\n', encoding='utf-8')
     x = host(owner({'дозволено': []}), W, sg)
