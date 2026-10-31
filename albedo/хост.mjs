@@ -99,7 +99,7 @@ if (fs.existsSync(ownerFile)) {
   const shas = [], seen = new Set();
   const walk = (text, dir) => { for (const p of importsOf(text)) {
     const t = real(path.resolve(dir, p));
-    if (seen.has(t) || !fs.existsSync(t)) continue;
+    if (seen.has(t) || !fs.statSync(t, { throwIfNoEntry: false })?.isFile()) continue;   // «⊃» у рядку чи тека: не модуль
     seen.add(t);
     const b = fs.readFileSync(t);
     shas.push(sha256(b));
