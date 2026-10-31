@@ -35,7 +35,24 @@ fn attempt(name: &str, op: i32, path: &str, data: &[u8]) {
 }
 
 #[no_mangle]
-pub extern "C" fn ngr_run(c: *const u8, cn: usize, _p: *const u8, _n: usize) -> i32 {
+pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i32 {
+    let src = String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(p, n) }).into_owned();
+    if src.contains("вічно") {             // ліміт кроків рахує сам модуль: такий модуль його не рахує
+        say("кручусь\n");
+        let mut x = 0u64;
+        loop {
+            x = std::hint::black_box(x.wrapping_add(1));
+        }
+    }
+    if src.contains("памʼять") {           // скільки дасть господар
+        let mut held: Vec<Vec<u8>> = Vec::new();
+        loop {
+            let mut v = vec![1u8; 1 << 26];
+            v[0] = 2;
+            held.push(v);
+            say(&format!("тримаю {} МБ\n", held.len() * 64));
+        }
+    }
     let cfg = String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(c, cn) }).into_owned();
     let f: Vec<&str> = cfg.split('\n').collect();
     let (dir, home) = (f[1], f[11]);
