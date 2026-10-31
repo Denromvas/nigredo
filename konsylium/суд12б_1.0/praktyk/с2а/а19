@@ -1,0 +1,13 @@
+✗ бд.писати: немає такої таблиці (no such table: t)
+✗ бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+✗ бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+✗ бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+✗ бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+✗ бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+✗ бд.писати: дія поза дозволеним (лише SELECT, INSERT, UPDATE, DELETE, CREATE/DROP/ALTER; без ATTACH, VACUUM; PRAGMA — лише довідкові: table_info …)
+✗ бд.писати: немає такої таблиці (no such table: t)
+✓ 0
+✓ 1
+✗ бд.писати: порушено унікальність (UNIQUE constraint failed: ун.к)
+✗ бд.писати: немає такої таблиці (no such table: t)
+✗ бд.писати: немає такої таблиці (no such table: t)

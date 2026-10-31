@@ -1,0 +1,10 @@
+🜂 「після квоти: дата і заборонене разом — «не перевірено» не має ховати random і CURRENT」 【「бд.писати:звіти≤1」】
+← база § ⌂ 0
+← спроба λq ☂ ＋ 「✓ 」 σ 🜔бд.писати база q 【】 λпом ＋ 「✗ 」 пом
+» спроба 「INSERT INTO t2(назва) VALUES ('перша')」
+» спроба 「INSERT INTO t2(назва) VALUES (date('2020-01-01') || random())」
+» спроба 「INSERT INTO t2(назва) VALUES (random() || date('2020-01-01'))」
+» спроба 「INSERT INTO t2(назва) VALUES (date('2020-01-01') || CURRENT_TIME)」
+» спроба 「INSERT INTO t2(назва) VALUES (strftime('%Y', '2020-01-01') || randomblob(4))」
+» спроба 「INSERT INTO t2(назва) SELECT date('2020-01-01') || name FROM pragma_database_list」
+» спроба 「INSERT INTO t2(назва) VALUES (date())」

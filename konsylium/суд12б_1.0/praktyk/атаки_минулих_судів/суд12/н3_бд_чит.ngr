@@ -1,0 +1,31 @@
+🜂 「проби бд.читати і сторожа SQLite §5」 【「бд.читати:дані」】
+← база § ⌂ 0
+← чит Λміт q ☂ ＋ 〔{міт}: 〕 σ 🜔бд.читати база q 【】 λe ＋ 〔{міт}: ✗ 〕 e
+» чит 「Ч1 дробові назад (сума без типу, ціна REAL, к NUMERIC)」 「SELECT назва, сума, typeof(сума) AS тс, ціна, typeof(ціна) AS тц, к, typeof(к) AS тк FROM t WHERE id <= 2」
+» чит 「Ч1b сума SUM над текстом і REAL」 「SELECT sum(сума) AS с1, sum(ціна) AS с2, total(ціна) AS с3 FROM t WHERE id <= 2」
+» чит 「Ч1c 0.1 + 0.2 у SQLite」 「SELECT 0.1 + 0.2 AS s」
+» чит 「Ч2 VIEW з random」 「SELECT * FROM v」
+» чит 「Ч2b VIEW з датою з даних」 「SELECT * FROM vd」
+» чит 「Ч3 sqlite_master」 「SELECT name, type FROM sqlite_master ORDER BY name」
+» чит 「Ч3b sqlite_schema sql」 「SELECT sql FROM sqlite_schema WHERE name = 't'」
+» чит 「Ч3c pragma_table_list」 「SELECT name FROM pragma_table_list WHERE schema = 'main' ORDER BY name」
+» чит 「Ч3d PRAGMA table_list」 「PRAGMA table_list」
+» чит 「Ч4 запис через WITH」 「WITH x AS (SELECT 1) INSERT INTO t(назва) SELECT 'з читати' FROM x」
+» чит 「Ч4b перше слово EXPLAIN」 「EXPLAIN SELECT 1」
+» чит 「Ч4c коментар і ; на початку」 「;; /* к */ -- р\n SELECT 1 AS один」
+» чит 「Ч4d VALUES」 「VALUES (1, 'a'), (2, 'b')」
+» чит 「Ч5 однакові назви стовпців」 「SELECT 1 AS a, 2 AS a」
+» чит 「Ч5b двійкові дані」 「SELECT x'00ff' AS b」
+» чит 「Ч5c NaN/Infinity」 「SELECT 1e308 * 10 AS inf」
+» чит 「Ч5d ділення на 0」 「SELECT 1 / 0 AS z」
+» чит 「Ч5e велике ціле」 「SELECT 9223372036854775807 AS m, -9223372036854775808 AS n」
+» чит 「Ч5f дріб з 17 знаками」 「SELECT 0.1234567890123456789 AS d」
+» чит 「Ч6 json_tree」 「SELECT key, value FROM json_tree('{"a":[1,2]}') WHERE type = 'integer'」
+» чит 「Ч6b dbstat」 「SELECT count(*) AS n FROM dbstat」
+» чит 「Ч6c sqlite_dbpage」 「SELECT count(*) AS n FROM sqlite_dbpage」
+» чит 「Ч7 now」 「SELECT date('now') AS d」
+» чит 「Ч7b дата з даних」 「SELECT date('2026-10-15', '+1 month') AS d, julianday('2026-10-15') - julianday('2026-01-01') AS дні」
+» чит 「Ч7c strftime %s з даних」 「SELECT strftime('%s', '2026-10-15') AS s」
+» чит 「Ч7d unixepoch без аргументу」 「SELECT unixepoch() AS u」
+» ☂ 🜔бд.читати 「нема_н3.db」 「SELECT 1」 【】 λe ＋ 「Ч8 немає файлу: ✗ 」 e
+» чит 「Ч9 1000 рядків」 「SELECT count(*) AS n FROM t WHERE назва LIKE 'р%'」

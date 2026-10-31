@@ -1,0 +1,12 @@
+✗ builtins.open: python: «builtins.open»: результат — не дані (TextIOWrapper)
+✗ builtins.open: python: «builtins.open»: результат — не дані (TextIOWrapper)
+✗ builtins.open: python: «builtins.open» пробувала читати поза теками Python (open /dev/stdin) — міст не дав: функція не чиста (у сліді — «заборонено»)
+✗ linecache.getlines: python: «linecache.getlines» пробувала читати поза теками Python (open /proc/self/fd/0) — міст не дав: функція не чиста (у сліді — «заборонено»)
+✗ linecache.getlines: python: «linecache.getlines» пробувала читати поза теками Python (open /dev/fd/0) — міст не дав: функція не чиста (у сліді — «заборонено»)
+✗ linecache.getlines: python: «linecache.getlines» пробувала читати поза теками Python (open ../../../../root/ai-agents/Nigredo/konsylium/суд12б_1.0/praktyk/секрет/ключ.txt) — міст не дав: функція не чиста (у сліді — «заборонено»)
+✗ linecache.getlines: python: «linecache.getlines» пробувала читати поза теками Python (open /usr/lib/python3.13/../../../root/ai-agents/Nigredo/konsylium/суд12б_1.0/praktyk/секрет/ключ.txt) — міст не дав: функція не чиста (у сліді — «заборонено»)
+✗ shutil.copyfile: python: «shutil.copyfile» пробувала писати (shutil.copyfile /usr/lib/python3.13/this.py) — міст не дав: функція не чиста (у сліді — «заборонено»)
+✗ os.pidfd_open: python: «os.pidfd_open»: PermissionError: [Errno 1] Operation not permitted
+✗ os.pidfd_open: python: «os.pidfd_open»: PermissionError: [Errno 1] Operation not permitted
+✓ json.loads → 『「спроба」 「підробка」 「заборонено」 ●』
+кінець

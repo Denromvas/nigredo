@@ -1,0 +1,3 @@
+🜂 「атака Н2: великий ORDER BY у бд.читати — запуск проти --сухо під повним замком」 【「бд.читати:дані」】
+← н ν § ⌂ 0
+» 🜔бд.читати 「дані/база.db」 「WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < CAST(? AS INTEGER)) SELECT count(*) AS k, sum(y) AS s FROM (SELECT x AS y FROM c ORDER BY printf('%020d', x) DESC LIMIT -1 OFFSET 1)」 【н】

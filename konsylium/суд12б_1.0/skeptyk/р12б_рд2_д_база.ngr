@@ -1,0 +1,4 @@
+🜂 「раунд 2: база з тригером для проби --сухо (Практик Н-1)」 【「бд.писати:звіти」】
+← база § ⌂ 0
+» 🜔бд.писати база 「CREATE TABLE t(назва TEXT, д TEXT)」 【】
+» 🜔бд.писати база 「CREATE TRIGGER тр AFTER INSERT ON t WHEN NEW.назва = 'зараз' BEGIN UPDATE t SET д = julianday('now') WHERE rowid = NEW.rowid; END」 【】

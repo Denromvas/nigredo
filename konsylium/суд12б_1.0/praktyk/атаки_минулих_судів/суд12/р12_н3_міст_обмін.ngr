@@ -1,0 +1,25 @@
+🜂 「міст: обмін даними на краях」 【「python:math.factorial」 「python:math.isqrt」 「python:json.loads」 「python:json.dumps」 「python:decimal.Decimal」 「python:datetime.date.fromisoformat」 「python:statistics.mean」 「python:re.findall」 「python:unicodedata.normalize」】
+← спроба Λфункція аргументи ☂ 〔✓ {функція} → {ρ 〔{🜔python функція аргументи}〕} симв.: {⊏ 〔{🜔python функція аргументи}〕 0 60}〕 λe 〔✗ {функція}: {⊏ e 0 200}〕
+» спроба 「math.factorial」 【2000】
+» спроба 「math.isqrt」 【× 🜔python 「math.factorial」 【2000】 🜔python 「math.factorial」 【2000】】
+» спроба 「json.loads」 【「NaN」】
+» спроба 「json.loads」 【「1e400」】
+» спроба 「json.loads」 【「-0.0」】
+» спроба 「json.loads」 【「1e-400」】
+» спроба 「json.loads」 【「0.1」】
+» спроба 「json.loads」 【「"\\ud800"」】
+» спроба 「json.loads」 【「"\\udc80"」】
+» спроба 「json.loads」 【「"a\\u0000b"」】
+» спроба 「json.loads」 【「"\\u202e"」】
+» спроба 「json.loads」 【「[[[[[[[[[[1]]]]]]]]]]」】
+» спроба 「json.loads」 【「{"a": 1, "a": 2}」】
+» спроба 「decimal.Decimal」 【「NaN」】
+» спроба 「decimal.Decimal」 【「1e999999999」】
+» спроба 「decimal.Decimal」 【「-0」】
+» спроба 「decimal.Decimal」 【「1E+5」】
+» спроба 「datetime.date.fromisoformat」 【「2026-10-29」】
+» спроба 「statistics.mean」 【【1 2】】
+» спроба 「statistics.mean」 【【】】
+» спроба 「re.findall」 【「(a)(b)」 「abab」】
+» спроба 「unicodedata.normalize」 【「NFKC」 「ﬁ①」】
+» спроба 「json.dumps」 【【1 2.50 「я」】】

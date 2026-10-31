@@ -1,0 +1,9 @@
+🜂 「квота 1: далі дата зараз, дата з даних, random, CURRENT, PRAGMA」 【「бд.писати:звіти≤1」】
+← база ＋ 「звіти/」 § ⌂ 0
+» 🜔бд.писати база 「INSERT INTO т(назва) VALUES ('перша')」 【】
+» ☂ 🜔бд.писати база 「INSERT INTO т(назва, д) VALUES ('а', date('now'))」 【】 λe ＋ 「now: 」 e
+» ☂ 🜔бд.писати база 「INSERT INTO т(назва, д) VALUES ('б', date('2026-10-15'))」 【】 λe ＋ 「дата: 」 e
+» ☂ 🜔бд.писати база 「INSERT INTO т(назва, д) VALUES ('в', random())」 【】 λe ＋ 「random: 」 e
+» ☂ 🜔бд.писати база 「INSERT INTO т(назва, д) VALUES ('г', CURRENT_DATE)」 【】 λe ＋ 「current: 」 e
+» ☂ 🜔бд.писати база 「INSERT INTO т(назва, д) SELECT 'ґ', cache_size FROM pragma_cache_size」 【】 λe ＋ 「pragma: 」 e
+» ☂ 🜔бд.писати база 「ATTACH DATABASE 'x.db' AS y」 【】 λe ＋ 「attach: 」 e

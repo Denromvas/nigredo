@@ -1,0 +1,10 @@
+🜂 「квота і дата з даних」 【「бд.писати:звіти≤2」】
+← к § ⌂ 0
+» 🜔бд.писати к 「CREATE TABLE IF NOT EXISTS t(д TEXT)」 【】
+» 🜔бд.писати к 「INSERT INTO t VALUES ('a')」 【】
+» ☂ 🜔бд.писати к 「INSERT INTO t VALUES (date('2026-10-15', '+1 day'))」 【】 λe e
+» ☂ 🜔бд.писати к 「INSERT INTO t VALUES (julianday('2026-10-15'))」 【】 λe e
+» ☂ 🜔бд.писати к 「INSERT INTO t VALUES (date('now'))」 【】 λe e
+» ☂ 🜔бд.писати к 「INSERT INTO t VALUES (random())」 【】 λe e
+» ☂ 🜔бд.писати к 「INSERT INTO t VALUES (CURRENT_TIMESTAMP)」 【】 λe e
+» ☂ 🜔бд.писати к 「INSERT INTO t VALUES (1)」 【】 λe e

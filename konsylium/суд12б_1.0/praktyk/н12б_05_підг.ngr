@@ -1,0 +1,5 @@
+🜂 「база: тригер «оновлено о» з CURRENT_TIMESTAMP у гілці, що спрацьовує лише коли поле порожнє」 【「бд.писати:звіти」】
+← база § ⌂ 0
+» 🜔бд.писати база 「CREATE TABLE t(id INTEGER PRIMARY KEY, назва TEXT, к)」 【】
+» 🜔бд.писати база 「CREATE TRIGGER тр AFTER INSERT ON t WHEN NEW.к IS NULL BEGIN UPDATE t SET к = CURRENT_TIMESTAMP WHERE id = NEW.id; END」 【】
+» 🜔бд.писати база 「INSERT INTO t(назва, к) VALUES ('перший', '2026-10-30')」 【】

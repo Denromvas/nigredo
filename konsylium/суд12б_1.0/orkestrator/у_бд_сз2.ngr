@@ -1,0 +1,5 @@
+🜂 「сухо: random і CURRENT у запиті」 【「бд.писати:звіти」】
+← база ＋ 「звіти/」 § ⌂ 0
+» ☂ 🜔бд.писати база 「INSERT INTO т(назва, д) VALUES ('в', random())」 【】 λe ＋ 「random: 」 e
+» ☂ 🜔бд.писати база 「INSERT INTO т(назва, д) VALUES ('г', CURRENT_DATE)」 【】 λe ＋ 「current: 」 e
+» 「далі」

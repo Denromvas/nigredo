@@ -1,0 +1,28 @@
+🜂 「проби бд.писати §5」 【「бд.писати:звіти」】
+← база § ⌂ 0
+← пиши Λq пар ☂ 🜔бд.писати база q пар λe ＋ 「✗ 」 e
+» ＋ 「Б1 створити: 」 σ пиши 「CREATE TABLE t(id INTEGER PRIMARY KEY, назва TEXT, сума, ціна REAL, дата TEXT)」 【】
+» ＋ 「Б2 вставити: 」 σ пиши 「INSERT INTO t(назва, сума, ціна, дата) VALUES (?, ?, ?, ?)」 【「хліб」 12.50 12.50 「2026-10-15」】
+» ＋ 「Б2b ще два: 」 σ пиши 「INSERT INTO t(назва, сума, ціна, дата) VALUES ('сіль', 3, 3, '2026-10-16'), ('чай', 0.10, 0.10, '2026-10-17')」 【】
+» ＋ 「Б3 дві інструкції: 」 σ пиши 「INSERT INTO t(назва) VALUES ('a'); INSERT INTO t(назва) VALUES ('b')」 【】
+» ＋ 「Б4 ATTACH: 」 σ пиши 「ATTACH DATABASE 'звіти/інша.db' AS x」 【】
+» ＋ 「Б5 VACUUM: 」 σ пиши 「VACUUM」 【】
+» ＋ 「Б5b VACUUM INTO: 」 σ пиши 「VACUUM INTO 'звіти/копія.db'」 【】
+» ＋ 「Б6 PRAGMA запис: 」 σ пиши 「PRAGMA journal_mode=WAL」 【】
+» ＋ 「Б6b PRAGMA довідкова: 」 σ пиши 「PRAGMA table_info(t)」 【】
+» ＋ 「Б7 BEGIN: 」 σ пиши 「BEGIN」 【】
+» ＋ 「Б8 now: 」 σ пиши 「INSERT INTO t(дата) VALUES (date('now'))」 【】
+» ＋ 「Б8b дата з даних: 」 σ пиши 「INSERT INTO t(назва, дата) VALUES ('завтра', date('2026-10-15', '+1 day'))」 【】
+» ＋ 「Б8c DEFAULT now: 」 σ пиши 「CREATE TABLE d(x, коли DEFAULT CURRENT_TIMESTAMP)」 【】
+» ＋ 「Б9 random: 」 σ пиши 「INSERT INTO t(сума) VALUES (random())」 【】
+» ＋ 「Б10 віртуальна: 」 σ пиши 「CREATE VIRTUAL TABLE v USING fts5(x)」 【】
+» ＋ 「Б11 rowid межа: 」 σ пиши 「INSERT INTO t(id, назва) VALUES (9223372036854775807, 'межа')」 【】
+» ＋ 「Б11b rowid ¯1: 」 σ пиши 「INSERT INTO t(id, назва) VALUES (-1, 'мінус')」 【】
+» ＋ 「Б12 тригер RAISE: 」 σ пиши 「CREATE TRIGGER тр BEFORE INSERT ON t WHEN NEW.назва = 'заборона' BEGIN SELECT RAISE(ABORT, 'не можна'); END」 【】
+» ＋ 「Б12b спрацював: 」 σ пиши 「INSERT INTO t(назва) VALUES ('заборона')」 【】
+» ＋ 「Б13 немає таблиці: 」 σ пиши 「INSERT INTO нема VALUES (1)」 【】
+» ＋ 「Б14 службова приманка: 」 σ пиши 「SELECT ngr_rowid(1)」 【】
+» ＋ 「Б15 SELECT через писати: 」 σ пиши 「SELECT count(*) FROM t」 【】
+» ＋ 「Б16 UPDATE: 」 σ пиши 「UPDATE t SET назва = назва || '!' WHERE id > 0」 【】
+» ＋ 「Б17 load_extension: 」 σ пиши 「SELECT load_extension('x')」 【】
+» ＋ 「Б18 sqlite_dbpage: 」 σ пиши 「UPDATE sqlite_dbpage SET data = data WHERE pgno = 1」 【】

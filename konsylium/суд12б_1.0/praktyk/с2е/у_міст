@@ -1,0 +1,6 @@
+дозволи: python: «linecache.getlines» пробувала читати поза теками Python (open /root/ai-agents/Nigredo/konsylium/суд12б_1.0/власник/дозволи.json) — міст не дав: функція не чиста (у сліді — «заборонено»)
+ключ сліду: python: «builtins.open» пробувала читати поза теками Python (open /root/ai-agents/Nigredo/konsylium/суд12б_1.0/власник/ключ) — міст не дав: функція не чиста (у сліді — «заборонено»)
+автор.ключ: python: «linecache.getlines» пробувала читати поза теками Python (open /root/ai-agents/Nigredo/konsylium/суд12б_1.0/praktyk/автор.ключ) — міст не дав: функція не чиста (у сліді — «заборонено»)
+【】
+контроль: python: «builtins.open» пробувала читати поза теками Python (open /root/ai-agents/Nigredo/konsylium/суд12б_1.0/власник/немає_такого) — міст не дав: функція не чиста (у сліді — «заборонено»)
+1807

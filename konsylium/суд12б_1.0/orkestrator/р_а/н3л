@@ -1,0 +1,1 @@
+ПОМИЛКА python: «builtins.open» пробувала читати поза теками Python (open /root/ai-agents/Nigredo/konsylium/суд12б_1.0/orkestrator/дані/ціни.json) — міст не дав: функція не чиста (у сліді — «заборонено»)

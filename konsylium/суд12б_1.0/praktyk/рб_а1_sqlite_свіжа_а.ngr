@@ -1,0 +1,18 @@
+🜂 「атаки на сторожа SQLite: PRAGMA-функції зі зміною стану, URI-імена」 【「бд.читати:дані」 「бд.писати:звіти」】
+← чит Λміт q ☂ ＋ 〔{міт}: 〕 σ 🜔бд.читати 「н2_а.db」 q 【】 λe ＋ 〔{міт}: ✗ 〕 e
+← пиш Λміт q ☂ ＋ 〔{міт}: 〕 σ 🜔бд.писати 「рб_а1_св2.db」 q 【】 λe ＋ 〔{міт}: ✗ 〕 e
+» пиш 「А0 таблиця」 「CREATE TABLE IF NOT EXISTS t(x)」
+» чит 「А1 pragma_journal_mode('wal') через читати」 「SELECT * FROM pragma_journal_mode('wal')」
+» пиш 「А1b pragma_journal_mode('wal') через писати」 「SELECT * FROM pragma_journal_mode('wal')」
+» пиш 「А1c INSERT … SELECT з pragma_journal_mode」 「INSERT INTO t SELECT * FROM pragma_journal_mode('wal')」
+» чит 「А2 pragma_user_version」 「SELECT * FROM pragma_user_version」
+» пиш 「А2b pragma_user_version(7)」 「SELECT * FROM pragma_user_version(7)」
+» чит 「А3 pragma_table_info — дозволено」 「SELECT name FROM pragma_table_info('t')」
+» чит 「А4 pragma_function_list」 「SELECT count(*) AS n FROM pragma_function_list」
+» чит 「А5 pragma_database_list」 「SELECT file FROM pragma_database_list」
+» пиш 「А6 pragma_wal_checkpoint」 「SELECT * FROM pragma_wal_checkpoint」
+» пиш 「А7 pragma_writable_schema(1)」 「SELECT * FROM pragma_writable_schema(1)」
+» пиш 「А8 тригер з pragma-функцією」 「CREATE TRIGGER тп AFTER INSERT ON t BEGIN SELECT * FROM pragma_journal_mode('wal'); END」
+» пиш 「А8b вставка запускає тригер」 「INSERT INTO t VALUES (1)」
+» ☂ ＋ 「А9 URI-імʼя бази: 」 σ 🜔бд.писати 「file:дані/../а9uri.db?mode=rwc」 「CREATE TABLE u(x)」 【】 λe ＋ 「А9: ✗ 」 e
+» ☂ ＋ 「А10 бд.читати URI immutable: 」 σ 🜔бд.читати 「file:н2_а.db?immutable=1」 「SELECT 1 AS один」 【】 λe ＋ 「А10: ✗ 」 e

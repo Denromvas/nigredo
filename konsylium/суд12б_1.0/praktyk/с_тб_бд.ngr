@@ -1,0 +1,52 @@
+🜂 「тексти помилок SQLite обома виконавцями: §9.3 їх заморожує」 【「бд.писати:звіти」】
+← база § ⌂ 0
+← спроба λq ☂ σ 🜔бд.писати база q 【】 λe ＋ 「✗ 」 e
+← зпар Λq п ☂ σ 🜔бд.писати база q п λe ＋ 「✗ 」 e
+» спроба 「CREATE TABLE т1(id INTEGER PRIMARY KEY, у UNIQUE, н NOT NULL, ч CHECK (ч > 0))」
+» спроба 「INSERT INTO т1 VALUES (1, 1, 1, 1)」
+» спроба 「INSERT INTO т1 VALUES (2, 1, 1, 1)」
+» спроба 「INSERT INTO т1 VALUES (1, 2, 1, 1)」
+» спроба 「INSERT INTO т1 VALUES (2, 2, NULL, 1)」
+» спроба 「INSERT INTO т1 VALUES (2, 2, 1, 0)」
+» спроба 「INSERT INTO т1(нема) VALUES (1)」
+» спроба 「INSERT INTO т1 VALUES (1)」
+» спроба 「CREATE TABLE т1(x)」
+» спроба 「DROP TABLE нема」
+» спроба 「INSERT x y z」
+» спроба 「UPDATE т1 SET нема = 1」
+» спроба 「CREATE TABLE т2(a, a)」
+» спроба 「INSERT INTO т1 VALUES ('a', 2, 1, 1)」
+» спроба 「CREATE INDEX і1 ON нема(x)」
+» спроба 「CREATE VIEW в1 AS SELECT нема FROM т1」
+» спроба 「INSERT INTO в1 VALUES (1)」
+» спроба 「ALTER TABLE т1 ADD COLUMN у2 NOT NULL」
+» спроба 「ALTER TABLE т1 DROP COLUMN у」
+» спроба 「ALTER TABLE т1 RENAME TO т1」
+» спроба 「ALTER TABLE т1 RENAME COLUMN нема TO щось」
+» спроба 「CREATE TRIGGER тг BEFORE DELETE ON т1 BEGIN SELECT RAISE(ABORT, 'своя причина українською'); END」
+» спроба 「DELETE FROM т1」
+» спроба 「SELECT substr(1, 2, 3, 4)」
+» спроба 「SELECT 1 WHERE count(*) > 0」
+» спроба 「WITH RECURSIVE с(x) AS (SELECT x FROM с) SELECT * FROM с」
+» спроба 「UPDATE т1 SET н = NULL」
+» спроба 「INSERT INTO т1 VALUES (1, 2, 3, 4), (5, 6)」
+» спроба 「CREATE TABLE т4(x CHECK (нема > 0))」
+» спроба 「CREATE TABLE т5(id INTEGER PRIMARY KEY AUTOINCREMENT, id2 INTEGER PRIMARY KEY)」
+» спроба 「INSERT INTO т1 DEFAULT VALUES」
+» спроба 「DROP VIEW т1」
+» спроба 「DROP TABLE в1」
+» спроба 「DROP INDEX нема」
+» спроба 「INSERT INTO т1(id, id) VALUES (1, 2)」
+» спроба 「UPDATE т1 SET id = 'x'」
+» зпар 「INSERT INTO т1 VALUES (?, ?, ?, ?)」 【1】
+» зпар 「INSERT INTO т1 VALUES (?, ?, ?, ?)」 【10 20 30 40 50】
+» зпар 「INSERT INTO т1(у, н, ч) VALUES (?, ?, ?)」 【【1】 1 1】
+» зпар 「INSERT INTO т1(у, н, ч) VALUES (?, ?, ?)」 【『「а」 1』 1 1】
+» зпар 「INSERT INTO т1(у, н, ч) VALUES (?, ?, ?)」 【● 1 1】
+» зпар 「INSERT INTO т1(у, н, ч) VALUES (?, ?, ?)」 【∅ 1 1】
+» зпар 「INSERT INTO т1(у, н, ч) VALUES (?, ?, ?)」 【100000000000000000000 1 1】
+» зпар 「INSERT INTO т1(у, н, ч) VALUES (?, ?, ?)」 【¯100000000000000000000 3 1】
+» зпар 「INSERT INTO т1(у, н, ч) VALUES (?, ?, ?)」 【∘спроба 1 1】
+» зпар 「SELECT ?1, ?3」 【1】
+» зпар 「INSERT INTO т1(у, н, ч) VALUES (:a, :b, :c)」 【1 2 3】
+» 「кінець」

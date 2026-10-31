@@ -1,0 +1,1 @@
+【『「type」 「table」 「name」 「t」 「sql」 「CREATE TABLE t (id INTEGER PRIMARY KEY, n INTEGER, r REAL, s TEXT, b BLOB, x)」』 『「type」 「trigger」 「name」 「tr」 「sql」 「CREATE TRIGGER tr AFTER INSERT ON u BEGIN INSERT INTO t (n) VALUES (99); END」』 『「type」 「table」 「name」 「u」 「sql」 「CREATE TABLE u (k TEXT)」』 『「type」 「view」 「name」 「v」 「sql」 「CREATE VIEW v AS SELECT n FROM t」』】
