@@ -1,0 +1,21 @@
+[package]
+name = "albedo"
+version = "0.1.0"
+edition = "2021"
+description = "Альбедо, прототип: ядро Атанора у WebAssembly; дії — лише імпорти від господаря"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+debug = false
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+
+[workspace]

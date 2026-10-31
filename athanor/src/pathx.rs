@@ -1,5 +1,6 @@
 //! Шляхи як posixpath Python 3.13: join, dirname, abspath, realpath (не строгий), inside.
 use crate::parser::normpath;
+#[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 
 pub fn join(a: &str, b: &str) -> String {
@@ -148,8 +149,14 @@ pub fn isfile(p: &str) -> bool {
     std::fs::metadata(p).map(|m| m.is_file()).unwrap_or(false)
 }
 
+#[cfg(unix)]
 pub fn _ino(p: &str) -> u64 {
     std::fs::metadata(p).map(|m| m.ino()).unwrap_or(0)
+}
+
+#[cfg(not(unix))]
+pub fn _ino(_p: &str) -> u64 {
+    0
 }
 
 /// os.path.relpath(path, start).
