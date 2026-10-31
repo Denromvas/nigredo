@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Звірка Альбедо з Атанором: та сама програма, той самий власник; вивід, код, stderr і слід мають збігтися. Атанор сам звірений
 з еталоном (athanor/звірка.py), тож тут лише крок Атанор → Альбедо. Слід — без того, що Альбедо дописує чесно своє: запис
-«ізоляція» господаря, нумерація після нього, поля athanor/звірка.py VOLATILE.
+«ізоляція» й «дія господаря», нумерація після них, поля athanor/звірка.py VOLATILE.
 
   python3 albedo/звірити.py [-j 3] [--має РЯДОК] [--час 60] [шляхи…]
 
@@ -31,7 +31,7 @@ HOST = ['node', os.path.join(HERE, 'хост.mjs'), os.path.join(HERE, 'target',
 def trace(t):
     if not t:
         return t
-    recs = [{k: v for k, v in r.items() if k != '№'} for r in t[0] if r.get('подія') != 'ізоляція']
+    recs = [{k: v for k, v in r.items() if k != '№'} for r in t[0] if r.get('подія') not in ('ізоляція', 'дія господаря')]
     return recs, t[1]
 
 

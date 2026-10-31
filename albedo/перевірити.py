@@ -84,6 +84,7 @@ with tempfile.TemporaryDirectory(prefix='альбедо-') as t:
     held = max([int(x.split()[1]) for x in m.stdout.splitlines() if x.startswith('тримаю')] or [0])
     check(m.returncode == 4 and held < 256, f'модуль, що їсть памʼять: стеля господаря (--памʼять 256), дістав {held} МБ', m.stdout[-200:] + m.stderr[-300:])
     rec = [json.loads(x) for x in (t / 'з.jsonl').read_text(encoding='utf-8').splitlines()]
+    check(sum(x['подія'] == 'дія господаря' and x['інструмент'] == 'файл.читати' for x in rec) == 1, 'дозволене читання господар записав сам, хоч злий модуль про нього змовчав', str(rec)[:400])
     check(sum(x['подія'] == 'господар відмовив' for x in rec) == 11, 'кожну відмову записав сам господар: модуль її не прибере', str(rec)[:400])
     # база: SQLite живе в модулі, тож сторож у sqlite.rs для межі не рахується — лише файли в господарі
     b, c = p / 'дані' / 'б.db', p / 'дані' / 'в.db'
@@ -165,7 +166,12 @@ with tempfile.TemporaryDirectory(prefix='альбедо-') as t:
     q = sqlite3.connect(wl)
     check(q.execute('SELECT sum(а) FROM т').fetchall() == [(6,)] and q.execute('PRAGMA integrity_check').fetchall() == [('ok',)], 'WAL-базу з модуля читає звичайний SQLite', '')
     q.close()
-    check(not any(x.get('подія') == 'господар відмовив' for x in map(json.loads, (t / 'wal.jsonl').read_text(encoding='utf-8').splitlines())), 'законна робота з WAL не дає жодної відмови господаря', '')
+    wrec = [json.loads(x) for x in (t / 'wal.jsonl').read_text(encoding='utf-8').splitlines()]
+    check(not any(x.get('подія') == 'господар відмовив' for x in wrec), 'законна робота з WAL не дає жодної відмови господаря', '')
+    seen_ = [(x['інструмент'], x['шлях'].rsplit('/', 1)[1]) for x in wrec if x['подія'] == 'дія господаря']
+    check(('бд.читати', 'w_r.db') in seen_ and ('бд.писати', 'wal.db') in seen_, 'господар сам записав, які бази відкрито й куди писано', str(seen_))
+    c3 = subprocess.run([*REF, '--перевірити-слід', str(t / 'wal.jsonl'), str(pw)], capture_output=True, text=True, env=env2)
+    check(c3.returncode == 0 and c3.stdout.startswith('✓'), 'слід із записами господаря проходить --перевірити-слід', c3.stdout + c3.stderr)
     # права власника: господар не ширший за еталон (seal.rs); кожен випадок — окрема тека власника
     def owner(rights, name='власник3'):
         o = t / name
