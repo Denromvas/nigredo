@@ -159,10 +159,19 @@ Court 11 voted 7:0 «Б» (the kernel lock holds, the signature cannot be forged
 fixing); re-review 11б gave 2 «А» and 5 narrow «Б» (no new breach; Atanor let full-width look-alikes of the signature
 line through, and a module from an author key's write folder was accepted as a module); the narrow confirmation 11в —
 5:0 «А». Everything, the judges' wishes included, was fixed with tests in both executors before the announcement. Agents
-run `ngr --перевірити-підпис PROGRAM` before running someone else's signed program. **Next — 1.0-rc**, the candidate:
-a frozen specification (the norm, with everything that used to live only in the change log, and a compatibility promise
-for 1.x — `spec/SPEC.md` §9) and a compatibility suite (`tests/сумісність/`); court 12 asks whether the norm is true.
-The latest comparison report is
+run `ngr --перевірити-підпис PROGRAM` before running someone else's signed program.
+
+**1.0 (announced 2026-10-31)** adds no features: it is a **promise**. A program, seal, owner permissions, trace and
+signature that work in 1.0 work the same in every 1.x (`spec/SPEC.md` §9): glyphs and their meaning, values and confidence,
+Nigredo's own runtime error texts, exit codes, JSON fields. What is not frozen is said too: refusals before the run,
+warnings, foreign text (SQLite, Python, a command, a server). The only allowed break is a security exception, and only as
+a refusal before the run or a stop `☂` cannot catch; protection does not weaken. `spec/SPEC.md` is now the norm only — the
+history moved to `spec/ІСТОРІЯ.md` — and `tests/сумісність/` checks the promise: traces by both engines, frozen values,
+signatures, seals, negative samples. Court 12 asked whether the norm is true: 7:0 «Б» — the limits hold, but the norm
+said what the language did not do in several places, `⇅` by a `●/○` key split the engines, and §9 contradicted itself.
+Re-review 12б: all conditions closed, 6 «Б, no new review» (more norm lines, `5¯3`, whole numbers written with an exponent)
+and 1 «А». Everything was fixed with tests in both engines before the announcement. **Next — Albedo**: compiling to
+WebAssembly, where the seal is the module's import list. The latest comparison report is
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); history and protocols — [`konsylium/`](konsylium/).
 
 **Honest limits:** Nigredo is a transparency and audit tool, **not an OS sandbox** — an agent with shell access can
@@ -333,9 +342,17 @@ UTF-8 — помилка, а 30 с —
 2 «А», 5 вузьких «Б» (нового зламу немає; Атанор пропускав повноширинних двійників рядка підпису, модуль з теки запису
 ключа автора брався як модуль), вузьке підтвердження 11в — 5:0 «А». Усе, і побажання суддів, виправлено з тестами обома
 виконавцями до оголошення. Перед запуском чужої підписаної програми агенти виконують `ngr --перевірити-підпис ПРОГРАМА`.
-**Далі — 1.0-rc**, кандидат: заморожена специфікація (норма — і все, що досі жило лише в журналі змін, — та обіцянка
-сумісності для 1.x, `spec/SPEC.md` §9) і набір сумісності (`tests/сумісність/`); суд 12 питає, чи правдива норма.
-Останній звіт звірки —
+
+**1.0 (оголошено 2026-10-31)** не додає можливостей: це **обіцянка**. Програма, печатка, дозволи власника, слід і підпис,
+що працюють у 1.0, так само працюють у кожній 1.x (`spec/SPEC.md` §9): гліфи та їхній сенс, значення й впевненість, власні
+тексти помилок виконання, коди виходу, поля JSON. Що не заморожено, теж сказано: відмови до запуску, попередження, чужий
+текст (SQLite, Python, команда, сервер). Єдиний дозволений злам — виняток безпеки, лише як відмова до запуску чи зупинка,
+яку `☂` не ловить; захист не слабшає. `spec/SPEC.md` тепер лише норма — історія переїхала в `spec/ІСТОРІЯ.md`, — а
+`tests/сумісність/` перевіряє обіцянку: сліди обох виконавців, заморожені значення, підписи, печатки, негативні зразки.
+Суд 12 питав, чи правдива норма: 7:0 «Б» — межі тримають, але норма в кількох місцях казала не те, що робить мова, `⇅` за
+`●/○` розводив виконавців, а §9 суперечив собі. Огляд 12б: умови закрито всі, 6 «Б без нового огляду» (ще рядки норми, `5¯3`,
+цілі з порядком) і 1 «А». Усе виправлено з тестами обома виконавцями до оголошення. **Далі — Альбедо**: компіляція у
+WebAssembly, де печатка — перелік імпортів модуля. Останній звіт звірки —
 [`athanor/ЗВІРКА.md`](athanor/ЗВІРКА.md); історія й протоколи — [`konsylium/`](konsylium/).
 
 **Чесно про межі:** Nigredo — інструмент прозорості й аудиту, **не пісочниця ОС**: агент із доступом до shell може
