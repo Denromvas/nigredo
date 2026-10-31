@@ -68,6 +68,8 @@ def compare(prog, timeout):
             return prog, 'межа сліду', '\n'.join(diffs)  # обидва зупинились тим самим текстом; рядок сліду модуля на кілька байтів інший
         if a[0] == 'час':
             return prog, 'час', ''                        # Атанор сам не вклався: порівнювати нема з чим
+        if b[0] == 'час':
+            return prog, 'темп', '\n'.join(diffs)        # модуль не вклався: кожна дія — кілька викликів ОС через господаря
         if diffs and ('random(' in text or 'sqlite_source_id' in text or '/proc/self' in text):
             return prog, 'чуже', '\n'.join(diffs)        # випадкове від SQLite чи його збірка: цього 1.x не обіцяє (§9)
         if diffs and 'запит довший за 30 с'.encode() in b[1]:
@@ -85,6 +87,7 @@ def main():
     ap.add_argument('--має', default='')
     ap.add_argument('--корінь', default=z.ROOT, help='репозиторій із робочими файлами суддів; у worktree їх немає')
     ap.add_argument('--до', type=int, default=0)
+    ap.add_argument('--від', type=int, default=0, help='пропустити перші N: дігнати обірваний прогін (порядок сталий)')
     ap.add_argument('--звіт', default='', help='записати підсумок у цей файл')
     a = ap.parse_args()
     z.ROOT = a.корінь
@@ -93,6 +96,7 @@ def main():
         progs = [p for p in progs if a.має in open(p, encoding='utf-8', errors='replace').read()]
     if a.до:
         progs = progs[:a.до]
+    progs = progs[a.від:]
     cnt, why = Counter(), Counter()
     with cf.ThreadPoolExecutor(a.j) as ex:
         for i, (p, r, t) in enumerate(ex.map(lambda p: compare(p, a.час), progs), 1):
