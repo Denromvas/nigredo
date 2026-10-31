@@ -298,6 +298,7 @@ except OSError:
 NUM = (int, float, Decimal)
 PIPE_GONE = 'вивід обірвано: читач закрив трубу'   # завершення сліду, коли читач закрив stdout (| head)
 UNICODE_1_0 = '15.1.0'        # Unicode значень 1.0 (§9): таблиці Атанора й еталон на Python 3.13
+DATA_DIGITS = 30_103          # найдовше число з даних, значущих цифр запису: як ціле в MAX_INT_BITS
 DEC_EXP = 30_000            # найбільший порядок десяткового (як і ціле — до ~30 тис. цифр)
 DEC_CTX = decimal.Context(prec=28, Emax=DEC_EXP, Emin=-DEC_EXP,              # ÷: 28 цифр (+ ціла частина)
                           traps=[decimal.InvalidOperation, decimal.DivisionByZero, decimal.Overflow])
@@ -502,8 +503,23 @@ def whole(v):
     return int(v) if v.is_finite() and v == int(v) else None
 
 
+def data_len(t, g, pos):
+    """Число з даних (ν, δ) — не довше за DATA_DIGITS значущих цифр запису: понад них — помилка, яку ловить ☂, ще до
+    розбору: чужі дані не коштують хвилини (Атанор перетворює цифри у двійкове квадратично; огляд 12б, Аудитор)."""
+    h = t[1:] if t[:1] in ('+', '-') else t
+    rest = h.lstrip('0123456789')
+    ip, fp, tail = h[:len(h) - len(rest)], '', rest
+    if rest[:1] == '.':
+        tail = rest[1:].lstrip('0123456789')
+        fp = rest[1:len(rest) - len(tail)]
+    if len((ip + fp).lstrip('0')) > DATA_DIGITS:
+        raise NgrError(f'{g}: ціле понад {MAX_INT_BITS} біт' if not rest
+                       else f'{g}: десяткове понад {DATA_DIGITS} цифр', pos)
+
+
 def data_int(t, g, pos):
     """Ціле з даних (ν, δ): понад MAX_INT_BITS біт — помилка, яку ловить ☂ (суд 12), а не зупинка запуску."""
+    data_len(t, g, pos)
     i = int(t)
     if i.bit_length() > MAX_INT_BITS:
         raise NgrError(f'{g}: ціле понад {MAX_INT_BITS} біт', pos)
@@ -7401,6 +7417,7 @@ class Interp:
             try:
                 return V(data_int(s, 'ν', pos))
             except ValueError:
+                data_len(s, 'ν', pos)
                 d = dec_of(s, 'ν', pos)
                 if d is None or not d.is_finite():
                     raise NgrError(f'ν: «{s0}» не число', pos)
@@ -7418,7 +7435,7 @@ class Interp:
                         dups.append(1)
                     return dict(kv)
                 p = json.loads(self.need(a[0], 'рядок', g, pos), parse_constant=bad_const, object_pairs_hook=pairs,
-                               parse_float=lambda t: dec_ok(dec_of(t, 'δ', pos), 'δ', pos),
+                               parse_float=lambda t: data_len(t, 'δ', pos) or dec_ok(dec_of(t, 'δ', pos), 'δ', pos),
                                parse_int=lambda t: data_int(t, 'δ', pos))
                 if dups:
                     raise NgrError(f'δ: не JSON: {JSON_DUP}', pos)

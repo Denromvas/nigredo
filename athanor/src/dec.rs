@@ -63,6 +63,24 @@ pub struct Ctx {
 }
 
 pub const DEC_EXP: i64 = 30_000;
+pub const DATA_DIGITS: usize = 30_103; // найдовше число з даних, значущих цифр запису (як ціле в MAX_INT_BITS)
+
+/// data_len еталона: текст помилки, якщо запис числа з даних довший за DATA_DIGITS значущих цифр; ще до розбору цифр.
+pub fn data_len(t: &str, g: &str) -> Option<String> {
+    let h = t.strip_prefix(['+', '-']).unwrap_or(t).as_bytes();
+    let ip = h.iter().take_while(|c| c.is_ascii_digit()).count();
+    let rest = &h[ip..];
+    let fp = if rest.first() == Some(&b'.') { rest[1..].iter().take_while(|c| c.is_ascii_digit()).count() } else { 0 };
+    let dig = h[..ip].iter().chain(if fp > 0 { rest[1..1 + fp].iter() } else { [].iter() });
+    if dig.skip_while(|c| **c == b'0').count() > DATA_DIGITS {
+        return Some(if rest.is_empty() {
+            format!("{}: ціле понад {} біт", g, crate::lang::MAX_INT_BITS)
+        } else {
+            format!("{}: десяткове понад {} цифр", g, DATA_DIGITS)
+        });
+    }
+    None
+}
 
 pub fn dec_ctx() -> Ctx {
     Ctx { prec: 28, emax: DEC_EXP, emin: -DEC_EXP, round: Round::HalfEven, traps: INVALID | DIVZERO | OVERFLOW }
