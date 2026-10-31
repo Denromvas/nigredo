@@ -26,7 +26,7 @@ def check(ok, what, detail=''):
 
 
 def host(env, wasm, prog, *args):
-    return subprocess.run(['node', '--stack-size=60000', str(HOST), str(wasm), str(prog), *args], capture_output=True, text=True, env=env)
+    return subprocess.run(['node', str(HOST), str(wasm), str(prog), *args], capture_output=True, text=True, env=env)
 
 
 with tempfile.TemporaryDirectory(prefix='альбедо-') as t:
@@ -66,6 +66,18 @@ with tempfile.TemporaryDirectory(prefix='альбедо-') as t:
           and got.get('годинник без права', '').endswith('-1'), 'поза печаткою модуль не дізнається навіть, чи є файл; годинника без права немає', z.stdout)
     check(z.returncode == 4 and 'ДІЙШОВ ДО КІНЦЯ' not in z.stdout, 'підроблений номер запису сліду зупиняє модуль (код 4)', z.stdout[-200:] + z.stderr[-200:])
     check(not (p / 'зло.txt').exists() and not (h / 'зло.txt').exists(), 'запису поза печаткою не сталося')
+    # ліміти тримає господар: модуль, що крутиться вічно, і модуль, що їсть памʼять, себе не зупинять
+    loop = p / 'вічно.ngr'
+    loop.write_text('🜂 「вічно」 【「читати:дані」】\n» 1\n', encoding='utf-8')
+    k = host(env, Z, loop, '--строк', '2', '--слід', str(t / 'в.jsonl'))
+    kr = [json.loads(x) for x in (t / 'в.jsonl').read_text(encoding='utf-8').splitlines()]
+    check(k.returncode == 1 and 'строк 2 с' in k.stderr and kr[-1].get('від_господаря') is True, 'модуль, що крутиться вічно: господар зупиняє за строком, запис — його',
+          k.stdout[-200:] + k.stderr[-300:] + str(kr)[-300:])
+    hog = p / 'памʼять.ngr'
+    hog.write_text('🜂 「памʼять」 【「читати:дані」】\n» 1\n', encoding='utf-8')
+    m = host(env, Z, hog, '--памʼять', '256', '--слід', str(t / 'п.jsonl'))
+    held = max([int(x.split()[1]) for x in m.stdout.splitlines() if x.startswith('тримаю')] or [0])
+    check(m.returncode == 4 and held < 256, f'модуль, що їсть памʼять: стеля господаря (--памʼять 256), дістав {held} МБ', m.stdout[-200:] + m.stderr[-300:])
     rec = [json.loads(x) for x in (t / 'з.jsonl').read_text(encoding='utf-8').splitlines()]
     check(sum(x['подія'] == 'господар відмовив' for x in rec) == 10, 'кожну відмову записав сам господар: модуль її не прибере', str(rec)[:400])
 print('\nусе гаразд' if not bad else f'\nпровалено: {bad}')

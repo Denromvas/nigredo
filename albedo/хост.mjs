@@ -3,19 +3,29 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { Worker, isMainThread, workerData } from 'node:worker_threads';
+import { fileURLToPath } from 'node:url';
 
-const args = process.argv.slice(2);
+// Два потоки: модуль — у своєму, цей лише стежить за строком: модуль, що крутиться вічно, себе не зупинить, а кроки рахує він сам.
+const W = isMainThread ? null : workerData;
+const args = (W ? W.argv : process.argv).slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; };
 const flag = (k) => { const i = args.indexOf(k); if (i < 0) return false; args.splice(i, 1); return true; };
 const extraTrace = opt('--слід', null), seed = opt('--зерно', '0'), steps = opt('--кроки', '10000000');
 const size = opt('--розмір', '5000000'), tsize = opt('--слід-розмір', '50000000');
+const deadline = Number(opt('--строк', '300')), memMb = Number(opt('--памʼять', '1024'));   // с, МБ: тримає господар, а не модуль
 const showImports = flag('--імпорти'), showTime = flag('--час');
 const [wasmPath, progPath] = args;
 const wasmBytes = fs.readFileSync(wasmPath);
 const mod = new WebAssembly.Module(wasmBytes);
 if (showImports) { for (const i of WebAssembly.Module.imports(mod)) console.log(`${i.module}.${i.name}`); process.exit(0); }
 
-const fail = (code, msg) => { process.stderr.write(msg + '\n'); process.exit(code); };
+const fail = (code, msg) => { fs.writeSync(2, msg + '\n'); process.exit(code); };
+// памʼять дає господар і стелю ставить він: модуль зі своєю памʼяттю не запускається
+const KNOWN = new Set(['env.memory', 'ngr.out', 'ngr.err', 'ngr.body', 'ngr.trace', 'ngr.store', 'ngr.fs', 'ngr.fs_take', 'ngr.now']);
+const strange = WebAssembly.Module.imports(mod).filter((i) => !KNOWN.has(`${i.module}.${i.name}`));
+if (strange.length) fail(4, `✗ модуль просить невідоме: ${strange.map((i) => `${i.module}.${i.name}`).join(', ')}`);
+if (WebAssembly.Module.exports(mod).some((e) => e.kind === 'memory') || !WebAssembly.Module.imports(mod).some((i) => i.kind === 'memory')) fail(4, '✗ модуль має власну памʼять: її дає лише господар');
 const sha256 = (b) => crypto.createHash('sha256').update(b).digest('hex');
 const HOME = process.env.NIGREDO_HOME || path.join(process.env.HOME || '/', '.nigredo');
 const real = (p) => {                // як os.path.realpath: хвоста, якого немає, просто не торкаємось
@@ -80,10 +90,10 @@ fs.mkdirSync(traces, { recursive: true, mode: 0o700 });
 const now = new Date();
 const stamp = now.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
 const progSha = sha256(srcBytes);
-const mainTrace = path.join(traces, `${stamp}-${progSha.slice(0, 8)}-${process.pid}.jsonl`);
+const mainTrace = W ? W.mainTrace : path.join(traces, `${stamp}-${progSha.slice(0, 8)}-${process.pid}.jsonl`);
 const paths = [mainTrace, ...(extraTrace ? [path.resolve(extraTrace)] : [])];
-const fds = paths.map((p) => fs.openSync(p, 'wx'));
-const stores = paths.map((p) => fs.openSync(p + '.дані', 'wx'));
+const fds = W ? W.fds : paths.map((p) => fs.openSync(p, 'wx'));
+const stores = W ? W.stores : paths.map((p) => fs.openSync(p + '.дані', 'wx'));
 let prev = '0'.repeat(16), n = 0, fromModule = 0, pendingBody = null;   // номер у сліді веде господар: він теж пише записи
 const ZERO = '"0000000000000000"';
 const sign = (b) => crypto.createHmac('sha256', key).update(b).digest('hex').slice(0, 16);
@@ -177,7 +187,7 @@ const hasClock = wanted.some((w) => w.tool === 'час');
 let isolated = false;
 const imports = { ngr: {
   out: (p, l) => { fs.writeSync(1, bytes(p, l)); },
-  err: (p, l) => { process.stderr.write(text(p, l) + '\n'); },
+  err: (p, l) => { fs.writeSync(2, text(p, l) + '\n'); },
   body: (p, l) => { pendingBody = text(p, l); },
   trace: (p, l) => {
     const line = text(p, l);
@@ -193,13 +203,31 @@ const imports = { ngr: {
   fs_take: (d) => { bytes(d, pending.length).set(pending); },
   now: () => (hasClock ? BigInt(Math.floor(Date.now() / 1000)) : -1n),
 } };
+if (isMainThread) {
+  const worker = new Worker(fileURLToPath(import.meta.url), { argv: [], workerData: { argv: process.argv, fds, stores, mainTrace }, resourceLimits: { stackSizeMb: 256 } });
+  const finish = (code, msg) => {          // слід завершує цей потік: модуль уже нічого не допише
+    clearTimeout(timer);
+    const tail = fs.readFileSync(mainTrace, 'utf8').trimEnd().split('\n').pop();
+    if (tail) { const r = JSON.parse(tail); n = r['№']; prev = r['хеш']; }
+    hostRecord('помилка', { 'повідомлення': msg, 'від_господаря': true });
+    fs.writeSync(2, msg + '\n');
+    process.exit(code);
+  };
+  let stopping = false;
+  const timer = setTimeout(() => { stopping = true; worker.terminate().then(() => finish(1, `✗ господар зупинив модуль: строк ${deadline} с (--строк)`)); }, deadline * 1000);
+  worker.on('error', (e) => { stopping = true; finish(4, `✗ модуль упав: ${String(e.message ?? e).slice(0, 200)}`); });
+  worker.on('exit', (code) => { if (!stopping) { clearTimeout(timer); process.exit(code); } });
+} else {
+const memory = new WebAssembly.Memory({ initial: 2048, maximum: Math.floor(memMb * 16) });
+imports.env = { memory };
 const inst = new WebAssembly.Instance(mod, imports);
-mem = inst.exports.memory;
+mem = memory;
 const cfg = Buffer.from([path.resolve(progPath), progDir, progSha, now.toISOString().slice(0, 19) + '+00:00', crypto.randomBytes(6).toString('hex'),
   `альбедо:${sha256(wasmBytes)}`, ownerSrc, seed, steps, size, tsize, real(HOME), ...allowed].join('\n'));
 const put = (b) => { const a = inst.exports.ngr_alloc(b.length); bytes(a, b.length).set(b); return a; };
 const cp = put(cfg), sp = put(srcBytes);
 const t = process.hrtime.bigint();
 const code = inst.exports.ngr_run(cp, cfg.length, sp, srcBytes.length);
-if (showTime) process.stderr.write(`час: ${Number(process.hrtime.bigint() - t) / 1e6} мс, записів сліду: ${n}\n`);
+if (showTime) fs.writeSync(2, `час: ${Number(process.hrtime.bigint() - t) / 1e6} мс, записів сліду: ${n}\n`);
 process.exit(code);
+}
