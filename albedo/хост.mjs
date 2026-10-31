@@ -71,7 +71,21 @@ function parseGrant(e) {            // «читати писати:дані≤3�
 const seal = readSeal(src);
 if (seal === null) fail(2, '✗ програма має починатися з печатки 🜂');
 // чого немає в ядрі, модуль і так відмовить; але права такої програми господар не порахує, тож відмова — до їх перевірки, а не «бракує прав»
-const importsOf = (t) => [...t.matchAll(/⊃\s*「([^」]*)」/g)].map((m) => m[1]);
+function importsOf(t) {               // ⊃ лише поза рядками й коментарями: рядок, що згадує «⊃ 「…」», — ще не імпорт
+  const out = [];
+  for (let i = 0, last = ''; i < t.length; i++) {
+    const c = t[i];
+    if (c === '※') { while (i < t.length && t[i] !== '\n') i++; continue; }
+    if (c === '「' || c === '〔') {
+      const end = c === '「' ? '」' : '〕';
+      let v = '';
+      for (i++; i < t.length && t[i] !== end; i++) { if (t[i] === '\\') i++; v += t[i]; }
+      if (last === '⊃' && c === '「') out.push(v);
+      last = '';
+    } else if (!' \t\r\n'.includes(c)) last = c;
+  }
+  return out;
+}
 if (/^ *※ підпис ed25519:/m.test(src)) fail(120, 'альбедо: не виконую сам (підпис автора — еталон)');
 if (importsOf(src).some((p) => /#sha256=|:\/\/|^[a-z0-9.-]+\.[a-z]+\//.test(p))) fail(120, 'альбедо: не виконую сам (модуль з мережі — еталон)');
 const progDir = real(path.dirname(path.resolve(progPath)));
@@ -263,6 +277,7 @@ function fsCall(op, p, l, q, m) {
       return reply(Buffer.from(names.join('\0')));
     }
     if (op === 4) {                         // що це: лише всередині коренів печатки
+      if (name === '/') return reply(Buffer.from([2]));   // корінь — не таємниця, а ядро саме так упізнає шлях поза печаткою
       const target = real(name);
       if (!fileRoots.some((b) => inside(target, b)) || forbidden(target)) return reply(Buffer.from([0]));
       const st = fs.statSync(target);
@@ -270,7 +285,9 @@ function fsCall(op, p, l, q, m) {
     }
     if (op === 5) {                         // справжній шлях: поза коренями печатки не розкриваємо нічого
       const target = real(name);
-      return reply(Buffer.from(fileRoots.some((b) => inside(target, b)) ? target : path.resolve(name)));
+      if (fileRoots.some((b) => inside(target, b))) return reply(Buffer.from(target));
+      // посилання з теки печатки назовні: куди веде, не кажемо, але ядро мусить знати, що воно поза межею — і відмовить тим самим текстом
+      return reply(Buffer.from(fileRoots.some((b) => inside(path.resolve(name), b)) ? '/поза-печаткою' : path.resolve(name)));
     }
     return -38n;
   } catch (e) { return op === 4 ? reply(Buffer.from([0])) : BigInt(errnoOf(e)); }
