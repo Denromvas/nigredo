@@ -178,10 +178,14 @@ def main():
     ap.add_argument('--звіт', default=os.path.join(HERE, 'ЗВІРКА.md'))
     ap.add_argument('--копія', action='store_true', help='кожній програмі — копія теки з правами на запис і базу; звіт — окремий')
     ap.add_argument('--має', default='', help='лише програми з цим рядком у тексті')
+    ap.add_argument('--від', type=int, default=0, help='пропустити перші N: дігнати обірваний прогін (порядок сталий)')
+    ap.add_argument('--корінь', default='', help='репозиторій корпусу, якщо не цей')
     ap.add_argument('--прапорці', default='', help='додаткові прапорці обом виконавцям, напр. «--кроки 500»')
     a = ap.parse_args()
     EXTRA[:] = a.прапорці.split()
+    global ROOT
     COPY[0] = a.копія
+    ROOT = a.корінь or ROOT
     progs = programs(a.шляхи)
     if a.має:
         progs = [p for p in progs if a.має in open(p, encoding='utf-8', errors='replace').read()]
@@ -189,6 +193,7 @@ def main():
         progs = progs[::max(1, len(progs) // a.зразок)]
     if a.до:
         progs = progs[:a.до]
+    progs = progs[a.від:]
     res = []
     with cf.ThreadPoolExecutor(a.j) as ex:
         for i, r in enumerate(ex.map(lambda p: compare(p, a.час), progs), 1):
