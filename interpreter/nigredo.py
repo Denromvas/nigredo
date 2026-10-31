@@ -2586,7 +2586,7 @@ def _verify(path, program=None):
                  'помилка_з_модуля': err_mod if last == 'помилка' else None,
                  'підсумовано_значень': summed, 'тека': head.get('тека'), 'аргументи': head.get('аргументи'),
                  'режим': 'повтор' if head.get('повтор') else 'сухо' if dry else 'repl' if head.get('repl') else
-                 'отримання' if head.get('отримання') else 'звичайний'})
+                 'звірка' if head.get('звірка') else 'отримання' if head.get('отримання') else 'звичайний'})
     if head.get('отримання'):
         info['отримання'] = {'отримано': fetched['отримано'], 'уже_було': fetched['уже було'],
                              'замінено_пошкоджений': fetched['замінено пошкоджений'], 'не_збіглося': mismatched}
@@ -3679,8 +3679,9 @@ def _url_ok(it, pos, tool, url):
     u = url.v
     import urllib.parse
     if isinstance(u, str) and any(invisible(ch) for ch in u):   # таб, CR, LF urllib мовчки вирізає — і слід записав би
-        raise NgrError(f'{tool}: в адресі невидимий чи керівний символ ({safe(u)[:200]}) — '   # не ту адресу (суд 12)
-                       f'приберіть його чи закодуйте (%0D, %0A, %09…)', pos)
+        bad = next(ch for ch in u if invisible(ch))            # не ту адресу (суд 12); код, а не сама адреса: її покажуть двічі
+        raise NgrError(f'{tool}: в адресі невидимий чи керівний символ U+{ord(bad):04X} — приберіть його чи закодуйте '
+                       f'(%0D, %0A, %09…)', pos)
     try:            # «＠», «／» (NFKC), «[::1» — ValueError: це спроба поза правами, а не код 4 (суд 8в)
         parts = urllib.parse.urlsplit(u) if isinstance(u, str) else None
         port = parts.port if parts else None
@@ -3943,7 +3944,7 @@ def _db(it, pos, tool, p, sql, params, write):
             # відмовив би раніше, а random, годинник і PRAGMA-таблиці видно в байткоді (огляд 0.8.1, Н-1 Скептика)
             db_svc_note(why, sql.v)
             hard = [d for d in mark['сумнів'] if not db_unverified(d)]
-            clock = ' і годинник SQLite (дата з даних чи «зараз»)' if len(hard) < len(mark['сумнів']) else ''
+            clock = ' і годинник чи випадковість SQLite (дата з даних, «зараз», гілка тригера)' if len(hard) < len(mark['сумнів']) else ''
             careful = mark['запобіжна'] and not hard
             doubted = mark['запобіжна'] and bool(hard)
             if doubted:
@@ -4182,9 +4183,10 @@ def db_pragma_tables(con, names):
 def db_unverified(why):
     """Сумнів, якого без виконання не розвʼязати: функція дат у байткоді — дата з даних у межах прав, «зараз» — ні, а
     котре, видно лише під час виконання (чи й гілка тригера, де вона стоїть, виконається). Без виконання (вичерпана
-    квота, --сухо, запобіжна відмова) — «не перевірено», а не «заборонено» (суд 12, Практик). random, CURRENT_*,
-    таблиці-функції PRAGMA — «заборонено», як і досі (огляд 0.8.1б)."""
-    return '«зараз» чи дата з даних' in why
+    квота, --сухо, запобіжна відмова) — «не перевірено», а не «заборонено» (суд 12, Практик). Так само random і CURRENT_*
+    у тілі тригера: дійде до них гілка чи ні, видно лише під час виконання (огляд 12б, Практик). random, CURRENT_* у самому
+    запиті й таблиці-функції PRAGMA — «заборонено», як і досі (огляд 0.8.1б)."""
+    return '«зараз» чи дата з даних' in why or 'у тілі тригера — без виконання' in why
 
 
 def db_doubts(it, ops, reads):
@@ -4193,9 +4195,15 @@ def db_doubts(it, ops, reads):
     виконує запиту, тож з таким у ньому вона не доводить, що запит у межах прав (огляд 0.8.1, Н-1 Скептика)."""
     clock_ok, rand_ok = _db_rights(it)
     out = []
+    prev, sub = -1, False
     for r in ops:
+        sub = sub or r[0] <= prev         # підпрограми тригерів — після головної, з адреси 0 (як і в db_autoinc)
+        prev = r[0]
         name = r[5].split('(')[0].lower() if len(r) > 5 and r[1] in ('Function', 'PureFunc') and isinstance(r[5], str) else ''
-        why = (DB_RAND_WHY.format(name) if name in ('random', 'randomblob') and not rand_ok
+        hard = name in ('random', 'randomblob') and not rand_ok or name in DB_NOW and not clock_ok
+        why = (f'{"випадковість" if name.startswith("random") else "годинник"} SQLite ({name}) у тілі тригера — без виконання '
+               f'не перевірити, чи дійде до цього гілка' if hard and sub
+               else DB_RAND_WHY.format(name) if name in ('random', 'randomblob') and not rand_ok
                else f'годинник SQLite (у запиті — {name}) без права «час»' if name in DB_NOW and not clock_ok
                else f'годинник SQLite (у запиті — {name}: «зараз» чи дата з даних — без виконання не перевірити) без права «час»'
                if name in DB_CLOCK and not clock_ok else None)
@@ -7369,17 +7377,17 @@ class Interp:
                 raise Fatal(f'{g}: значення завелике (> --розмір {self.max_size})', pos)
             return V(show(a[0]))
         if g == 'ν':
-            s = self.need(a[0], 'рядок', g, pos).strip().lstrip('\ufeff')
-            s = s.replace('·', '.').replace('¯', '-')
+            s0 = self.need(a[0], 'рядок', g, pos).strip().lstrip('\ufeff')
+            s = s0.replace('·', '.').replace('¯', '-')
             odd = next((ch for ch in s if digit(ch) is not None and not ('0' <= ch <= '9')), None)
             if odd is not None or '_' in s:   # ৪ схожа на 8, ٠ — на крапку; 1_000 — не запис числа в даних (суд 8)
-                raise NgrError(f'ν: «{safe(s)}» — лише цифри 0–9' + (f' (тут {safe(odd)} U+{ord(odd):04X})' if odd else ''), pos)
+                raise NgrError(f'ν: «{safe(s0)}» — лише цифри 0–9' + (f' (тут {safe(odd)} U+{ord(odd):04X})' if odd else ''), pos)
             try:
                 return V(data_int(s, 'ν', pos))
             except ValueError:
                 d = dec_of(s, 'ν', pos)
                 if d is None or not d.is_finite():
-                    raise NgrError(f'ν: «{s}» не число', pos)
+                    raise NgrError(f'ν: «{s0}» не число', pos)
                 return V(dec_ok(d, 'ν', pos))
         if g == 'δ':
             if self.need(a[0], 'рядок', g, pos).startswith('\ufeff'):     # без поради Python «utf-8-sig» (суд 9)
@@ -8471,7 +8479,7 @@ def cheatsheet():
             '  символ). `(?i)` — як у `re`: `σ` = `ς`, `µ` = `μ`, `i` = `ı`, `s` = `ſ`. Заміна `≋` — як `re.sub`: `\\012` —',
             '  вісімковий символ, а не група; хибний шаблон заміни — помилка й без збігу. Без відкатів: зворотні',
             '  посилання й заглядання — помилка до запуску.',
-            '- `1e3` у коді — це число `1` й імʼя `e3`: порядок — лише в даних (`ν 「1e3」`). У `「」` діють `\\n \\t \\\\ \\」`,',
+            '- `1e3` у коді — помилка (число впритул до імені): порядок — лише в даних (`ν 「1e3」`). У `「」` діють `\\n \\t \\\\ \\」`,',
             '  а `\\u` — ні: невидимі й керівні символи — лише з даних (`δ 「"\\u200b"」`).',
             '- Після виклику функції з сумнівним аргументом чи гілки за сумнівною умовою, що могли зупинити програму,',
             '  решта запуску не впевненіша за них (канал завершення) — це не помилка, а правда про залежність.',
@@ -8857,6 +8865,8 @@ def load_replay(tpath, program=None):
         return None, '✗ сеанс --repl не повторюється цілим (код надходив частинами — у записах «код»)'
     if recs and recs[0].get('отримання'):
         return None, '✗ слід отримання модулів не повторюється — жодна програма тоді не виконувалась'
+    if recs and recs[-1].get('подія') == 'відмова':       # огляд 12б (Практик): програма тоді не виконувалась, а не «розійшлась»
+        return None, '✗ слід «відмова» не повторюється: програма тоді не виконувалась (відмова до запуску) — повторювати нічого'
     if any(r.get('подія') == 'сухо' for r in recs[:4]):   # суд 12 (Практик): не «повтор розійшовся» і не «вада мови»
         return None, ('✗ слід --сухо не повторюється: дії тоді не виконувались (їх результат — заглушки з впевненістю 0), '
                       'тож повтор нема з чим звіряти')
@@ -9566,9 +9576,14 @@ def _main(argv, opts, it, value):
                 print('✗ --сухо не поєднується з --тести: тести діють по-справжньому (у межах своїх печаток); '
                       'сухий прогін — для однієї програми: ngr --сухо ФАЙЛ', file=sys.stderr)
                 return 2
+            targets = [r for r in rest if r not in ('--json', '--печатка')]
+            bad = [t for t in targets if not (os.path.isdir(t) or (t.endswith('.ngr') and os.path.isfile(t)))]
+            if bad:          # описка в теці чи невідомий ключ — не мовчазний пропуск і «✓» (огляд 12б, Скептик)
+                print(f'✗ --тести: не тека й не файл .ngr: {safe(bad[0])}', file=sys.stderr)
+                return 2
             if '--печатка' in rest:
-                return test_seals([r for r in rest if r not in ('--json', '--печатка')], '--json' in rest)
-            return run_tests([r for r in rest if r != '--json'], '--json' in argv)
+                return test_seals(targets, '--json' in rest)
+            return run_tests(targets, '--json' in argv)
         if a == '--повторити':
             opts['mode'], opts['replay'] = 'повторити', next(it, None)
             if opts['replay'] is None:

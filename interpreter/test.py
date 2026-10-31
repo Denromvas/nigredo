@@ -1572,7 +1572,7 @@ def main():
     check(o_ == res81[2].stdout and res81[0].returncode == res81[2].returncode == 0
           and o_.count('запобіжна відмова (так у самій базі') == 4 and o_.count('дія поза дозволеним') == 3
           and o_.count('(random) без права «жереб» (з квотою «жереб≤N» — лише 🜔жереб); запит і не виконувався') == 1
-          and o_.count('і годинник SQLite (дата з даних чи «зараз») не перевірено') == 2      # суд 12, Практик
+          and o_.count('і годинник чи випадковість SQLite (дата з даних, «зараз», гілка тригера) не перевірено') == 2      # суд 12, Практик
           and o_.count('таблиця-функція pragma_database_list') == 1 and o_.count('запит і не виконувався') == 2
           and o_.count('рядок отримав би rowid 2⁶³−1') == 2 and o_.count('сирі сторінки бази (sqlite_dbpage)') == 1
           and o_.count('тригер бази зупинив запит: «запобіжна відмова (x)»') == 1
@@ -3012,6 +3012,7 @@ def main():
     n_ = len(hits)
     got = run(['--отримати', romb, '--звірити'], menv)
     vr_ = run(['--перевірити-слід', str(last(menv))], menv).stdout
+    vrj_ = json.loads(run(['--перевірити-слід', str(last(menv)), '--json'], menv).stdout)   # огляд 12б: режим — «звірка»
     Mirror.files['tekst.ngr'] = B                     # сервер тепер віддає інше за тією самою адресою
     got2 = run(['--отримати', t1_, '--звірити'], menv)
     vr2_ = run(['--перевірити-слід', str(last(menv))], menv).stdout
@@ -3022,7 +3023,7 @@ def main():
     vh_, venv_ = owner('власник_звірка', {'github.com': mbase})        # модулів ще немає: звірка їх не кладе
     got5 = run(['--отримати', romb, '--звірити'], venv_)
     check(got.returncode == 0 and got.stdout.startswith('✓ --звірити: джерело власника віддає той самий вміст — 3 файл(и)')
-          and nh_ == n_ + 4 and 'ЗВІРКА МОДУЛІВ З АДРЕСОЮ: 3 звірено' in vr_
+          and nh_ == n_ + 4 and 'ЗВІРКА МОДУЛІВ З АДРЕСОЮ: 3 звірено' in vr_ and vrj_.get('режим') == 'звірка'
           and got2.returncode == 3 and f'сервер віддав вміст із sha256 {sha(B)}' in got2.stderr and 'ВМІСТ НЕ ЗБІГСЯ' in vr2_
           and mt_ == {p_.name: p_.stat().st_mtime_ns for p_ in (mh / 'модулі').iterdir()}
           and got3.returncode == 2 and 'вміст має бути закріплено' in got3.stderr and got4.returncode == 2
@@ -3881,13 +3882,44 @@ def main():
     ff12_ = run(['--формат', str(fm12_)], env)
     if not (ff12_.returncode == 0 and '⚠ програма підписана автором' in ff12_.stderr):
         bad12_.append(('--формат підписаної', ff12_.returncode, ff12_.stderr[-300:]))
+    # огляд 12б (Скептик): описка в теці й невідомий ключ --тести — код 2, а не мовчазний пропуск і «✓»
+    for args12_ in (['--тести', str(tmp / 'немає_такої')], ['--тести', '--кроки', 'xyz'], ['--тести', '--печатка', 'немає.ngr']):
+        tt12_ = run(args12_, env)
+        if tt12_.returncode != 2 or 'не тека й не файл .ngr' not in tt12_.stderr:
+            bad12_.append((args12_, tt12_.returncode, tt12_.stderr[-200:]))
+    # огляд 12б (Практик): слід «відмова» — відмова до повтору (код 1), а не «розійшовся» (код 5); ν цитує дані як є;
+    # random і CURRENT_* у тілі тригера без виконання — «не перевірено»
+    rv12_ = tmp / 'відмова12.jsonl'
+    run(['--слід', str(rv12_), '-e', '🜂 【「читати:/немає」】\n» 1'], env)
+    rr12_ = run(['--повторити', str(rv12_)], env)
+    if not (rr12_.returncode == 1 and 'слід «відмова» не повторюється' in rr12_.stderr):
+        bad12_.append(('повтор сліду відмови', rr12_.returncode, rr12_.stderr[-300:]))
+    nv12_ = run(['-e', '🜂\n» ☂ ν 「1.5·」 λe e'], env)
+    if nv12_.stdout.strip() != 'ν: «1.5·» не число':
+        bad12_.append(('ν цитує дані', nv12_.stdout, nv12_.stderr[-200:]))
+    tg12_ = DATA / 'звіти' / 'тригер12.db'
+    tg12_.unlink(missing_ok=True)
+    with sqlite3.connect(tg12_) as c_:
+        c_.executescript("CREATE TABLE t(к, ч); CREATE TRIGGER т1 AFTER INSERT ON t WHEN NEW.к IS NULL BEGIN "
+                         "UPDATE t SET к = CURRENT_TIMESTAMP, ч = random(); END;")
+    q12_ = (f'🜂 【「бд.писати:{DATA}/звіти≤1」】\n← п λq ☂ σ 🜔бд.писати 「{tg12_}」 q 【】 λe e\n'
+            "» п 「INSERT INTO t(к) VALUES ('2026-10-15')」\n» п 「INSERT INTO t(к) VALUES ('2026-10-16')」\n"
+            '» п 「INSERT INTO t(к) VALUES (random())」')
+    tl12_ = tmp / 'тригер12.jsonl'
+    tq12_ = run(['--слід', str(tl12_), '-e', q12_], envd)
+    tv12_ = run(['--перевірити-слід', str(tl12_)], envd).stdout
+    td12_ = run(['--сухо', '-e', q12_.replace('≤1', '').replace('» п 「INSERT INTO t(к) VALUES (random())」', '')], envd)
+    if not (tq12_.stdout.count('вичерпано квоту') == 1 and tq12_.stdout.count('заборонено') == 1
+            and '(«заборонено»): 1 ' in tv12_ and 'у тілі тригера — без виконання' in tv12_
+            and td12_.returncode == 0 and 'у тілі тригера — без виконання' in td12_.stderr):
+        bad12_.append(('тіло тригера', tq12_.stdout[-400:], tv12_[-500:], td12_.stderr[-400:]))
     # Н-6 Практика: слід --сухо не повторюється — відмова до повтору, а не «розійшовся» чи «вада мови»
     dt12_ = tmp / 'сухо12.jsonl'
     run(['--сухо', '--слід', str(dt12_), '-e', '🜂\n» 1'], env)
     dr12_ = run(['--повторити', str(dt12_)], env)
     if not (dr12_.returncode == 1 and 'слід --сухо не повторюється' in dr12_.stderr and 'вада' not in dr12_.stderr):
         bad12_.append(('повтор сухого сліду', dr12_.returncode, dr12_.stderr[-300:]))
-    check(not bad12_, f'суд 12: {len(S12)} проб норми — ⇅ за ●/○ (Н-2 Скептика), ÷ (Н-1), ціле з даних і ☂ (Н-4), канал § і ⚗ (Н-5), один порядок рядків (Н-3), Δ функції, ⊢, ☠ (Н-6); повтор сухого сліду — відмова (Практик); 1e3, підказки µ № ¯, тайська AM (Мовознавець, Новачок)…', str(bad12_)[:1500])
+    check(not bad12_, f'суд 12: {len(S12)} проб норми — ⇅ за ●/○ (Н-2 Скептика), ÷ (Н-1), ціле з даних і ☂ (Н-4), канал § і ⚗ (Н-5), один порядок рядків (Н-3), Δ функції, ⊢, ☠ (Н-6); повтор сухого сліду — відмова (Практик); 1e3, підказки µ № ¯, тайська AM (Мовознавець, Новачок); огляд 12б: --тести, слід «відмова», ν, тіло тригера…', str(bad12_)[:1500])
 
     # ------------------------------------------------------------------ набір сумісності 1.0 (spec/пропозиції/1.0.md §5)
     # зразки 1.0 — у копії в іншій теці: слід перевіряється й повторюється, підпис цілий, печатка — ті самі поля
@@ -3916,6 +3948,10 @@ def main():
     cj_bad_ = [k_ for k_, v_ in cjw_.items() if drop_(cj_).get(k_, '∅∅') != v_]
     al_ = cs_ / 'слід-атанор'
     av_ = run(['--перевірити-слід', str(al_ / 'слід.jsonl'), str(al_ / 'програма.ngr')], cenv_)
+    ca_ = json.loads(run(['--перевірити-слід', str(al_ / 'слід.jsonl'), str(al_ / 'програма.ngr'), '--json'],
+                         cenv_).stdout or '{}')
+    caw_ = json.loads((al_ / 'перевірка.json').read_text(encoding='utf-8'))
+    cj_bad_ += [('атанор', k_) for k_, v_ in caw_.items() if drop_(ca_).get(k_, '∅∅') != v_]
     ar_ = run(['--повторити', str(al_ / 'слід.jsonl'), str(al_ / 'програма.ngr')], cenv_)
     vd_ = cs_ / 'значення'
     vv_ = run([str(vd_ / 'програма.ngr')], dict(cenv_, ATHANOR_NO_FALLBACK='1'))
