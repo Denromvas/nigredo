@@ -13,9 +13,12 @@ import glob
 import importlib.util
 import json
 import os
+import hashlib
 import shutil
+import subprocess
 import sys
 import tempfile
+import time
 from collections import Counter
 
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -82,6 +85,7 @@ def main():
     ap.add_argument('--має', default='')
     ap.add_argument('--корінь', default=z.ROOT, help='репозиторій із робочими файлами суддів; у worktree їх немає')
     ap.add_argument('--до', type=int, default=0)
+    ap.add_argument('--звіт', default='', help='записати підсумок у цей файл')
     a = ap.parse_args()
     z.ROOT = a.корінь
     progs = z.programs(a.шляхи)
@@ -99,9 +103,19 @@ def main():
                 print(f'✗ {os.path.relpath(p, z.ROOT)}\n  {t}', flush=True)
             if i % 100 == 0:
                 print(f'… {i}/{len(progs)}', flush=True)
-    print(f'Програм: {len(progs)}; однаково {cnt["так"]}, розбіжностей {cnt["різниця"]}, годинник {cnt["годинник"]}, чуже значення {cnt["чуже"]}, темп {cnt["темп"]}, Атанор не вклався {cnt["час"]}, межа сліду {cnt["межа сліду"]}, модуль не вміє {cnt["не вміє"]}, лише еталон {cnt["лише еталон"]}')
+    line = (f'Програм: {len(progs)}; однаково {cnt["так"]}, розбіжностей {cnt["різниця"]}, годинник {cnt["годинник"]}, чуже значення {cnt["чуже"]}, темп {cnt["темп"]}, Атанор не вклався {cnt["час"]}, межа сліду {cnt["межа сліду"]}, модуль не вміє {cnt["не вміє"]}, лише еталон {cnt["лише еталон"]}')
+    print(line)
     for w, n in why.most_common(12):
         print(f'  {n} × {w}')
+    if a.звіт:
+        rev = subprocess.run(['git', '-C', HERE, 'rev-parse', '--short', 'HEAD'], capture_output=True, text=True).stdout.strip()
+        sha = lambda p: hashlib.sha256(open(p, 'rb').read()).hexdigest()[:16]  # noqa: E731
+        with open(a.звіт, 'w', encoding='utf-8') as f:
+            f.write(f'# Звірка Альбедо з Атанором\n\nПрогін {time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())}, коміт `{rev}`, копія теки на кожен запуск; '
+                    f'модуль `{sha(HOST[2])}…`, господар `{sha(HOST[1])}…`.\n\n{line}.\n\n'
+                    '«Лише еталон» — чого не вміє сам Атанор (мережа, `‖`, міст, підпис, печатка поза дозволами): порівнювати нема з чим. «Чуже значення» — '
+                    '`random()`, збірка SQLite, `/proc/self`; «темп» — нескінченний запит: Атанор вичерпав кроки, модуль — 30 с; «межа сліду» — обидва '
+                    'зупинились тим самим текстом, рядки сліду модуля на кілька байтів інші.\n')
     if not cnt['так']:
         print('✗ порожня звірка: жодної програми не порівняно (Атанор віддав усе еталону?)')
         sys.exit(2)
