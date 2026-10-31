@@ -383,7 +383,10 @@ impl<'a> Parser<'a> {
         let s: &'a str = &self.s[start..k];
         self.i = k;
         if is_float {
-            // parse_float = dec_ok(Decimal(t)): порядок понад межу — помилка мови одразу, під час розбору
+            // parse_float = data_len + dec_ok(Decimal(t)): довжина й порядок понад межу — помилка мови одразу, під час розбору
+            if let Some(m) = crate::dec::data_len(s, "δ") {
+                return Err(Inner::Ngr(m));
+            }
             if let Ok(d) = crate::dec::Dec::parse(s) {
                 if d.adjusted().abs() > crate::dec::DEC_EXP {
                     return Err(Inner::Ngr(format!("δ: порядок числа понад {} цифр", crate::dec::DEC_EXP)));
@@ -391,9 +394,12 @@ impl<'a> Parser<'a> {
             }
             return Ok(Some(P::Float(s)));
         }
-        // parse_int еталона: ціле понад MAX_INT_BITS — помилка мови одразу (суд 12); 30103 цифри — уже понад межу чи поруч
+        // parse_int еталона: ціле понад MAX_INT_BITS — помилка мови одразу (суд 12); довше за межу — ще до розбору цифр
+        if let Some(m) = crate::dec::data_len(s, "δ") {
+            return Err(Inner::Ngr(m));
+        }
         let d = s.trim_start_matches('-');
-        if d.len() >= 30_103 && crate::int::Int::from_dec(false, d).bit_length() > crate::lang::MAX_INT_BITS as u64 {
+        if d.len() >= crate::dec::DATA_DIGITS && crate::int::Int::from_dec(false, d).bit_length() > crate::lang::MAX_INT_BITS as u64 {
             return Err(Inner::Ngr(format!("δ: ціле понад {} біт", crate::lang::MAX_INT_BITS)));
         }
         Ok(Some(P::Int(s)))

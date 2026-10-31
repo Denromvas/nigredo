@@ -417,6 +417,9 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                 return ngr(format!("ν: «{}» — лише цифри 0–9{}", uni::safe(raw), tail), pos);
             }
             let t = uni::strip(&s);
+            if let Some(m) = dec::data_len(t, "ν") {
+                return ngr(m, pos);
+            }
             if let Some(i) = parse_py_int(t) {
                 if i.bit_length() > lang::MAX_INT_BITS as u64 {          // суд 12: помилка, яку ловить ☂
                     return ngr(format!("ν: ціле понад {} біт", lang::MAX_INT_BITS), pos);
