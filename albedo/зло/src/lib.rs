@@ -8,6 +8,7 @@ extern "C" {
     fn trace(p: *const u8, n: usize);
     fn body(p: *const u8, n: usize);
     fn db(op: i32, a: i64, b: i64, p: *const u8, n: i32) -> i64;
+    fn store(p: *const u8, n: usize);
 }
 
 const OPEN: i32 = 1;
@@ -92,6 +93,12 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
         let mut x = 0u64;
         loop {
             x = std::hint::black_box(x.wrapping_add(1));
+        }
+    }
+    if src.contains("повінь") {            // межу сліду рахує й сам модуль: такий не рахує
+        let chunk = vec![b'x'; 1 << 20];
+        loop {
+            unsafe { store(chunk.as_ptr(), chunk.len()) };
         }
     }
     if src.contains("памʼять") {           // скільки дасть господар
