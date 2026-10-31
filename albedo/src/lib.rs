@@ -46,6 +46,8 @@ mod sha;
 mod sort;
 #[path = "../../athanor/src/sqlite.rs"]
 mod sqlite;
+#[path = "../../athanor/src/sys.rs"]
+mod sys;
 #[path = "../../athanor/src/tables.rs"]
 mod tables;
 #[path = "../../athanor/src/tools.rs"]
@@ -70,7 +72,14 @@ use std::rc::Rc;
 extern "C" {
     fn out(p: *const u8, n: usize); // вивід програми (»)
     fn err(p: *const u8, n: usize); // помилка
-    fn trace(p: *const u8, n: usize); // рядок сліду
+    fn trace(p: *const u8, n: usize); // рядок сліду; ланцюжок і підпис — господаря
+    fn body(p: *const u8, n: usize); // канонічний текст того самого запису (для підпису)
+    fn store(p: *const u8, n: usize); // запис СЛІД.дані
+}
+
+/// Канонічний текст запису — господарю, разом із рядком: ключ HMAC лишається в нього (trace.rs).
+pub fn trace_body(b: &str) {
+    unsafe { body(b.as_ptr(), b.len()) }
 }
 
 struct Host(unsafe extern "C" fn(*const u8, usize));
@@ -101,38 +110,43 @@ fn say(t: &str) {
     unsafe { err(t.as_ptr(), t.len()) }
 }
 
-/// Запуск програми: 0, 1 чи 2. Усе, що виходить з модуля, — через імпорти «ngr»; інших дій модуль не має.
+/// Запуск програми. Конфіг — рядки від господаря: шлях, тека, sha256, час, запуск, інтерпретатор, дозволи_власника, зерно,
+/// кроки, розмір, межа сліду, тека власника, далі — дозволено. Усе, що виходить з модуля, — через імпорти «ngr»: які дії
+/// насправді відбудуться, вирішує господар, а не цей код.
 #[no_mangle]
-pub extern "C" fn ngr_run(p: *const u8, n: usize, steps: i64) -> i32 {
+pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i32 {
+    let cfg = String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(c, cn) }).into_owned();
+    let f: Vec<&str> = cfg.split('\n').collect();
     let src = String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(p, n) }).into_owned();
-    let cwd = "/".to_string();
-    let parsed = (|| -> Result<(ast::Node, Rc<ast::Caps>), Back> {
+    let (path, cwd, home) = (f[0].to_string(), f[1].to_string(), f[11].to_string());
+    let num = |i: usize| f[i].parse::<i64>().unwrap_or(0);
+    let parsed = (|| -> Result<ast::Node, Back> {
         let toks = lexer::lex(&src)?;
         lexer::check_twins(&toks)?;
-        let mut p = parser::Parser::with(toks, tools::supported, glyph_ok, Some(cwd.clone()), None, Vec::new(), false, String::new());
+        let mut p = parser::Parser::with(toks, tools::supported, glyph_ok, Some(cwd.clone()), None, vec![pathx::realpath(&path)], false, home.clone());
         let prog = p.program()?;
         if types::has_type_errors(&prog) {
             return lexer::back("помилки типів");
         }
-        Ok((prog, p.seal_caps().unwrap_or_default()))
+        Ok(prog)
     })();
     let prog = match parsed {
-        Ok((p, _)) => p,
+        Ok(p) => p,
         Err(Back(why)) => {
             say(&format!("не виконую сам: {}", why));
             return 2;
         }
     };
-    let tr = trace::Trace::new(vec![Box::new(Host(trace))], Vec::new(), b"albedo-m0".to_vec(), 50_000_000);
+    let tr = trace::Trace::new(vec![Box::new(Host(trace))], vec![Box::new(Host(store))], Vec::new(), num(10) as u64);
     let mut it = interp::Interp {
         trace: tr,
-        rng: rng::Mt::seed(&int::Int::S(0)),
+        rng: rng::Mt::seed(&int::Int::S(num(7))),
         argv: Vec::new(),
         protected: Default::default(),
-        max_size: 5_000_000,
+        max_size: num(9) as u64,
         alloc: 0,
-        steps_left: steps,
-        cwd,
+        steps_left: num(8),
+        cwd: cwd.clone(),
         out: Box::new(Host(out)),
         memory: Default::default(),
         agent: "головний".into(),
@@ -150,7 +164,7 @@ pub extern "C" fn ngr_run(p: *const u8, n: usize, steps: i64) -> i32 {
         quota_stack: Vec::new(),
         quota_used: Default::default(),
         quota_seq: 0,
-        owner_home: String::new(),
+        owner_home: home,
         paths_seen: None,
         rp_cache: std::collections::HashMap::new(),
         denied: false,
@@ -163,14 +177,35 @@ pub extern "C" fn ngr_run(p: *const u8, n: usize, steps: i64) -> i32 {
         os_mode: None,
         write_shut: false,
     };
-    if it.rec("початок", vec![("версія".to_string(), J::s(lang::VERSION))]).is_err() {
+    let head = vec![
+        ("версія".to_string(), J::s(lang::VERSION)),
+        ("інтерпретатор".into(), J::s(f[5])),
+        ("програма".into(), J::Str(uni::safe(f[0]))),
+        ("sha256".into(), J::s(f[2])),
+        ("аргументи".into(), J::Arr(Vec::new())),
+        ("час".into(), J::s(f[3])),
+        ("запуск".into(), J::s(f[4])),
+        ("тека".into(), J::Str(uni::safe(f[1]))),
+        ("дозволи_власника".into(), J::Str(uni::safe(f[6]))),
+        ("дозволено".into(), J::Arr(f[12..].iter().map(|a| J::s(a)).collect())),
+        ("ліміти".into(), J::Obj(vec![("кроки".into(), J::Int(num(8))), ("розмір".into(), J::Int(num(9))), ("слід".into(), J::Int(num(10))), ("зерно".into(), J::Num(f[7].to_string()))])),
+    ];
+    if it.rec("початок", head).is_err() {
         return 4;
     }
     let root = value::Env::new(0, None);
     let code = match it.eval(&prog, &root) {
-        Ok(_) => 0,
+        Ok(_) => {
+            let steps = num(8) - it.steps_left;
+            if it.rec("кінець", vec![("кроків".into(), J::Int(steps))]).is_err() {
+                return 4;
+            }
+            0
+        }
         Err(e) => {
-            say(&uni::safe(&e.text()));
+            let text = uni::safe(&e.text());
+            let _ = it.rec("помилка", vec![("повідомлення".into(), J::Str(text.clone()))]);
+            say(&text);
             1
         }
     };

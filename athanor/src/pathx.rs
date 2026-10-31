@@ -57,6 +57,10 @@ pub fn expanduser(p: &str) -> String {
 
 /// os.path.realpath(filename) (strict=False), алгоритм Python 3.13.
 pub fn realpath(filename: &str) -> String {
+    #[cfg(target_arch = "wasm32")]
+    if true {
+        return crate::sys::realpath(filename); // справжні шляхи знає лише господар
+    }
     let mut rest: Vec<Option<String>> = filename.split('/').rev().map(|s| Some(s.to_string())).collect();
     let mut part_count = rest.len();
     let mut path = if filename.starts_with('/') { "/".to_string() } else { getcwd() };
@@ -138,15 +142,15 @@ pub fn inside(path: &str, base: &str) -> bool {
 }
 
 pub fn exists(p: &str) -> bool {
-    std::fs::metadata(p).is_ok()
+    crate::sys::exists(p)
 }
 
 pub fn isdir(p: &str) -> bool {
-    std::fs::metadata(p).map(|m| m.is_dir()).unwrap_or(false)
+    crate::sys::isdir(p)
 }
 
 pub fn isfile(p: &str) -> bool {
-    std::fs::metadata(p).map(|m| m.is_file()).unwrap_or(false)
+    crate::sys::isfile(p)
 }
 
 #[cfg(unix)]

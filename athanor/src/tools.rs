@@ -33,7 +33,7 @@ pub fn os_err(tool: &str, e: &std::io::Error, p: &str) -> String {
 
 /// Поточний час UTC: (рік, місяць, день, година, хвилина, секунда).
 pub fn utc_now() -> (i64, u32, u32, u32, u32, u32) {
-    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+    let secs = crate::sys::now_secs();
     let days = secs.div_euclid(86400);
     let rem = secs.rem_euclid(86400);
     let (y, m, d) = civil(days);
@@ -64,8 +64,7 @@ fn read_text(path: &str, limit: usize) -> Result<Result<String, ()>, std::io::Er
     // TextIOWrapper.read(n) бере не більше ~8n байтів (n символів по ≤ 4 байти й один шматок понад них) — решту файлу
     // не читаємо (суд 9: файл на 500 МБ читався цілим)
     let cap = limit.saturating_mul(8).saturating_add(65536);
-    let mut bytes = Vec::new();
-    std::io::Read::read_to_end(&mut std::io::Read::take(std::fs::File::open(path)?, cap as u64), &mut bytes)?;
+    let bytes = crate::sys::read_limited(path, cap)?;
     let s = match String::from_utf8(bytes) {
         Ok(s) => s,
         Err(e) => return Ok(read_chunked(e.as_bytes(), limit)),
@@ -171,7 +170,7 @@ pub fn run(it: &mut Interp, name: &str, args: &[V], pos: Pos) -> R<V> {
                 _ => return ngr("файл.писати: вміст має бути рядком (для даних — Δ)", pos),
             };
             let p = path_text(&args[0]);
-            let r = std::fs::create_dir_all(pathx::dirname(&real)).and_then(|_| std::fs::write(&real, text.s.as_bytes()));
+            let r = crate::sys::write_file(&pathx::dirname(&real), &real, text.s.as_bytes());
             match r {
                 Ok(()) => Ok(V::none()),
                 Err(e) => ngr(os_err("файл.писати", &e, &p), pos),
@@ -180,15 +179,8 @@ pub fn run(it: &mut Interp, name: &str, args: &[V], pos: Pos) -> R<V> {
         "файл.список" => {
             let real = it.path_ok(name, &args[0].v, pos, false)?;
             let p = path_text(&args[0]);
-            match std::fs::read_dir(&real) {
-                Ok(rd) => {
-                    let mut names: Vec<String> = Vec::new();
-                    for e in rd {
-                        match e {
-                            Ok(e) => names.push(e.file_name().to_string_lossy().into_owned()),
-                            Err(e) => return ngr(os_err("файл.список", &e, &p), pos),
-                        }
-                    }
+            match crate::sys::list_dir(&real) {
+                Ok(mut names) => {
                     names.sort();
                     Ok(V::list(names.into_iter().map(V::str).collect()))
                 }
