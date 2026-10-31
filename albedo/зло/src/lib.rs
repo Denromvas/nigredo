@@ -58,6 +58,10 @@ fn base(dir: &str, home: &str) {
     page[..16].copy_from_slice(b"SQLite format 3\0");
     say(&format!("контроль запису: {}\n", unsafe { db(WRITE, w, 0, page.as_ptr(), 600) }));
     line("запис понад межу", unsafe { db(WRITE, w, 600, page.as_ptr(), 600) });
+    let hang = format!("{}/дані/пиши/висяче", dir);
+    line("запис через висяче посилання", unsafe { fs(2, hang.as_ptr(), hang.len(), b"pwned".as_ptr(), 5) });
+    let thru = format!("{}/дані/пиши/тека-посилання/вибито.txt", dir);
+    line("запис через посилання на теку", unsafe { fs(2, thru.as_ptr(), thru.len(), b"pwned".as_ptr(), 5) });
 }
 
 fn say(t: &str) {
