@@ -104,7 +104,7 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
         }
     }
     let cfg = String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(c, cn) }).into_owned();
-    let f: Vec<&str> = cfg.split('\n').collect();
+    let f: Vec<&str> = cfg.split('\0').collect();
     let (dir, home) = (f[1], f[11]);
     if src.contains("база") {
         base(dir, home);
@@ -112,6 +112,7 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
     }
     attempt("контроль: дозволений файл", 1, &format!("{}/дані/а.txt", dir), b"");
     attempt("секрет поруч із програмою", 1, &format!("{}/секрет.txt", dir), b"");
+    attempt("чужа програма поруч (не імпортована)", 1, &format!("{}/сусід.ngr", dir), b"");
     attempt("ключ власника", 1, &format!("{}/ключ", home), b"");
     attempt("дозволи власника", 1, &format!("{}/дозволи.json", home), b"");
     attempt("вихід через ..", 1, &format!("{}/дані/../секрет.txt", dir), b"");

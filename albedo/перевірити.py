@@ -2,6 +2,7 @@
 """Альбедо, М1: перевірка межі. Значення 1.0, програма з файлами й слід через незмінний --перевірити-слід, і злий модуль
 (albedo/зло), який прямо кличе імпорти господаря: межа мусить тримати без нього самого. Потрібні node і
 `./зібрати.sh` в albedo/ і `cargo build --release` в albedo/зло/."""
+import hashlib
 import json
 import os
 import pathlib
@@ -36,6 +37,7 @@ with tempfile.TemporaryDirectory(prefix='альбедо-') as t:
     h.mkdir()
     shutil.copytree(ROOT / 'tests' / 'сумісність' / 'слід-атанор', p, ignore=shutil.ignore_patterns('слід*', 'перевірка.json'))
     (p / 'дані' / 'посилання').symlink_to('../секрет.txt')
+    (p / 'сусід.ngr').write_text('🜂 「сусід」 【】\n» 1\n', encoding='utf-8')
     (h / 'дозволи.json').write_text(json.dumps({'дозволено': ['жереб', f'читати:{p}/дані']}, ensure_ascii=False), encoding='utf-8')
     env = dict(os.environ, NIGREDO_HOME=str(h))
     v = host(env, W, ROOT / 'tests' / 'сумісність' / 'значення' / 'програма.ngr')
@@ -61,7 +63,7 @@ with tempfile.TemporaryDirectory(prefix='альбедо-') as t:
     lines = [x for x in z.stdout.splitlines() if x]
     got = {x.split(':')[0]: x for x in lines}
     denied = [k for k in got if k not in ('контроль', 'годинник без права', 'чи є файл поза печаткою', 'справжній шлях поза печаткою')]
-    check(len(denied) == 11 and all('відмова' in got[k] for k in denied), 'злий модуль: секрет, ключ, дозволи, .., посилання, системний файл, '
+    check(len(denied) == 12 and all('відмова' in got[k] for k in denied), 'злий модуль: секрет, сусідня програма, ключ, дозволи, .., посилання, системний файл, '
           'запис, список, невідома операція — відмова', z.stdout)
     check('ОТРИМАНО' in got.get('контроль', '') and 'секретний' not in z.stdout and 'не для програми' not in z.stdout,
           'контроль: дозволене читається; вмісту поза печаткою модуль не бачив', z.stdout)
@@ -82,7 +84,7 @@ with tempfile.TemporaryDirectory(prefix='альбедо-') as t:
     held = max([int(x.split()[1]) for x in m.stdout.splitlines() if x.startswith('тримаю')] or [0])
     check(m.returncode == 4 and held < 256, f'модуль, що їсть памʼять: стеля господаря (--памʼять 256), дістав {held} МБ', m.stdout[-200:] + m.stderr[-300:])
     rec = [json.loads(x) for x in (t / 'з.jsonl').read_text(encoding='utf-8').splitlines()]
-    check(sum(x['подія'] == 'господар відмовив' for x in rec) == 10, 'кожну відмову записав сам господар: модуль її не прибере', str(rec)[:400])
+    check(sum(x['подія'] == 'господар відмовив' for x in rec) == 11, 'кожну відмову записав сам господар: модуль її не прибере', str(rec)[:400])
     # база: SQLite живе в модулі, тож сторож у sqlite.rs для межі не рахується — лише файли в господарі
     b, c = p / 'дані' / 'б.db', p / 'дані' / 'в.db'
     q = sqlite3.connect(b)
@@ -164,5 +166,41 @@ with tempfile.TemporaryDirectory(prefix='альбедо-') as t:
     check(q.execute('SELECT sum(а) FROM т').fetchall() == [(6,)] and q.execute('PRAGMA integrity_check').fetchall() == [('ok',)], 'WAL-базу з модуля читає звичайний SQLite', '')
     q.close()
     check(not any(x.get('подія') == 'господар відмовив' for x in map(json.loads, (t / 'wal.jsonl').read_text(encoding='utf-8').splitlines())), 'законна робота з WAL не дає жодної відмови господаря', '')
+    # права власника: господар не ширший за еталон (seal.rs); кожен випадок — окрема тека власника
+    def owner(rights, name='власник3'):
+        o = t / name
+        shutil.rmtree(o, ignore_errors=True)
+        o.mkdir()
+        (o / 'дозволи.json').write_text(json.dumps(rights, ensure_ascii=False), encoding='utf-8')
+        return dict(env, NIGREDO_HOME=str(o))
+    ask = p / 'права.ngr'
+    ask.write_text('🜂 「права」 【「читати:дані」】\n» 🜔читати 「дані/а.txt」\n', encoding='utf-8')
+    check(host(owner({'дозволено': ['файл.читати']}), W, ask).returncode == 3, 'запис власника без теки не покриває теки з печатки')
+    check(host(owner({'дозволено': [f'читати:{p}/дані']}), W, ask).returncode == 0, 'контроль: запис власника з текою дає права')
+    check(host(owner({'для_тек': {str(p): [f'читати:{p}/дані']}}), W, ask).returncode == 0, 'контроль: «для_тек» дає права')
+    x = host(owner({'для_тек': {str(p): [f'читати:{p}/дані']}, 'дозволено': [f'писати:{p}']}), W, ask)
+    check(x.returncode == 3, '«для_тек» не діє на програму там, куди можна писати: її могла написати інша програма', x.stderr)
+    sha = hashlib.sha256(ask.read_bytes()).hexdigest()
+    x = host(owner({'для_програм': {sha: [f'читати:{p}/дані']}}), W, ask)
+    check(x.returncode == 0 and 'схвалено' not in x.stderr, 'контроль: «для_програм» за sha дає права саме цій програмі', x.stderr)
+    check(host(owner({'для_програм': {'0' * 64: [f'читати:{p}/дані']}}), W, ask).returncode == 3, 'чужий sha у «для_програм» прав не дає')
+    inside_home = owner({'дозволено': [f'читати:{t}']})
+    home_seal = p / 'до_власника.ngr'
+    home_seal.write_text(f'🜂 「х」 【「читати:{inside_home["NIGREDO_HOME"]}」】\n» 1\n', encoding='utf-8')
+    check(host(inside_home, W, home_seal).returncode == 3, 'печатка на теку власника не проходить, навіть якщо запис власника її накриває')
+    (p / 'модулі').mkdir()
+    (p / 'модулі' / 'м.ngr').write_text('🜂 「модуль」 【】\n⊢ ф λх ＋ х 1\n', encoding='utf-8')
+    use = p / 'з_модулем.ngr'
+    use.write_text('🜂 「з модулем」 【】\n⊃ 「модулі/м.ngr」\n» 1\n', encoding='utf-8')
+    x = host(owner({'дозволено': [f'писати:{p}/модулі']}), W, use)
+    check(x.returncode == 3 and 'модуль лежить' in x.stderr, 'модуль з теки, куди можуть писати програми, не запускається', x.stdout + x.stderr)
+    sg = p / 'підписана.ngr'
+    sg.write_text('🜂 「х」 【】\n» 1\n※ підпис ed25519:' + 'a' * 64 + ':' + 'b' * 128 + '\n', encoding='utf-8')
+    x = host(owner({'дозволено': []}), W, sg)
+    check(x.returncode == 120, 'підписану програму модуль не виконує: підпис перевіряє лише еталон', x.stdout + x.stderr)
+    ar = p / 'аргументи.ngr'
+    ar.write_text('🜂 「аргументи」 【】\n» ⌂\n', encoding='utf-8')
+    x = subprocess.run(['node', str(HOST), str(W), str(ar), '--', 'а б', '--зерно', 'в\nг'], capture_output=True, text=True, env=owner({'дозволено': []}))
+    check(x.returncode == 0 and x.stdout == '【「а б」 「--зерно」 「в\\nг」】\n', 'аргументи програми доходять цілими, прапорці після «--» — не господаря', x.stdout + x.stderr)
 print('\nусе гаразд' if not bad else f'\nпровалено: {bad}')
 sys.exit(1 if bad else 0)
