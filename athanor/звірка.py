@@ -160,7 +160,8 @@ def compare(prog, timeout):
             show = lambda t: json.dumps(t[0][first], ensure_ascii=False)[:400] if first < len(t[0]) else '—'  # noqa: E731
             diffs.append(f'слід (запис {first + 1}):\n  атанор: {show(ta)}\n  еталон: {show(tp)}'
                          + ('' if ta[1] == tp[1] else '\n  сховище .дані різне'))
-        if diffs and '🜔час' in open(prog, encoding='utf-8', errors='replace').read():
+        text = open(prog, encoding='utf-8', errors='replace').read()
+        if diffs and any(x in text for x in ('🜔час', "'now'", 'CURRENT_', 'random(')):    # і годинник та випадкове самого SQLite
             return prog, 'годинник', '\n'.join(diffs), (a[4], p[4])   # поведінка залежить від секунд — не порівнюється
         return prog, 'різниця' if diffs else 'так', '\n'.join(diffs), (a[4], p[4])
     finally:

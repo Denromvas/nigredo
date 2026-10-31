@@ -8,7 +8,9 @@ import { fileURLToPath } from 'node:url';
 
 // Два потоки: модуль — у своєму, цей лише стежить за строком: модуль, що крутиться вічно, себе не зупинить, а кроки рахує він сам.
 const W = isMainThread ? null : workerData;
-const args = (W ? W.argv : process.argv).slice(2);
+const rawArgs = (W ? W.argv : process.argv).slice(2);
+const dd = rawArgs.indexOf('--');          // що після «--», належить програмі: це не прапорці господаря
+const args = dd < 0 ? rawArgs : rawArgs.slice(0, dd), progArgs = dd < 0 ? [] : rawArgs.slice(dd + 1);
 const opt = (k, d) => { const i = args.indexOf(k); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; };
 const flag = (k) => { const i = args.indexOf(k); if (i < 0) return false; args.splice(i, 1); return true; };
 const extraTrace = opt('--слід', null), seed = opt('--зерно', '0'), steps = opt('--кроки', '10000000');
@@ -59,23 +61,72 @@ function parseGrant(e) {            // «читати писати:дані≤3�
 }
 const seal = readSeal(src);
 if (seal === null) fail(2, '✗ програма має починатися з печатки 🜂');
+// чого немає в ядрі, модуль і так відмовить; але права такої програми господар не порахує, тож відмова — до їх перевірки, а не «бракує прав»
+const importsOf = (t) => [...t.matchAll(/⊃\s*「([^」]*)」/g)].map((m) => m[1]);
+if (/^ *※ підпис ed25519:/m.test(src)) fail(120, 'альбедо: не виконую сам (підпис автора — еталон)');
+if (importsOf(src).some((p) => /#sha256=|:\/\/|^[a-z0-9.-]+\.[a-z]+\//.test(p))) fail(120, 'альбедо: не виконую сам (модуль з мережі — еталон)');
 const progDir = real(path.dirname(path.resolve(progPath)));
+const progReal = real(progPath);
 const wanted = seal.flatMap(parseGrant);
+const sha256Prog = sha256(srcBytes);
 
-// ---- дозволи власника (М1: «дозволено» і «для_тек»; «для_програм» і «для_авторів» — ще ні, тобто вужче)
-const ownerFile = path.join(HOME, 'дозволи.json');
-let owner = {}, ownerSrc = `${ownerFile} (файлу немає)`;
-if (fs.existsSync(ownerFile)) {
-  const raw = fs.readFileSync(ownerFile); owner = JSON.parse(raw.toString('utf8'));
-  ownerSrc = `${ownerFile} (sha256 ${sha256(raw).slice(0, 16)})`;
+// ---- дозволи власника: ті самі правила, що в seal.rs (read_allowlist, check_allowlist, program_ok). Вужче за них можна, ширше — вада.
+const KIND = { оракул: '', жереб: '', час: '', 'файл.читати': 'тека', 'файл.писати': 'тека', 'файл.список': 'тека', 'бд.читати': 'тека', 'бд.писати': 'тека',
+  'мережа.взяти': 'хост', 'мережа.послати': 'хост', процес: 'команда', агент: 'імʼя', python: 'функція' };
+const WRITE_TOOLS = new Set(['файл.писати', 'бд.писати']);
+const expand = (p) => (p === '~' || p.startsWith('~/') ? path.join(process.env.HOME || '/', p.slice(1)) : p);
+const canon = (e) => { const c = e.indexOf(':'), n = (c < 0 ? e : e.slice(0, c)).trim(); return SHORT[n] ? SHORT[n] + (c < 0 ? '' : e.slice(c)) : e; };
+function grantOf(e) {                 // запис власника: один інструмент, без скорочень
+  const m = canon(e).match(/^([^]*?)\s*≤\s*([0-9]+)$/), body = m ? m[1] : canon(e), c = body.indexOf(':');
+  return { tool: (c < 0 ? body : body.slice(0, c)).trim(), scope: c < 0 ? '' : body.slice(c + 1).trim(), quota: m ? Number(m[2]) : null };
 }
-const allowed = [...(owner['дозволено'] ?? []), ...Object.entries(owner['для_тек'] ?? {}).filter(([d]) => real(d) === progDir).flatMap(([, v]) => v)];
-const granted = allowed.flatMap(parseGrant);
+const homeReal = real(HOME);
+const ownerFile = path.join(HOME, 'дозволи.json');
+let allowed = ['оракул', 'жереб', 'час'], ownerSrc = '(файлу власника немає: лише іграшкові інструменти)', writeEntries = [];
+if (fs.existsSync(ownerFile)) {
+  const raw = fs.readFileSync(ownerFile);
+  const owner = JSON.parse(raw.toString('utf8'));
+  ownerSrc = `${ownerFile} (sha256 ${sha256(raw).slice(0, 16)})`;
+  allowed = (owner['дозволено'] ?? []).map(canon);
+  const perDir = Object.entries(owner['для_тек'] ?? {}), perProg = new Map(Object.entries(owner['для_програм'] ?? {}).map(([k, v]) => [k.trim().toLowerCase(), v]));
+  const perAuth = Object.values(owner['для_авторів'] ?? {}).map((v) => v['дозволи'] ?? []);
+  const all = [...allowed, ...perDir.flatMap(([, v]) => v), ...[...perProg.values()].flat(), ...perAuth.flat()].map(grantOf);
+  writeEntries = all.filter((g) => WRITE_TOOLS.has(g.tool)).map((g) => g.scope).filter(Boolean).map(expand).filter((w) => w.startsWith('/'));
+  // тека, куди можна писати програмам, не дає прав: програму там могла написати інша програма
+  const selfWritten = writeEntries.some((w) => inside(progReal, real(w)));
+  for (const [d, extra] of perDir) { const e = expand(d); if (e.startsWith('/') && inside(progDir, real(e)) && !selfWritten) allowed.push(...extra.map(canon)); }
+  // відбиток для «для_програм» — як approval_of: з модулями це sha рядків «sha програми», «sha модуля»… (у порядку ⊃, вкладені одразу за своїм)
+  const shas = [], seen = new Set();
+  const walk = (text, dir) => { for (const p of importsOf(text)) {
+    const t = real(path.resolve(dir, p));
+    if (seen.has(t) || !fs.existsSync(t)) continue;
+    seen.add(t);
+    const b = fs.readFileSync(t);
+    shas.push(sha256(b));
+    walk(b.toString('utf8'), path.dirname(t));
+  } };
+  walk(src, progDir);
+  const approval = shas.length ? sha256(Buffer.from([sha256Prog, ...shas].join('\n'))) : sha256Prog;
+  if (perProg.has(approval)) { allowed.push(...perProg.get(approval).map(canon)); ownerSrc += `; схвалено власником: програма ${approval.slice(0, 16)}…`; }
+}
+const granted = allowed.map(grantOf);
 const scopeOf = (s) => real(path.resolve(progDir, s));
-const covered = (w) => granted.some((g) => g.tool === w.tool && (g.scope === '' || w.tool === 'жереб' || w.tool === 'оракул' || w.tool === 'час'
-  || (w.scope !== '' && inside(scopeOf(w.scope), real(g.scope)))));
-const missing = wanted.filter((w) => !covered(w));
+function lacks(w) {
+  const kind = KIND[w.tool], gs = granted.filter((g) => g.tool === w.tool);
+  if (kind === undefined || !gs.length) return true;
+  if (!w.scope) return false;
+  if (kind === 'тека' && (inside(scopeOf(w.scope), homeReal) || inside(homeReal, scopeOf(w.scope)))) return true;
+  return !gs.some((g) => g.scope && (kind === 'тека' ? expand(g.scope).startsWith('/') && inside(scopeOf(w.scope), real(expand(g.scope))) : g.scope === w.scope));
+}
+const missing = wanted.filter(lacks);
 if (missing.length) fail(3, `✗ печатка просить більше, ніж дозволив власник: ${missing.map((m) => m.tool + (m.scope ? ':' + m.scope : '')).join(', ')}`);
+// модуль — лише те, що справді імпортовано (перелік росте з кожним прочитаним модулем), і не з місця, куди могла писати програма
+const writableDirs = [...writeEntries.map(real), ...wanted.filter((w) => WRITE_TOOLS.has(w.tool) && w.scope).map((w) => scopeOf(w.scope))];
+const modulesSeen = new Set();
+const learnImports = (text, dir) => { for (const p of importsOf(text)) modulesSeen.add(real(path.resolve(dir, p))); };
+learnImports(src, progDir);
+const moduleOk = (t) => modulesSeen.has(t) && inside(t, progDir) && !writableDirs.some((w) => inside(t, w));
+for (const t of modulesSeen) if (inside(t, progDir) && !moduleOk(t)) fail(3, `✗ модуль лежить там, куди можна писати програмам: ${t}`);
 
 // ---- слід: ланцюжок і HMAC тут; модуль дає текст запису із заглушками
 const ownerKey = () => {
@@ -89,7 +140,7 @@ const traces = path.join(HOME, 'сліди');
 fs.mkdirSync(traces, { recursive: true, mode: 0o700 });
 const now = new Date();
 const stamp = now.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
-const progSha = sha256(srcBytes);
+const progSha = sha256Prog;
 const mainTrace = W ? W.mainTrace : path.join(traces, `${stamp}-${progSha.slice(0, 8)}-${process.pid}.jsonl`);
 const paths = [mainTrace, ...(extraTrace ? [path.resolve(extraTrace)] : [])];
 if (!W && process.env.NIGREDO_TRACE_PATH_FILE) fs.writeFileSync(process.env.NIGREDO_TRACE_PATH_FILE, mainTrace);
@@ -128,8 +179,8 @@ const dbRead = [...scopes('бд.читати'), ...scopes('бд.писати')],
 const fileRoots = [...new Set([progDir, ...scopes('файл.читати'), ...scopes('файл.писати'), ...scopes('файл.список'), ...dbRead])];
 const forbidden = (p) => inside(p, real(HOME)) || paths.some((t) => p === real(t) || p === real(t + '.дані'));
 const used = new Map();
-function quotaOk(tool, p) {
-  for (const w of wanted.filter((x) => x.tool === tool && x.quota !== null && (!x.scope || inside(p, scopeOf(x.scope))))) {
+function quotaOk(tool, target) {
+  for (const w of [...wanted, ...granted].filter((x) => x.tool === tool && x.quota !== null && (!x.scope || inside(target, scopeOf(x.scope))))) {
     const k = `${w.tool}:${w.scope}`, c = (used.get(k) ?? 0) + 1;
     if (c > w.quota) return false;
     used.set(k, c);
@@ -140,7 +191,7 @@ function deny(tool, p, why) { hostRecord('господар відмовив', { 
 const permit = (tool, target, p) => {
   if (forbidden(target)) return deny(tool, p, 'тека власника або слід');
   if (!scopes(tool).some((s) => inside(target, s))) return deny(tool, p, 'поза печаткою');
-  if (!quotaOk(tool, p)) return deny(tool, p, 'понад квоту');
+  if (!quotaOk(tool, target)) return deny(tool, p, 'понад квоту');
   return 0;
 };
 let mem, pending = Buffer.alloc(0);
@@ -153,11 +204,16 @@ function fsCall(op, p, l, q, m) {
   try {
     if (op === 1) {                         // читати
       const target = real(name);
-      const isModule = target.endsWith('.ngr') && inside(target, progDir);
+      const isModule = moduleOk(target);
       if (!isModule) { const r = permit('файл.читати', target, name); if (r) return BigInt(r); }
       const cap = Number(bytes(q, 8).readBigUInt64LE(0));
       const fd = fs.openSync(target, 'r');
-      try { const size = Math.min(fs.fstatSync(fd).size, cap); const b = Buffer.alloc(size); fs.readSync(fd, b, 0, size, 0); return reply(b); } finally { fs.closeSync(fd); }
+      try {
+        const size = Math.min(fs.fstatSync(fd).size, cap), b = Buffer.alloc(size);
+        fs.readSync(fd, b, 0, size, 0);
+        if (isModule) learnImports(b.toString('utf8'), path.dirname(target));
+        return reply(b);
+      } finally { fs.closeSync(fd); }
     }
     if (op === 2) {                         // писати: теку перевіряємо, як нативно
       const dir = real(path.dirname(name)), target = path.join(dir, path.basename(name));
@@ -294,11 +350,12 @@ imports.env = { memory };
 const inst = new WebAssembly.Instance(mod, imports);
 mem = memory;
 const cfg = Buffer.from([path.resolve(progPath), progDir, progSha, now.toISOString().slice(0, 19) + '+00:00', crypto.randomBytes(6).toString('hex'),
-  `альбедо:${sha256(wasmBytes)}`, ownerSrc, seed, steps, size, tsize, real(HOME), ...allowed].join('\n'));
+  `альбедо:${sha256(wasmBytes)}`, ownerSrc, seed, steps, size, tsize, real(HOME), String(progArgs.length), ...progArgs, ...allowed].join('\0'));
 const put = (b) => { const a = inst.exports.ngr_alloc(b.length); bytes(a, b.length).set(b); return a; };
 const cp = put(cfg), sp = put(srcBytes);
 const t = process.hrtime.bigint();
 const code = inst.exports.ngr_run(cp, cfg.length, sp, srcBytes.length);
 if (showTime) fs.writeSync(2, `час: ${Number(process.hrtime.bigint() - t) / 1e6} мс, записів сліду: ${n}\n`);
+if (code === 120) for (const p of paths) for (const f of [p, p + '.дані']) fs.rmSync(f, { force: true });   // нічого не виконано — нема й сліду
 process.exit(code);
 }

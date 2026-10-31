@@ -26,6 +26,7 @@ NGR = ROOT / 'interpreter' / 'ngr.py'
 DATA = ROOT / 'examples' / 'дані'
 # NGR_TEST_BIN=шлях — ті самі тести іншим виконавцем (Атанор: athanor/target/<ціль>/release/athanor)
 NGR_CMD = [os.environ['NGR_TEST_BIN']] if os.environ.get('NGR_TEST_BIN') else [sys.executable, str(NGR)]
+ATHANOR = os.environ.get('NGR_TEST_BIN') and 'альбедо' not in os.environ['NGR_TEST_BIN']   # Альбедо нічого не передає еталону
 
 
 def run(args, env):
@@ -3170,7 +3171,7 @@ def main():
           'помилка в локальному модулі зі шляхом, схожим на адресу, — «✗ ./github.com/…» (обома; огляд 10в, Мовознавець)',
           got.stderr + got2.stderr)
     # Атанор v1a: кожну програму з модулем з мережі віддає еталону — вивід, код і слід ті самі
-    if os.environ.get('NGR_TEST_BIN'):
+    if ATHANOR:
         got = run([romb], dict(menv, ATHANOR_WHY='1'))
         ev1 = [r_['подія'] for r_ in recs_of(last(menv))]
         ref_ = subprocess.run([sys.executable, str(NGR), romb], capture_output=True, text=True, env=menv)
@@ -3312,7 +3313,7 @@ def main():
     check(got.returncode == 1 and '1 дій не виконано' in got.stderr
           and '⚠ сухий прогін зупинився на помилці (нижче) — дій після неї не видно: перелік неповний' in got.stderr,
           '--сухо: прогін, що впав (на заглушці придушеної дії), каже, що перелік дій неповний (суд 11)', got.stderr)
-    if os.environ.get('NGR_TEST_BIN'):
+    if ATHANOR:
         got = pyrun('» 🜔python 「statistics.median」 【【3 1 2】】', 'statistics.median', extra=())
         why_ = subprocess.run([*NGR_CMD, '-e', '🜂 【「python:statistics.median」】\n» 🜔python 「statistics.median」 【【1 2】】'],
                               capture_output=True, text=True, env=dict(penv, ATHANOR_WHY='1'))
@@ -3419,7 +3420,7 @@ def main():
           '«для_авторів» кривої форми — відмова до запуску для будь-якої програми (фаза 6.3)', g_.stderr)
     (sh_ / 'дозволи.json').write_text(json.dumps({'дозволено': [], 'для_авторів': {key_: {'імʼя': 'агент звітів', 'дозволи': [
         f'читати:{sd_}/дані']}}}, ensure_ascii=False), encoding='utf-8')
-    if os.environ.get('NGR_TEST_BIN'):
+    if ATHANOR:
         w1_ = subprocess.run([*NGR_CMD, str(sp_)], capture_output=True, text=True, env=dict(senv, ATHANOR_WHY='1'))
         w2_ = subprocess.run([*NGR_CMD, '-e', '🜂\n» 1'], capture_output=True, text=True, env=dict(senv, ATHANOR_WHY='1'))
         check('атанор → еталон: підпис автора — еталон' in w1_.stderr and w1_.stdout == '[привіт]\n'

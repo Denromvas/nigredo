@@ -111,16 +111,25 @@ fn say(t: &str) {
     unsafe { err(t.as_ptr(), t.len()) }
 }
 
-/// Запуск програми. Конфіг — рядки від господаря: шлях, тека, sha256, час, запуск, інтерпретатор, дозволи_власника, зерно,
-/// кроки, розмір, межа сліду, тека власника, далі — дозволено. Усе, що виходить з модуля, — через імпорти «ngr»: які дії
+/// Запуск програми. Конфіг — поля через нуль від господаря: шлях, тека, sha256, час, запуск, інтерпретатор, дозволи_власника, зерно,
+/// кроки, розмір, межа сліду, тека власника, число аргументів, аргументи, далі — дозволено. Усе, що виходить з модуля, — через імпорти «ngr»: які дії
 /// насправді відбудуться, вирішує господар, а не цей код.
 #[no_mangle]
 pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i32 {
     let cfg = String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(c, cn) }).into_owned();
-    let f: Vec<&str> = cfg.split('\n').collect();
+    let f: Vec<&str> = cfg.split('\0').collect();
     let src = String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(p, n) }).into_owned();
     let (path, cwd, home) = (f[0].to_string(), f[1].to_string(), f[11].to_string());
     let num = |i: usize| f[i].parse::<i64>().unwrap_or(0);
+    let nargs = num(12) as usize;
+    let (args, allowed) = (&f[13..13 + nargs], &f[13 + nargs..]);
+    // підпис автора перевіряє лише еталон: без нього програму не виконуємо, навіть як звичайну
+    let lines: Vec<&str> = src.split('\n').collect();
+    let last = if lines.last() == Some(&"") { lines.len().checked_sub(2) } else { lines.len().checked_sub(1) };
+    if lines.iter().any(|l| l.trim_start_matches(' ').starts_with("※ підпис ed25519:")) || last.map_or(false, |i| lines[i].starts_with('※') && uni::sig_like(lines[i])) {
+        say("альбедо: не виконую сам (підпис автора — еталон)");
+        return 120;
+    }
     let parsed = (|| -> Result<ast::Node, Back> {
         let toks = lexer::lex(&src)?;
         lexer::check_twins(&toks)?;
@@ -142,7 +151,7 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
     let mut it = interp::Interp {
         trace: tr,
         rng: rng::Mt::seed(&int::Int::S(num(7))),
-        argv: Vec::new(),
+        argv: args.iter().map(|a| a.to_string()).collect(),
         protected: Default::default(),
         max_size: num(9) as u64,
         alloc: 0,
@@ -183,16 +192,31 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
         ("інтерпретатор".into(), J::s(f[5])),
         ("програма".into(), J::Str(uni::safe(f[0]))),
         ("sha256".into(), J::s(f[2])),
-        ("аргументи".into(), J::Arr(Vec::new())),
+        ("аргументи".into(), J::Arr(args.iter().map(|a| J::s(a)).collect())),
         ("час".into(), J::s(f[3])),
         ("запуск".into(), J::s(f[4])),
         ("тека".into(), J::Str(uni::safe(f[1]))),
         ("дозволи_власника".into(), J::Str(uni::safe(f[6]))),
-        ("дозволено".into(), J::Arr(f[12..].iter().map(|a| J::s(a)).collect())),
+        ("дозволено".into(), J::Arr(allowed.iter().map(|a| J::s(a)).collect())),
         ("ліміти".into(), J::Obj(vec![("кроки".into(), J::Int(num(8))), ("розмір".into(), J::Int(num(9))), ("слід".into(), J::Int(num(10))), ("зерно".into(), J::Num(f[7].to_string()))])),
     ];
     if it.rec("початок", head).is_err() {
         return 4;
+    }
+    // квоти власника — на весь запуск (кілька на те саме — діє менша), як у main.rs; файли господар лічить ще й сам
+    let mut oq: Vec<((String, String), u64)> = Vec::new();
+    for a in allowed {
+        if let Ok((base, Some(q))) = parser::split_quota(&parser::canon_perm(a)) {
+            let (t, _, sc) = parser::partition(&base, ':');
+            let key = (t.trim_matches(parser::py_ws).to_string(), sc.trim_matches(parser::py_ws).to_string());
+            match oq.iter_mut().find(|(k, _)| *k == key) {
+                Some((_, v)) => *v = (*v).min(q),
+                None => oq.push((key, q)),
+            }
+        }
+    }
+    if !oq.is_empty() {
+        it.quota_stack.push(Rc::new(interp::QuotaTable { who: "власник".into(), quotas: oq, tok: "власник".into() }));
     }
     let root = value::Env::new(0, None);
     let code = match it.eval(&prog, &root) {

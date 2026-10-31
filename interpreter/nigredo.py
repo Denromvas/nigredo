@@ -9633,6 +9633,9 @@ def _main(argv, opts, it, value):
         if a == '--сухо':
             opts['dry'] = True
             continue
+        if a == '--до-запуску':         # службове для Альбедо: усе, що до запуску, — як звичайно; саму програму виконає модуль
+            opts['pre'] = True
+            continue
         if a == '--repl':
             opts['mode'] = 'repl'
             continue
@@ -9849,6 +9852,12 @@ def _main(argv, opts, it, value):
             print(f'✗ слід «{safe(tp)}» лежить у теці власника чи в теці з печатки програми (читати, писати, список, бд) — '
                   f'оберіть інше місце', file=sys.stderr)
             return 3
+    if opts.get('pre') and not perr and not missing:
+        for tp in paths[1:]:
+            if os.path.lexists(tp):
+                print(f'✗ файл сліду вже існує ({tp}) — слід не перезаписується', file=sys.stderr)
+                return 3
+        return 0
     outs = []
     try:
         for tp in paths:
