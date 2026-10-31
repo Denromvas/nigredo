@@ -210,7 +210,7 @@ def main():
     groups = Counter(os.path.relpath(r[0], ROOT).split('/')[0] + ('/' + os.path.relpath(r[0], ROOT).split('/')[1]
                      if os.path.relpath(r[0], ROOT).startswith('konsylium/') else '') for r in res)
     lines = [f'# Звірка Атанора з еталоном', '',
-             f'Прогін {time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())}, коміт `{rev}`{" + незакомічені зміни" if dirty else ""}; '
+             f'Прогін {time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())}{" з копією теки (--копія: запис і база теж порівнюються)" if COPY[0] else ""}, коміт `{rev}`{" + незакомічені зміни" if dirty else ""}; '
              f'бінарник Атанора — sha256 `{sha[0][:16]}…`, джерела — `{src_sha[:16]}…` (поле «інтерпретатор» сліду; '
              f'`ngr --відбиток`). Корпус: '
              + ('усі `.ngr`, які відстежує git (крім архіву), — будь-хто відтворить той самий прогін з того самого коміту.'
