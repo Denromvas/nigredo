@@ -2619,9 +2619,10 @@ def _verify(path, program=None):
     if head.get('отримання'):
         info['отримання'] = {'отримано': fetched['отримано'], 'уже_було': fetched['уже було'],
                              'замінено_пошкоджений': fetched['замінено пошкоджений'], 'не_збіглося': mismatched}
-    engine = 'Атанор' if str(head.get('інтерпретатор', '')).startswith('атанор:') else 'еталон'
-    notes = [f'виконавець: {engine} (' + ('sha256 джерел ' if engine == 'Атанор' else 'sha256 nigredo.py ')
-             + str(head.get('інтерпретатор', '')).removeprefix('атанор:')[:16] + '…; ngr --відбиток — для порівняння)', f'тека {safe(str(head.get("тека", "—")))}',
+    engine = ('Атанор' if str(head.get('інтерпретатор', '')).startswith('атанор:') else
+              'Альбедо' if str(head.get('інтерпретатор', '')).startswith('альбедо:') else 'еталон')
+    notes = [f'виконавець: {engine} (' + ('sha256 джерел ' if engine == 'Атанор' else 'sha256 модуля ' if engine == 'Альбедо' else 'sha256 nigredo.py ')
+             + str(head.get('інтерпретатор', '')).removeprefix('атанор:').removeprefix('альбедо:')[:16] + '…; ngr --відбиток — для порівняння)', f'тека {safe(str(head.get("тека", "—")))}',
              f'аргументи {safe(json.dumps(head.get("аргументи"), ensure_ascii=False))}']
     if isinstance(head.get('підпис'), dict):    # фаза 6.3: програму підписано — чий ключ (імʼя — з дозволів власника)
         g = head['підпис']

@@ -102,7 +102,15 @@ impl Trace {
         kv.push(("попередній".into(), J::Str(self.prev.clone())));
         let mut rec = J::Obj(kv);
         let body = dumps(&rec, true);
+        // у WebAssembly ключа немає: ланцюжок і підпис веде господар, тут — заглушки на місці «попередній» і «хеш»
+        // (spec/пропозиції/альбедо.md §2); body йде йому разом із рядком
+        #[cfg(not(target_arch = "wasm32"))]
         let h = sha::hex(&sha::hmac_sha256(&self.key, body.as_bytes()))[..16].to_string();
+        #[cfg(target_arch = "wasm32")]
+        let h = {
+            crate::trace_body(&body);
+            "0".repeat(16)
+        };
         if let J::Obj(kv) = &mut rec {
             kv.push(("хеш".into(), J::Str(h.clone())));
         }

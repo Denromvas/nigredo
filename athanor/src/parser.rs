@@ -345,7 +345,7 @@ impl Parser {
         if self.stack.contains(&real) {
             return back("⊃: циклічний імпорт");
         }
-        let raw = std::fs::read(&real).map_err(|_| Back("⊃: модуль не прочитати".into()))?;
+        let raw = crate::sys::read_all(&real).map_err(|_| Back("⊃: модуль не прочитати".into()))?;
         let src = String::from_utf8(raw.clone()).map_err(|_| Back("⊃: модуль не UTF-8".into()))?;
         let toks = crate::lexer::lex(&src)?;
         crate::lexer::check_twins(&toks)?;

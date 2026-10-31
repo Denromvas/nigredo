@@ -1,0 +1,15 @@
+[package]
+name = "zlo"
+version = "0.1.0"
+edition = "2021"
+description = "Навмисно злий модуль: так виглядало б ядро з вадою чи підмінене. Межа мусить тримати без нього самого"
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[profile.release]
+opt-level = "s"
+panic = "abort"
+
+[workspace]

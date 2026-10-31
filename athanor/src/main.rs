@@ -25,6 +25,7 @@ mod seal;
 mod sha;
 mod sort;
 mod sqlite;
+mod sys;
 mod tables;
 mod tools;
 mod trace;
