@@ -187,6 +187,8 @@ function quotaOk(tool, target) {
   }
   return true;
 }
+// власний свідок дій: модуль може не записати, що читав, але не прибере цього запису. Значень тут немає — лише що, де й скільки байтів
+function did(tool, target, size) { hostRecord('дія господаря', { 'інструмент': tool, 'шлях': target, 'байтів': size }); }
 function deny(tool, p, why) { hostRecord('господар відмовив', { 'інструмент': tool, 'шлях': p, 'причина': why }); return -13; }
 const permit = (tool, target, p) => {
   if (forbidden(target)) return deny(tool, p, 'тека власника або слід');
@@ -212,6 +214,7 @@ function fsCall(op, p, l, q, m) {
         const size = Math.min(fs.fstatSync(fd).size, cap), b = Buffer.alloc(size);
         fs.readSync(fd, b, 0, size, 0);
         if (isModule) learnImports(b.toString('utf8'), path.dirname(target));
+        else did('файл.читати', target, size);
         return reply(b);
       } finally { fs.closeSync(fd); }
     }
@@ -221,12 +224,15 @@ function fsCall(op, p, l, q, m) {
       if (fs.existsSync(target) && fs.lstatSync(target).isSymbolicLink()) return BigInt(deny('файл.писати', name, 'символьне посилання'));
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(target, bytes(q, m));
+      did('файл.писати', target, m);
       return reply(Buffer.alloc(0));
     }
     if (op === 3) {                         // список
       const target = real(name);
       const r = permit('файл.список', target, name); if (r) return BigInt(r);
-      return reply(Buffer.from(fs.readdirSync(target).join('\0')));
+      const names = fs.readdirSync(target);
+      did('файл.список', target, names.length);
+      return reply(Buffer.from(names.join('\0')));
     }
     if (op === 4) {                         // що це: лише всередині коренів печатки
       const target = real(name);
@@ -269,7 +275,9 @@ function dbCall(op, a, b, p, l) {
       const { O_RDONLY, O_RDWR, O_CREAT, O_NOFOLLOW } = fs.constants;
       const fd = fs.openSync(target, mode ? O_RDWR | O_NOFOLLOW | (mode === 2 ? O_CREAT : 0) : O_RDONLY, 0o644);
       if (!fs.fstatSync(fd).isFile()) { fs.closeSync(fd); return -21n; }
-      return BigInt(dbOpened({ fd, write: mode > 0, kind, foreign: dbForeign(fd, kind) }));
+      const h = dbOpened({ fd, write: mode > 0, kind, foreign: dbForeign(fd, kind), path: target, spent: 0 });
+      if (kind === 'main') did(tool, target, fs.fstatSync(fd).size);
+      return BigInt(h);
     }
     if (op === DB_DELETE) {                 // лише журнал: стерти саму базу SQLite не потрібно ніколи
       const name = text(p, l), target = real(name);
@@ -294,12 +302,17 @@ function dbCall(op, a, b, p, l) {
       return BigInt(got);
     }
     if (op === DB_SIZE) return BigInt(fs.fstatSync(f.fd).size);
-    if (op === DB_CLOSE) { fs.closeSync(f.fd); dbFiles.delete(Number(a)); return 0n; }
+    if (op === DB_CLOSE) {
+      fs.closeSync(f.fd); dbFiles.delete(Number(a));
+      if (f.kind === 'main' && f.spent) did('бд.писати', f.path, f.spent);
+      return 0n;
+    }
     if (!f.write) return BigInt(deny('бд.писати', '', 'файл відкрито лише для читання'));
     if (f.foreign) return BigInt(deny('бд.писати', '', 'файл — не база'));
     if (op === DB_WRITE) {
       if (f.kind === 'main' && b === 0n && !(l >= 16 && bytes(p, 16).equals(MAGIC.main))) return BigInt(deny('бд.писати', '', 'записане — не база'));
       if ((dbSpent += l) > dbLimit) return BigInt(deny('бд.писати', '', 'понад межу запису'));
+      f.spent += l;
       return BigInt(fs.writeSync(f.fd, bytes(p, l), 0, l, Number(b)));
     }
     if (op === DB_TRUNC) { fs.ftruncateSync(f.fd, Number(b)); return 0n; }
