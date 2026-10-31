@@ -97,6 +97,15 @@ fn dec_ok(d: Dec, what: &str, pos: Pos) -> R<Dec> {
     Ok(d)
 }
 
+/// Ціле значення числа: 3e69 з даних — те саме ціле, що 70 цифр літералом (whole еталона).
+fn whole(v: &Val) -> Option<Int> {
+    match v {
+        Val::Int(i) => Some(i.clone()),
+        Val::Dec(d) if d.is_integral() => Some(d.trunc()),
+        _ => None,
+    }
+}
+
 fn int_idx(v: &Val) -> Option<i64> {
     match v {
         Val::Int(Int::S(i)) => Some(*i),
@@ -171,8 +180,9 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             if is_zero(&y) {
                 return ngr(format!("{}: ділення на нуль", g), pos);
             }
+            let (wx, wy) = (whole(&x), whole(&y)); // ціле значення, хоч як записане (огляд 12б, Новачок)
             if g == '‰' {
-                if let (Val::Int(p), Val::Int(q)) = (&x, &y) {
+                if let (Some(p), Some(q)) = (&wx, &wy) {
                     return Ok(V::int(p.divmod(q).1));
                 }
                 let ctx = dec::exact_ctx();
@@ -190,7 +200,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                 }
                 return Ok(V::dec(r));
             }
-            if let (Val::Int(p), Val::Int(q)) = (&x, &y) {
+            if let (Some(p), Some(q)) = (&wx, &wy) {
                 let (qq, rr) = p.divmod(q);
                 if rr.is_zero() {
                     return Ok(V::int(qq));
@@ -976,7 +986,8 @@ fn exact_op(op: char, x: &Val, y: &Val, g: char, pos: Pos) -> R<Val> {
     };
     match r {
         Ok(d) => Ok(Val::Dec(Rc::new(d))),
-        Err(s) if s == dec::INEXACT || s == dec::OVERFLOW || s == dec::UNDERFLOW => {
+        Err(s) if s == dec::OVERFLOW => ngr(format!("{}: порядок результату понад {}", g, dec::DEC_EXP), pos),
+        Err(s) if s == dec::INEXACT || s == dec::UNDERFLOW => {
             ngr(format!("{}: точний результат довший за 60 значущих цифр — округліть (≅) або діліть (÷)", g), pos)
         }
         Err(s) => dec_err(g, s, pos),
