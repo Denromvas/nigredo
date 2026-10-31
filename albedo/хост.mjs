@@ -15,7 +15,7 @@ const opt = (k, d) => { const i = args.indexOf(k); if (i < 0) return d; const v 
 const flag = (k) => { const i = args.indexOf(k); if (i < 0) return false; args.splice(i, 1); return true; };
 const extraTrace = opt('--слід', null), seed = opt('--зерно', '0'), steps = opt('--кроки', '10000000');
 const size = opt('--розмір', '5000000'), tsize = opt('--слід-розмір', '50000000'), dbLimit = Number(opt('--бд-запис', String(2 ** 30)));
-const deadline = Number(opt('--строк', '300')), memMb = Number(opt('--памʼять', '1024'));   // с, МБ: тримає господар, а не модуль
+const deadline = Number(opt('--строк', '300')), memMb = Number(opt('--памʼять', '2048'));   // с, МБ: тримає господар, а не модуль
 const showImports = flag('--імпорти'), showTime = flag('--час');
 const [wasmPath, progPath] = args;
 const wasmBytes = fs.readFileSync(wasmPath);
@@ -149,6 +149,16 @@ const stores = W ? W.stores : paths.map((p) => fs.openSync(p + '.дані', 'wx'
 let prev = '0'.repeat(16), n = 0, fromModule = 0, pendingBody = null;   // номер у сліді веде господар: він теж пише записи
 const ZERO = '"0000000000000000"';
 const sign = (b) => crypto.createHmac('sha256', key).update(b).digest('hex').slice(0, 16);
+// межа сліду тут теж: чесне ядро зупиниться саме (текст і місце — його), а зіпсоване без цього заллє диск. Запас — на різницю в підрахунку
+let traced = 0, overflowing = false;
+function spend(size) {
+  traced += size;
+  if (traced <= Number(tsize) + (1 << 20) || overflowing) return;
+  overflowing = true;
+  const msg = `✗ слід перевищив ${tsize} байтів (--слід-розмір) — програму зупинено`;
+  hostRecord('помилка', { 'повідомлення': msg, 'від_господаря': true });
+  fail(1, msg);
+}
 function writeTrace(line, body, mod = true) {
   n++;
   if (mod) {
@@ -163,6 +173,7 @@ function writeTrace(line, body, mod = true) {
   const out = fill(fill(line, 'попередній', prev), 'хеш', h);
   prev = h;
   for (const fd of fds) fs.writeSync(fd, out);
+  spend(Buffer.byteLength(out));
 }
 // запис самого господаря: модуль його не підробить і не прибере — це власний свідок дій
 function hostRecord(event, fields) {
@@ -200,7 +211,14 @@ let mem, pending = Buffer.alloc(0);
 const bytes = (p, l) => Buffer.from(mem.buffer, p, l);
 const text = (p, l) => bytes(p, l).toString('utf8');
 const reply = (b) => { pending = b; return BigInt(b.length); };
-const errnoOf = (e) => -(({ ENOENT: 2, EACCES: 13, EISDIR: 21, ENOTDIR: 20, ENOSPC: 28 })[e.code] ?? 5);
+const errnoOf = (e) => (typeof e.errno === 'number' && e.errno < 0 ? e.errno : -5);
+// труба буває неблокувальною й заповненою: писати доти, доки не прийме все, інакше вивід обірветься посередині
+const nap = new Int32Array(new SharedArrayBuffer(4));
+function writeAll(fd, b) {
+  for (let off = 0; off < b.length;) {
+    try { off += fs.writeSync(fd, b, off, b.length - off); } catch (e) { if (e.code !== 'EAGAIN') throw e; Atomics.wait(nap, 0, 0, 2); }
+  }
+}
 function fsCall(op, p, l, q, m) {
   const name = text(p, l);
   try {
@@ -323,8 +341,8 @@ function dbCall(op, a, b, p, l) {
 const hasClock = wanted.some((w) => w.tool === 'час');
 let isolated = false;
 const imports = { ngr: {
-  out: (p, l) => { fs.writeSync(1, bytes(p, l)); },
-  err: (p, l) => { fs.writeSync(2, text(p, l) + '\n'); },
+  out: (p, l) => { writeAll(1, bytes(p, l)); },
+  err: (p, l) => { writeAll(2, Buffer.from(text(p, l) + '\n')); },
   body: (p, l) => { pendingBody = text(p, l); },
   trace: (p, l) => {
     const line = text(p, l);
@@ -335,7 +353,7 @@ const imports = { ngr: {
       hostRecord('ізоляція', { 'ядро': 'wasm', 'закрито': ['мережа', 'процеси', ...(scopes('файл.писати').length || dbWrite.length ? [] : ['запис'])], 'причина': null });
     }
   },
-  store: (p, l) => { for (const fd of stores) fs.writeSync(fd, bytes(p, l)); },
+  store: (p, l) => { for (const fd of stores) fs.writeSync(fd, bytes(p, l)); spend(l); },
   fs: (op, p, l, q, m) => fsCall(op, p, l, q, m),
   fs_take: (d) => { bytes(d, pending.length).set(pending); },
   now: () => (hasClock ? BigInt(Math.floor(Date.now() / 1000)) : -1n),
@@ -344,7 +362,7 @@ const imports = { ngr: {
   db: (op, a, b, p, l) => dbCall(op, a, b, p, l),
 } };
 if (isMainThread) {
-  const worker = new Worker(fileURLToPath(import.meta.url), { argv: [], workerData: { argv: process.argv, fds, stores, mainTrace }, resourceLimits: { stackSizeMb: 256 } });
+  const worker = new Worker(fileURLToPath(import.meta.url), { argv: [], workerData: { argv: process.argv, fds, stores, mainTrace }, resourceLimits: { stackSizeMb: 1024 } });
   const finish = (code, msg) => {          // слід завершує цей потік: модуль уже нічого не допише
     clearTimeout(timer);
     const tail = fs.readFileSync(mainTrace, 'utf8').trimEnd().split('\n').pop();
@@ -358,7 +376,8 @@ if (isMainThread) {
   worker.on('error', (e) => { stopping = true; finish(4, `✗ модуль упав: ${String(e.message ?? e).slice(0, 200)}`); });
   worker.on('exit', (code) => { if (!stopping) { clearTimeout(timer); process.exit(code); } });
 } else {
-const memory = new WebAssembly.Memory({ initial: 2048, maximum: Math.floor(memMb * 16) });
+// стек ядра — 1 ГБ у цій памʼяті (нативно 4 ГБ): без нього глибока рекурсія була б падінням, а не помилкою мови; сторінки беруться лише торкнуті
+const memory = new WebAssembly.Memory({ initial: Math.min(16400, Math.floor(memMb * 16)), maximum: Math.floor(memMb * 16) });
 imports.env = { memory };
 const inst = new WebAssembly.Instance(mod, imports);
 mem = memory;

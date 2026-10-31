@@ -83,6 +83,12 @@ with tempfile.TemporaryDirectory(prefix='альбедо-') as t:
     m = host(env, Z, hog, '--памʼять', '256', '--слід', str(t / 'п.jsonl'))
     held = max([int(x.split()[1]) for x in m.stdout.splitlines() if x.startswith('тримаю')] or [0])
     check(m.returncode == 4 and held < 256, f'модуль, що їсть памʼять: стеля господаря (--памʼять 256), дістав {held} МБ', m.stdout[-200:] + m.stderr[-300:])
+    fl = p / 'повінь.ngr'
+    fl.write_text('🜂 「повінь」 【「читати:дані」】\n» 1\n', encoding='utf-8')
+    w = host(env, Z, fl, '--слід-розмір', '100000', '--слід', str(t / 'ф.jsonl'))
+    fr = [json.loads(x) for x in (t / 'ф.jsonl').read_text(encoding='utf-8').splitlines()]
+    check(w.returncode == 1 and 'слід перевищив' in w.stderr and fr[-1].get('від_господаря') is True and (t / 'ф.jsonl.дані').stat().st_size < 3 << 20,
+          'модуль, що заливає сховище сліду: межу тримає господар', w.stderr[-300:])
     rec = [json.loads(x) for x in (t / 'з.jsonl').read_text(encoding='utf-8').splitlines()]
     check(sum(x['подія'] == 'дія господаря' and x['інструмент'] == 'файл.читати' for x in rec) == 1, 'дозволене читання господар записав сам, хоч злий модуль про нього змовчав', str(rec)[:400])
     check(sum(x['подія'] == 'господар відмовив' for x in rec) == 11, 'кожну відмову записав сам господар: модуль її не прибере', str(rec)[:400])

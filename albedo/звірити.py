@@ -61,7 +61,11 @@ def compare(prog, timeout):
         text = open(prog, encoding='utf-8', errors='replace').read()
         if diffs and ('🜔час' in text or "'now'" in text or 'CURRENT_' in text):
             return prog, 'годинник', '\n'.join(diffs)    # два запуски — різні секунди
-        if diffs and ('random(' in text or 'sqlite_source_id' in text):
+        if diffs and 'слід перевищив'.encode() in a[2] and 'слід перевищив'.encode() in b[2]:
+            return prog, 'межа сліду', '\n'.join(diffs)  # обидва зупинились тим самим текстом; рядок сліду модуля на кілька байтів інший
+        if a[0] == 'час':
+            return prog, 'час', ''                        # Атанор сам не вклався: порівнювати нема з чим
+        if diffs and ('random(' in text or 'sqlite_source_id' in text or '/proc/self' in text):
             return prog, 'чуже', '\n'.join(diffs)        # випадкове від SQLite чи його збірка: цього 1.x не обіцяє (§9)
         if diffs and 'запит довший за 30 с'.encode() in b[1]:
             return prog, 'темп', '\n'.join(diffs)        # нескінченний запит: Атанор раніше вичерпав кроки, модуль — 30 с
@@ -95,7 +99,7 @@ def main():
                 print(f'✗ {os.path.relpath(p, z.ROOT)}\n  {t}', flush=True)
             if i % 100 == 0:
                 print(f'… {i}/{len(progs)}', flush=True)
-    print(f'Програм: {len(progs)}; однаково {cnt["так"]}, розбіжностей {cnt["різниця"]}, годинник {cnt["годинник"]}, чуже значення {cnt["чуже"]}, темп {cnt["темп"]}, модуль не вміє {cnt["не вміє"]}, лише еталон {cnt["лише еталон"]}')
+    print(f'Програм: {len(progs)}; однаково {cnt["так"]}, розбіжностей {cnt["різниця"]}, годинник {cnt["годинник"]}, чуже значення {cnt["чуже"]}, темп {cnt["темп"]}, Атанор не вклався {cnt["час"]}, межа сліду {cnt["межа сліду"]}, модуль не вміє {cnt["не вміє"]}, лише еталон {cnt["лише еталон"]}')
     for w, n in why.most_common(12):
         print(f'  {n} × {w}')
     if not cnt['так']:
