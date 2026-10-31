@@ -679,6 +679,8 @@ fn autoinc(l: &Lib, db: *mut c_void, t: &str) -> bool {
 }
 
 /// Рядки байткоду EXPLAIN: (опкод, p4) — як fetchall еталона (помилка посеред — помилка).
+const SUBPROGRAM: &str = "\0підпрограма";
+
 fn explain_ops(l: &Lib, db: *mut c_void, sql: &str, args: &[Arg]) -> Result<Vec<(String, Option<String>)>, PyErr> {
     let st = execute(l, db, sql, args)?;
     let wide = st.cols.len() > 5; // EXPLAIN QUERY PLAN — 4 стовпці
@@ -691,8 +693,14 @@ fn explain_ops(l: &Lib, db: *mut c_void, sql: &str, args: &[Arg]) -> Result<Vec<
     };
     let mut out = Vec::new();
     let mut rc = st.rc;
+    let mut prev: i64 = -1;
     while rc == SQLITE_ROW {
         if wide {
+            let addr = (l.column_int64)(st.st, 0);
+            if addr <= prev {
+                out.push((SUBPROGRAM.to_string(), None)); // підпрограма тригера — після головної, з адреси 0
+            }
+            prev = addr;
             out.push((text(1).unwrap_or_default(), text(5)));
         }
         rc = (l.step)(st.st);
@@ -737,19 +745,28 @@ fn pragma_tables(l: &Lib, db: *mut c_void, reads: &[String]) -> Result<Vec<Strin
 /// db_unverified: функція дат у байткоді — дата з даних у межах прав, «зараз» — ні; без виконання не розвʼязати, тож
 /// там (квота, --сухо, запобіжна відмова) — «не перевірено», а не «заборонено» (суд 12, Практик).
 pub fn unverified(why: &str) -> bool {
-    why.contains("«зараз» чи дата з даних")
+    why.contains("«зараз» чи дата з даних") || why.contains("у тілі тригера — без виконання")
 }
 
 /// db_doubts: що в запиті могло б вийти за права лише під час виконання — за байткодом (Function/PureFunc) і читанням
 /// таблиць-функцій PRAGMA; з таким запобіжна відмова не доводить, що запит у межах прав (огляд 0.8.1, Н-1 Скептика).
 fn doubts(clock_ok: bool, rand_ok: bool, ops: &[(String, Option<String>)], reads: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
+    let mut sub = false;
     for (op, p4) in ops {
+        if op == SUBPROGRAM {
+            sub = true;
+            continue;
+        }
         let name = match p4 {
             Some(p) if op == "Function" || op == "PureFunc" => uni::lower(p.split('(').next().unwrap_or("")),
             _ => continue,
         };
-        let why = if (name == "random" || name == "randomblob") && !rand_ok {
+        let rnd = (name == "random" || name == "randomblob") && !rand_ok;
+        let why = if sub && (rnd || (DB_NOW.contains(&name.as_str()) && !clock_ok)) {
+            format!("{} SQLite ({}) у тілі тригера — без виконання не перевірити, чи дійде до цього гілка",
+                    if name.starts_with("random") { "випадковість" } else { "годинник" }, name)
+        } else if rnd {
             rand_why(&name)
         } else if DB_NOW.contains(&name.as_str()) && !clock_ok {
             format!("годинник SQLite (у запиті — {}) без права «час»", name)
@@ -1653,7 +1670,7 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
                 // таблиця вже на межі чи системна біля неї — так у самій базі (суд 9д), — лише коли в запиті заборонених
                 // дій не знайдено (огляд 0.8.1, Н-1 Скептика)
                 let hard: Vec<String> = auth.doubt.iter().filter(|d| !unverified(d)).cloned().collect();
-                let clock = if hard.len() < auth.doubt.len() { " і годинник SQLite (дата з даних чи «зараз»)" } else { "" };
+                let clock = if hard.len() < auth.doubt.len() { " і годинник чи випадковість SQLite (дата з даних, «зараз», гілка тригера)" } else { "" };
                 let careful = auth.careful && hard.is_empty();
                 let doubted = auth.careful && !hard.is_empty();
                 if doubted {

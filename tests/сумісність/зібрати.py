@@ -167,15 +167,24 @@ def main():
 
     # слід-атанор: той самий формат сліду, записаний нативним виконавцем
     a = D / 'слід-атанор'
-    (a / 'програма.ngr').write_text('🜂 「зразок сліду Атанора 1.0」 【「жереб≤2」】\n← xs 【3 1 2】\n» ↑ xs\n» ÷ 1 3\n'
-                                    '» 🜔жереб 6\n» ⇅ 【「ґ」 「a」 「д」】 λx x\n', encoding='utf-8')
-    h = home({'дозволено': ['жереб']})
+    (a / 'дані').mkdir()
+    (a / 'дані' / 'а.txt').write_text('дані сліду Атанора\n', encoding='utf-8')
+    (a / 'секрет.txt').write_text('не для програми\n', encoding='utf-8')
+    (a / 'програма.ngr').write_text(
+        '🜂 「зразок сліду Атанора 1.0」 【「жереб≤2」 「читати:дані」】\n← xs 【3 1 2】\n» ↑ xs\n» ÷ 1 3\n'
+        '» 🜔жереб 6\n» ⇅ 【「ґ」 「a」 「д」】 λx x\n» 🜔читати 「дані/а.txt」\n'
+        '» ☂ μ … 1 2 λi 🜔жереб 6 λe 「квоту вичерпано — перехоплено」\n'
+        '» ☂ 🜔читати ＋ 「секрет」 「.txt」 λe 「заборонено — перехоплено」\n', encoding='utf-8')
+    h = home({'дозволено': ['жереб', f'читати:{a}/дані']})
     out = run(['--зерно', '7', '--слід', str(a / 'слід.jsonl'), str(a / 'програма.ngr')], h, a, cmd=[str(ATH[-1])],
               env_extra={'ATHANOR_NO_FALLBACK': '1'})
     (a / 'вивід.txt').write_text(out, encoding='utf-8')
     first = json.loads((a / 'слід.jsonl').read_text(encoding='utf-8').splitlines()[0])
     if not first['інтерпретатор'].startswith('атанор:'):
         sys.exit('✗ слід-атанор записав не Атанор')
+    chk = json.loads(run(['--перевірити-слід', str(a / 'слід.jsonl'), str(a / 'програма.ngr'), '--json'], h, a))
+    (a / 'перевірка.json').write_text(json.dumps(norm(chk, '', CHECK_DROP), ensure_ascii=False, indent=1) + '\n',
+                                      encoding='utf-8')
 
     # значення
     v = D / 'значення'

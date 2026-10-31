@@ -399,12 +399,12 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
         }
         'ν' => {
             let s0 = need_str(&a[0], "ν", pos)?;
-            let s = uni::strip(&s0.s).trim_start_matches('\u{feff}');
-            let s = s.replace('·', ".").replace('¯', "-");
+            let raw = uni::strip(&s0.s).trim_start_matches('\u{feff}');
+            let s = raw.replace('·', ".").replace('¯', "-");
             let odd = s.chars().find(|&c| uni::decimal(c).is_some() && !c.is_ascii_digit());
             if odd.is_some() || s.contains('_') {
                 let tail = odd.map(|o| format!(" (тут {} U+{:04X})", uni::safe(&o.to_string()), o as u32)).unwrap_or_default();
-                return ngr(format!("ν: «{}» — лише цифри 0–9{}", uni::safe(&s), tail), pos);
+                return ngr(format!("ν: «{}» — лише цифри 0–9{}", uni::safe(raw), tail), pos);
             }
             let t = uni::strip(&s);
             if let Some(i) = parse_py_int(t) {
@@ -415,7 +415,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             }
             match Dec::parse(t) {
                 Ok(d) => Ok(V::dec(dec_ok(d, "ν", pos)?)),
-                Err(_) => ngr(format!("ν: «{}» не число", s), pos),
+                Err(_) => ngr(format!("ν: «{}» не число", raw), pos),
             }
         }
         'δ' => {
