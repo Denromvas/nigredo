@@ -2634,6 +2634,8 @@ def _verify(path, program=None):
         notes.append(f'замок ОС: ядро (seccomp) закрило {os_acc(shut)}' + (
             '' if len(shut) == len(OS_GROUPS) else f'; решту ({os_acc([g for g in OS_GROUPS if g not in shut])}) '
                                                      f'відкрила печатка — там межі тримав інтерпретатор'))
+    elif iso and iso.get('ядро') == 'wasm':
+        notes.append(f'межа: модуль WebAssembly, дії лише через господаря (закрито: {", ".join(safe(str(x)) for x in iso.get("закрито") or [])})')
     elif iso and iso.get('ядро') == 'не потрібне':
         notes.append('замок ОС: не потрібен — печатка відкриває мережу, процеси й запис (межі тримав інтерпретатор)')
     elif iso:

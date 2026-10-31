@@ -4,7 +4,10 @@
 і слід (без часу, номера запуску, хешів ланцюжка й поля «інтерпретатор»). Програми, які Атанор віддає еталону,
 лічаться окремо (з причиною).
 
-  python3 athanor/звірка.py [-j 4] [--до N] [--зразок K] [шляхи…]
+  python3 athanor/звірка.py [-j 4] [--до N] [--зразок K] [--копія] [--має РЯДОК] [--звіт ФАЙЛ] [шляхи…]
+
+--копія: без неї власник дає лише читання, тож програми із записом і базою лічаться як «печатка поза дозволами» і йдуть еталону —
+їхнього порівняння немає. З нею кожна програма працює в своїй копії теки з правами на цю копію.
 
 Без шляхів — усі .ngr, які відстежує git (відтворюваний корпус: до суду 9б звірка брала все з диска, разом із
 неопублікованими робочими файлами суддів, тож число програм гуляло — 4916, 3807…). Друкує розбіжності й підсумок; пише
@@ -53,13 +56,38 @@ def programs(paths):
     return sorted(out)
 
 
-def make_home(tmp):
+def fresh(prog, tmp):
+    """--копія: свіжа копія теки програми на тому самому шляху, для кожного виконавця. Лише тут власник дає запис і базу, тож програми
+    з ними теж виконуються, а корпус лишається цілим. Копія на кожен запуск дорога, тож сусідні програми й великі файли — лише згадані в
+    тексті (модулі, бази)."""
+    src, dst = os.path.dirname(prog), os.path.join(tmp, 'тека')
+    shutil.rmtree(dst, ignore_errors=True)
+    text = open(prog, encoding='utf-8', errors='replace').read()
+
+    def skip(d, names):
+        drop = []
+        for n in names:
+            f = os.path.join(d, n)
+            named = n in text or (n.endswith('.ngr') and n[:-4] in text)
+            if os.path.isdir(f) and not os.path.islink(f):
+                if n in ('звіти', 'сліди', 'власник', '__pycache__'):
+                    drop.append(n)
+            elif f != prog and not named and (n.endswith(('.ngr', '.jsonl', '.дані')) or n.startswith('лог_') or os.lstat(f).st_size > 65536):
+                drop.append(n)
+        return drop
+    shutil.copytree(src, dst, symlinks=True, ignore=skip)
+    return os.path.join(dst, os.path.basename(prog))
+
+
+def make_home(tmp, copy=False):
     home = os.path.join(tmp, 'власник')
     os.makedirs(home, mode=0o700)
     with open(os.path.join(home, 'ключ'), 'w') as f:
         f.write('0123456789abcdef' * 4)
     with open(os.path.join(home, 'дозволи.json'), 'w', encoding='utf-8') as f:
-        json.dump({'дозволено': ['оракул', 'жереб', 'час', f'файл.читати:{ROOT}', f'файл.список:{ROOT}']}, f,
+        tek = os.path.join(tmp, 'тека')
+        wide = [f'{t}:{tek}' for t in ('файл.читати', 'файл.писати', 'файл.список', 'бд.читати', 'бд.писати')] if copy else []
+        json.dump({'дозволено': ['оракул', 'жереб', 'час', f'файл.читати:{ROOT}', f'файл.список:{ROOT}', *wide]}, f,
                   ensure_ascii=False)
     return home
 
@@ -84,6 +112,7 @@ def norm_trace(path, timed=False):
 
 
 EXTRA = []
+COPY = [False]
 
 
 def run_one(cmd, prog, home, tmp, tag, timeout):
@@ -109,14 +138,15 @@ def run_one(cmd, prog, home, tmp, tag, timeout):
 def compare(prog, timeout):
     tmp = tempfile.mkdtemp(prefix='звірка-')
     try:
-        home = make_home(tmp)
-        a = run_one([BIN], prog, home, tmp, 'а', timeout)
+        home = make_home(tmp, COPY[0])
+        at = (lambda: fresh(prog, tmp)) if COPY[0] else (lambda: prog)
+        a = run_one([BIN], at(), home, tmp, 'а', timeout)
         if a[0] == 120:
             why = a[2].decode('utf-8', 'replace').strip().removeprefix('атанор: не виконую сам (').removesuffix(')')
             return prog, 'еталон', why, None
-        p = run_one(['python3', REF], prog, home, tmp, 'п', timeout)
+        p = run_one(['python3', REF], at(), home, tmp, 'п', timeout)
         if p[0] == 'час' and a[0] != 'час':        # еталон у рази повільніший — дати йому більше часу, а не рахувати різницею
-            p = run_one(['python3', REF], prog, home, tmp, 'п', timeout * 8)
+            p = run_one(['python3', REF], at(), home, tmp, 'п', timeout * 8)
         diffs = []
         if a[0] != p[0]:
             diffs.append(f'код: атанор {a[0]}, еталон {p[0]}')
@@ -145,10 +175,15 @@ def main():
     ap.add_argument('--зразок', type=int, default=0)
     ap.add_argument('--час', type=float, default=60)
     ap.add_argument('--звіт', default=os.path.join(HERE, 'ЗВІРКА.md'))
+    ap.add_argument('--копія', action='store_true', help='кожній програмі — копія теки з правами на запис і базу; звіт — окремий')
+    ap.add_argument('--має', default='', help='лише програми з цим рядком у тексті')
     ap.add_argument('--прапорці', default='', help='додаткові прапорці обом виконавцям, напр. «--кроки 500»')
     a = ap.parse_args()
     EXTRA[:] = a.прапорці.split()
+    COPY[0] = a.копія
     progs = programs(a.шляхи)
+    if a.має:
+        progs = [p for p in progs if a.має in open(p, encoding='utf-8', errors='replace').read()]
     if a.зразок:
         progs = progs[::max(1, len(progs) // a.зразок)]
     if a.до:
