@@ -175,7 +175,8 @@ def tools():
         {'name': 'nigredo_pereviryty_slid',
          'description': 'Перевірити підписаний слід виконання: цілість, підписи, чи не обрізано, спроби поза '
                         'правами («заборонено»), перехоплені помилки, аргументи й тека; з code — чи слід саме від '
-                        'цієї програми. path — лише слід із теки слідів власника (як у nigredo_vykonaty).',
+                        'цієї програми. path — лише слід із теки слідів власника (як у nigredo_vykonaty). Відповідь — текст '
+                        'і JSON: перевір цілий, режим «звичайний» і порожнє заборонено.',
          'inputSchema': {'type': 'object', 'properties': {'path': {'type': 'string'}, 'code': code},
                          'required': ['path']}},
     ]
@@ -260,17 +261,23 @@ def call(name, a):
         real = os.path.realpath(os.path.join(TRACES, a['path']))
         if not (real.startswith(TRACES + os.sep) and real.endswith('.jsonl')):
             return ['✗ перевіряю лише сліди з теки слідів власника'], True
+        def report(*args):      # текст і JSON: режим, «заборонено», квоти — поля для агента (огляд 12б, Новачок)
+            rc, out, err = ngr('--перевірити-слід', *args, '--json')
+            try:
+                d = json.loads(out)
+            except ValueError:
+                return [clean((out or err).strip())], rc != 0
+            msg = d.pop('повідомлення', '')
+            return [clean(str(msg).strip()) + '\n', 'JSON:\n' + clean(json.dumps(d, ensure_ascii=False, indent=1))], rc != 0
         if a.get('code'):                                   # звірити, що слід — саме від цієї програми
             fd, pp = tempfile.mkstemp(prefix='ngr-програма-')
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 f.write(a['code'])
             try:
-                rc, out, err = ngr('--перевірити-слід', real, pp)
+                return report(real, pp)
             finally:
                 os.unlink(pp)
-        else:
-            rc, out, err = ngr('--перевірити-слід', real)
-        return [clean((out or err).strip())], rc != 0
+        return report(real)
     raise KeyError(name)
 
 
