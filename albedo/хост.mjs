@@ -12,7 +12,7 @@ const args = (W ? W.argv : process.argv).slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; };
 const flag = (k) => { const i = args.indexOf(k); if (i < 0) return false; args.splice(i, 1); return true; };
 const extraTrace = opt('--слід', null), seed = opt('--зерно', '0'), steps = opt('--кроки', '10000000');
-const size = opt('--розмір', '5000000'), tsize = opt('--слід-розмір', '50000000');
+const size = opt('--розмір', '5000000'), tsize = opt('--слід-розмір', '50000000'), dbLimit = Number(opt('--бд-запис', String(2 ** 30)));
 const deadline = Number(opt('--строк', '300')), memMb = Number(opt('--памʼять', '1024'));   // с, МБ: тримає господар, а не модуль
 const showImports = flag('--імпорти'), showTime = flag('--час');
 const [wasmPath, progPath] = args;
@@ -22,7 +22,7 @@ if (showImports) { for (const i of WebAssembly.Module.imports(mod)) console.log(
 
 const fail = (code, msg) => { fs.writeSync(2, msg + '\n'); process.exit(code); };
 // памʼять дає господар і стелю ставить він: модуль зі своєю памʼяттю не запускається
-const KNOWN = new Set(['env.memory', 'ngr.out', 'ngr.err', 'ngr.body', 'ngr.trace', 'ngr.store', 'ngr.fs', 'ngr.fs_take', 'ngr.now']);
+const KNOWN = new Set(['env.memory', 'ngr.out', 'ngr.err', 'ngr.body', 'ngr.trace', 'ngr.store', 'ngr.fs', 'ngr.fs_take', 'ngr.now', 'ngr.mono', 'ngr.random', 'ngr.db']);
 const strange = WebAssembly.Module.imports(mod).filter((i) => !KNOWN.has(`${i.module}.${i.name}`));
 if (strange.length) fail(4, `✗ модуль просить невідоме: ${strange.map((i) => `${i.module}.${i.name}`).join(', ')}`);
 if (WebAssembly.Module.exports(mod).some((e) => e.kind === 'memory') || !WebAssembly.Module.imports(mod).some((i) => i.kind === 'memory')) fail(4, '✗ модуль має власну памʼять: її дає лише господар');
@@ -92,6 +92,7 @@ const stamp = now.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 
 const progSha = sha256(srcBytes);
 const mainTrace = W ? W.mainTrace : path.join(traces, `${stamp}-${progSha.slice(0, 8)}-${process.pid}.jsonl`);
 const paths = [mainTrace, ...(extraTrace ? [path.resolve(extraTrace)] : [])];
+if (!W && process.env.NIGREDO_TRACE_PATH_FILE) fs.writeFileSync(process.env.NIGREDO_TRACE_PATH_FILE, mainTrace);
 const fds = W ? W.fds : paths.map((p) => fs.openSync(p, 'wx'));
 const stores = W ? W.stores : paths.map((p) => fs.openSync(p + '.дані', 'wx'));
 let prev = '0'.repeat(16), n = 0, fromModule = 0, pendingBody = null;   // номер у сліді веде господар: він теж пише записи
@@ -123,7 +124,8 @@ function hostRecord(event, fields) {
 
 // ---- інструменти: лише те, що в печатці, і лише тут
 const scopes = (tool) => wanted.filter((w) => w.tool === tool).map((w) => w.scope ? scopeOf(w.scope) : null).filter(Boolean);
-const fileRoots = [...new Set([progDir, ...scopes('файл.читати'), ...scopes('файл.писати'), ...scopes('файл.список')])];
+const dbRead = [...scopes('бд.читати'), ...scopes('бд.писати')], dbWrite = scopes('бд.писати');
+const fileRoots = [...new Set([progDir, ...scopes('файл.читати'), ...scopes('файл.писати'), ...scopes('файл.список'), ...dbRead])];
 const forbidden = (p) => inside(p, real(HOME)) || paths.some((t) => p === real(t) || p === real(t + '.дані'));
 const used = new Map();
 function quotaOk(tool, p) {
@@ -183,6 +185,72 @@ function fsCall(op, p, l, q, m) {
     return -38n;
   } catch (e) { return op === 4 ? reply(Buffer.from([0])) : BigInt(errnoOf(e)); }
 }
+// ---- база: сам SQLite у модулі, а його файли — тут. Запит читає сторож у модулі; який файл узагалі доступний, вирішує цей перелік,
+// тож ATTACH чужої бази чи запис під «бд.читати» впираються сюди, навіть якщо модуль вирізав сторожа.
+const dbFiles = new Map(); let dbNext = 1, dbSpent = 0;
+const DB_OPEN = 1, DB_READ = 2, DB_WRITE = 3, DB_SIZE = 4, DB_TRUNC = 5, DB_SYNC = 6, DB_CLOSE = 7, DB_DELETE = 8, DB_ACCESS = 9;
+const dbMain = (t) => t.replace(/-(journal|wal|shm)$/, '');
+const dbSees = (t, roots) => !forbidden(t) && roots.some((r) => inside(dbMain(t), r));
+// «бд.читати:дані» — право на бази, а не на всі файли теки: чужий файл модуль бачить нулями (SQLite скаже «file is not a database»,
+// як нативно) і писати в нього не може. Інакше зіпсоване ядро читало б сирими байтами все, що лежить поруч із базою.
+const MAGIC = { main: Buffer.from('SQLite format 3\0'), journal: Buffer.from('d9d505f920a163d7', 'hex'), wal: Buffer.from('377f06', 'hex') };
+const dbKind = (t) => (t.endsWith('-wal') ? 'wal' : t.endsWith('-journal') ? 'journal' : 'main');
+const dbForeign = (fd, kind) => {
+  const m = MAGIC[kind], h = Buffer.alloc(m.length), n = fs.readSync(fd, h, 0, m.length, 0);
+  return n > 0 && !h.equals(m);
+};
+const dbOpened = (f) => { dbFiles.set(dbNext, f); return dbNext++; };
+function dbCall(op, a, b, p, l) {
+  try {
+    if (op === DB_OPEN) {
+      const name = text(p, l), target = real(name), mode = Number(a), tool = mode ? 'бд.писати' : 'бд.читати';
+      const kind = dbKind(target);
+      if (kind === 'wal' && mode && !dbSees(target, dbWrite) && dbSees(target, dbRead)) {   // SQLite просить запис завжди; під «бд.читати» — читання
+        const fd = fs.existsSync(target) ? fs.openSync(target, fs.constants.O_RDONLY) : null;
+        return BigInt(dbOpened({ fd, write: false, kind, foreign: fd !== null && dbForeign(fd, kind) })) | (1n << 30n);
+      }
+      if (!dbSees(target, mode ? dbWrite : dbRead)) return BigInt(deny(tool, name, 'поза печаткою'));
+      const { O_RDONLY, O_RDWR, O_CREAT, O_NOFOLLOW } = fs.constants;
+      const fd = fs.openSync(target, mode ? O_RDWR | O_NOFOLLOW | (mode === 2 ? O_CREAT : 0) : O_RDONLY, 0o644);
+      if (!fs.fstatSync(fd).isFile()) { fs.closeSync(fd); return -21n; }
+      return BigInt(dbOpened({ fd, write: mode > 0, kind, foreign: dbForeign(fd, kind) }));
+    }
+    if (op === DB_DELETE) {                 // лише журнал: стерти саму базу SQLite не потрібно ніколи
+      const name = text(p, l), target = real(name);
+      if (dbKind(target) === 'main' || !dbSees(target, dbWrite)) return BigInt(deny('бд.писати', name, 'видаляти можна лише журнал'));
+      fs.unlinkSync(target);
+      return 0n;
+    }
+    if (op === DB_ACCESS) {                 // як unixAccess: порожній файл — наче немає
+      const target = real(text(p, l));
+      if (!dbSees(target, dbRead)) return 0n;
+      const st = fs.statSync(target);
+      if (a === 1n) fs.accessSync(target, fs.constants.W_OK);
+      return !st.isFile() || st.size > 0 ? 1n : 0n;
+    }
+    const f = dbFiles.get(Number(a));
+    if (!f) return -9n;
+    if (f.fd === null) return op === DB_CLOSE ? (dbFiles.delete(Number(a)), 0n) : op === DB_READ || op === DB_SIZE ? 0n : BigInt(deny('бд.писати', '', 'файл відкрито лише для читання'));
+    if (op === DB_READ) {
+      if (!f.foreign) return BigInt(fs.readSync(f.fd, bytes(p, l), 0, l, Number(b)));
+      const got = Math.max(0, Math.min(l, fs.fstatSync(f.fd).size - Number(b)));
+      bytes(p, l).fill(0);
+      return BigInt(got);
+    }
+    if (op === DB_SIZE) return BigInt(fs.fstatSync(f.fd).size);
+    if (op === DB_CLOSE) { fs.closeSync(f.fd); dbFiles.delete(Number(a)); return 0n; }
+    if (!f.write) return BigInt(deny('бд.писати', '', 'файл відкрито лише для читання'));
+    if (f.foreign) return BigInt(deny('бд.писати', '', 'файл — не база'));
+    if (op === DB_WRITE) {
+      if (f.kind === 'main' && b === 0n && !(l >= 16 && bytes(p, 16).equals(MAGIC.main))) return BigInt(deny('бд.писати', '', 'записане — не база'));
+      if ((dbSpent += l) > dbLimit) return BigInt(deny('бд.писати', '', 'понад межу запису'));
+      return BigInt(fs.writeSync(f.fd, bytes(p, l), 0, l, Number(b)));
+    }
+    if (op === DB_TRUNC) { fs.ftruncateSync(f.fd, Number(b)); return 0n; }
+    if (op === DB_SYNC) { fs.fsyncSync(f.fd); return 0n; }
+    return -38n;
+  } catch (e) { return op === DB_ACCESS ? 0n : BigInt(errnoOf(e)); }
+}
 const hasClock = wanted.some((w) => w.tool === 'час');
 let isolated = false;
 const imports = { ngr: {
@@ -195,13 +263,16 @@ const imports = { ngr: {
     writeTrace(line, pendingBody); pendingBody = null;
     if (!isolated && fromModule >= 1 && line.includes('"подія": "печатка"')) {   // межа — не печатка ядра, а цей перелік імпортів
       isolated = true;
-      hostRecord('ізоляція', { 'ядро': 'wasm', 'закрито': ['мережа', 'процеси', ...(scopes('файл.писати').length ? [] : ['запис'])], 'причина': null });
+      hostRecord('ізоляція', { 'ядро': 'wasm', 'закрито': ['мережа', 'процеси', ...(scopes('файл.писати').length || dbWrite.length ? [] : ['запис'])], 'причина': null });
     }
   },
   store: (p, l) => { for (const fd of stores) fs.writeSync(fd, bytes(p, l)); },
   fs: (op, p, l, q, m) => fsCall(op, p, l, q, m),
   fs_take: (d) => { bytes(d, pending.length).set(pending); },
   now: () => (hasClock ? BigInt(Math.floor(Date.now() / 1000)) : -1n),
+  mono: () => process.hrtime.bigint() / 1000000n,
+  random: (p, l) => { crypto.randomFillSync(bytes(p, l)); },
+  db: (op, a, b, p, l) => dbCall(op, a, b, p, l),
 } };
 if (isMainThread) {
   const worker = new Worker(fileURLToPath(import.meta.url), { argv: [], workerData: { argv: process.argv, fds, stores, mainTrace }, resourceLimits: { stackSizeMb: 256 } });

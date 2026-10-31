@@ -7,6 +7,56 @@ extern "C" {
     fn now() -> i64;
     fn trace(p: *const u8, n: usize);
     fn body(p: *const u8, n: usize);
+    fn db(op: i32, a: i64, b: i64, p: *const u8, n: i32) -> i64;
+}
+
+const OPEN: i32 = 1;
+const READ: i32 = 2;
+const WRITE: i32 = 3;
+const TRUNC: i32 = 5;
+const DELETE: i32 = 8;
+const ACCESS: i32 = 9;
+
+fn dbp(op: i32, a: i64, path: &str) -> i64 {
+    unsafe { db(op, a, 0, path.as_ptr(), path.len() as i32) }
+}
+
+/// Те, що зробив би SQLite без сторожа в ядрі: кожен файл — напряму. Межа мусить бути в господарі, а не в sqlite.rs.
+fn base(dir: &str, home: &str) {
+    let line = |k: &str, r: i64| say(&format!("{}: {}\n", k, r));
+    let h = dbp(OPEN, 0, &format!("{}/дані/б.db", dir));
+    let mut head = [0u8; 15];
+    let n = unsafe { db(READ, h, 0, head.as_mut_ptr(), 15) };
+    say(&format!("контроль читання: {} {}\n", n, String::from_utf8_lossy(&head)));
+    line("запис у відкрите для читання", unsafe { db(WRITE, h, 0, head.as_ptr(), 15) });
+    line("обрізати відкрите для читання", unsafe { db(TRUNC, h, 0, head.as_ptr(), 0) });
+    line("чужий номер файлу", unsafe { db(READ, 12345, 0, head.as_mut_ptr(), 15) });
+    line("відкрити на запис базу лише для читання", dbp(OPEN, 1, &format!("{}/дані/б.db", dir)));
+    line("секрет поруч", dbp(OPEN, 0, &format!("{}/секрет.txt", dir)));
+    line("ключ власника", dbp(OPEN, 0, &format!("{}/ключ", home)));
+    line("вихід через ..", dbp(OPEN, 0, &format!("{}/дані/../секрет.txt", dir)));
+    line("посилання на секрет", dbp(OPEN, 0, &format!("{}/дані/посилання.db", dir)));
+    line("журнал чужого файлу", dbp(OPEN, 0, &format!("{}/секрет.txt-journal", dir)));
+    line("створити нову базу", dbp(OPEN, 2, &format!("{}/дані/нова.db", dir)));
+    line("сам слід", dbp(OPEN, 0, &format!("{}/дані/з.jsonl", dir)));
+    line("видалити базу", dbp(DELETE, 0, &format!("{}/дані/в.db", dir)));
+    line("видалити журнал бази лише для читання", dbp(DELETE, 0, &format!("{}/дані/б.db-journal", dir)));
+    line("чи є системний файл", dbp(ACCESS, 0, "/etc/hostname"));
+    let t = dbp(OPEN, 0, &format!("{}/дані/а.txt", dir));
+    let mut raw = [9u8; 8];
+    let n = unsafe { db(READ, t, 0, raw.as_mut_ptr(), 8) };
+    say(&format!("чужий файл у теці печатки як база: {} {}\n", n, raw.iter().map(|x| format!("{:02x}", x)).collect::<String>()));
+    let bytes = [7u8; 600];
+    let u = dbp(OPEN, 1, &format!("{}/дані/пиши/текст.txt", dir));
+    line("записати в чужий файл у теці печатки", unsafe { db(WRITE, u, 0, bytes.as_ptr(), 600) });
+    line("обрізати чужий файл у теці печатки", unsafe { db(TRUNC, u, 0, bytes.as_ptr(), 0) });
+    let v = dbp(OPEN, 2, &format!("{}/дані/пиши/нова.db", dir));
+    line("створити файл, що не база", unsafe { db(WRITE, v, 0, bytes.as_ptr(), 600) });
+    let w = dbp(OPEN, 1, &format!("{}/дані/в.db", dir));
+    let mut page = [7u8; 600];
+    page[..16].copy_from_slice(b"SQLite format 3\0");
+    say(&format!("контроль запису: {}\n", unsafe { db(WRITE, w, 0, page.as_ptr(), 600) }));
+    line("запис понад межу", unsafe { db(WRITE, w, 600, page.as_ptr(), 600) });
 }
 
 fn say(t: &str) {
@@ -56,6 +106,10 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
     let cfg = String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(c, cn) }).into_owned();
     let f: Vec<&str> = cfg.split('\n').collect();
     let (dir, home) = (f[1], f[11]);
+    if src.contains("база") {
+        base(dir, home);
+        return 0;
+    }
     attempt("контроль: дозволений файл", 1, &format!("{}/дані/а.txt", dir), b"");
     attempt("секрет поруч із програмою", 1, &format!("{}/секрет.txt", dir), b"");
     attempt("ключ власника", 1, &format!("{}/ключ", home), b"");

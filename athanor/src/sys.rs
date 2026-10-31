@@ -42,6 +42,13 @@ mod imp {
     pub fn now_secs() -> i64 {
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
     }
+
+    pub fn mono_ms() -> u64 {
+        use std::sync::OnceLock;
+        use std::time::Instant;
+        static T0: OnceLock<Instant> = OnceLock::new();
+        T0.get_or_init(Instant::now).elapsed().as_millis() as u64
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -53,6 +60,7 @@ mod imp {
         fn fs(op: i32, p: *const u8, n: usize, q: *const u8, m: usize) -> i64; // довжина відповіді чи −errno
         fn fs_take(dst: *mut u8);
         fn now() -> i64; // секунди UTC; без права «час» — −1
+        fn mono() -> i64; // мілісекунди для внутрішніх строків (30 с запиту); не календар
     }
 
     const READ: i32 = 1;
@@ -110,6 +118,10 @@ mod imp {
 
     pub fn now_secs() -> i64 {
         unsafe { now() }
+    }
+
+    pub fn mono_ms() -> u64 {
+        unsafe { mono() as u64 }
     }
 }
 

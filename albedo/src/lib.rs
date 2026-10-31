@@ -75,6 +75,7 @@ extern "C" {
     fn trace(p: *const u8, n: usize); // рядок сліду; ланцюжок і підпис — господаря
     fn body(p: *const u8, n: usize); // канонічний текст того самого запису (для підпису)
     fn store(p: *const u8, n: usize); // запис СЛІД.дані
+    fn random(p: *mut u8, n: usize); // випадкові байти
 }
 
 /// Канонічний текст запису — господарю, разом із рядком: ключ HMAC лишається в нього (trace.rs).
@@ -95,7 +96,7 @@ impl Write for Host {
 }
 
 fn glyph_ok(g: char) -> bool {
-    !matches!(g, '‖' | 'χ' | '↘')
+    !matches!(g, '‖')
 }
 
 #[no_mangle]
@@ -133,8 +134,8 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
     let prog = match parsed {
         Ok(p) => p,
         Err(Back(why)) => {
-            say(&format!("не виконую сам: {}", why));
-            return 2;
+            say(&format!("альбедо: не виконую сам ({})", why));
+            return 120; // той самий код, що в Атанора: чого не вміє ядро, Альбедо не вдає
         }
     };
     let tr = trace::Trace::new(vec![Box::new(Host(trace))], vec![Box::new(Host(store))], Vec::new(), num(10) as u64);
@@ -216,21 +217,69 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
     code
 }
 
-/// Випадкові байти дає ОС; у модулі їх немає — господар дасть імпортом (етап 1). Тут лише для назв службових функцій.
+/// Випадкові байти дає господар: назва службової функції сторожа бази має бути невгадною для запиту програми.
 pub fn rand_hex(n: usize) -> String {
-    "0".repeat(n * 2)
+    let mut b = vec![0u8; n];
+    unsafe { random(b.as_mut_ptr(), n) };
+    b.iter().map(|x| format!("{:02x}", x)).collect()
 }
 
-// ОС-виклики ядра: у модулі їх немає й не буде імпортом — лише заглушки, що кажуть «недоступно». Тож SQLite, XML і замок ОС
-// тут недоступні (sqlite::load, xml::available — None), а перелік імпортів модуля — це лише «ngr».
+// ОС-виклики ядра. dlopen знає лише SQLite й expat, зібрані в цей самий модуль (c/база.c): рядка «завантажити чужу бібліотеку» тут немає,
+// тож замок ОС недоступний, а всі імпорти модуля й далі — лише «ngr».
 use std::os::raw::{c_char, c_int, c_void};
 
-#[no_mangle]
-pub extern "C" fn dlopen(_f: *const c_char, _flag: c_int) -> *mut c_void {
-    std::ptr::null_mut()
+extern "C" {
+    fn ngr_sym(name: *const c_char) -> *mut c_void;
 }
 
 #[no_mangle]
-pub extern "C" fn dlsym(_h: *mut c_void, _s: *const c_char) -> *mut c_void {
-    std::ptr::null_mut()
+pub extern "C" fn dlopen(f: *const c_char, _flag: c_int) -> *mut c_void {
+    let name = unsafe { std::ffi::CStr::from_ptr(f) };
+    if name.to_bytes().starts_with(b"libsqlite3") || name.to_bytes().starts_with(b"libexpat") {
+        1 as *mut c_void
+    } else {
+        std::ptr::null_mut()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn dlsym(_h: *mut c_void, s: *const c_char) -> *mut c_void {
+    unsafe { ngr_sym(s) }
+}
+
+// malloc для коду на C: той самий розподільник, що в ядра; розмір — у заголовку, бо free його не знає
+use std::alloc::{alloc, dealloc, Layout};
+const HEAD: usize = 16;
+
+#[no_mangle]
+pub unsafe extern "C" fn malloc(n: usize) -> *mut u8 {
+    let Ok(l) = Layout::from_size_align(n + HEAD, HEAD) else { return std::ptr::null_mut() };
+    let p = alloc(l);
+    if p.is_null() {
+        return p;
+    }
+    (p as *mut usize).write(n);
+    p.add(HEAD)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn free(p: *mut u8) {
+    if !p.is_null() {
+        let b = p.sub(HEAD);
+        dealloc(b, Layout::from_size_align_unchecked((b as *mut usize).read() + HEAD, HEAD));
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn realloc(p: *mut u8, n: usize) -> *mut u8 {
+    if p.is_null() {
+        return malloc(n);
+    }
+    let q = malloc(n);
+    if !q.is_null() {
+        let old = (p.sub(HEAD) as *mut usize).read();
+        std::ptr::copy_nonoverlapping(p, q, old.min(n));
+        free(p);
+    }
+    q
 }

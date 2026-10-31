@@ -1345,7 +1345,7 @@ extern "C" fn on_auth(ud: *mut c_void, action: c_int, a1: *const c_char, a2: *co
 
 struct ProgCtx {
     it: *mut Interp,
-    deadline: std::time::Instant,
+    deadline: u64,
 }
 
 extern "C" fn on_progress(ud: *mut c_void) -> c_int {
@@ -1353,7 +1353,7 @@ extern "C" fn on_progress(ud: *mut c_void) -> c_int {
     let it = unsafe { &mut *cx.it };
     // ~1000 інструкцій SQLite ≈ 10 кроків — детерміновано, як в еталона поза ‖ (‖ Атанор віддає еталону; суд 9)
     it.steps_left -= 10;
-    (it.steps_left < 0 || std::time::Instant::now() > cx.deadline) as c_int
+    (it.steps_left < 0 || crate::sys::mono_ms() > cx.deadline) as c_int
 }
 
 /// urllib.request.pathname2url (quote, безпечне «/»).
@@ -1519,7 +1519,7 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
     if !write && !pathx::isfile(&real) {
         return ngr(format!("{}: немає такого файлу: {}", tool, pv), pos);
     }
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    let deadline = crate::sys::mono_ms() + 30_000;
     // запис закрито ядром (--сухо): база WAL без -wal і -shm (закрита начисто — уся в головному файлі) інакше не
     // відкриється, бо SQLite створює -shm; така — незмінна (immutable), і це правда (суд 11; як в еталона)
     let mut frozen = "";
@@ -1663,7 +1663,7 @@ pub fn run(it: &mut Interp, tool: &str, args: &[V], pos: Pos, write: bool) -> R<
                 if it.steps_left < 0 {
                     return fatal("перевищено ліміт кроків (--кроки)", Some(pos));
                 }
-                if std::time::Instant::now() > deadline {
+                if crate::sys::mono_ms() > deadline {
                     return ngr(format!("{}: запит довший за 30 с", tool), pos);
                 }
                 svc_note(&mut auth.why, &sql);
