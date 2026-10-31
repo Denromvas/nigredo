@@ -285,6 +285,9 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Back> {
             if i < n && is_name_start(s[i]) {
                 return back("число впритул до імені"); // помилку пише еталон (суд 12)
             }
+            if i + 1 < n && s[i] == NEG && uni::decimal(s[i + 1]).is_some() {
+                return back("число впритул до числа"); // 5¯3 (огляд 12б)
+            }
             let lit = if frac {
                 let mut d = Dec::parse(&num).map_err(|_| Back("число".into()))?;
                 if neg {
