@@ -41,3 +41,5 @@ athanor/target/
 !tests/сумісність/негативні/слід_змінено.jsonl
 !tests/сумісність/негативні/слід_змінено.jsonl.дані
 albedo/c/дж/
+konsylium/*/власник/
+konsylium/*/protokol/run_*.out
