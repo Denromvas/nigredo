@@ -83,6 +83,11 @@ with tempfile.TemporaryDirectory(prefix='альбедо-') as t:
     m = host(env, Z, hog, '--памʼять', '256', '--слід', str(t / 'п.jsonl'))
     held = max([int(x.split()[1]) for x in m.stdout.splitlines() if x.startswith('тримаю')] or [0])
     check(m.returncode == 4 and held < 256, f'модуль, що їсть памʼять: стеля господаря (--памʼять 256), дістав {held} МБ', m.stdout[-200:] + m.stderr[-300:])
+    for mark, what in (('', 'подія'), (' поле', 'поле «від_господаря»')):
+        fg = p / 'підміна.ngr'
+        fg.write_text(f'🜂 「підміна{mark}」 【「читати:дані」】\n» 1\n', encoding='utf-8')
+        fx = host(env, Z, fg)
+        check(fx.returncode == 4 and 'за запис господаря' in fx.stderr and 'ДІЙШОВ' not in fx.stdout, f'модуль не видасть свій запис за запис господаря: {what}', fx.stdout + fx.stderr)
     fl = p / 'повінь.ngr'
     fl.write_text('🜂 「повінь」 【「читати:дані」】\n» 1\n', encoding='utf-8')
     w = host(env, Z, fl, '--слід-розмір', '100000', '--слід', str(t / 'ф.jsonl'))
@@ -217,6 +222,26 @@ with tempfile.TemporaryDirectory(prefix='альбедо-') as t:
     sg.write_text('🜂 「х」 【】\n» 1\n※ підпис ed25519:' + 'a' * 64 + ':' + 'b' * 128 + '\n', encoding='utf-8')
     x = host(owner({'дозволено': []}), W, sg)
     check(x.returncode == 120, 'підписану програму модуль не виконує: підпис перевіряє лише еталон', x.stdout + x.stderr)
+    dup = owner({'дозволено': []})
+    (pathlib.Path(dup['NIGREDO_HOME']) / 'дозволи.json').write_text('{"дозволено": [], "дозволено": ["файл.читати:' + str(p) + '/дані"]}', encoding='utf-8')
+    x = host(dup, W, ask)
+    check(x.returncode == 3 and 'двічі' in x.stderr, 'той самий ключ двічі у файлі власника — відмова, як в еталона', x.stdout + x.stderr)
+    # обгортка: повз модуль нічого не йде мовчки, а межі задаються звичайним запуском
+    WRAP = [sys.executable, str(D / 'ngr_альбедо.py')]
+    wenv = owner({'дозволено': [f'читати:{p}/дані']})
+    for flags in (['--сухо', str(ask)], ['-e', '🜂 【】\n» 1'], ['--тека', str(p), str(ask)]):
+        x = subprocess.run([*WRAP, *flags], capture_output=True, text=True, env=wenv)
+        check(x.returncode == 120 and x.stdout == '', f'обгортка: {flags[0]} ще немає в модулі — відмова, а не тихий запуск еталоном', x.stdout + x.stderr)
+    x = subprocess.run([*WRAP, '--строк', '5', '--памʼять', '1500', str(ask)], capture_output=True, text=True, env=wenv)
+    check(x.returncode == 0 and x.stderr == '', 'обгортка: --строк і --памʼять доходять до господаря', x.stdout + x.stderr)
+    x = subprocess.run([*WRAP, '--памʼять', '512', str(ask)], capture_output=True, text=True, env=wenv)
+    check(x.returncode == 2 and 'стек ядра' in x.stderr and 'упав' not in x.stderr, 'стеля памʼяті менша за стек модуля — зрозуміла відмова, а не падіння', x.stdout + x.stderr)
+    x = subprocess.run([*WRAP, '--печатка', '--json', str(ask)], capture_output=True, text=True, env=wenv)
+    check(x.returncode == 0 and json.loads(x.stdout or '{}').get('в_межах') is True, 'обгортка: --печатка нічого не виконує й далі йде до еталона', x.stdout + x.stderr)
+    # поле «програма» — як задано, тобто той самий слід, що в Атанора, і з відносним шляхом
+    rel = subprocess.run(['node', str(HOST), str(W), ask.name, '--слід', str(t / 'відн.jsonl')], capture_output=True, text=True, env=wenv, cwd=p)
+    first = json.loads((t / 'відн.jsonl').read_text(encoding='utf-8').splitlines()[0])
+    check(rel.returncode == 0 and first['програма'] == ask.name, 'відносний шлях у сліді — як задано, а не абсолютний', str(first)[:200] + rel.stderr)
     ar = p / 'аргументи.ngr'
     ar.write_text('🜂 「аргументи」 【】\n» ⌂\n', encoding='utf-8')
     x = subprocess.run(['node', str(HOST), str(W), str(ar), '--', 'а б', '--зерно', 'в\nг'], capture_output=True, text=True, env=owner({'дозволено': []}))
