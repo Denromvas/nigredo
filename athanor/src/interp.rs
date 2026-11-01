@@ -284,20 +284,42 @@ impl Interp {
     /// Частий випадок — мале значення в межах — на місці: лише облік створеного (work(n < 64) — нуль кроків).
     #[inline(always)]
     fn sized(&mut self, res: V, g: impl std::fmt::Display, pos: Pos) -> R<V> {
+        let spent = res.n;
+        self.sized_as(res, g, pos, spent)
+    }
+
+    /// Скільки створено: лише те, чого ще не було (пропозиція вартість.md). `§` контейнера нічого не створює; `＋ ✎ ⊏` над списками й
+    /// словниками ділять дані зі старими значеннями, нові там лише власні елементи; решта — логічний розмір.
+    #[inline(always)]
+    fn spent(res: &V, g: char) -> u64 {
+        let own = match &res.v {
+            Val::List(l) => l.len() as u64,
+            Val::Dict(d) => d.len() as u64,
+            _ => return res.n,
+        };
+        match g {
+            '§' => 1,
+            '＋' | '✎' | '⊏' => own + 1,
+            _ => res.n,
+        }
+    }
+
+    #[inline(always)]
+    fn sized_as(&mut self, res: V, g: impl std::fmt::Display, pos: Pos, spent: u64) -> R<V> {
         if res.n < 64 && res.n <= self.max_size && self.steps_left >= 0 && !matches!(res.v, Val::Int(Int::B(_))) {
-            if res.n > 1 {
-                self.alloc += res.n;
+            if spent > 1 {
+                self.alloc += spent;
                 if self.alloc > lang::ALLOC_FACTOR * self.max_size {
                     return fatal(format!("сумарно створено забагато ({} > {} × --розмір)", self.alloc, lang::ALLOC_FACTOR), Some(pos));
                 }
             }
             return Ok(res);
         }
-        self.sized_full(res, g, pos)
+        self.sized_full(res, g, pos, spent)
     }
 
     #[inline(never)]
-    fn sized_full(&mut self, res: V, g: impl std::fmt::Display, pos: Pos) -> R<V> {
+    fn sized_full(&mut self, res: V, g: impl std::fmt::Display, pos: Pos, spent: u64) -> R<V> {
         if res.n > self.max_size {
             return fatal(format!("{}: значення завелике (логічний розмір {} > --розмір {})", g, res.n, self.max_size), Some(pos));
         }
@@ -306,9 +328,9 @@ impl Interp {
                 return fatal(format!("{}: число завелике (понад {} біт)", g, lang::MAX_INT_BITS), Some(pos));
             }
         }
-        if res.n > 1 {
-            self.work(res.n, pos)?;
-            self.alloc += res.n;
+        if spent > 1 {
+            self.work(spent, pos)?;
+            self.alloc += spent;
             if self.alloc > lang::ALLOC_FACTOR * self.max_size {
                 return fatal(format!("сумарно створено забагато ({} > {} × --розмір)", self.alloc, lang::ALLOC_FACTOR), Some(pos));
             }
@@ -418,7 +440,8 @@ impl Interp {
                         // § імʼя ціле: ті самі три кроки (§, імʼя, номер) і sized елемента, що й eval_var + eval_lit +
                         // швидкий § у strict_ (певний список і будова, номер у межах) — без значень-посередників
                         self.steps_left -= 3;
-                        return self.sized(e, '§', pos);
+                        let spent = Self::spent(&e, '§');
+                        return self.sized_as(e, '§', pos, spent);
                     }
                 }
                 self.step(pos)?;
@@ -453,7 +476,8 @@ impl Interp {
                         self.strict(g, &a, pos)?
                     }
                 };
-                self.sized(r, g, pos)
+                let spent = Self::spent(&r, g);
+                self.sized_as(r, g, pos, spent)
             }
             K::Call(_, hops, slot, args) => {
                 self.step(pos)?;
@@ -606,7 +630,8 @@ impl Interp {
                     items.push(self.eval(x, env)?);
                 }
                 let c = self.cpc();
-                self.sized(mk(items, c), "【】", pos)
+                let own = items.len() as u64 + 1;
+                self.sized_as(mk(items, c), "【】", pos, own)
             }
             K::Tmpl(parts) => {
                 let mut vals = Vec::with_capacity(parts.len());
@@ -654,7 +679,8 @@ impl Interp {
                     d.set(ks, val);
                     i += 2;
                 }
-                self.sized(V::cs(Val::Dict(Rc::new(d)), c, sc), "『』", pos)
+                let own = d.len() as u64 + 1;
+                self.sized_as(V::cs(Val::Dict(Rc::new(d)), c, sc), "『』", pos, own)
             }
             K::Block(stmts, nslots) => {
                 let inner = Env::new(*nslots as usize, Some(env.clone()));
@@ -748,7 +774,8 @@ impl Interp {
                     self.prof_add(&format!("лінивий {}", g), t);
                 }
                 let r = r?;
-                self.sized(r, g, pos)
+                let spent = Self::spent(&r, *g);
+                self.sized_as(r, g, pos, spent)
             }
             K::Lit(_) | K::Var(..) | K::Call(..) => unreachable!(),
         }

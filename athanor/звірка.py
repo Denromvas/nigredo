@@ -184,6 +184,7 @@ def main():
     ap.add_argument('--має', default='', help='лише програми з цим рядком у тексті')
     ap.add_argument('--від', type=int, default=0, help='пропустити перші N: дігнати обірваний прогін (порядок сталий)')
     ap.add_argument('--корінь', default='', help='репозиторій корпусу, якщо не цей')
+    ap.add_argument('--журнал', default='', help='дописувати кожен результат рядком JSON: [шлях, вид, час]')
     ap.add_argument('--прапорці', default='', help='додаткові прапорці обом виконавцям, напр. «--кроки 500»')
     a = ap.parse_args()
     EXTRA[:] = a.прапорці.split()
@@ -199,9 +200,14 @@ def main():
         progs = progs[:a.до]
     progs = progs[a.від:]
     res = []
+    # журнал: кожен результат — рядок; сесія може обірватись на 95%, а лічильники інакше пишуться лише наприкінці
+    log = open(a.журнал, 'a', encoding='utf-8') if a.журнал else None
     with cf.ThreadPoolExecutor(a.j) as ex:
         for i, r in enumerate(ex.map(lambda p: compare(p, a.час), progs), 1):
             res.append(r)
+            if log:
+                log.write(json.dumps([os.path.relpath(r[0], ROOT), r[1], r[3]], ensure_ascii=False) + '\n')
+                log.flush()
             if r[1] == 'різниця':
                 print(f'✗ {os.path.relpath(r[0], ROOT)}\n  {r[2]}', flush=True)
             if i % 100 == 0:
