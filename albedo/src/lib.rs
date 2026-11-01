@@ -127,7 +127,7 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
     let lines: Vec<&str> = src.split('\n').collect();
     let last = if lines.last() == Some(&"") { lines.len().checked_sub(2) } else { lines.len().checked_sub(1) };
     if lines.iter().any(|l| l.trim_start_matches(' ').starts_with("※ підпис ed25519:")) || last.map_or(false, |i| lines[i].starts_with('※') && uni::sig_like(lines[i])) {
-        say("альбедо: не виконую сам (підпис автора — еталон)");
+        say("альбедо: цього в модулі ще немає, програму не запущено (підпис автора)");
         return 120;
     }
     let parsed = (|| -> Result<ast::Node, Back> {
@@ -143,7 +143,7 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
     let prog = match parsed {
         Ok(p) => p,
         Err(Back(why)) => {
-            say(&format!("альбедо: не виконую сам ({})", why));
+            say(&format!("альбедо: цього в модулі ще немає, програму не запущено ({})", why));
             return 120; // той самий код, що в Атанора: чого не вміє ядро, Альбедо не вдає
         }
     };

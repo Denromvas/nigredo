@@ -86,8 +86,8 @@ function importsOf(t) {               // ⊃ лише поза рядками й
   }
   return out;
 }
-if (/^ *※ підпис ed25519:/m.test(src)) fail(120, 'альбедо: не виконую сам (підпис автора — еталон)');
-if (importsOf(src).some((p) => /#sha256=|:\/\/|^[a-z0-9.-]+\.[a-z]+\//.test(p))) fail(120, 'альбедо: не виконую сам (модуль з мережі — еталон)');
+if (/^ *※ підпис ed25519:/m.test(src)) fail(120, 'альбедо: цього в модулі ще немає, програму не запущено (підпис автора)');
+if (importsOf(src).some((p) => /#sha256=|:\/\/|^[a-z0-9.-]+\.[a-z]+\//.test(p))) fail(120, 'альбедо: цього в модулі ще немає, програму не запущено (модуль з мережі)');
 const progDir = real(path.dirname(path.resolve(progPath)));
 const progReal = real(progPath);
 const wanted = seal.flatMap(parseGrant);
@@ -103,12 +103,35 @@ function grantOf(e) {                 // запис власника: один �
   const m = canon(e).match(/^([^]*?)\s*≤\s*([0-9]+)$/), body = m ? m[1] : canon(e), c = body.indexOf(':');
   return { tool: (c < 0 ? body : body.slice(0, c)).trim(), scope: c < 0 ? '' : body.slice(c + 1).trim(), quota: m ? Number(m[2]) : null };
 }
+// JSON.parse мовчки бере останній із двох однакових ключів; еталон такий файл відкидає (loads_unique), і господар теж
+function hasDuplicateKey(t) {
+  const stack = [];
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (c === '{') stack.push(new Set());
+    else if (c === '[') stack.push(null);
+    else if (c === '}' || c === ']') stack.pop();
+    else if (c === '"') {
+      const from = i;
+      for (i++; t[i] !== '"'; i++) if (t[i] === '\\') i++;
+      let j = i + 1;
+      while (' \t\r\n'.includes(t[j])) j++;
+      if (t[j] === ':' && stack.at(-1)) {
+        const k = JSON.parse(t.slice(from, i + 1));
+        if (stack.at(-1).has(k)) return true;
+        stack.at(-1).add(k);
+      }
+    }
+  }
+  return false;
+}
 const homeReal = real(HOME);
 const ownerFile = path.join(HOME, 'дозволи.json');
 let allowed = ['оракул', 'жереб', 'час'], ownerSrc = '(файлу власника немає: лише іграшкові інструменти)', writeEntries = [];
 if (fs.existsSync(ownerFile)) {
   const raw = fs.readFileSync(ownerFile);
   const owner = JSON.parse(raw.toString('utf8'));
+  if (hasDuplicateKey(raw.toString('utf8'))) fail(3, `✗ дозволи власника: той самий ключ двічі (${ownerFile})`);
   ownerSrc = `${ownerFile} (sha256 ${sha256(raw).slice(0, 16)})`;
   allowed = (owner['дозволено'] ?? []).map(canon);
   const perDir = Object.entries(owner['для_тек'] ?? {}), perProg = new Map(Object.entries(owner['для_програм'] ?? {}).map(([k, v]) => [k.trim().toLowerCase(), v]));
@@ -172,6 +195,7 @@ const stores = W ? W.stores : paths.map((p) => fs.openSync(p + '.дані', 'wx'
 let prev = '0'.repeat(16), n = 0, fromModule = 0, pendingBody = null;   // номер у сліді веде господар: він теж пише записи
 const ZERO = '"0000000000000000"';
 const sign = (b) => crypto.createHmac('sha256', key).update(b).digest('hex').slice(0, 16);
+const HOST_EVENTS = ['дія господаря', 'господар відмовив', 'ізоляція'];
 // межа сліду тут теж: чесне ядро зупиниться саме (текст і місце — його), а зіпсоване без цього заллє диск. Запас — на різницю в підрахунку
 let traced = 0, overflowing = false;
 function spend(size) {
@@ -188,6 +212,8 @@ function writeTrace(line, body, mod = true) {
     fromModule++;
     const k = `"№": ${fromModule}`;
     if (!line.startsWith(`{${k}, `) || !body.includes(k)) fail(4, `✗ модуль порушив нумерацію сліду (очікував ${fromModule})`);
+    // записи господаря пише лише господар: модуль, що видає себе за нього, зупиняється. Лапки в значеннях екрановані, тож рядок програми сюди не потрапить
+    if (HOST_EVENTS.some((e) => line.startsWith(`"подія": "${e}"`, k.length + 3)) || line.includes('"від_господаря":')) fail(4, '✗ модуль видав свій запис за запис господаря');
     line = line.replace(k, `"№": ${n}`); body = body.replace(k, `"№": ${n}`);
   }
   const fill = (t, field, v) => { const k = `"${field}": ${ZERO}`, i = t.lastIndexOf(k); if (i < 0) fail(4, '✗ запис сліду без заглушки'); return t.slice(0, i) + `"${field}": "${v}"` + t.slice(i + k.length); };
@@ -222,7 +248,7 @@ function quotaOk(tool, target) {
   return true;
 }
 // власний свідок дій: модуль може не записати, що читав, але не прибере цього запису. Значень тут немає — лише що, де й скільки байтів
-function did(tool, target, size) { hostRecord('дія господаря', { 'інструмент': tool, 'шлях': target, 'байтів': size }); }
+function did(tool, target, field, value) { hostRecord('дія господаря', { 'інструмент': tool, 'шлях': target, [field]: value }); }
 function deny(tool, p, why) { hostRecord('господар відмовив', { 'інструмент': tool, 'шлях': p, 'причина': why }); return -13; }
 const permit = (tool, target, p) => {
   if (forbidden(target)) return deny(tool, p, 'тека власника або слід');
@@ -255,7 +281,7 @@ function fsCall(op, p, l, q, m) {
         const size = Math.min(fs.fstatSync(fd).size, cap), b = Buffer.alloc(size);
         fs.readSync(fd, b, 0, size, 0);
         if (isModule) learnImports(b.toString('utf8'), path.dirname(target));
-        else did('файл.читати', target, size);
+        else did('файл.читати', target, 'байтів', size);
         return reply(b);
       } finally { fs.closeSync(fd); }
     }
@@ -266,14 +292,14 @@ function fsCall(op, p, l, q, m) {
       fs.mkdirSync(dir, { recursive: true });
       const { O_WRONLY, O_CREAT, O_TRUNC, O_NOFOLLOW } = fs.constants;   // і між перевіркою й записом посилання не підставити
       fs.writeFileSync(target, bytes(q, m), { flag: O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, mode: 0o644 });
-      did('файл.писати', target, m);
+      did('файл.писати', target, 'байтів', m);
       return reply(Buffer.alloc(0));
     }
     if (op === 3) {                         // список
       const target = real(name);
       const r = permit('файл.список', target, name); if (r) return BigInt(r);
       const names = fs.readdirSync(target);
-      did('файл.список', target, names.length);
+      did('файл.список', target, 'імен', names.length);
       return reply(Buffer.from(names.join('\0')));
     }
     if (op === 4) {                         // що це: лише всередині коренів печатки
@@ -321,7 +347,7 @@ function dbCall(op, a, b, p, l) {
       const fd = fs.openSync(target, mode ? O_RDWR | O_NOFOLLOW | (mode === 2 ? O_CREAT : 0) : O_RDONLY, 0o644);
       if (!fs.fstatSync(fd).isFile()) { fs.closeSync(fd); return -21n; }
       const h = dbOpened({ fd, write: mode > 0, kind, foreign: dbForeign(fd, kind), path: target, spent: 0 });
-      if (kind === 'main') did(tool, target, fs.fstatSync(fd).size);
+      if (kind === 'main') did(tool, target, 'розмір_файлу', fs.fstatSync(fd).size);
       return BigInt(h);
     }
     if (op === DB_DELETE) {                 // лише журнал: стерти саму базу SQLite не потрібно ніколи
@@ -349,7 +375,7 @@ function dbCall(op, a, b, p, l) {
     if (op === DB_SIZE) return BigInt(fs.fstatSync(f.fd).size);
     if (op === DB_CLOSE) {
       fs.closeSync(f.fd); dbFiles.delete(Number(a));
-      if (f.kind === 'main' && f.spent) did('бд.писати', f.path, f.spent);
+      if (f.kind === 'main' && f.spent) did('бд.писати', f.path, 'байтів', f.spent);
       return 0n;
     }
     if (!f.write) return BigInt(deny('бд.писати', '', 'файл відкрито лише для читання'));
@@ -406,9 +432,13 @@ if (isMainThread) {
 // стек ядра — 1 ГБ у цій памʼяті (нативно 4 ГБ): без нього глибока рекурсія була б падінням, а не помилкою мови; сторінки беруться лише торкнуті
 const memory = new WebAssembly.Memory({ initial: Math.min(16400, Math.floor(memMb * 16)), maximum: Math.floor(memMb * 16) });
 imports.env = { memory };
-const inst = new WebAssembly.Instance(mod, imports);
+let inst;
+try { inst = new WebAssembly.Instance(mod, imports); } catch (e) {
+  if (e instanceof WebAssembly.LinkError && /memory import/.test(e.message)) fail(2, `✗ --памʼять ${memMb} МБ: модуль просить більше (стек ядра сам займає 1 ГБ)`);
+  throw e;
+}
 mem = memory;
-const cfg = Buffer.from([path.resolve(progPath), progDir, progSha, now.toISOString().slice(0, 19) + '+00:00', crypto.randomBytes(6).toString('hex'),
+const cfg = Buffer.from([progPath, progDir, progSha, now.toISOString().slice(0, 19) + '+00:00', crypto.randomBytes(6).toString('hex'),
   `альбедо:${sha256(wasmBytes)}`, ownerSrc, seed, steps, size, tsize, real(HOME), String(progArgs.length), ...progArgs, ...allowed].join('\0'));
 const put = (b) => { const a = inst.exports.ngr_alloc(b.length); bytes(a, b.length).set(b); return a; };
 const cp = put(cfg), sp = put(srcBytes);

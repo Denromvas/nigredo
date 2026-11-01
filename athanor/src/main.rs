@@ -120,6 +120,7 @@ struct Opts {
     path: Option<String>,
     args: Vec<String>,
     dry: bool,
+    pre: bool,
 }
 
 fn parse_args() -> Result<Opts, String> {
@@ -135,6 +136,7 @@ fn parse_args() -> Result<Opts, String> {
         path: None,
         args: Vec::new(),
         dry: false,
+        pre: false,
     };
     let mut raw: Vec<String> = Vec::new();
     for a in std::env::args_os().skip(1) {
@@ -159,6 +161,7 @@ fn parse_args() -> Result<Opts, String> {
                 break;
             }
             "--слід" => o.trace = Some(it.next().ok_or("бракує значення")?),
+            "--до-запуску" => o.pre = true, // службове для Альбедо: усе, що до запуску; помилки друкує еталон
             "--сухо" => o.dry = true, // суд 9: --сухо тим самим виконавцем, що й справжній запуск
             "--зерно" => o.seed = int_arg(it.next())?,
             "--кроки" => {
@@ -317,6 +320,9 @@ fn run() -> i32 {
             }
             extra = Some(tp);
         }
+    }
+    if o.pre {
+        return 0; // програму виконає модуль під господарем
     }
     let key = match owner_key(&home) {
         Ok(k) => k,
