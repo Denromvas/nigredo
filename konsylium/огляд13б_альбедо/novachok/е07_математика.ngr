@@ -1,0 +1,7 @@
+🜂 「математика SQLite на ряді значень」 【「бд.читати:дані」】
+← ряд 「WITH RECURSIVE р(к) AS (SELECT 1 UNION ALL SELECT к+1 FROM р WHERE к<40), х(в) AS (SELECT к*0.37 FROM р) SELECT 」
+← хвіст 「 AS р FROM х」
+∀ 【「exp(в)」 「ln(в)」 「log(в)」 「log2(в)」 「sin(в)」 「cos(в)」 「tan(в)」 「atan(в)」 「asin(в/20)」 「acos(в/20)」 「sinh(в)」 「cosh(в)」 「tanh(в)」 「asinh(в)」 「acosh(в+1)」 「atanh(в/20)」 「pow(в,1.37)」 「sqrt(в)」 「degrees(в)」 「radians(в)」 「mod(в,0.7)」 「в*в/3.0」】 λфн 《
+  ← відповідь ☂ 🜔бд.читати 「дані/база.db」 ＋ ＋ ряд фн хвіст 【】 λe e
+  » 〔{фн}: {¿ ＝ τ відповідь 「рядок」 відповідь μ відповідь λзапис § запис 「р」}〕
+》

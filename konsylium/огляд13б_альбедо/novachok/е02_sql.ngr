@@ -1,0 +1,23 @@
+🜂 「функції SQLite: числа, текст, дати, JSON」 【「бд.читати:дані」】
+← запит λтекст ☂ 🜔бд.читати 「дані/база.db」 текст 【】 λe e
+» запит 「SELECT sqlite_version() AS в」
+» запит 「SELECT 1.0/3 AS a, 0.1+0.2 AS b, 1e300*1e10 AS c, -1e300*1e10 AS d」
+» запит 「SELECT round(2.675,2) AS a, round(2.5) AS b, round(-0.5) AS c, printf('%.2f',2.5) AS d」
+» запит 「SELECT CAST('1.5e3' AS REAL) AS a, CAST('1.7976931348623157e308' AS REAL) AS b, CAST('4.9e-324' AS REAL) AS c, 2.2250738585072014e-308 AS d」
+» запит 「SELECT printf('%.30f',0.1) AS a, printf('%e',12345.678) AS b, printf('%g',0.00001234) AS c, printf('%,d',1234567) AS d, printf('%5.3s|','абвгд') AS e」
+» запит 「SELECT CAST(1e19 AS INTEGER) AS a, 9223372036854775807+0 AS b, 9223372036854775807+1 AS c, 1e15 AS d, 1e16 AS e, 123456789012345678.0 AS f」
+» запит 「SELECT sqrt(2) AS a」
+» запит 「SELECT pow(2,0.5) AS a, exp(1) AS b, log(10) AS c, ln(10) AS d, log2(8) AS e」
+» запит 「SELECT sin(1) AS a, cos(1) AS b, tan(1) AS c, atan2(1,2) AS d, pi() AS e」
+» запит 「SELECT ceil(1.2) AS a, floor(-1.2) AS b, trunc(-1.7) AS c, mod(7.5,2) AS d, sign(-3) AS e」
+» запит 「SELECT lower('ЄЇA') AS a, upper('єїa') AS b, 'Є' LIKE 'є' AS c, 'A' LIKE 'a' AS d, length('🜂є') AS e, hex('є') AS f, unicode('є') AS g, char(1028) AS h」
+» запит 「SELECT json_extract('{"a":1.50}','$.a') AS a, json_object('a',1,'b','є') AS b, json_array_length('[1,2]') AS c, json_valid('{') AS d, json('[1, 2]') AS e」
+» запит 「SELECT value FROM json_each('[10,20]')」
+» запит 「SELECT date('2026-01-31','+1 month') AS a, strftime('%j %W %s','2026-11-01 12:00:00') AS b, julianday('2026-11-01') AS c, unixepoch('2026-11-01') AS d, datetime(0,'unixepoch') AS e」
+» запит 「SELECT group_concat(x) AS a, sum(x) AS b, total(x) AS c, avg(x) AS d FROM (SELECT 0.1 AS x UNION ALL SELECT 0.2)」
+» запит 「WITH RECURSIVE ряд(н) AS (SELECT 1 UNION ALL SELECT н+1 FROM ряд WHERE н<5) SELECT н, row_number() OVER (ORDER BY н DESC) AS р FROM ряд」
+» запит 「SELECT soundex('Robert') AS a」
+» запит 「SELECT 'a' REGEXP 'a' AS a」
+» запит 「SELECT quote(1.5) AS a, quote('є''') AS b, typeof(1e0) AS c, zeroblob(2) AS d, x'41' AS e」
+» запит 「SELECT max(1,2.5) AS a, min('a','b') AS b, iif(1,2,3) AS c, nullif(1,1) AS d, ifnull(NULL,4) AS e, instr('абв','в') AS f, substr('абвгд',2,2) AS g, replace('абв','б','х') AS h, trim(' є ') AS i, ltrim('  є') AS j」
+» запит 「PRAGMA table_info(sqlite_master)」

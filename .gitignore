@@ -43,3 +43,5 @@ athanor/target/
 albedo/c/дж/
 konsylium/*/власник/
 konsylium/*/protokol/run_*.out
+konsylium/**/*.ключ
+konsylium/**/*.дані

@@ -1,0 +1,5 @@
+🜂 「перетворення чисел у SQLite」 【「бд.читати:дані」】
+← запит λтекст ☂ 🜔бд.читати 「дані/база.db」 текст 【】 λe e
+» запит 「SELECT printf('%.30f',0.1) AS a, printf('%e',12345.678) AS b, printf('%g',0.00001234) AS c, printf('%,d',1234567) AS d」
+» запит 「SELECT printf('%!.20g',1.0/3) AS a, printf('%.3f',2.0005) AS b, printf('%10.4e',1e-300) AS c, CAST(0.1 AS TEXT) AS d, CAST(1e100 AS TEXT) AS e, CAST(1.0e-5 AS TEXT) AS f」
+» запит 「SELECT CAST('0.1' AS REAL)+CAST('0.2' AS REAL) AS a, '3.14abc'+0 AS b, CAST('  12' AS INTEGER) AS c, CAST('1e400' AS REAL) AS d」
