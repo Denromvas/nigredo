@@ -14,8 +14,10 @@ WASM = os.path.join(HERE, 'target', 'wasm32-unknown-unknown', 'release', 'albedo
 REF = os.path.join(HERE, '..', 'interpreter', 'ngr.py')
 RUN = {'--слід', '--зерно', '--кроки', '--розмір', '--слід-розмір'}           # їх знає й перевірка до запуску
 HOST_ONLY = {'--строк', '--памʼять', '--бд-запис'}                            # лише господар
+# дії, що нічого не виконують. Вирішує лише перше слово: еталон читає аргументи послідовно, і слово десь далі може бути значенням іншого прапорця
 SERVICE = {'--печатка', '--розбір', '--перевірити', '--схвалити', '--формат', '--перевірити-слід', '--перевірити-підпис', '--перевірити-ізоляцію',
-           '--отримати', '--ключ-автора', '--відбиток', '--памʼятка', '--памʼятка-коротка', '--help', '-h', '--версія'}
+           '--отримати', '--ключ-автора', '--відбиток', '--памʼятка', '--памʼятка-коротка', '--help', '-h'}
+RUNNERS = {'--сухо', '-e', '--тека', '--повторити', '--repl', '--тести', '--дозволи'}   # виконують програму, де б не стояли
 
 
 def refuse(what):
@@ -35,7 +37,12 @@ def main():
     argv = sys.argv[1:]
     cut = argv.index('--') if '--' in argv else len(argv)
     head, tail = argv[:cut], argv[cut + 1:]
-    if not head or any(a in SERVICE for a in head):
+    if not head:
+        os.execv(sys.executable, [sys.executable, REF, *argv])
+    if head[0] in SERVICE:
+        bad = next((a for a in argv if a in RUNNERS), None)
+        if bad:
+            refuse(bad)
         os.execv(sys.executable, [sys.executable, REF, *argv])
     pre, only, prog, i = [], [], None, 0
     while i < len(head):
@@ -53,7 +60,7 @@ def main():
             prog = head[i]
             i += 1
     if prog is None:
-        os.execv(sys.executable, [sys.executable, REF, *argv])
+        refuse('немає програми')
     # помилки до запуску (розбір, типи, печатка) друкує й записує в слід той самий виконавець, що й завжди: тексти ті самі, а сама програма ще не
     # виконується. Це не межа: що б він тут не сказав, дії перевіряє господар
     chk = subprocess.run([*native(), '--до-запуску', *pre, prog, '--', *tail])

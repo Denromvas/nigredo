@@ -126,8 +126,8 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
     // підпис автора перевіряє лише еталон: без нього програму не виконуємо, навіть як звичайну
     let lines: Vec<&str> = src.split('\n').collect();
     let last = if lines.last() == Some(&"") { lines.len().checked_sub(2) } else { lines.len().checked_sub(1) };
-    if lines.iter().any(|l| l.trim_start_matches(' ').starts_with("※ підпис ed25519:")) || last.map_or(false, |i| lines[i].starts_with('※') && uni::sig_like(lines[i])) {
-        say("альбедо: цього в модулі ще немає, програму не запущено (підпис автора)");
+    if last.map_or(false, |i| lines[i].starts_with('※') && uni::sig_like(lines[i])) {
+        say("альбедо: цього в модулі ще немає, програму не запущено (рядок підпису)");
         return 120;
     }
     let parsed = (|| -> Result<ast::Node, Back> {
@@ -143,14 +143,17 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
     let prog = match parsed {
         Ok(p) => p,
         Err(Back(why)) => {
-            say(&format!("альбедо: цього в модулі ще немає, програму не запущено ({})", why));
+            say(&format!("альбедо: цього в модулі ще немає, програму не запущено ({})", why.trim_end_matches(" — еталон")));
             return 120; // той самий код, що в Атанора: чого не вміє ядро, Альбедо не вдає
         }
     };
+    // зерно може бути більшим за i64: так само, як у main.rs, інакше воно мовчки ставало б нулем
+    let digits = f[7].trim_start_matches(['-', '+']).trim_start_matches('0');
+    let seed = if digits.is_empty() { int::Int::S(0) } else { int::Int::from_dec(f[7].starts_with('-'), digits) };
     let tr = trace::Trace::new(vec![Box::new(Host(trace))], vec![Box::new(Host(store))], Vec::new(), num(10) as u64);
     let mut it = interp::Interp {
         trace: tr,
-        rng: rng::Mt::seed(&int::Int::S(num(7))),
+        rng: rng::Mt::seed(&seed),
         argv: args.iter().map(|a| a.to_string()).collect(),
         protected: Default::default(),
         max_size: num(9) as u64,

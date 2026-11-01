@@ -2501,6 +2501,7 @@ def _verify(path, program=None):
         return f'✗ слід не прочитати: {os_err("слід", e, path)}', info
     if not lines:
         return '✗ слід порожній: жодного запису', info
+    host_seen = {'дій': 0, 'відмов': 0}
     for lineno, line in enumerate(lines, 1):
         try:
             rec = json.loads(line, object_pairs_hook=_no_dups)
@@ -2525,6 +2526,12 @@ def _verify(path, program=None):
             (denied if rec['подія'] == 'заборонено' else careful).append(
                 f'{rec.get("агент", "?")}: {rec.get("назва") or "делегування"} {clip(safe(str(what)), 120)}{sql} — '
                 f'{clip(safe(str(rec.get("причина") or "бракує прав")), 400)}{mod}')
+        if rec.get('подія') == 'господар відмовив':    # Альбедо: відмова межі, яку модуль міг і не записати. Це не слово модуля, тож тривога така сама, як «заборонено»
+            (quota_hits if rec.get('причина') in ('понад квоту', 'понад межу запису') else denied).append(
+                f'господар: {safe(str(rec.get("інструмент")))} {clip(safe(str(rec.get("шлях") or "")), 200)} — {clip(safe(str(rec.get("причина"))), 200)}')
+            host_seen['відмов'] += 1
+        if rec.get('подія') == 'дія господаря':
+            host_seen['дій'] += 1
         if rec.get('подія') == 'квоту вичерпано':      # і що саме не виконано (огляд 0.8.1б, Аудитор)
             quota_hits.append(f'{rec.get("агент", "?")}: {rec.get("квота", "?")} ({rec.get("чия", "?")})'
                               + (f' — {clip(safe(json.dumps(rec["аргументи"], ensure_ascii=False)), 200)}'
@@ -2643,7 +2650,9 @@ def _verify(path, program=None):
             '' if len(shut) == len(OS_GROUPS) else f'; решту ({os_acc([g for g in OS_GROUPS if g not in shut])}) '
                                                      f'відкрила печатка — там межі тримав інтерпретатор'))
     elif iso and iso.get('ядро') == 'wasm':
-        notes.append(f'межа: модуль WebAssembly, дії лише через господаря (закрито: {", ".join(safe(str(x)) for x in iso.get("закрито") or [])})')
+        notes.append(f'межа: модуль WebAssembly, дії лише через господаря (закрито: {", ".join(safe(str(x)) for x in iso.get("закрито") or [])}); '
+                     f'записів господаря: дій {host_seen["дій"]}, відмов {host_seen["відмов"]}')
+        info['господар'] = host_seen
     elif iso and iso.get('ядро') == 'не потрібне':
         notes.append('замок ОС: не потрібен — печатка відкриває мережу, процеси й запис (межі тримав інтерпретатор)')
     elif iso:

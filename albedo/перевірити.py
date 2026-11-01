@@ -82,7 +82,7 @@ with tempfile.TemporaryDirectory(prefix='альбедо-') as t:
     hog.write_text('🜂 「памʼять」 【「читати:дані」】\n» 1\n', encoding='utf-8')
     m = host(env, Z, hog, '--памʼять', '256', '--слід', str(t / 'п.jsonl'))
     held = max([int(x.split()[1]) for x in m.stdout.splitlines() if x.startswith('тримаю')] or [0])
-    check(m.returncode == 4 and held < 256, f'модуль, що їсть памʼять: стеля господаря (--памʼять 256), дістав {held} МБ', m.stdout[-200:] + m.stderr[-300:])
+    check(m.returncode == 4 and 64 <= held < 256, f'модуль, що їсть памʼять: стеля господаря (--памʼять 256) справді діє: дістав {held} МБ і зупинився', m.stdout[-200:] + m.stderr[-300:])
     for mark, what in (('', 'подія'), (' поле', 'поле «від_господаря»')):
         fg = p / 'підміна.ngr'
         fg.write_text(f'🜂 「підміна{mark}」 【「читати:дані」】\n» 1\n', encoding='utf-8')
@@ -96,7 +96,7 @@ with tempfile.TemporaryDirectory(prefix='альбедо-') as t:
           'модуль, що заливає сховище сліду: межу тримає господар', w.stderr[-300:])
     rec = [json.loads(x) for x in (t / 'з.jsonl').read_text(encoding='utf-8').splitlines()]
     check(sum(x['подія'] == 'дія господаря' and x['інструмент'] == 'файл.читати' for x in rec) == 1, 'дозволене читання господар записав сам, хоч злий модуль про нього змовчав', str(rec)[:400])
-    check(sum(x['подія'] == 'господар відмовив' for x in rec) == 11, 'кожну відмову записав сам господар: модуль її не прибере', str(rec)[:400])
+    check(sum(x['подія'] == 'господар відмовив' for x in rec) == 12, 'кожну відмову записав сам господар: модуль її не прибере', str(rec)[:400])
     # база: SQLite живе в модулі, тож сторож у sqlite.rs для межі не рахується — лише файли в господарі
     b, c = p / 'дані' / 'б.db', p / 'дані' / 'в.db'
     q = sqlite3.connect(b)
@@ -228,7 +228,7 @@ with tempfile.TemporaryDirectory(prefix='альбедо-') as t:
     check(x.returncode == 3 and 'двічі' in x.stderr, 'той самий ключ двічі у файлі власника — відмова, як в еталона', x.stdout + x.stderr)
     # обгортка: повз модуль нічого не йде мовчки, а межі задаються звичайним запуском
     WRAP = [sys.executable, str(D / 'ngr_альбедо.py')]
-    wenv = owner({'дозволено': [f'читати:{p}/дані']})
+    wenv = owner({'дозволено': ['жереб', f'читати:{p}/дані']}, 'власник-обгортки')
     for flags in (['--сухо', str(ask)], ['-e', '🜂 【】\n» 1'], ['--тека', str(p), str(ask)]):
         x = subprocess.run([*WRAP, *flags], capture_output=True, text=True, env=wenv)
         check(x.returncode == 120 and x.stdout == '', f'обгортка: {flags[0]} ще немає в модулі — відмова, а не тихий запуск еталоном', x.stdout + x.stderr)
@@ -246,5 +246,146 @@ with tempfile.TemporaryDirectory(prefix='альбедо-') as t:
     ar.write_text('🜂 「аргументи」 【】\n» ⌂\n', encoding='utf-8')
     x = subprocess.run(['node', str(HOST), str(W), str(ar), '--', 'а б', '--зерно', 'в\nг'], capture_output=True, text=True, env=owner({'дозволено': []}))
     check(x.returncode == 0 and x.stdout == '【「а б」 「--зерно」 「в\\nг」】\n', 'аргументи програми доходять цілими, прапорці після «--» — не господаря', x.stdout + x.stderr)
+    # ---- огляд 13б: читання тексту. Усі проби — про звичайні тексти програм; модуль тут чесний, а питання одне: що господар вважає печаткою
+    def reading(text, raw=None):
+        f = p / 'читання.ngr'
+        f.write_bytes(raw if raw is not None else text.encode('utf-8'))
+        r = subprocess.run(['node', str(HOST), '--читання'], input=str(f) + '\n', capture_output=True, text=True)
+        return json.loads(r.stdout)
+    tools = lambda text: [(g['tool'], g['scope'], g['quota']) for g in reading(text)['печатка']]
+    check(tools('🜂 「х」\n【「читати:/」】\n» 1\n') == [], 'кінець рядка закінчує печатку: перелік на наступному рядку — не права')
+    check(tools('🜂 「х」 ※ коментар\n【「читати:/」】\n') == [], 'те саме після коментаря')
+    check(tools('🜂 「х」 【\n「читати:а」\n「читати:б」\n】\n» 1\n') == [('файл.читати', 'а', None), ('файл.читати', 'б', None)], 'перелік у кількох рядках — той самий перелік')
+    check(tools('¦🜂 【「читати:а」】 ¦ » 1') == [('файл.читати', 'а', None)], '«¦» як кінець рядка і перед печаткою, і після неї')
+    check(tools('🜂 「а\\」 【」 【「читати:а」】\n') == [('файл.читати', 'а', None)], 'екранована лапка не закриває намір')
+    check(tools('🜂 【「читати:а\\qб」】\n') == [('файл.читати', 'а\\qб', None)], 'невідоме екранування лишається, як у лексері')
+    check(tools('🜂 【「читати:а ≤ 3」 「писати список:б≤2」】\n') == [('файл.читати', 'а', 3), ('файл.писати', 'б', 2), ('файл.список', 'б', 2)], 'квота: пробіли навколо ≤ і кілька інструментів, як split_quota')
+    for bad_seal, what in (('🜂 【「читати:а≤0」】\n', 'квота ≤0'), ('🜂 【「читати:а≤1≤2」】\n', 'дві квоти'), ('🜂 【「читати:а≤1б」】\n', 'квота не в кінці'),
+                           ('🜂 「х」 】\n', 'після наміру не перелік'), ('🜂 【「а」 ⊢】\n', 'у переліку не рядок'), ('🜂 【「а」】 ⊢\n', 'щось після переліку'),
+                           ('🜂 「х\n', 'незакритий рядок'), ('🜂 【「а」\r】\n', 'сам по собі \\r')):
+        check('відмова' in reading(bad_seal), f'господар відмовляється читати: {what}', str(reading(bad_seal)))
+    check(reading('\ufeff🜂 【「читати:а」】\n')['печатка'] is None, 'мітка порядку байтів перед печаткою: печатки немає, як у мові')
+    check(reading('※ 🜂 【「читати:а」】\n🜂 「б」 【】\n')['печатка'] == [], 'коментар не печатка')
+    check(reading('🜂 【】\n» 「\n※ підпис ed25519:」\n»1\n')['підпис'] is False and reading('🜂 【】\n※ підпис ed25519:а\n')['підпис'] is True, 'рядок підпису — лише коментар, а не текст у рядку')
+    multi = p / 'багаторядковий.ngr'
+    multi.write_text('🜂 「х」 【】\n» 「а\n※ підпис ed25519:б\nв」\n» 1\n', encoding='utf-8')
+    x = subprocess.run([*WRAP, str(multi)], capture_output=True, text=True, env=owner({'дозволено': []}))
+    check(x.returncode == 0 and '※ підпис' in x.stdout, 'текст, схожий на підпис, у рядку не заважає запуску', x.stdout + x.stderr)
+    guard = p / 'гард.ngr'
+    guard.write_text('🜂 「х」 【】\n» ‖ 【λ _ 1 λ _ 2】\n', encoding='utf-8')
+    x = subprocess.run([*WRAP, str(guard)], capture_output=True, text=True, env=owner({'дозволено': []}))
+    check('— еталон' not in x.stdout + x.stderr, 'відмова модуля не обіцяє еталона: запасного шляху немає', x.stdout + x.stderr)
+    imports = lambda text: reading(text)['імпорти']
+    check(imports('🜂 【】\n» 「⊃ 「а.ngr」\n') == [] and imports('🜂 【】\n» 〔⊃ 「а.ngr」〕\n') == [] and imports('🜂 【】\n※ ⊃ 「а.ngr」\n') == [],
+          'імпорт у рядку, тексті шаблону чи коментарі — не імпорт')
+    check(imports('🜂 【】\n» 〔{⊃ 「а.ngr」 【「ф」】}〕\n') == ['а.ngr'], 'дірка шаблону — код: імпорт у ній господар бачить, як лексер')
+    check('відмова' in reading('🜂 【】\n» 〔{1\n}〕\n'), 'дірка шаблону — в одному рядку')
+    check(imports('🜂 【】\n» 〔а\\{⊃ 「а.ngr」\\}〕\n') == [], 'екрановані дужки шаблону — лише текст')
+    nonutf = p / 'не_utf.ngr'
+    nonutf.write_bytes('🜂 【】\n» 「'.encode() + b'\xff' + '」\n'.encode())
+    x = host(owner({'дозволено': []}), W, nonutf)
+    check(x.returncode == 2 and 'UTF-8' in x.stderr, 'текст не в UTF-8 господар не читає: заміна байтів дала б іншу програму', x.stdout + x.stderr)
+    # «~» розгортається лише в записах власника: у печатці це ім'я теки, як у мові
+    tilde = p / 'тільда.ngr'
+    tilde.write_text('🜂 「х」 【「читати:~/дані」】\n» 1\n', encoding='utf-8')
+    plain_seal = p / 'без_тільди.ngr'
+    plain_seal.write_text('🜂 「х」 【「читати:дані」】\n» 1\n', encoding='utf-8')
+    home_env = dict(owner({'дозволено': ['читати:~/дані']}), HOME=str(p))
+    x, x0 = host(home_env, W, tilde), host(home_env, W, plain_seal)
+    check(x.returncode == 3 and x0.returncode == 0, '«~» у печатці — не дім, а в записі власника — дім', x.stderr + x0.stderr)
+    lang = subprocess.run([*REF, '--печатка', '--json', str(tilde)], capture_output=True, text=True, env=home_env)
+    check(json.loads(lang.stdout or '{}').get('в_межах') is False, 'контроль: мова читає так само', lang.stdout[:300])
+    # файл власника: те, що еталон відкидає, не дає прав і тут
+    for rights, what in (({'дозволено': ['файл.читати≤0']}, 'квота ≤0'), ({'дозволено': ['файл.читати≤1≤2']}, 'дві квоти'), ({'дозволено': 'файл.читати'}, 'рядок замість списку'),
+                         ({'дозволено': [1]}, 'не рядок у списку'), ({'для_тек': [f'{p}']}, '«для_тек» — не словник'), ({'для_тек': {str(p): 'файл.читати'}}, '«для_тек»: рядок замість списку'),
+                         ({'для_програм': {'а' * 64: ['жереб'], 'А' * 64: ['час']}}, 'той самий відбиток двічі'), ({'для_авторів': {'ключ': {'дозволи': []}}}, 'ключ автора не простої форми'),
+                         ({'для_авторів': {'ed25519:' + 'a' * 64: {}}}, 'автор без дозволів'),
+                         ({'для_авторів': {'ed25519:' + 'a' * 64: {'дозволи': [], 'ще': 1}}}, 'зайве поле автора'),
+                         ({'джерела_модулів': ['example.com']}, 'джерело не github.com'), ({'джерела_модулів': 'github.com'}, 'джерела — рядок')):
+        x = host(owner(rights), W, ask)
+        check(x.returncode == 3 and 'дозволи власника' in x.stderr, f'файл власника відкинуто: {what}', x.stdout + x.stderr)
+    broken = owner({})
+    (pathlib.Path(broken['NIGREDO_HOME']) / 'дозволи.json').write_bytes(b'{"\xff": []}')
+    x = host(broken, W, ask)
+    check(x.returncode == 3 and 'UTF-8' in x.stderr and 'Error' not in x.stderr, 'файл власника не в UTF-8 — відмова, а не падіння', x.stderr)
+    # «для_програм» із модулями: той самий відбиток, що друкує --схвалити, і повторний імпорт теж рахується
+    (p / 'чисті').mkdir()
+    (p / 'чисті' / 'м.ngr').write_text('🜂 「перший」 【】\n← додай λх ＋ х 1\n', encoding='utf-8')
+    (p / 'чисті' / 'другий.ngr').write_text('🜂 「другий」 【】\n⊃ 「м.ngr」 【「додай」】\n← ще λх додай х\n', encoding='utf-8')
+    both = p / 'обидва.ngr'
+    both.write_text('🜂 「обидва」 【「читати:дані」】\n⊃ 「чисті/м.ngr」 【「додай」】\n⊃ 「чисті/другий.ngr」 【「ще」】\n» 🜔читати 「дані/а.txt」\n', encoding='utf-8')
+    plain_owner = owner({'дозволено': []})
+    ap = subprocess.run([*REF, '--схвалити', str(both)], capture_output=True, text=True, env=plain_owner)
+    entry = {ap.stdout.split()[1]: [f'читати:{p}/дані']}
+    x = host(owner({'для_програм': entry}), W, both)
+    check(ap.returncode == 0 and x.returncode == 0, 'запис --схвалити для програми з модулями діє в господарі так само', ap.stdout + ap.stderr + x.stderr)
+    (p / 'чисті' / 'другий.ngr').write_text('🜂 「другий 2」 【】\n⊃ 「м.ngr」 【「додай」】\n← ще λх додай х\n', encoding='utf-8')
+    check(host(owner({'для_програм': entry}), W, both).returncode == 3, 'змінено модуль — схвалення більше не діє')
+    # модуль читає господар один раз, а записує, що саме читав
+    one = p / 'один.ngr'
+    one.write_text('🜂 「один」 【】\n⊃ 「чисті/м.ngr」 【「додай」】\n» додай 1\n', encoding='utf-8')
+    x = host(owner({'дозволено': []}), W, one, '--слід', str(t / 'мод.jsonl'))
+    mrec = [json.loads(z) for z in (t / 'мод.jsonl').read_text(encoding='utf-8').splitlines()]
+    seen_mod = [z for z in mrec if z['подія'] == 'дія господаря' and z['інструмент'] == 'модуль']
+    check(x.returncode == 0 and mrec[0]['подія'] == 'початок' and len(seen_mod) == 1 and seen_mod[0]['шлях'].endswith('чисті/м.ngr'),
+          'читання модуля в сліді від господаря, а перший запис лишається «початок»', str(mrec)[:600])
+    # свідка читає --перевірити-слід: відмову господаря не пропустить той, хто дивиться лише на «заборонено»
+    # чесне ядро теж доходить до відмови господаря: файл із назвою журналу, що журналом не є. Програма впаде помилкою, тож слід цілий, і читач мусить побачити відмову
+    jd = p / 'дані' / 'пиши' / 'ч.db'
+    q = sqlite3.connect(jd)
+    q.execute('CREATE TABLE т(а)')
+    q.commit()
+    q.close()
+    fake = jd.with_name('ч.db-journal')
+    fake.write_bytes(b'tse ne zhurnal')
+    pj = p / 'журнал.ngr'
+    pj.write_text('🜂 「журнал」 【「бд.читати бд.писати:дані/пиши」】\n» 🜔бд.писати 「дані/пиши/ч.db」 「INSERT INTO т VALUES (1)」 【】\n', encoding='utf-8')
+    x = host(env2, W, pj, '--слід', str(t / 'ж.jsonl'))
+    v = subprocess.run([*REF, '--перевірити-слід', str(t / 'ж.jsonl'), str(pj), '--json'], capture_output=True, text=True, env=env2)
+    vj = json.loads(v.stdout or '{}')
+    check(x.returncode == 1 and fake.read_bytes() == b'tse ne zhurnal', 'чужий файл із назвою журналу цілий, програма дістала помилку', x.stdout + x.stderr)
+    check(vj.get('цілий') is True and (vj.get('господар') or {}).get('відмов', 0) >= 1 and any(z.startswith('господар: ') for z in vj.get('заборонено', [])),
+          '--перевірити-слід показує відмову господаря серед «заборонено» й рахує його записи', v.stdout[:900])
+    v = subprocess.run([*REF, '--перевірити-слід', str(t / 'ж.jsonl'), str(pj)], capture_output=True, text=True, env=env2)
+    check('записів господаря' in v.stdout and 'господар: ' in v.stdout, 'те саме в тексті для людини', v.stdout[:900])
+    fake.unlink()
+    x = host(env2, W, pj, '--слід', str(t / 'ж2.jsonl'), '--бд-запис', '100')
+    v = subprocess.run([*REF, '--перевірити-слід', str(t / 'ж2.jsonl'), str(pj), '--json'], capture_output=True, text=True, env=env2)
+    vj = json.loads(v.stdout or '{}')
+    check(x.returncode == 1 and vj.get('цілий') is True and not vj.get('заборонено') and any('понад межу запису' in z for z in vj.get('квоту_вичерпано', [])),
+          'межа --бд-запис — оголошена межа, а не «заборонено»', x.stderr + v.stdout[:900])
+    # прапорці: значення перевіряються, бо NaN вимикав межу мовчки
+    for args, what in ((['--бд-запис', 'abc'], 'число'), (['--строк', 'abc'], 'число'), (['--памʼять', 'abc'], 'число'), (['--строк', '0'], 'межі'), (['--строк', '3000000'], 'межі'),
+                       (['--памʼять', '5000'], 'межі'), (['--кроки', '-1'], 'межі'), (['--зерно', 'x'], 'ціле')):
+        x = subprocess.run(['node', str(HOST), *args, str(W), str(ask)], capture_output=True, text=True, env=wenv)
+        check(x.returncode == 2 and x.stdout == '' and args[0] in x.stderr and 'Error' not in x.stderr, f'прапорець {" ".join(args)}: відмова до запуску', x.stdout + x.stderr)
+    x = subprocess.run(['node', str(HOST), str(W), str(ask), '--строк'], capture_output=True, text=True, env=wenv)
+    check(x.returncode == 2 and 'бракує значення' in x.stderr, 'прапорець без значення — відмова', x.stderr)
+    x = subprocess.run(['node', str(HOST), '--памʼять', '1100', str(W), str(ask)], capture_output=True, text=True, env=wenv)
+    check(x.returncode == 0 and 'упав' not in x.stderr, '--памʼять трохи більша за стек ядра: працює', x.stdout + x.stderr)
+    cwd2 = t / 'порожня'
+    cwd2.mkdir()
+    x = subprocess.run(['node', str(HOST), str(W), str(ask), '--слід', '-'], capture_output=True, text=True, env=wenv, cwd=cwd2)
+    check(x.returncode == 0 and not list(cwd2.iterdir()) and '"подія": "початок"' in x.stderr, '--слід - друкує слід, а не створює файл «-»', x.stderr[:300])
+    huge = p / 'зерно.ngr'
+    huge.write_text('🜂 「зерно」 【「жереб」】\n» 🜔жереб 1000000\n» 🜔жереб 1000000\n', encoding='utf-8')
+    big = '1' + '0' * 40
+    x, y2 = (subprocess.run(c, capture_output=True, text=True, env=wenv) for c in (['node', str(HOST), str(W), str(huge), '--зерно', big], [*REF, '--зерно', big, str(huge)]))
+    z2 = subprocess.run(['node', str(HOST), str(W), str(huge), '--зерно', '0'], capture_output=True, text=True, env=wenv)
+    check(x.returncode == 0 and x.stdout == y2.stdout, 'зерно більше за i64: той самий вивід, що в еталона', x.stdout + y2.stdout + x.stderr)
+    check(z2.stdout != x.stdout, 'контроль: зерно 0 дає інше: велике не стало нулем')
+    long_ = p / 'довгий.ngr'
+    long_.write_text( '🜂 「довгий」 【】\n' + '» 「рядок」\n' * 20000, encoding='utf-8')
+    pipe = subprocess.run(f'node {HOST} {W} {long_} | head -1 >/dev/null; echo ${{PIPESTATUS[0]}}', shell=True, executable='/bin/bash', capture_output=True, text=True, env=wenv)
+    check('упав' not in pipe.stderr and pipe.stdout.strip() in ('0', '1'), 'читач закрив трубу: це не падіння модуля', pipe.stdout + pipe.stderr[-300:])
+    # обгортка: перше слово вирішує, що це за запуск; виконавця не обходить жодне сполучення
+    for flags, what in ((['--печатка', '--repl'], 'службове з REPL'), (['--перевірити', '--тести', str(ask)], 'службове з тестами'), (['--печатка', str(ask), '--сухо'], 'службове із сухим'), (['--repl'], 'REPL'),
+                        ([str(ask), '--печатка'], 'службове слово після програми')):
+        x = subprocess.run([*WRAP, *flags], capture_output=True, text=True, env=wenv, stdin=subprocess.DEVNULL)
+        check(x.returncode == 120 and x.stdout == '', f'обгортка: {what} — відмова, а не тихий запуск еталона', x.stdout + x.stderr)
+    tr = t / 'значення-прапорця'
+    tr.mkdir()
+    x = subprocess.run([*WRAP, '--слід', '--печатка', str(ask)], capture_output=True, text=True, env=wenv, cwd=tr)
+    check(x.returncode == 0 and (tr / '--печатка').exists(), '«--печатка» як значення --слід — ім\'я файлу: запуск іде через модуль, а не еталон', x.stdout + x.stderr)
 print('\nусе гаразд' if not bad else f'\nпровалено: {bad}')
 sys.exit(1 if bad else 0)
