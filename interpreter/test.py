@@ -14,6 +14,7 @@ import pathlib
 import re
 import shlex
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -27,6 +28,20 @@ DATA = ROOT / 'examples' / 'дані'
 # NGR_TEST_BIN=шлях — ті самі тести іншим виконавцем (Атанор: athanor/target/<ціль>/release/athanor)
 NGR_CMD = [os.environ['NGR_TEST_BIN']] if os.environ.get('NGR_TEST_BIN') else [sys.executable, str(NGR)]
 ATHANOR = os.environ.get('NGR_TEST_BIN') and 'альбедо' not in os.environ['NGR_TEST_BIN']   # Альбедо нічого не передає еталону
+
+
+def _sqlite_has(module):
+    """Чи є в системній libsqlite3 віртуальна таблиця (модуль збірки). Без SQLITE_ENABLE_DBPAGE_VTAB (так на Ubuntu 24.04)
+    sqlite_dbpage немає зовсім: запит до неї — «немає такої таблиці», тож перевіряємо цю відмову, а саму сторожу
+    sqlite_dbpage — лише там, де модуль є (поведінка бд.* на іншій збірці SQLite — поза обіцянкою, SPEC §9)."""
+    try:
+        sqlite3.connect(':memory:').execute(f'SELECT 1 FROM {module} LIMIT 0')
+        return True
+    except sqlite3.Error:
+        return False
+
+
+SQLITE_DBPAGE = _sqlite_has('sqlite_dbpage')
 
 
 def run(args, env):
@@ -204,6 +219,10 @@ def main():
         nonlocal failed
         print(f'✓ {name}' if ok else f'✗ {name}\n{detail}')
         failed += not ok
+
+    if not SQLITE_DBPAGE:
+        print(f'⚠ SQLite {sqlite3.sqlite_version} зібрано без sqlite_dbpage: сторожу сирих сторінок не перевірено, лише відмову '
+              '«немає такої таблиці» (на збірці з модулем — повна перевірка)')
 
     for src in sorted((ROOT / 'examples').glob('*.ngr')):
         expected = src.with_suffix('.out')
@@ -1336,7 +1355,6 @@ def main():
     # суд 9б (атаки обома виконавцями): заглушка random() була «детермінованою» — CREATE … AS (random()) проходив і
     # писав схему, якої SQLite не відкриє; а файл — не база чи пошкоджена схема давали код 4. CHECK недетерміновані
     # функції SQLite пускає — і ми так само (а годинник у ньому — відмова)
-    import sqlite3
     nd_, bad_, gen_ = (f'{DATA}/звіти/{n}' for n in ('не_база9б.db', 'схема_зламана9б.db', 'недет9б.db'))
     pathlib.Path(nd_).write_text('не база даних, а текст, довший за заголовок SQLite: ' + 'ж' * 80, encoding='utf-8')
     for f_ in (bad_, gen_):
@@ -1575,11 +1593,14 @@ def main():
           and o_.count('(random) без права «жереб» (з квотою «жереб≤N» — лише 🜔жереб); запит і не виконувався') == 1
           and o_.count('і годинник чи випадковість SQLite (дата з даних, «зараз», гілка тригера) не перевірено') == 2      # суд 12, Практик
           and o_.count('таблиця-функція pragma_database_list') == 1 and o_.count('запит і не виконувався') == 2
-          and o_.count('рядок отримав би rowid 2⁶³−1') == 2 and o_.count('сирі сторінки бази (sqlite_dbpage)') == 1
+          and o_.count('рядок отримав би rowid 2⁶³−1') == 2
+          and (o_.count('сирі сторінки бази (sqlite_dbpage)') == 1 if SQLITE_DBPAGE   # без модуля в збірці SQLite — лише
+               else o_.count('бд.писати: немає такої таблиці (no such table: sqlite_dbpage)') == 1)   # «немає такої таблиці»
           and o_.count('тригер бази зупинив запит: «запобіжна відмова (x)»') == 1
           and o_.splitlines().count('1') == 2 and o_.splitlines().count('0') == 3
           and 'у межах прав' not in o_ and not os.path.exists(f'{DATA}/звіти/приєднана81.db')
-          and all('⚠ спроб поза правами («заборонено»): 8' in v_ and 'дія SQLite поза дозволеним: ATTACH' in v_
+          and all(f'⚠ спроб поза правами («заборонено»): {8 if SQLITE_DBPAGE else 7}' in v_
+                  and 'дія SQLite поза дозволеним: ATTACH' in v_
                   and 'запобіжних відмов (так у самій базі; запит не виконано' in v_
                   and 'запит «INSERT INTO b(x) VALUES (1)»' in v_ for v_ in (res81[1], res81[3])),
           'SQLite: запобіжна відмова — лише коли в запиті заборонених дій не знайдено (огляд 0.8.1), а для sqlite_sequence — '
@@ -1967,7 +1988,7 @@ def main():
         with sqlite3.connect(vt81е['стат']) as c_:
             c_.executescript("CREATE TABLE t(a); CREATE VIRTUAL TABLE st USING dbstat")
         with sqlite3.connect(vt81е['пейдж']) as c_:
-            c_.executescript("CREATE TABLE t(a); CREATE VIRTUAL TABLE pg USING sqlite_dbpage")
+            c_.executescript("CREATE TABLE t(a)" + ("; CREATE VIRTUAL TABLE pg USING sqlite_dbpage" if SQLITE_DBPAGE else ''))
         with sqlite3.connect(vt81е['дерево']) as c_:
             c_.executescript("CREATE VIRTUAL TABLE r USING rtree(id, x0, x1); INSERT INTO r VALUES (1, 0, 1)")
 
@@ -2003,14 +2024,18 @@ def main():
     run_, quota_, dry_ = out81е[0], out81е[1], out81е[2]
     deny81е = [f'✗ бд.писати: {vdbst_.format("dbstat")}', f'✗ бд.писати: {vdbst_.format("pg")}',
                f'✗ бд.читати: {vdbst_.format("dbstat")}', f'✗ бд.читати: {vdbst_.format("st")}']   # рядки 1,2,3,5 (☂ дає ✗)
+    rows81е = [1, 2, 3, 5]
+    if not SQLITE_DBPAGE:            # збірка SQLite без sqlite_dbpage: таблиці pg немає — запуск каже це, решта рядків та сама
+        del deny81е[1], rows81е[1]
     check(out81е[:3] == out81е[3:]                        # Атанор = еталон у всіх трьох режимах
-          and [run_[1], run_[2], run_[3], run_[5]] == deny81е          # модуль і схемна vtab — заборонено
-          and [quota_[1], quota_[2], quota_[3], quota_[5]] == deny81е  # так само під вичерпаною квотою (не «вичерпано квоту»)
-          and [dry_[1], dry_[2], dry_[3], dry_[5]] == deny81е          # і в --сухо (не «✓ без позначки»)
+          and [run_[i_] for i_ in rows81е] == deny81е                  # модуль і схемна vtab — заборонено
+          and [quota_[i_] for i_ in rows81е] == deny81е                # так само під вичерпаною квотою (не «вичерпано квоту»)
+          and [dry_[i_] for i_ in rows81е] == deny81е                  # і в --сухо (не «✓ без позначки»)
+          and (SQLITE_DBPAGE or run_[2] == '✗ бд.писати: немає такої таблиці (no such table: pg)')
           and run_[4] == '✓ 【『「x」 7』】' and run_[6] == '✓ 【『「n」 1』】' and run_[7] == '✓ 【『「v」 5』】'
           and run_[0] == '✓ 1' and quota_[0] == '✓ 1'                  # перший запис бере квоту ≤1
           and res81е[1] is None and res81е[7] is True                  # --сухо лишає всі бази байт у байт
-          and '(«заборонено»): 4 ' in res81е[2],                       # слід: 4 спроби поза правами (рядки 1,2,3,5)
+          and f'(«заборонено»): {len(rows81е)} ' in res81е[2],         # слід: спроби поза правами (рядки 1,2,3,5)
           'SQLite: модуль під назвою справжньої таблиці (temp.dbstat) і схемна CREATE VIRTUAL TABLE на модулі не з даних '
           '(st USING dbstat, pg USING sqlite_dbpage) — «заборонено: віртуальна таблиця» за планом у запуску, під квотою й '
           'у --сухо однаково (Атанор = еталон); справжня таблиця dbstat, R-Tree і json_each — ✓; --сухо не змінює баз '
@@ -4031,8 +4056,18 @@ def main():
           cv_.stdout[:300] + cv_.stderr[-200:] + cr_.stdout[-200:] + cr_.stderr[-200:] + cp_.stdout[-300:]
           + cg_.stderr[-200:] + str(seal_bad_) + str(cj_bad_) + av_.stdout[:200] + ar_.stdout[-200:] + ar_.stderr[-200:]
           + vv_.stdout[-300:] + vv_.stderr[-300:] + f' негативні: {nv_.returncode} {np_.returncode}')
+    # перевірка в копії звіряє модуль із копії, а не з місця, де писали слід (2026-11-07, ПК: на телефоні оригінал
+    # лежав на старому шляху, тож «✓» у копії нічого не доводив). Змінений лише в копії модуль — код 1, «тепер ІНШИЙ»
+    with open(sl_ / 'бібліотека.ngr', 'a', encoding='utf-8') as f_:
+        f_.write('\n')
+    mv_ = run(['--перевірити-слід', str(sl_ / 'слід.jsonl'), str(sl_ / 'програма.ngr')], cenv_)
+    mr_ = run(['--повторити', str(sl_ / 'слід.jsonl'), str(sl_ / 'програма.ngr')], cenv_)
+    check(mv_.returncode == 1 and 'модуль «бібліотека.ngr» тепер ІНШИЙ' in mv_.stdout and mr_.returncode != 0,
+          'набір сумісності: слід перевіряє модуль поруч із програмою, яку дали (копія в іншій теці), а не за шляхом '
+          'машини, де писали слід — модуль, змінений лише в копії, — код 1 і для перевірки, і для повтору',
+          mv_.stdout[:400] + mv_.stderr[-200:] + mr_.stdout[-200:] + mr_.stderr[-200:])
 
-    sheet = (ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
+    sheet =(ROOT / 'ДЛЯ_АГЕНТІВ.md').read_text(encoding='utf-8')
     check(sheet.strip() == run(['--памʼятка'], env).stdout.strip(), 'ДЛЯ_АГЕНТІВ.md збігається з інтерпретатором',
           'перегенеруйте: ngr --памʼятка > ДЛЯ_АГЕНТІВ.md')
     programs = [b for b in re.findall(r'```\n(🜂.*?)```', sheet, re.S) if '\n' in b.strip()]

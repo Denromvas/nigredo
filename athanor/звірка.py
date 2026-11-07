@@ -161,7 +161,11 @@ def compare(prog, timeout):
             diffs.append(f'слід (запис {first + 1}):\n  атанор: {show(ta)}\n  еталон: {show(tp)}'
                          + ('' if ta[1] == tp[1] else '\n  сховище .дані різне'))
         text = open(prog, encoding='utf-8', errors='replace').read()
-        if diffs and any(x in text for x in ('🜔час', "'now'", 'CURRENT_', 'random(')):    # і годинник та випадкове самого SQLite
+        # межа запиту SQLite в 30 с — за годинником: на повільній машині виконавець, що впирається в неї раніше за --кроки,
+        # дає помилку, яку ловить ☂, а інший — фатальний ліміт кроків (р8_1в на телефоні: Атанор 0, еталон 1; на ПК обидва 1)
+        wall = any('довший за 30 с'.encode() in x for x in (a[1], a[2], p[1], p[2])) or any(
+            'довший за 30 с' in json.dumps(t, ensure_ascii=False) for t in (a[3], p[3]) if t)
+        if diffs and (wall or any(x in text for x in ('🜔час', "'now'", 'CURRENT_', 'random('))):   # і годинник та випадкове SQLite
             return prog, 'годинник', '\n'.join(diffs), (a[4], p[4])   # поведінка залежить від секунд — не порівнюється
         return prog, 'різниця' if diffs else 'так', '\n'.join(diffs), (a[4], p[4])
     finally:

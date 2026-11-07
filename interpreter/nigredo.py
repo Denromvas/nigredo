@@ -2588,7 +2588,15 @@ def _verify(path, program=None):
         if not real.startswith(str(head.get('sha256'))):
             return f'✗ слід цілий, але від ІНШОЇ програми ({about})', info
         texts = None
+        # локальний модуль — у теці програми (⊃ лише з неї й підтек), тож шукаємо його поруч із програмою, яку
+        # перевіряємо, а не за абсолютним шляхом машини, де писали слід: перевірка й повтор від теки не залежать
+        # (набір сумісності 1.0; на телефоні оригінал лежав на старому місці й ховав ваду). Модуль поза текою — як було
+        old_root, new_root = str(head.get('тека') or ''), os.path.dirname(os.path.abspath(program))
         for rel, path, sha in modules:              # програма — це й усі її модулі
+            if path and old_root and not remote_path(rel):
+                inner = os.path.relpath(str(path), old_root)
+                if inner != '..' and not inner.startswith('..' + os.sep):
+                    path = os.path.join(new_root, inner)
             if remote_path(rel):  # модуль з мережі: файл сліду, сховище, СЛІД.дані (модулі з git, §9.3)
                 if texts is None:
                     texts = trace_modules(path_)
