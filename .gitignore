@@ -45,3 +45,6 @@ konsylium/*/власник/
 konsylium/*/protokol/run_*.out
 konsylium/**/*.ключ
 konsylium/**/*.дані
+# суд 14: входи лексера — текст самого лексера ×N (до 570 КБ, відтворюються), локально
+konsylium/суд14_вартість/*/дані/
+konsylium/суд14_вартість/skeptyk/вхід/

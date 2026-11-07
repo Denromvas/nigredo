@@ -132,6 +132,8 @@ pub struct Interp {
     pub protected: Vec<String>,
     pub max_size: u64,
     pub alloc: u64,
+    /// Останній `§` повернув копію (capc), а не наявний елемент: така копія платить повний розмір (суд 14).
+    pub fresh: bool,
     pub steps_left: i64,
     pub cwd: String,
     pub out: Box<dyn Write>,
@@ -305,6 +307,15 @@ impl Interp {
             '＋' | '✎' | '⊏' => own + 1,
             _ => res.n,
         }
+    }
+
+    /// `spent` з урахуванням копії `§`: елемент, який `§` скопіював зі зниженою впевненістю, — нові дані, повний розмір.
+    #[inline(always)]
+    fn spent_of(&mut self, res: &V, g: char) -> u64 {
+        if g == '§' && std::mem::take(&mut self.fresh) {
+            return res.n;
+        }
+        Self::spent(res, g)
     }
 
     /// Копія зі зниженою впевненістю (capc) у `¿ ☂ ↻ Σ`: справжні нові дані — повний логічний розмір (еталон: copied).
@@ -485,7 +496,7 @@ impl Interp {
                         self.strict(g, &a, pos)?
                     }
                 };
-                let spent = Self::spent(&r, g);
+                let spent = self.spent_of(&r, g);
                 self.sized_as(r, g, pos, spent)
             }
             K::Call(_, hops, slot, args) => {
@@ -679,7 +690,7 @@ impl Interp {
                         Val::Str(s) => s.clone(),
                         _ => return ngr_c("ключ словника має бути рядком", items[i].pos, key.c.min(self.cpc())),
                     };
-                    if d.find(&ks.s).is_some() {
+                    if d.find_p(&ks).is_some() {
                         return ngr_c(format!("у словнику 『』 ключ «{}» двічі", uni::safe(&ks.s)), items[i].pos, key.c.min(self.cpc()));
                     }
                     let val = self.eval(&items[i + 1], env)?;
@@ -783,7 +794,7 @@ impl Interp {
                     self.prof_add(&format!("лінивий {}", g), t);
                 }
                 let r = r?;
-                let spent = Self::spent(&r, *g);
+                let spent = self.spent_of(&r, *g);
                 self.sized_as(r, g, pos, spent)
             }
             K::Lit(_) | K::Var(..) | K::Call(..) => unreachable!(),
@@ -1460,6 +1471,7 @@ impl Interp {
         let mut res = res;
         if matches!(g, 'ρ' | 'κ' | '§' | '⌂' | '⚗' | '🜃') && self.cpc() < res.c {
             res = capc(&res, self.cpc());
+            self.fresh = true; // для §: копія, а не наявний елемент
         }
         if !lang::is_own_conf(g) {
             let c = res.c.min(amin).min(self.cpc());

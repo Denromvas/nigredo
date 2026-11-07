@@ -5,7 +5,7 @@ use crate::int::Int;
 use crate::json;
 use crate::pyf;
 use crate::uni;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -16,12 +16,13 @@ pub struct PStr {
     pub s: Box<str>,
     pub nch: usize,
     idx: RefCell<Option<Rc<Vec<u32>>>>, // зміщення символів (для індексів у довгих не-ASCII рядках)
+    h: Cell<u64>,                       // хеш для індексу словника (0 — ще не рахували): рядок незмінний, тож раз на рядок
 }
 
 impl PStr {
     pub fn new(s: String) -> PStr {
         let nch = if s.is_ascii() { s.len() } else { s.chars().count() };
-        PStr { s: s.into_boxed_str(), nch, idx: RefCell::new(None) }
+        PStr { s: s.into_boxed_str(), nch, idx: RefCell::new(None), h: Cell::new(0) }
     }
     pub fn from(s: &str) -> PStr {
         PStr::new(s.to_string())
@@ -29,12 +30,12 @@ impl PStr {
     /// Довжина в символах уже відома (зʼєднання рядків: сума довжин) — без підрахунку.
     #[inline]
     pub fn owned(s: String, nch: usize) -> PStr {
-        PStr { s: s.into_boxed_str(), nch, idx: RefCell::new(None) }
+        PStr { s: s.into_boxed_str(), nch, idx: RefCell::new(None), h: Cell::new(0) }
     }
     /// Довжина в символах уже відома (частина рядка, розрізаного ✂).
     #[inline]
     pub fn with_nch(s: &str, nch: usize) -> PStr {
-        PStr { s: s.into(), nch, idx: RefCell::new(None) }
+        PStr { s: s.into(), nch, idx: RefCell::new(None), h: Cell::new(0) }
     }
     pub fn ascii(&self) -> bool {
         self.nch == self.s.len()
@@ -67,10 +68,36 @@ impl PStr {
         let b = self.byte_at(i);
         self.s[b..].chars().next().unwrap()
     }
+    /// Хеш рядка для індексу словника — рахується раз (як кешований hash у str Python), а не на кожному пошуку: ключ
+    /// на мільйон символів у словнику, який правлять `✎`, не коштує мільйона на кожну правку (суд 14, Р-1).
+    #[inline]
+    pub fn hash64(&self) -> u64 {
+        let h = self.h.get();
+        if h != 0 {
+            return h;
+        }
+        let h = str_hash(&self.s);
+        self.h.set(h);
+        h
+    }
     /// Позиція в символах за байтовим зміщенням.
     pub fn char_index(&self, byte: usize) -> usize {
         if self.ascii() { byte } else { self.s[..byte].chars().count() }
     }
+}
+
+/// Хеш рядка для індексу словника (той самий, що `PStr::hash64`); ніколи не 0.
+pub fn str_hash(s: &str) -> u64 {
+    let mut f = Fx::default();
+    std::hash::Hasher::write(&mut f, s.as_bytes());
+    std::hash::Hasher::write_u8(&mut f, 0xff);
+    std::hash::Hasher::finish(&f).max(1)
+}
+
+/// Рівні рядки; той самий рядок (спільний ключ) — без порівняння вмісту, як `is` перед `==` у dict Python.
+#[inline]
+fn same(a: &str, b: &str) -> bool {
+    a.len() == b.len() && (a.as_ptr() == b.as_ptr() || a == b)
 }
 
 /// FxHash (rustc): швидкий хеш для коротких ключів-рядків (стійкість до колізій тут не потрібна: ключі — дані
@@ -224,7 +251,9 @@ fn drop_later(x: Later) {
 pub struct Dict {
     pub keys: Vec<Rc<PStr>>,
     pub vals: Vec<V>,
-    index: RefCell<Option<FxMap<Rc<str>, usize>>>,
+    /// Хеш ключа → номер (для словників понад 8 ключів; будується за першим пошуком, а копія словника бере копію індексу).
+    /// Ключі з однаковим хешем (рідкість) — перший у індексі, решту знаходить перегляд ключів.
+    index: RefCell<Option<FxMap<u64, usize>>>,
 }
 
 impl Drop for Dict {
@@ -246,38 +275,60 @@ impl Dict {
     pub fn len(&self) -> usize {
         self.keys.len()
     }
-    pub fn find(&self, k: &str) -> Option<usize> {
+    /// Пошук за ключем, хеш якого вже відомо. Робота — від кількості ключів, а не від їхньої довжини: ключі
+    /// порівнюються спершу хешем (кешованим у кожному рядку), вміст — лише за збігу хешу.
+    fn find_h(&self, k: &str, h: u64) -> Option<usize> {
+        let hit = |x: &Rc<PStr>| x.hash64() == h && same(&x.s, k);
         if self.keys.len() <= 8 {
-            return self.keys.iter().position(|x| &*x.s == k);
+            return self.keys.iter().position(hit);
         }
         let mut idx = self.index.borrow_mut();
         let m = idx.get_or_insert_with(|| {
             let mut m = FxMap::with_capacity_and_hasher(self.keys.len(), Default::default());
             for (i, x) in self.keys.iter().enumerate() {
-                m.insert(Rc::from(&*x.s), i);
+                m.entry(x.hash64()).or_insert(i);
             }
             m
         });
-        m.get(k).copied()
+        match m.get(&h) {
+            None => None,
+            Some(&i) if same(&self.keys[i].s, k) => Some(i),
+            Some(_) => self.keys.iter().position(hit),
+        }
+    }
+    pub fn find(&self, k: &str) -> Option<usize> {
+        self.find_h(k, str_hash(k))
+    }
+    /// Пошук за рядком мови: хеш береться з самого рядка (рахується раз на рядок).
+    pub fn find_p(&self, k: &PStr) -> Option<usize> {
+        self.find_h(&k.s, k.hash64())
     }
     pub fn get(&self, k: &str) -> Option<&V> {
         self.find(k).map(|i| &self.vals[i])
     }
+    pub fn get_p(&self, k: &PStr) -> Option<&V> {
+        self.find_p(k).map(|i| &self.vals[i])
+    }
     /// Вставити або замінити (порядок — першої появи), як dict у Python.
     pub fn set(&mut self, k: Rc<PStr>, v: V) {
-        match self.find(&k.s) {
+        match self.find_p(&k) {
             Some(i) => self.vals[i] = v,
             None => {
                 if let Some(m) = self.index.get_mut().as_mut() {
-                    m.insert(Rc::from(&*k.s), self.keys.len());
+                    m.entry(k.hash64()).or_insert(self.keys.len());
                 }
                 self.keys.push(k);
                 self.vals.push(v);
             }
         }
     }
+    /// Копія (для `✎`): ключі спільні, індекс — копія готового, без хешування ключів наново.
     pub fn copy(&self) -> Dict {
-        Dict { keys: self.keys.clone(), vals: self.vals.clone(), index: RefCell::new(None) }
+        self.with_vals(self.vals.clone())
+    }
+    /// Ті самі ключі (і їхній індекс), інші значення.
+    pub fn with_vals(&self, vals: Vec<V>) -> Dict {
+        Dict { keys: self.keys.clone(), vals, index: RefCell::new(self.index.borrow().clone()) }
     }
 }
 
@@ -507,7 +558,7 @@ fn capc_d(x: &V, c: f64, d: usize) -> V {
             V { v: lst(items), c, s: x.s.min(c), n: x.n }
         }
         Val::Dict(dd) => {
-            let nd = Dict { keys: dd.keys.clone(), vals: dd.vals.iter().map(|e| capc_d(e, c, d + 1)).collect(), index: RefCell::new(None) };
+            let nd = dd.with_vals(dd.vals.iter().map(|e| capc_d(e, c, d + 1)).collect());
             V { v: Val::Dict(Rc::new(nd)), c, s: x.s.min(c), n: x.n }
         }
         _ => V { v: x.v.clone(), c, s: c, n: x.n },
@@ -534,7 +585,7 @@ fn capc_deep(x: &V, c: f64) -> V {
         }
         let items = out.split_off(out.len() - kids.len());
         let v = match &e.v {
-            Val::Dict(dd) => Val::Dict(Rc::new(Dict { keys: dd.keys.clone(), vals: items, index: RefCell::new(None) })),
+            Val::Dict(dd) => Val::Dict(Rc::new(dd.with_vals(items))),
             _ => lst(items),
         };
         out.push(V { v, c, s: e.s.min(c), n: e.n });

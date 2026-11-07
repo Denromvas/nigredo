@@ -307,7 +307,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                         Val::Str(s) => s,
                         _ => return ngr("§: ключ словника — рядок", pos),
                     };
-                    match d.get(&k.s) {
+                    match d.get_p(k) {
                         Some(e) => e.clone(),
                         None => V::none_c(a[0].s),
                     }
@@ -336,6 +336,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                 _ => return ngr(format!("§: очікувався список, рядок чи словник, а не {}", kind(&a[0])), pos),
             };
             let c = a[1].c.min(a[0].s);
+            it.fresh = c < el.c; // копія, а не наявний елемент: sized спише її повний розмір (суд 14)
             Ok(if c < el.c { capc(&el, c) } else { el })
         }
         '✎' => {
@@ -595,7 +596,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             }
             Val::Dict(d) => {
                 let y = need_str(&a[1], "∋", pos)?;
-                Ok(V::b(d.find(&y.s).is_some()))
+                Ok(V::b(d.find_p(&y).is_some()))
             }
             _ => ngr(format!("∋: очікувався рядок, список чи словник, а не {}", kind(&a[0])), pos),
         },

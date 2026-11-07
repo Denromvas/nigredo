@@ -407,6 +407,7 @@ fn execute(
         protected: paths.iter().cloned().chain(paths.iter().map(|p| format!("{}.дані", p))).collect(),
         max_size: o.size,
         alloc: 0,
+        fresh: false,
         steps_left: o.steps,
         cwd: cwd.to_string(),
         out: Box::new(std::io::stdout()),
@@ -457,6 +458,7 @@ fn execute(
                 ("розмір".into(), J::Int(o.size as i64)),
                 ("слід".into(), J::Int(o.tsize as i64)),
                 ("зерно".into(), J::Num(o.seed.trim_start_matches('+').to_string())),
+                ("облік".into(), J::s("нове")), // облік створеного й кроків 1.1 (суд 14); слід без поля — облік 1.0
             ]),
         ),
     ];

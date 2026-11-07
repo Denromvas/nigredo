@@ -158,6 +158,7 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
         protected: Default::default(),
         max_size: num(9) as u64,
         alloc: 0,
+        fresh: false,
         steps_left: num(8),
         cwd: cwd.clone(),
         out: Box::new(Host(out)),
@@ -201,7 +202,7 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
         ("тека".into(), J::Str(uni::safe(f[1]))),
         ("дозволи_власника".into(), J::Str(uni::safe(f[6]))),
         ("дозволено".into(), J::Arr(allowed.iter().map(|a| J::s(a)).collect())),
-        ("ліміти".into(), J::Obj(vec![("кроки".into(), J::Int(num(8))), ("розмір".into(), J::Int(num(9))), ("слід".into(), J::Int(num(10))), ("зерно".into(), J::Num(f[7].to_string()))])),
+        ("ліміти".into(), J::Obj(vec![("кроки".into(), J::Int(num(8))), ("розмір".into(), J::Int(num(9))), ("слід".into(), J::Int(num(10))), ("зерно".into(), J::Num(f[7].to_string())), ("облік".into(), J::s("нове"))])),
     ];
     if it.rec("початок", head).is_err() {
         return 4;
