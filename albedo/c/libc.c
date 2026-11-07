@@ -43,8 +43,26 @@ void qsort(void *base, size_t n, size_t w, int (*cmp)(const void *, const void *
   }
 }
 
-// єдина функція математики SQLite, якої немає в compiler_builtins; алгоритм — як у musl
-double log1p(double);
+// математика SQLite, якої немає в compiler_builtins (atanh — ніколи; acosh, asinh — з Rust 1.9x для wasm32 теж: модуль
+// просив їх у господаря, ПК 2026-11-07); алгоритми — як у musl, тож модуль не залежить від версії Rust
+double log1p(double); double log(double); double sqrt(double);
+double acosh(double x) {
+  union { double f; unsigned long long i; } u = { x };
+  unsigned e = u.i >> 52 & 0x7ff;
+  if (e < 0x3ff + 1) return log1p(x - 1 + sqrt((x - 1) * (x - 1) + 2 * (x - 1)));   // |x| < 2
+  if (e < 0x3ff + 26) return log(2 * x - 1 / (x + sqrt(x * x - 1)));                 // |x| < 2^26
+  return log(x) + 0.693147180559945309417232121458176568;                           // |x| >= 2^26, nan
+}
+double asinh(double x) {
+  union { double f; unsigned long long i; } u = { x };
+  unsigned e = u.i >> 52 & 0x7ff, neg = u.i >> 63;
+  u.i &= ~0ULL >> 1;
+  double y = u.f;
+  if (e >= 0x3ff + 26) y = log(y) + 0.693147180559945309417232121458176568;          // |x| >= 2^26, inf, nan
+  else if (e >= 0x3ff + 1) y = log(2 * y + 1 / (sqrt(y * y + 1) + y));               // |x| >= 2
+  else if (e >= 0x3ff - 26) y = log1p(y + y * y / (sqrt(y * y + 1) + 1));            // |x| >= 2^-26
+  return neg ? -y : y;
+}
 double atanh(double x) {
   union { double f; unsigned long long i; } u = { x };
   unsigned e = u.i >> 52 & 0x7ff, neg = u.i >> 63;

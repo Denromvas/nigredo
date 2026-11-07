@@ -560,20 +560,34 @@ if (isMainThread) {
   });
   worker.on('exit', (code) => { if (!stopping) { clearTimeout(timer); process.exit(code); } });
 } else {
-// скільки памʼяті просить модуль, знає лише рушій: починаємо з малого, а LinkError називає число. Ядро просить 1 ГБ стека (нативно 4 ГБ): без нього глибока рекурсія
-// була б падінням, а не помилкою мови; сторінки беруться лише торкнуті. Решта росте до стелі господаря.
-const maximum = memMb * 16;
-let memory, inst;
-for (let initial = Math.min(256, maximum); ;) {
-  memory = new WebAssembly.Memory({ initial, maximum });
-  imports.env = { memory };
-  try { inst = new WebAssembly.Instance(mod, imports); break; } catch (e) {
-    const need = e instanceof WebAssembly.LinkError ? Number(e.message.match(/smaller than initial (\d+)/)?.[1]) : NaN;
-    if (Number.isNaN(need)) throw e;
-    if (need > maximum) fail(2, `✗ --памʼять ${memMb} МБ: модуль просить більше (стек ядра сам займає 1 ГБ)`);
-    initial = need;
+// скільки памʼяті просить модуль — з його ж секції імпортів (env.memory, найменше сторінок), а не з тексту LinkError: той
+// у кожного рушія свій (Node 20 і 22 пишуть по-різному, ПК 2026-11-07). Ядро просить 1 ГБ стека (нативно 4 ГБ): без нього
+// глибока рекурсія була б падінням, а не помилкою мови; сторінки беруться лише торкнуті. Решта росте до стелі господаря.
+function memInitial(b) {
+  let i = 8;
+  const leb = () => { let r = 0, k = 1, x; do { x = b[i++]; r += (x & 127) * k; k *= 128; } while (x & 128); return r; };
+  const name = () => { const n = leb(), t = b.subarray(i, i + n).toString('utf8'); i += n; return t; };
+  while (i < b.length) {
+    const id = b[i++], size = leb(), end = i + size;
+    if (id !== 2) { i = end; continue; }
+    for (let n = leb(); n > 0; n--) {
+      const m = name(), f = name(), kind = b[i++];
+      if (kind === 0) leb();
+      else if (kind === 1) { i++; const fl = b[i++]; leb(); if (fl & 1) leb(); }
+      else if (kind === 2) { const fl = b[i++], min = leb(); if (fl & 1) leb(); if (m === 'env' && f === 'memory') return min; }
+      else if (kind === 3) i += 2;
+      else if (kind === 4) { i++; leb(); }
+      else break;
+    }
+    break;
   }
+  return 0;
 }
+const maximum = memMb * 16, initial = memInitial(wasmBytes);
+if (initial > maximum) fail(2, `✗ --памʼять ${memMb} МБ: модуль просить більше (стек ядра сам займає 1 ГБ)`);
+const memory = new WebAssembly.Memory({ initial, maximum });
+imports.env = { memory };
+const inst = new WebAssembly.Instance(mod, imports);
 mem = memory;
 const cfg = Buffer.from([progPath, progDir, progSha, now.toISOString().slice(0, 19) + '+00:00', crypto.randomBytes(6).toString('hex'),
   `альбедо:${sha256(wasmBytes)}`, ownerSrc, seed, steps, size, tsize, real(HOME), String(progArgs.length), ...progArgs, ...allowed].join('\0'));
