@@ -3982,6 +3982,13 @@ def main():
                           str(ROOT / 'самохостинг' / 'лексер.ngr'), str(ROOT / 'tests' / 'сумісність' / 'значення' / 'програма.ngr')],
                          capture_output=True, text=True, env={k: v for k, v in env.items() if k != 'ALBEDO_FALLBACK'})
     check(sl_.returncode == 0 and 'однаково 2, розбіжностей 0' in sl_.stdout, 'самохостинг: лексер на Nigredo читає сам себе й набір сумісності, як еталон', sl_.stdout + sl_.stderr)
+    # парсер мовою Nigredo: те саме дерево розбору, що Parser еталона (увесь корпус — самохостинг/звірити.py --парсер)
+    sp_ = subprocess.run([sys.executable, str(ROOT / 'самохостинг' / 'звірити.py'), '--парсер', '-j', '1', '--виконавець', ' '.join(NGR_CMD),
+                          str(ROOT / 'самохостинг' / 'парсер.ngr'), str(ROOT / 'самохостинг' / 'лексер.ngr'),
+                          str(ROOT / 'tests' / 'сумісність' / 'значення' / 'програма.ngr'), str(ROOT / 'examples' / 'xml.ngr')],
+                         capture_output=True, text=True, env={k: v for k, v in env.items() if k != 'ALBEDO_FALLBACK'})
+    check(sp_.returncode == 0 and 'однаково 4, розбіжностей 0' in sp_.stdout,
+          'самохостинг: парсер на Nigredo розбирає сам себе, лексер, набір сумісності й приклад — те саме дерево, що еталон', sp_.stdout + sp_.stderr)
     # вартість: спільні дані не списуються двічі, а все, що справді створює чи обходить дані, платить повну ціну (пропозиція вартість.md)
     ct_ = tmp / 'вартість'
     ct_.mkdir(exist_ok=True)
