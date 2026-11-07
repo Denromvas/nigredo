@@ -3,8 +3,9 @@
 # Прапор безпеки — стоп для цього судді: жодної автоматичної спроби знову. Інший обрив — ще одна спроба.
 K=$(cd "$(dirname "$0")" && pwd)
 export NIGREDO_HOME="$K/власник"
+# ПК: еталон — на Python 3.13 з системною libsqlite3 (як в Атанора); системний python3 — 3.12
+[ -x "$HOME/.nigredo/py313/bin/python3" ] && export PATH="$HOME/.nigredo/py313/bin:$PATH"
 export GEMINI_ENV_FILE="${GEMINI_ENV_FILE:?задайте GEMINI_ENV_FILE — файл .env з ключем Gemini}"
-/data/data/com.termux/files/usr/bin/termux-wake-lock 2>/dev/null
 mkdir -p "$K/protokol"
 member() {
   m=$1
@@ -25,5 +26,4 @@ gemini() {
 }
 if [ -n "$NO_GEMINI" ]; then member skeptyk; else gemini & member skeptyk & wait; fi
 for m in praktyk movoznavets audytor novachok orkestrator; do member $m; done
-/data/data/com.termux/files/usr/bin/termux-wake-unlock 2>/dev/null
 echo "суд завершено"

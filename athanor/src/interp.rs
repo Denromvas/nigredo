@@ -292,6 +292,9 @@ impl Interp {
     /// словниками ділять дані зі старими значеннями, нові там лише власні елементи; решта — логічний розмір.
     #[inline(always)]
     fn spent(res: &V, g: char) -> u64 {
+        if matches!(g, '¿' | '☂' | '↻' | 'Σ') {
+            return 1; // наявне значення (гілка, тіло, стан, акумулятор), повернуте як є; копію capc списує сам гліф (copied)
+        }
         let own = match &res.v {
             Val::List(l) => l.len() as u64,
             Val::Dict(d) => d.len() as u64,
@@ -302,6 +305,12 @@ impl Interp {
             '＋' | '✎' | '⊏' => own + 1,
             _ => res.n,
         }
+    }
+
+    /// Копія зі зниженою впевненістю (capc) у `¿ ☂ ↻ Σ`: справжні нові дані — повний логічний розмір (еталон: copied).
+    fn copied(&mut self, res: V, g: char, pos: Pos) -> R<V> {
+        let n = res.n;
+        self.sized_as(res, g, pos, n)
     }
 
     #[inline(always)]
@@ -1111,7 +1120,7 @@ impl Interp {
                 }
                 if c.c < branch.c {
                     self.work(branch.n, pos)?;
-                    return Ok(capc(&branch, c.c.min(branch.c)));
+                    return self.copied(capc(&branch, c.c.min(branch.c)), g, pos);
                 }
                 Ok(branch)
             }
@@ -1150,7 +1159,7 @@ impl Interp {
                         let tc = self.try_stack.pop().unwrap();
                         self.taint_effects(&[&argn[0]], tc);
                         self.fn_effects(&argn[1], tc);
-                        Ok(if tc < res.c { capc(&res, tc) } else { res })
+                        if tc < res.c { self.copied(capc(&res, tc), g, pos) } else { Ok(res) }
                     }
                     Err(e) if e.fatal => Err(e),
                     Err(e) => {
@@ -1167,7 +1176,7 @@ impl Interp {
                         })();
                         self.pc = saved;
                         let res = r?;
-                        Ok(if tc < res.c { capc(&res, tc) } else { res })
+                        if tc < res.c { self.copied(capc(&res, tc), g, pos) } else { Ok(res) }
                     }
                 }
             }
@@ -1321,7 +1330,7 @@ impl Interp {
                 let acc = r?;
                 self.fn_effects(&argn[2], lst.s);
                 self.halt_risk(lst.s, &[&argn[2]], true);
-                Ok(if lst.s < acc.c { capc(&acc, lst.s) } else { acc })
+                if lst.s < acc.c { self.copied(capc(&acc, lst.s), g, pos) } else { Ok(acc) }
             }
             '↻' => {
                 let mut s = self.eval(&argn[0], env)?;
@@ -1366,7 +1375,7 @@ impl Interp {
                 self.fn_effects(&argn[1], cc);
                 self.fn_effects(&argn[2], cc);
                 self.halt_risk(cc, &[&argn[1], &argn[2]], true);
-                Ok(if cc < s.c { capc(&s, cc) } else { s })
+                if cc < s.c { self.copied(capc(&s, cc), g, pos) } else { Ok(s) }
             }
             _ => {
                 let mut buf: [V; 4] = [V::none(), V::none(), V::none(), V::none()];

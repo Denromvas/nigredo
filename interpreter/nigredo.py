@@ -30,6 +30,8 @@ MAX_WORK = 200_000                # глибина обчислення: сум�
                                   # — це ~2 млн кадрів, а стек виконавця скінченний; межа — правило мови, однакове в обох)
 MAX_SIZE = 5_000_000      # найбільший логічний розмір значення (символів + елементів); --розмір N
 SHARED = {'＋', '✎', '⊏', '【】', '『』'}    # ділять дані зі старими значеннями: нові тут лише власні елементи
+PASS = {'¿', '☂', '↻', 'Σ'}              # повертають уже наявне значення (гілку, тіло, стан, акумулятор): нового — нічого;
+                                         # копія зі зниженою впевненістю (capc) — справжня, її списує сам гліф (it.copied)
 ALLOC_FACTOR = 20         # сумарно за запуск можна створити не більше ALLOC_FACTOR × --розмір
 MAX_INT_BITS = 100_000    # найбільше ціле (≈ 30 000 десяткових цифр)
 MAX_TRACE = 50_000_000    # найбільший слід у байтах; --слід-розмір N
@@ -6642,18 +6644,25 @@ class Interp:
                 if c < t:
                     self.try_stack[i] = c
 
-    def sized(self, res, g, pos):
+    def copied(self, res, g, pos):
+        """Копія зі зниженою впевненістю (capc) у гліфі з PASS: справжні нові дані — повний логічний розмір."""
+        return self.sized(res, g, pos, res.n)
+
+    def sized(self, res, g, pos, spent=None):
         """Межі памʼяті: одне значення, ціле, сумарно створене."""
         if res.n > self.max_size:
             raise Fatal(f'{g}: значення завелике (логічний розмір {res.n} > --розмір {self.max_size})', pos)
         if type(res.v) is int and res.v.bit_length() > MAX_INT_BITS:
             raise Fatal(f'{g}: число завелике (понад {MAX_INT_BITS} біт)', pos)
-        spent = res.n                       # скільки створено: лише те, чого ще не було (пропозиція вартість.md)
-        if type(res.v) is list or type(res.v) is dict:
-            if g == '§':
+        if spent is None:                   # скільки створено: лише те, чого ще не було (пропозиція вартість.md)
+            if g in PASS:                   # наявне значення, повернуте як є
                 spent = 1
-            elif g in SHARED:
+            elif g == '§' and (type(res.v) is list or type(res.v) is dict):
+                spent = 1
+            elif g in SHARED and (type(res.v) is list or type(res.v) is dict):
                 spent = len(res.v) + 1
+            else:
+                spent = res.n
         if spent > 1:
             self.work(spent, pos)
             self.alloc += spent
@@ -7106,7 +7115,7 @@ class Interp:
                 self.halt_c = min(self.halt_c, c.c)
             if c.c < branch.c:
                 self.work(branch.n, pos)
-                return capc(branch, min(c.c, branch.c))
+                return self.copied(capc(branch, min(c.c, branch.c)), g, pos)
             return branch
         if g in '∧∨':                         # як and/or: правий бік — лише коли він вирішує (0.8; = ¿ p q ○ / ¿ p ● q)
             c = E(0)
@@ -7136,7 +7145,7 @@ class Interp:
                 tc = self.try_stack.pop()
                 self.taint_effects((argn[0],), tc)            # чи дійшло тіло до кінця й чи був обробник — від даних
                 self.fn_effects(argn[1], tc)
-                return capc(res, tc) if tc < res.c else res
+                return self.copied(capc(res, tc), g, pos) if tc < res.c else res
             except Fatal:
                 raise
             except NgrError as e:
@@ -7153,7 +7162,7 @@ class Interp:
                     res = self.call(E(1), [V(e.msg, tc)], pos)
                 finally:
                     self.pc = saved
-                return capc(res, tc) if tc < res.c else res
+                return self.copied(capc(res, tc), g, pos) if tc < res.c else res
         if g == '‖':
             lst = E(0)
             self.taint(lst.c)
@@ -7218,7 +7227,7 @@ class Interp:
                 self.pc = saved
             self.fn_effects(argn[2], lst.s)
             self.halt_risk(lst.s, argn[2], called=True)
-            return capc(acc, lst.s) if lst.s < acc.c else acc
+            return self.copied(capc(acc, lst.s), g, pos) if lst.s < acc.c else acc
         if g == '↻':
             s, cond, stepf = E(0), E(1), E(2)
             for f in (cond, stepf):                 # обидві — функції завжди, навіть якщо крок не знадобився
@@ -7239,7 +7248,7 @@ class Interp:
             self.fn_effects(argn[1], cc)
             self.fn_effects(argn[2], cc)
             self.halt_risk(cc, argn[1], argn[2], called=True)
-            return capc(s, cc) if cc < s.c else s
+            return self.copied(capc(s, cc), g, pos) if cc < s.c else s
         return self.strict(g, [E(i) for i in range(len(argn))], pos)
 
     def strict(self, g, args, pos):
@@ -8381,7 +8390,8 @@ def cheatsheet():
            '  Зайве після завершеного виразу — теж помилка. Кілька виразів в одному рядку — через `¦`.',
            '- **Значення не змінюються**: `← імʼя вираз` називає назавжди, і лише на початку інструкції',
            '  (усередині виразу — блок `《 ← … 》`). Цикли — `∀ μ φ Σ ↻`.',
-           '  **Вартість:** `＋` `✎` `⊏` над списками й словниками, літерали `【】` `『』` платять лише за власні елементи, `§` контейнера — нічого: це спільні дані, стан у `↻` може бути великим.\n'
+           '  **Вартість:** `＋` `✎` `⊏` над списками й словниками, літерали `【】` `『』` платять лише за власні елементи; `§` контейнера й `¿` `☂` `↻` `Σ`, що\n'
+           '  повертають наявне значення, — нічого: це спільні дані, стан у `↻` може бути великим (копія `¿` `☂` `↻` `Σ` з меншою впевненістю — повна ціна).\n'
            '  Решта значень платить за логічний розмір, бо створює чи обходить дані; один список не більший за `--розмір`, усе разом — 20 × `--розмір`.\n'
            '- Імена — слова будь-якою мовою, але **одним письмом** (`звiт` з латинською i — помилка). Грецькі літери — гліфи.',
            '  **Двійники** — два різні імена, однакові на вигляд за скелетом UTS #39 (`x`/`х`, `h`/`һ`, `I`/`l`), — помилка;',
