@@ -14,7 +14,9 @@ import importlib.util
 import json
 import os
 import hashlib
+import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -29,6 +31,25 @@ spec.loader.exec_module(z)
 # Атанор — свіжий нативний бінарник, що справді відкриває libsqlite3: старий статичний усе віддав би еталону, і звірка була б порожньою
 z.BIN = max(glob.glob(os.path.join(z.HERE, 'target', '*', 'release', 'athanor')), key=os.path.getmtime)
 HOST = ['node', os.path.join(HERE, 'хост.mjs'), os.path.join(HERE, 'target', 'wasm32-unknown-unknown', 'release', 'albedo.wasm')]
+
+
+# версії SQLite: системна (її бере Атанор, як і Python тут) і та, що вшита в модуль (`зібрати.sh`, V=XYYZZ00)
+SYS_SQLITE = sqlite3.sqlite_version
+_v = re.search(r'^V=(\d)(\d\d)(\d\d)\d\d;', open(os.path.join(HERE, 'зібрати.sh'), encoding='utf-8').read(), re.M)
+MOD_SQLITE = f'{int(_v[1])}.{int(_v[2])}.{int(_v[3])}' if _v else SYS_SQLITE
+
+
+def only_sqlite_version(a, b, ta, tb):
+    """Різниця лише у версії SQLite (sqlite_version() з бази чи з запиту в даних): після заміни системної версії на
+    версію модуля вивід, stderr і слід (без хешу значення) — ті самі. Версію системної libsqlite3 1.x не обіцяє (§9)."""
+    sv, mv = SYS_SQLITE, MOD_SQLITE
+    if sv == mv or a[0] != b[0] or a[1].replace(sv.encode(), mv.encode()) != b[1] or a[2].replace(sv.encode(), mv.encode()) != b[2]:
+        return False
+    ra, rb = (ta or ([], None))[0], (tb or ([], None))[0]
+    if len(ra) != len(rb):
+        return False
+    norm = lambda r: json.dumps({k: v for k, v in r.items() if k != 'значення'}, ensure_ascii=False)  # noqa: E731
+    return all(x == y or norm(x).replace(sv, mv) == norm(y) for x, y in zip(ra, rb))
 
 
 def trace(t):
@@ -70,8 +91,12 @@ def compare(prog, timeout):
             return prog, 'час', ''                        # Атанор сам не вклався: порівнювати нема з чим
         if b[0] == 'час':
             return prog, 'темп', '\n'.join(diffs)        # модуль не вклався: кожна дія — кілька викликів ОС через господаря
-        if diffs and ('random(' in text or 'sqlite_source_id' in text or '/proc/self' in text):
-            return prog, 'чуже', '\n'.join(diffs)        # випадкове від SQLite чи його збірка: цього 1.x не обіцяє (§9)
+        if diffs and ('random(' in text or 'sqlite_source_id' in text or '/proc/self' in text or only_sqlite_version(a, b, ta, tb)):
+            return prog, 'чуже', '\n'.join(diffs)        # випадкове від SQLite чи його збірка: цього 1.x не обіцяє (§9); версія
+            # SQLite модуля — своя, системна може бути іншою (ПК: 3.45.1 проти 3.46.1), тож sqlite_version() різний за побудовою
+        if diffs and 'замало --памʼять'.encode() in b[2] and a[0] == 1:
+            return prog, 'памʼять', '\n'.join(diffs)     # межа памʼяті господаря нижча за ту, до якої програму пускають
+            # лічильники мови: Атанор зупинився межею мови, модуль — раніше, на памʼяті (слова господаря, не семантика)
         if diffs and 'запит довший за 30 с'.encode() in b[1]:
             return prog, 'темп', '\n'.join(diffs)        # нескінченний запит: Атанор раніше вичерпав кроки, модуль — 30 с
         return prog, 'різниця' if diffs else 'так', '\n'.join(diffs)
@@ -97,17 +122,19 @@ def main():
     if a.до:
         progs = progs[:a.до]
     progs = progs[a.від:]
-    cnt, why = Counter(), Counter()
+    cnt, why, odd = Counter(), Counter(), []
     with cf.ThreadPoolExecutor(a.j) as ex:
         for i, (p, r, t) in enumerate(ex.map(lambda p: compare(p, a.час), progs), 1):
             cnt[r] += 1
             if r == 'не вміє':
                 why[t[:90]] += 1
+            if r in ('різниця', 'памʼять'):
+                odd.append((r, os.path.relpath(p, z.ROOT)))
             if r == 'різниця':
                 print(f'✗ {os.path.relpath(p, z.ROOT)}\n  {t}', flush=True)
             if i % 100 == 0:
                 print(f'… {i}/{len(progs)}', flush=True)
-    line = (f'Програм: {len(progs)}; однаково {cnt["так"]}, розбіжностей {cnt["різниця"]}, годинник {cnt["годинник"]}, чуже значення {cnt["чуже"]}, темп {cnt["темп"]}, Атанор не вклався {cnt["час"]}, межа сліду {cnt["межа сліду"]}, модуль не вміє {cnt["не вміє"]}, лише еталон {cnt["лише еталон"]}')
+    line = (f'Програм: {len(progs)}; однаково {cnt["так"]}, розбіжностей {cnt["різниця"]}, годинник {cnt["годинник"]}, чуже значення {cnt["чуже"]}, темп {cnt["темп"]}, памʼять господаря {cnt["памʼять"]}, Атанор не вклався {cnt["час"]}, межа сліду {cnt["межа сліду"]}, модуль не вміє {cnt["не вміє"]}, лише еталон {cnt["лише еталон"]}')
     print(line)
     for w, n in why.most_common(12):
         print(f'  {n} × {w}')
@@ -119,7 +146,10 @@ def main():
                     f'модуль `{sha(HOST[2])}…`, господар `{sha(HOST[1])}…`.\n\n{line}.\n\n'
                     '«Лише еталон» — чого не вміє сам Атанор (мережа, `‖`, міст, підпис, печатка поза дозволами): порівнювати нема з чим. «Чуже значення» — '
                     '`random()`, збірка SQLite, `/proc/self`; «темп» — нескінченний запит: Атанор вичерпав кроки, модуль — 30 с; «межа сліду» — обидва '
-                    'зупинились тим самим текстом, рядки сліду модуля на кілька байтів інші.\n')
+                    'зупинились тим самим текстом, рядки сліду модуля на кілька байтів інші; «памʼять господаря» — Атанор зупинився межею мови, '
+                    'а модуль раніше вичерпав `--памʼять` господаря.\n')
+            if odd:
+                f.write('\n' + ''.join(f'- {r}: `{p}`\n' for r, p in sorted(odd)))
     if not cnt['так']:
         print('✗ порожня звірка: жодної програми не порівняно (Атанор віддав усе еталону?)')
         sys.exit(2)
