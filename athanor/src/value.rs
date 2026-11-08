@@ -443,6 +443,8 @@ pub fn size_of(v: &Val) -> u64 {
         Val::List(l) => 1 + l.iter().map(|e| e.n).sum::<u64>(),
         Val::Dict(d) => 1 + d.keys.iter().zip(&d.vals).map(|(k, e)| k.nch as u64 + e.n).sum::<u64>(),
         Val::Dec(d) => 1 + d.adjusted().unsigned_abs() + d.digits(),
+        // показ функції — λ та імʼя: розмір, як у рядка (суд 15, Оркестратор)
+        Val::Fn(f) => 1 + f.name.as_ref().map_or(0, |n| n.chars().count() as u64),
         _ => 1,
     }
 }
@@ -726,6 +728,77 @@ pub fn show(x: &V, top: bool) -> crate::interp::R<String> {
     let mut out = String::new();
     show_into(&mut out, x, 0)?;
     Ok(out)
+}
+
+/// show_upto еталона: show(x, true), якщо він не довший за lim символів, інакше None — довшого не будуючи (✓ з переліком,
+/// суд 15, Аудитор: показ усього значення за один крок).
+pub fn show_upto(x: &V, lim: usize) -> Option<String> {
+    if let Val::Str(s) = &x.v {
+        return if s.nch <= lim { Some(s.s.to_string()) } else { None };
+    }
+    let mut out = String::new();
+    let mut size = 0usize;
+    let mut stack: Vec<(char, &V, usize)> = Vec::new();
+    let mut e: Option<&V> = Some(x);
+    loop {
+        if let Some(cur) = e.take() {
+            match &cur.v {
+                Val::List(_) => {
+                    out.push('【');
+                    size += 1;
+                    stack.push(('】', cur, 0));
+                }
+                Val::Dict(_) => {
+                    out.push('『');
+                    size += 1;
+                    stack.push(('』', cur, 0));
+                }
+                Val::Str(s) if size + s.nch + 2 > lim => return None,
+                _ => {
+                    let at = out.len();
+                    show_leaf(&mut out, cur);
+                    size += out[at..].chars().count();
+                }
+            }
+        }
+        if size > lim {
+            return None;
+        }
+        let top = match stack.last_mut() {
+            Some(t) => t,
+            None => return Some(out),
+        };
+        let (close, cont, i) = (top.0, top.1, top.2);
+        let len = match &cont.v {
+            Val::List(l) => l.len(),
+            Val::Dict(dd) => dd.len(),
+            _ => 0,
+        };
+        if i >= len {
+            stack.pop();
+            out.push(close);
+            size += 1;
+            continue;
+        }
+        top.2 += 1;
+        let at = out.len();
+        if i > 0 {
+            out.push(' ');
+        }
+        match &cont.v {
+            Val::List(l) => e = Some(&l[i]),
+            Val::Dict(dd) => {
+                if size + dd.keys[i].nch + 3 > lim {
+                    return None;
+                }
+                show_str(&mut out, &dd.keys[i].s);
+                out.push(' ');
+                e = Some(&dd.vals[i]);
+            }
+            _ => {}
+        }
+        size += out[at..].chars().count();
+    }
 }
 
 /// show_head еталона: початок show(x, False) — щонайменше n символів (або весь) без обходу всього значення.

@@ -274,6 +274,18 @@ impl Interp {
         self.step(pos)
     }
 
+    /// Нові дані поза значенням гліфа (ключі `⇅`, результат інструмента) — кроки й «сумарно створено» (1.2, суд 15; еталон: made).
+    pub fn made(&mut self, units: u64, pos: Pos) -> R<()> {
+        if units > 1 {
+            self.work(units, pos)?;
+            self.alloc += units;
+            if self.alloc > lang::ALLOC_FACTOR * self.max_size {
+                return fatal(format!("сумарно створено забагато ({} > {} × --розмір)", self.alloc, lang::ALLOC_FACTOR), Some(pos));
+            }
+        }
+        Ok(())
+    }
+
     pub fn work(&mut self, units: u64, pos: Pos) -> R<()> {
         self.steps_left -= (units / 64) as i64;
         if self.steps_left < 0 {
@@ -295,7 +307,7 @@ impl Interp {
     /// елементів — власні елементи + 1 (`＋ ✎ ⊏ μ φ ⇅ ⚗ ↺`; `⊞` — групи й елементи груп); решта — логічний розмір.
     #[inline(always)]
     fn spent(res: &V, g: char) -> u64 {
-        if matches!(g, '¿' | '☂' | '↻' | 'Σ' | '►' | '▶' | '✓' | '🜍' | '§') {
+        if matches!(g, '¿' | '☂' | '↻' | 'Σ' | '►' | '▶' | '✓' | '🜍' | '§' | '🜃') {
             return 1; // наявне значення, повернуте як є (і елемент §); копію capc списує сам гліф (copied, fresh_copy, fresh)
         }
         let own = match &res.v {
@@ -420,7 +432,11 @@ impl Interp {
     }
 
     fn halt_cap(&mut self, env: &Rc<Env>, hops: u32, slot: u32, val: V, pos: Pos) -> R<V> {
-        self.work(val.n, pos)?;
+        if matches!(val.v, Val::List(_) | Val::Dict(_)) {
+            self.made(val.n, pos)?; // копія списку чи словника — нові дані (1.2, суд 15); рядок копія не копіює
+        } else {
+            self.work(val.n, pos)?;
+        }
         let capped = capc(&val, self.halt_c);
         env.at(hops).vars.borrow_mut()[slot as usize] = capped.clone();
         Ok(capped)
@@ -692,7 +708,12 @@ impl Interp {
                         Err(e) => return Err(e),
                     }
                 }
-                Ok(V::strc(s, c))
+                let r = V::strc(s, c);
+                if r.n > self.max_size {
+                    // показ довший за суму підстановок (спільні посилання, пробіли між елементами) — межа й для результату (суд 15)
+                    return fatal(format!("〔〕: значення завелике (> --розмір {})", self.max_size), Some(pos));
+                }
+                Ok(r)
             }
             K::Dict(items) => {
                 let mut d = Dict::new();
@@ -1220,7 +1241,8 @@ impl Interp {
                     // ключ не рядок) — лише після всіх викликів, як в еталоні (спершу всі виклики, потім підсумок)
                     let (mut total, mut m, mut bad): (Val, f64, Option<Box<E>>) = (Val::Int(Int::S(0)), lst.s, None);
                     let mut counts: Vec<(Rc<PStr>, i64)> = Vec::new();
-                    let mut idx: FxMap<Rc<str>, usize> = FxMap::default();
+                    // індекс — за хешем, кешованим у рядку (як `✎` після суду 14): ключ не хешується наново на кожен елемент (суд 15)
+                    let mut idx: FxMap<u64, Vec<usize>> = FxMap::default();
                     let r = self.each_sink(g, &items, &f, None, pos, &mut |it, r| {
                         if g == '№' {
                             m = m.min(r.c);
@@ -1228,13 +1250,16 @@ impl Interp {
                                 return;
                             }
                             match &r.v {
-                                Val::Str(k) => match idx.get(&*k.s) {
-                                    Some(&i) => counts[i].1 += 1,
-                                    None => {
-                                        idx.insert(Rc::from(&*k.s), counts.len());
-                                        counts.push((k.clone(), 1));
+                                Val::Str(k) => {
+                                    let slot = idx.entry(k.hash64()).or_default();
+                                    match slot.iter().copied().find(|&i| Rc::ptr_eq(&counts[i].0, k) || counts[i].0.s == k.s) {
+                                        Some(i) => counts[i].1 += 1,
+                                        None => {
+                                            slot.push(counts.len());
+                                            counts.push((k.clone(), 1));
+                                        }
                                     }
-                                },
+                                }
                                 _ => bad = ngr::<()>(format!("№ (ключ): очікувалося рядок, а не {} {}", kind(&r), brief(&r, 40)), pos).err(),
                             }
                         } else if g == '∫' {
@@ -1301,7 +1326,7 @@ impl Interp {
                     }
                     '⇅' => {
                         // ключі перетворюються й порівнюються — кроки за їхній розмір (1.2)
-                        self.work(results.iter().map(|r| r.n).sum::<u64>(), pos)?;
+                        self.made(results.iter().map(|r| r.n).sum::<u64>(), pos)?;
                         let order = match crate::sort::sort_order(&results, pos) {
                             Ok(o) => o,
                             Err(e) if e.deep => return ngr_c("⇅: ключі вкладені надто глибоко", pos, m),
@@ -1312,7 +1337,7 @@ impl Interp {
                     _ => {
                         // ⊞
                         let mut groups: Vec<(Rc<PStr>, Vec<V>)> = Vec::new();
-                        let mut idx: FxMap<Rc<str>, usize> = FxMap::default();
+                        let mut idx: FxMap<u64, Vec<usize>> = FxMap::default(); // як у `№`: кешований хеш рядка (суд 15)
                         for (i, r) in results.iter().enumerate() {
                             let x = items.get(i);
                             let k = match &r.v {
@@ -1320,10 +1345,11 @@ impl Interp {
                                 _ => return ngr(format!("⊞ (ключ): очікувалося рядок, а не {} {}", kind(r), brief(r, 40)), pos),
                             };
                             let el = if r.c < x.c { self.fresh_copy(&x, r.c, g, pos)? } else { x };
-                            match idx.get(&*k.s) {
-                                Some(&i) => groups[i].1.push(el),
+                            let slot = idx.entry(k.hash64()).or_default();
+                            match slot.iter().copied().find(|&j| Rc::ptr_eq(&groups[j].0, &k) || groups[j].0.s == k.s) {
+                                Some(j) => groups[j].1.push(el),
                                 None => {
-                                    idx.insert(Rc::from(&*k.s), groups.len());
+                                    slot.push(groups.len());
                                     groups.push((k, vec![el]));
                                 }
                             }
@@ -1754,6 +1780,12 @@ impl Interp {
             d.push(("шлях".into(), J::Arr(job.paths.iter().map(|p| J::s(p)).collect())));
         }
         self.rec("інструмент", d)?;
+        // 1.2 (суд 15): показ результату для сліду — обхід; копія зі зниженою впевненістю — нові дані (сам результат — дані
+        // зі світу: їх обмежують квоти, як і дію)
+        self.work(res.n, job.pos)?;
+        if c < 1.0 && matches!(res.v, Val::List(_) | Val::Dict(_)) {
+            self.made(res.n, job.pos)?;
+        }
         Ok(res)
     }
 

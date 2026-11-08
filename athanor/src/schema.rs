@@ -15,6 +15,7 @@ struct Leaf {
     bounds: Option<(Option<Dec>, Option<Dec>)>,
     enum_num: Option<Vec<Dec>>,
     enum_str: Option<std::collections::HashSet<String>>,
+    enum_lim: usize, // найдовша альтернатива (символів) — раз при розборі (суд 15)
 }
 
 thread_local! {
@@ -64,7 +65,7 @@ fn leaf(sv: &str) -> Result<Leaf, String> {
     if !TYPES.contains(&t) {
         return Err(format!("невідомий тип у схемі «{}» (є: {})", uni::safe(sv), sorted_types()));
     }
-    let mut l = Leaf { t: t.to_string(), nullable, bounds: None, enum_num: None, enum_str: None };
+    let mut l = Leaf { t: t.to_string(), nullable, bounds: None, enum_num: None, enum_str: None, enum_lim: 0 };
     if !colon.is_empty() && rest.is_empty() {
         return Err(format!("«{}»: після «:» — межі (0..100, 1.., ..50) чи перелік (a|b)", uni::safe(sv)));
     }
@@ -113,6 +114,7 @@ fn leaf(sv: &str) -> Result<Leaf, String> {
             l.enum_num = Some(en);
         } else {
             l.enum_str = Some(alts.iter().map(|a| a.to_string()).collect());
+            l.enum_lim = alts.iter().map(|a| a.chars().count()).max().unwrap_or(0);
         }
     }
     Ok(l)
@@ -189,8 +191,18 @@ pub fn check(it: &mut Interp, x: &V, sch: &V, path: &str, errs: &mut Vec<String>
                     errs.push(format!("{}: {} — не з переліку {}", where_, brief(x, 30), rest));
                 }
             } else if let Some(en) = &l.enum_str {
-                let s = show(x, true)?;
-                if !en.contains(&s) {
+                // довший за кожну альтернативу — не з переліку, без показу всього значення (суд 15, Аудитор)
+                let lim = l.enum_lim;
+                let (len, found) = match &x.v {
+                    Val::Str(s) if s.nch <= lim => (s.nch, en.contains(&*s.s)),
+                    Val::Str(_) => (lim, false),
+                    _ => match crate::value::show_upto(x, lim) {
+                        Some(h) => (h.chars().count(), en.contains(&h)),
+                        None => (lim, false),
+                    },
+                };
+                it.work((len as u64 / 64) * 64, pos)?; // показ платить кроки за себе (еталон: charge)
+                if !found {
                     errs.push(format!("{}: {} — не з переліку {}", where_, brief(x, 30), rest));
                 }
             }

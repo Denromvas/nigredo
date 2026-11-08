@@ -258,7 +258,16 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
         '¬' => Ok(V::b(!boolean(&a[0], g, pos)?)),
         '►' => it.call(&a[0], vec![a[1].clone()], pos),
         '▶' => it.call(&a[0], vec![a[1].clone(), a[2].clone()], pos),
-        '☠' => ngr(show(&a[0], true)?, pos),
+        '☠' => {
+            it.work(a[0].n, pos)?; // текст помилки — показ усього значення (1.2, суд 15)
+            let text = show(&a[0], true)?;
+            let n = text.chars().count() as u64 + 1;
+            if n > it.max_size {
+                // ☂ віддасть його обробникові як рядок (суд 15, Новачок)
+                return fatal(format!("☠: значення завелике (логічний розмір {} > --розмір {})", n, it.max_size), Some(pos));
+            }
+            ngr(text, pos)
+        }
         '…' => {
             let (x, y) = (n(it, a, 0, g, pos)?, n(it, a, 1, g, pos)?);
             let (x, y) = match (x, y) {
@@ -463,6 +472,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             if a[0].n > it.max_size {
                 return fatal(format!("»: значення завелике для друку (> --розмір {})", it.max_size), Some(pos));
             }
+            it.work(a[0].n, pos)?; // показ — обхід усього значення, і до того, як він упаде (1.2, суд 15)
             let text = uni::visible(&show(&a[0], true)?, "\n\t", true);
             let agent = it.agent.clone();
             it.rec("вивід", vec![("агент".into(), crate::json::J::Str(agent)), ("текст".into(), trace_val(&V::str(text.clone()), true)?)])?;
@@ -549,7 +559,13 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             let key = need_str(&a[0], "🜃", pos)?;
             let res = it.memory.get(&*key.s).cloned().unwrap_or_else(V::none);
             let c = a[0].c.min(it.mem_c).min(it.cpc());
-            let res = if c < res.c { capc(&res, c) } else { res };
+            let res = if c < res.c {
+                it.fresh = true; // копія зі зниженою впевненістю — нові дані (spent_of); наявне значення — 1 (1.2, суд 15)
+                capc(&res, c)
+            } else {
+                res
+            };
+            it.work(res.n, pos)?; // показ для сліду обходить значення
             let agent = it.agent.clone();
             it.rec(
                 "памʼять",
