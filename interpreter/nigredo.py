@@ -39,7 +39,9 @@ OWN_12 = {'μ', 'φ', '⇅', '⚗', '↺'}       # 1.2: новий список 
 ALLOC_FACTOR = 20         # сумарно за запуск можна створити не більше ALLOC_FACTOR × --розмір
 MAX_INT_BITS = 100_000    # найбільше ціле (≈ 30 000 десяткових цифр)
 MAX_TRACE = 50_000_000    # найбільший слід у байтах; --слід-розмір N
-HEAVY = set('＝≠σΔ⁀∋↑⇅⊞≈⇣⇡⊳⌕≋')  # робота пропорційна розміру — і кроки теж
+HEAVY_12 = set('‹›≤≥‰')          # 1.2 (суд 15): порівняння рядків і остача великих цілих теж обходять аргументи
+HEAVY = set('＝≠σΔ⁀∋↑⇅⊞≈⇣⇡⊳⌕≋') | HEAVY_12  # робота пропорційна розміру — і кроки теж
+HEAVY_OLD = HEAVY - HEAVY_12      # облік 1.0 і 1.1 (повтор їхніх слідів)
 if hasattr(sys, 'set_int_max_str_digits'):
     sys.set_int_max_str_digits(0)
 DEFAULT_STEPS = 10_000_000
@@ -258,6 +260,13 @@ class V:
             self.n = 1 + abs(v.adjusted()) + len(v.as_tuple().digits)
         else:
             self.n = 1
+
+
+def v_with(x, c, s):
+    """Те саме значення з іншою впевненістю: логічний розмір не перераховується (обхід списку за один крок — суд 15, ✓)."""
+    r = V.__new__(V)
+    r.v, r.c, r.s, r.n = x.v, c, s, x.n
+    return r
 
 
 def too_deep(depth):
@@ -6341,6 +6350,7 @@ class Interp:
         self.fresh = False               # останній § повернув копію (capc), а не наявний елемент
         self.logical = cost == 'логічний'  # облік 1.0: кожне нове значення — свій логічний розмір (лише повтор сліду 1.0)
         self.labor = cost == 'робота'      # облік 1.2: кожен обхід значення — кроки, кожна копія capc — нові дані (пропозиція облік.md)
+        self.heavy = HEAVY if self.labor else HEAVY_OLD
         self.steps_left, self.cwd = steps, os.path.abspath(cwd)
         self.out = out or sys.stdout
         self.memory, self.agent, self.caps, self.seal_caps = {}, 'головний', {}, {}
@@ -6555,6 +6565,10 @@ class Interp:
         self.trace('інструмент', агент=job['агент'], назва=name, аргументи=targs, результат=trace_val(res), впевненість=c,
                    **stored, **({'сухо': 'не виконано'} if job.get('сухо') else {}),
                    **({'шлях': job['шляхи']} if job.get('шляхи') else {}))
+        if self.labor:      # облік 1.2 (суд 15): показ результату для сліду — обхід; копія зі зниженою впевненістю — нові дані
+            self.work(res.n, job['pos'])            # (сам результат — дані зі світу: їх обмежують квоти, як і дію)
+            if c < 1 and type(res.v) in (list, dict):
+                self.made(res.n, job['pos'])
         return res
 
     def parallel(self, lst, fn, pos, fnode):
@@ -6606,7 +6620,7 @@ class Interp:
                 self.trace(event, **data)
             try:
                 r = self.tool_end(j.v[1], outcome)
-                out.append(capc(r, j.c) if j.c < r.c else r)
+                out.append(self.fresh_copy(r, j.c, '‖', pos) if j.c < r.c else r)   # копія: облік 1.2 — повна ціна (суд 15)
             except NgrError as e:
                 if not e.where:
                     e.msg, e.where = f'‖, елемент №{i + 1} (§ {i}): {e.msg}', True   # «№5» — пʼятий, індекс — з 0 (суд 8б)
@@ -6709,6 +6723,14 @@ class Interp:
             if self.alloc > ALLOC_FACTOR * self.max_size:
                 raise Fatal(f'сумарно створено забагато ({self.alloc} > {ALLOC_FACTOR} × --розмір)', pos)
         return res
+
+    def made(self, units, pos):
+        """Облік 1.2: нові дані поза значенням гліфа (ключі ⇅, результат інструмента) — кроки й «сумарно створено»."""
+        if units > 1:
+            self.work(units, pos)
+            self.alloc += units
+            if self.alloc > ALLOC_FACTOR * self.max_size:
+                raise Fatal(f'сумарно створено забагато ({self.alloc} > {ALLOC_FACTOR} × --розмір)', pos)
 
     def work(self, units, pos):
         self.steps_left -= units // 64
@@ -6890,7 +6912,7 @@ class Interp:
         elif k == 'op' and node[2] not in LAZY_GLYPHS:
             g, kids = node[2], [self.compiled(a) for a in node[3]]
             int2 = g in INT_FAST and len(kids) == 2
-            heavy = g in HEAVY
+            heavy = g in self.heavy
             fn2 = INT_FAST.get(g)
             sized, strict = self.sized, self.strict
             if int2:
@@ -7136,7 +7158,7 @@ class Interp:
                 x, y = args
                 if (type(x.v) is int and type(y.v) is int and x.c >= 1 and y.c >= 1 and self.pc >= 1
                         and self.halt_c >= 1 and (g != '‰' or y.v) and (g != '×' or x.v.bit_length() + y.v.bit_length() <= MAX_INT_BITS)):
-                    if g in HEAVY:
+                    if g in self.heavy:
                         self.work(x.n + y.n, pos)
                     return V(INT_FAST[g](x.v, y.v))
             return self.strict(g, args, pos)
@@ -7240,7 +7262,7 @@ class Interp:
                 return mk([self.fresh_copy(x, r.c, g, pos) if r.c < x.c else x for x, r, ok in zip(items, results, conds) if ok], m)
             if g == '⇅':
                 if self.labor:                    # ключі перетворюються й порівнюються — кроки за їхній розмір (1.2)
-                    self.work(sum(r.n for r in results), pos)
+                    self.made(sum(r.n for r in results), pos)
                 try:
                     order = sorted(range(len(items)), key=lambda i: sort_key(results[i]))
                 except BadSortKey as k:
@@ -7301,7 +7323,7 @@ class Interp:
             self.pure_deny(g, pos)
         amin = min([1.0] + [a.c for a in args])
         self.taint(amin)                          # будь-яка операція може впасти — це видно ☂
-        if g in HEAVY:
+        if g in self.heavy:
             self.work(sum(a.n for a in args), pos)
         try:
             res = self.prim(g, args, pos)
@@ -7324,7 +7346,7 @@ class Interp:
         if g not in OWN_CONF:
             c = min(res.c, amin, self.cpc)        # новий результат — не впевненіший за контекст (pc і канал завершення)
             if isinstance(res.v, (list, dict)):        # вміст лишає свою впевненість; будова — від аргументів
-                res = V(res.v, min(res.c, c), min([res.s] + [a.s for a in args]))
+                res = v_with(res, min(res.c, c), min([res.s] + [a.s for a in args]))   # n той самий: без обходу (суд 15)
             elif c < res.c:
                 res = V(res.v, c)
         return res
@@ -7446,6 +7468,8 @@ class Interp:
             if isinstance(x, dict):
                 if not isinstance(i, str):
                     raise NgrError('§: ключ словника — рядок', pos)
+                if self.labor:                        # пошук порівнює ключ з рівним за вмістом — обхід ключа (суд 15)
+                    self.work(a[1].n, pos)
                 el = x.get(i, V(None, a[0].s))
             elif isinstance(x, (list, str)):
                 if isinstance(i, bool) or not isinstance(i, int):
@@ -7460,7 +7484,10 @@ class Interp:
             return capc(el, c) if c < el.c else el
         if g == '✎':
             d = dict(self.need(a[0], 'словник', g, pos))
-            d[self.need(a[1], 'рядок', g, pos)] = a[2]
+            k = self.need(a[1], 'рядок', g, pos)
+            if self.labor:                            # як і §: ключ порівнюється за вмістом (суд 15)
+                self.work(a[1].n, pos)
+            d[k] = a[2]
             return V(d)
         if g == 'κ':
             return V([V(k, a[0].s) for k in self.need(a[0], 'словник', g, pos)], a[0].s)
@@ -8443,8 +8470,9 @@ def cheatsheet():
            '  **Вартість (облік 1.2):** платять нові дані й обхід. Наявне значення, повернене як є, — нічого: `§` (і рядок), `¿ ☂ ↻ Σ`, `► ▶`, `✓ 🜍`;\n'
            '  новий список з наявних елементів — лише власні елементи: `＋ ⊏ ✎`, літерали `【】 『』`, `μ φ ⇅ ⚗ ↺ ⊞`. Тож великий **незмінний** стан у `↻` дешевий.\n'
            '  Копія з меншою впевненістю — повна ціна: `§` з сумнівним ключем, виклик сумнівної функції, розбір `λ【】` сумнівного списку. Обхід платить кроки\n'
-           '  за розмір: `＝ ≠ ∋` (обидва боки, і проти `∅`), показ для сліду (`🜄`, результат `🜁`, `⚗`, аргументи інструмента), ключі `⇅`. `＋ спис 【х】`\n'
-           '  у циклі — квадрат (~14 тис. елементів на типових межах): збирайте шматками. Один список — до `--розмір`, нових даних за запуск — до 20 × `--розмір`.\n'
+           '  за розмір: `＝ ≠ ∋ ‹ › ≤ ≥ ‰` (обидва боки, і проти `∅`), ключ словника в `§ ✎`, показ для сліду (`🜄`, результат `🜁`, `⚗`, аргументи й\n'
+           '  результат інструмента), ключі `⇅` (вони ж — нові дані). `＋ спис 【х】` у циклі — квадрат (~14 тис. елементів на типових межах): збирайте\n'
+           '  шматками. Один список — до `--розмір`, нових даних за запуск — до 20 × `--розмір` (дані зі світу обмежують квоти, шаблон `〔〕` — лише кроки).\n'
            '- Імена — слова будь-якою мовою, але **одним письмом** (`звiт` з латинською i — помилка). Грецькі літери — гліфи.',
            '  **Двійники** — два різні імена, однакові на вигляд за скелетом UTS #39 (`x`/`х`, `h`/`һ`, `I`/`l`), — помилка;',
            '  так само імʼя з символів сумісності (`ｘ`, `𝚡`), з літерою, якої Unicode не радить для імен (UTS #39',

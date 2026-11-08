@@ -274,6 +274,18 @@ impl Interp {
         self.step(pos)
     }
 
+    /// Нові дані поза значенням гліфа (ключі `⇅`, результат інструмента) — кроки й «сумарно створено» (1.2, суд 15; еталон: made).
+    pub fn made(&mut self, units: u64, pos: Pos) -> R<()> {
+        if units > 1 {
+            self.work(units, pos)?;
+            self.alloc += units;
+            if self.alloc > lang::ALLOC_FACTOR * self.max_size {
+                return fatal(format!("сумарно створено забагато ({} > {} × --розмір)", self.alloc, lang::ALLOC_FACTOR), Some(pos));
+            }
+        }
+        Ok(())
+    }
+
     pub fn work(&mut self, units: u64, pos: Pos) -> R<()> {
         self.steps_left -= (units / 64) as i64;
         if self.steps_left < 0 {
@@ -1301,7 +1313,7 @@ impl Interp {
                     }
                     '⇅' => {
                         // ключі перетворюються й порівнюються — кроки за їхній розмір (1.2)
-                        self.work(results.iter().map(|r| r.n).sum::<u64>(), pos)?;
+                        self.made(results.iter().map(|r| r.n).sum::<u64>(), pos)?;
                         let order = match crate::sort::sort_order(&results, pos) {
                             Ok(o) => o,
                             Err(e) if e.deep => return ngr_c("⇅: ключі вкладені надто глибоко", pos, m),
@@ -1754,6 +1766,12 @@ impl Interp {
             d.push(("шлях".into(), J::Arr(job.paths.iter().map(|p| J::s(p)).collect())));
         }
         self.rec("інструмент", d)?;
+        // 1.2 (суд 15): показ результату для сліду — обхід; копія зі зниженою впевненістю — нові дані (сам результат — дані
+        // зі світу: їх обмежують квоти, як і дію)
+        self.work(res.n, job.pos)?;
+        if c < 1.0 && matches!(res.v, Val::List(_) | Val::Dict(_)) {
+            self.made(res.n, job.pos)?;
+        }
         Ok(res)
     }
 
