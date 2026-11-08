@@ -1,0 +1,423 @@
+diff --git a/albedo/src/lib.rs b/albedo/src/lib.rs
+index ef6d366..abb002b 100644
+--- a/albedo/src/lib.rs
++++ b/albedo/src/lib.rs
+@@ -202,7 +202,7 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
+         ("тека".into(), J::Str(uni::safe(f[1]))),
+         ("дозволи_власника".into(), J::Str(uni::safe(f[6]))),
+         ("дозволено".into(), J::Arr(allowed.iter().map(|a| J::s(a)).collect())),
+-        ("ліміти".into(), J::Obj(vec![("кроки".into(), J::Int(num(8))), ("розмір".into(), J::Int(num(9))), ("слід".into(), J::Int(num(10))), ("зерно".into(), J::Num(f[7].to_string())), ("облік".into(), J::s("нове"))])),
++        ("ліміти".into(), J::Obj(vec![("кроки".into(), J::Int(num(8))), ("розмір".into(), J::Int(num(9))), ("слід".into(), J::Int(num(10))), ("зерно".into(), J::Num(f[7].to_string())), ("облік".into(), J::s("робота"))])),
+     ];
+     if it.rec("початок", head).is_err() {
+         return 4;
+diff --git a/athanor/src/interp.rs b/athanor/src/interp.rs
+index b615a56..f5202ed 100644
+--- a/athanor/src/interp.rs
++++ b/athanor/src/interp.rs
+@@ -290,12 +290,13 @@ impl Interp {
+         self.sized_as(res, g, pos, spent)
+     }
+ 
+-    /// Скільки створено: лише те, чого ще не було (пропозиція вартість.md). `§` контейнера нічого не створює; `＋ ✎ ⊏` над списками й
+-    /// словниками ділять дані зі старими значеннями, нові там лише власні елементи; решта — логічний розмір.
++    /// Скільки створено (облік 1.2 «робота», пропозиція облік.md): лише нові дані, без переплати. Значення, повернене як є, — 1
++    /// (`¿ ☂ ↻ Σ`, функція-значення `► ▶`, перевірене `✓ 🜍`, `§` контейнера чи рядка); новий список чи словник з наявних
++    /// елементів — власні елементи + 1 (`＋ ✎ ⊏ μ φ ⇅ ⚗ ↺`; `⊞` — групи й елементи груп); решта — логічний розмір.
+     #[inline(always)]
+     fn spent(res: &V, g: char) -> u64 {
+-        if matches!(g, '¿' | '☂' | '↻' | 'Σ') {
+-            return 1; // наявне значення (гілка, тіло, стан, акумулятор), повернуте як є; копію capc списує сам гліф (copied)
++        if matches!(g, '¿' | '☂' | '↻' | 'Σ' | '►' | '▶' | '✓' | '🜍' | '§') {
++            return 1; // наявне значення, повернуте як є (і елемент §); копію capc списує сам гліф (copied, fresh_copy, fresh)
+         }
+         let own = match &res.v {
+             Val::List(l) => l.len() as u64,
+@@ -303,21 +304,34 @@ impl Interp {
+             _ => return res.n,
+         };
+         match g {
+-            '§' => 1,
+-            '＋' | '✎' | '⊏' => own + 1,
++            '＋' | '✎' | '⊏' | 'μ' | 'φ' | '⇅' | '⚗' | '↺' => own + 1,
++            '⊞' => match &res.v {
++                Val::Dict(d) => d.vals.iter().map(|x| match &x.v { Val::List(l) => l.len() as u64, _ => 0 }).sum::<u64>() + own + 1,
++                _ => res.n,
++            },
+             _ => res.n,
+         }
+     }
+ 
+-    /// `spent` з урахуванням копії `§`: елемент, який `§` скопіював зі зниженою впевненістю, — нові дані, повний розмір.
++    /// `spent` з урахуванням копії: значення, яке `§ ρ κ ⌂ ⚗ 🜃` скопіювали зі зниженою впевненістю, — нові дані, повний розмір.
+     #[inline(always)]
+     fn spent_of(&mut self, res: &V, g: char) -> u64 {
+-        if g == '§' && std::mem::take(&mut self.fresh) {
+-            return res.n;
++        if std::mem::take(&mut self.fresh) {
++            return if matches!(res.v, Val::List(_) | Val::Dict(_)) { res.n } else { 1 };
+         }
+         Self::spent(res, g)
+     }
+ 
++    /// Копія capc поза гліфом (виклик невпевненої функції, розбір λ【】, елементи φ ⊞, `🜄`, `🜍`): нові дані, повна ціна одразу.
++    pub fn fresh_copy(&mut self, x: &V, c: f64, g: char, pos: Pos) -> R<V> {
++        let r = capc(x, c);
++        if matches!(r.v, Val::List(_) | Val::Dict(_)) {
++            let n = r.n;
++            return self.sized_as(r, g, pos, n);
++        }
++        Ok(r)
++    }
++
+     /// Копія зі зниженою впевненістю (capc) у `¿ ☂ ↻ Σ`: справжні нові дані — повний логічний розмір (еталон: copied).
+     fn copied(&mut self, res: V, g: char, pos: Pos) -> R<V> {
+         let n = res.n;
+@@ -895,7 +909,7 @@ impl Interp {
+                         }
+                         if let Val::List(l) = &a.v {
+                             for e in l.iter() {
+-                                vars.push(if a.s < e.c { capc(e, a.s) } else { e.clone() });
++                                vars.push(if a.s < e.c { self.fresh_copy(e, a.s, '►', pos)? } else { e.clone() });
+                             }
+                         }
+                         if a.c.min(a.s) < 1.0 {
+@@ -907,7 +921,7 @@ impl Interp {
+             }
+             let env = Env::child(vars, &func.env);
+             let res = self.eval(&lam.body, &env)?;
+-            Ok(if f.c < res.c { capc(&res, f.c) } else { res })
++            if f.c < res.c { self.fresh_copy(&res, f.c, '►', pos) } else { Ok(res) }
+         })();
+         let r = match (r, &func.module) {
+             (Err(mut e), Some(m)) if e.file.is_none() && !e.pipe && !e.internal => {
+@@ -1280,12 +1294,14 @@ impl Interp {
+                         for (i, (r, ok)) in results.iter().zip(conds).enumerate() {
+                             if ok {
+                                 let x = items.get(i);
+-                                kept.push(if r.c < x.c { capc(&x, r.c) } else { x });
++                                kept.push(if r.c < x.c { self.fresh_copy(&x, r.c, g, pos)? } else { x });
+                             }
+                         }
+                         Ok(mk(kept, m))
+                     }
+                     '⇅' => {
++                        // ключі перетворюються й порівнюються — кроки за їхній розмір (1.2)
++                        self.work(results.iter().map(|r| r.n).sum::<u64>(), pos)?;
+                         let order = match crate::sort::sort_order(&results, pos) {
+                             Ok(o) => o,
+                             Err(e) if e.deep => return ngr_c("⇅: ключі вкладені надто глибоко", pos, m),
+@@ -1303,7 +1319,7 @@ impl Interp {
+                                 Val::Str(s) => s.clone(),
+                                 _ => return ngr(format!("⊞ (ключ): очікувалося рядок, а не {} {}", kind(r), brief(r, 40)), pos),
+                             };
+-                            let el = if r.c < x.c { capc(&x, r.c) } else { x };
++                            let el = if r.c < x.c { self.fresh_copy(&x, r.c, g, pos)? } else { x };
+                             match idx.get(&*k.s) {
+                                 Some(&i) => groups[i].1.push(el),
+                                 None => {
+@@ -1511,6 +1527,7 @@ impl Interp {
+ 
+     pub fn tool_begin(&mut self, name: &'static str, args: Vec<V>, pos: Pos) -> R<Job> {
+         let full = matches!(name, "агент" | "мережа.взяти" | "мережа.послати" | "файл.писати" | "бд.писати" | "процес");
++        self.work(args.iter().map(|a| a.n).sum::<u64>(), pos)?; // показ аргументів у сліді обходить їх (1.2)
+         let targs: Vec<J> = match args.iter().map(|a| trace_val(a, full)).collect() {
+             Ok(t) => t,
+             Err(e) if e.deep => {
+@@ -1911,6 +1928,7 @@ impl Interp {
+         self.caps = saved_caps;
+         self.mem_c = saved_memc;
+         let res = r?;
++        self.work(res.n, pos)?; // показ результату в сліді обходить його (1.2)
+         let shown = match trace_val(&res, false) {
+             Ok(s) => s,
+             Err(e) if e.deep => return ngr_c(format!("субагент «{}»: результат вкладений надто глибоко", name), pos, res.c),
+diff --git a/athanor/src/lang.rs b/athanor/src/lang.rs
+index e909df3..0a1ee68 100644
+--- a/athanor/src/lang.rs
++++ b/athanor/src/lang.rs
+@@ -1,6 +1,6 @@
+ // Згенеровано athanor/gen_tables.py з interpreter/nigredo.py — не редагувати руками.
+ 
+-pub const VERSION: &str = "1.1";
++pub const VERSION: &str = "1.2";
+ pub static GLYPHS: [(char, i8); 77] = [('\u{a7}', 2), ('\u{ac}', 1), ('\u{b1}', 1), ('\u{bb}', 1), ('\u{bf}', 3), ('\u{d7}', 2), ('\u{f7}', 2), ('\u{394}', 1), ('\u{39b}', -1), ('\u{3a3}', 3), ('\u{3b4}', 1), ('\u{3b5}', 1), ('\u{3ba}', 1), ('\u{3bb}', -1), ('\u{3bc}', 2), ('\u{3bd}', 1), ('\u{3c1}', 1), ('\u{3c3}', 1), ('\u{3c4}', 1), ('\u{3c6}', 2), ('\u{3c7}', 1), ('\u{2016}', 2), ('\u{2026}', 2), ('\u{2030}', 2), ('\u{2039}', 2), ('\u{203a}', 2), ('\u{2040}', 2), ('\u{2116}', 2), ('\u{2190}', -1), ('\u{2191}', 1), ('\u{2198}', 2), ('\u{21ba}', 1), ('\u{21bb}', 3), ('\u{21c4}', 3), ('\u{21c5}', 2), ('\u{21e1}', 1), ('\u{21e3}', 1), ('\u{2200}', 2), ('\u{220b}', 2), ('\u{2218}', -1), ('\u{2227}', 2), ('\u{2228}', 2), ('\u{222b}', 2), ('\u{2245}', 2), ('\u{2248}', 2), ('\u{224b}', 3), ('\u{2260}', 2), ('\u{2264}', 2), ('\u{2265}', 2), ('\u{2283}', -1), ('\u{228f}', 3), ('\u{229e}', 2), ('\u{22a2}', 1), ('\u{22b3}', 2), ('\u{2302}', 0), ('\u{230a}', 1), ('\u{2315}', 2), ('\u{2317}', 2), ('\u{25a6}', 1), ('\u{25b6}', 3), ('\u{25ba}', 2), ('\u{25f7}', 2), ('\u{2602}', 2), ('\u{2620}', 1), ('\u{2697}', 2), ('\u{2702}', 2), ('\u{270e}', 3), ('\u{2713}', 2), ('\u{ff0b}', 2), ('\u{ff0d}', 2), ('\u{ff1d}', 2), ('\u{1f701}', 4), ('\u{1f702}', -1), ('\u{1f703}', 1), ('\u{1f704}', 2), ('\u{1f70d}', 2), ('\u{1f714}', -1)];
+ pub static TOOLS: [(&str, u8, bool, &str); 13] = [("\u{43e}\u{440}\u{430}\u{43a}\u{443}\u{43b}", 1, false, ""), ("\u{436}\u{435}\u{440}\u{435}\u{431}", 1, false, ""), ("\u{447}\u{430}\u{441}", 0, false, ""), ("\u{444}\u{430}\u{439}\u{43b}.\u{447}\u{438}\u{442}\u{430}\u{442}\u{438}", 1, true, "\u{442}\u{435}\u{43a}\u{430}"), ("\u{444}\u{430}\u{439}\u{43b}.\u{43f}\u{438}\u{441}\u{430}\u{442}\u{438}", 2, true, "\u{442}\u{435}\u{43a}\u{430}"), ("\u{444}\u{430}\u{439}\u{43b}.\u{441}\u{43f}\u{438}\u{441}\u{43e}\u{43a}", 1, true, "\u{442}\u{435}\u{43a}\u{430}"), ("\u{431}\u{434}.\u{447}\u{438}\u{442}\u{430}\u{442}\u{438}", 3, true, "\u{442}\u{435}\u{43a}\u{430}"), ("\u{431}\u{434}.\u{43f}\u{438}\u{441}\u{430}\u{442}\u{438}", 3, true, "\u{442}\u{435}\u{43a}\u{430}"), ("\u{43c}\u{435}\u{440}\u{435}\u{436}\u{430}.\u{432}\u{437}\u{44f}\u{442}\u{438}", 1, true, "\u{445}\u{43e}\u{441}\u{442}"), ("\u{43c}\u{435}\u{440}\u{435}\u{436}\u{430}.\u{43f}\u{43e}\u{441}\u{43b}\u{430}\u{442}\u{438}", 2, true, "\u{445}\u{43e}\u{441}\u{442}"), ("\u{43f}\u{440}\u{43e}\u{446}\u{435}\u{441}", 1, true, "\u{43a}\u{43e}\u{43c}\u{430}\u{43d}\u{434}\u{430}"), ("\u{430}\u{433}\u{435}\u{43d}\u{442}", 2, true, "\u{456}\u{43c}\u{2bc}\u{44f}"), ("python", 2, true, "\u{444}\u{443}\u{43d}\u{43a}\u{446}\u{456}\u{44f}")];
+ pub static SQL_ERRORS: [(&str, &str); 38] = [("Incorrect number of bindings", "\u{43a}\u{456}\u{43b}\u{44c}\u{43a}\u{456}\u{441}\u{442}\u{44c} \u{ab}?\u{bb} \u{443} \u{437}\u{430}\u{43f}\u{438}\u{442}\u{456} \u{43d}\u{435} \u{434}\u{43e}\u{440}\u{456}\u{432}\u{43d}\u{44e}\u{454} \u{43a}\u{456}\u{43b}\u{44c}\u{43a}\u{43e}\u{441}\u{442}\u{456} \u{43f}\u{430}\u{440}\u{430}\u{43c}\u{435}\u{442}\u{440}\u{456}\u{432}"), ("no such table", "\u{43d}\u{435}\u{43c}\u{430}\u{454} \u{442}\u{430}\u{43a}\u{43e}\u{457} \u{442}\u{430}\u{431}\u{43b}\u{438}\u{446}\u{456}"), ("no such column", "\u{43d}\u{435}\u{43c}\u{430}\u{454} \u{442}\u{430}\u{43a}\u{43e}\u{433}\u{43e} \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{446}\u{44f}"), ("syntax error", "\u{441}\u{438}\u{43d}\u{442}\u{430}\u{43a}\u{441}\u{438}\u{447}\u{43d}\u{430} \u{43f}\u{43e}\u{43c}\u{438}\u{43b}\u{43a}\u{430} SQL"), ("UNIQUE constraint failed", "\u{43f}\u{43e}\u{440}\u{443}\u{448}\u{435}\u{43d}\u{43e} \u{443}\u{43d}\u{456}\u{43a}\u{430}\u{43b}\u{44c}\u{43d}\u{456}\u{441}\u{442}\u{44c}"), ("NOT NULL constraint failed", "\u{43f}\u{43e}\u{440}\u{43e}\u{436}\u{43d}\u{454} \u{437}\u{43d}\u{430}\u{447}\u{435}\u{43d}\u{43d}\u{44f} \u{442}\u{430}\u{43c}, \u{434}\u{435} \u{437}\u{430}\u{431}\u{43e}\u{440}\u{43e}\u{43d}\u{435}\u{43d}\u{43e}"), ("database is locked", "\u{431}\u{430}\u{437}\u{430} \u{437}\u{430}\u{439}\u{43d}\u{44f}\u{442}\u{430}"), ("database or disk is full", "\u{431}\u{430}\u{437}\u{430} \u{434}\u{43e}\u{441}\u{44f}\u{433}\u{43b}\u{430} \u{43c}\u{435}\u{436}\u{456} \u{440}\u{43e}\u{437}\u{43c}\u{456}\u{440}\u{443} \u{430}\u{431}\u{43e} \u{442}\u{430}\u{431}\u{43b}\u{438}\u{446}\u{44f} \u{437} AUTOINCREMENT \u{432}\u{438}\u{447}\u{435}\u{440}\u{43f}\u{430}\u{43b}\u{430} \u{43d}\u{43e}\u{43c}\u{435}\u{440}\u{438} rowid"), ("string or blob too big", "\u{437}\u{43d}\u{430}\u{447}\u{435}\u{43d}\u{43d}\u{44f} \u{431}\u{456}\u{43b}\u{44c}\u{448}\u{435} \u{437}\u{430} --\u{440}\u{43e}\u{437}\u{43c}\u{456}\u{440}"), ("unable to open", "\u{43d}\u{435} \u{432}\u{434}\u{430}\u{43b}\u{43e}\u{441}\u{44f} \u{432}\u{456}\u{434}\u{43a}\u{440}\u{438}\u{442}\u{438} \u{431}\u{430}\u{437}\u{443}"), ("file is not a database", "\u{444}\u{430}\u{439}\u{43b} \u{2014} \u{43d}\u{435} \u{431}\u{430}\u{437}\u{430} SQLite"), ("malformed database schema", "\u{441}\u{445}\u{435}\u{43c}\u{430} \u{431}\u{430}\u{437}\u{438} \u{43f}\u{43e}\u{448}\u{43a}\u{43e}\u{434}\u{436}\u{435}\u{43d}\u{430}"), ("non-deterministic functions prohibited", "\u{43d}\u{435}\u{434}\u{435}\u{442}\u{435}\u{440}\u{43c}\u{456}\u{43d}\u{43e}\u{432}\u{430}\u{43d}\u{430} \u{444}\u{443}\u{43d}\u{43a}\u{446}\u{456}\u{44f} (random(), CURRENT_* \u{442}\u{43e}\u{449}\u{43e}) \u{443} \u{437}\u{433}\u{435}\u{43d}\u{435}\u{440}\u{43e}\u{432}\u{430}\u{43d}\u{43e}\u{43c}\u{443} \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{446}\u{456} \u{447}\u{438} \u{456}\u{43d}\u{434}\u{435}\u{43a}\u{441}\u{456}"), ("duplicate column name", "\u{441}\u{442}\u{43e}\u{432}\u{43f}\u{435}\u{446}\u{44c} \u{437} \u{442}\u{430}\u{43a}\u{43e}\u{44e} \u{43d}\u{430}\u{437}\u{432}\u{43e}\u{44e} \u{432}\u{436}\u{435} \u{454}"), ("bad JSON path", "\u{445}\u{438}\u{431}\u{43d}\u{438}\u{439} \u{448}\u{43b}\u{44f}\u{445} JSON"), ("malformed JSON", "\u{445}\u{438}\u{431}\u{43d}\u{438}\u{439} JSON"), ("already exists", "\u{442}\u{430}\u{431}\u{43b}\u{438}\u{446}\u{44f}, \u{456}\u{43d}\u{434}\u{435}\u{43a}\u{441} \u{447}\u{438} \u{442}\u{440}\u{438}\u{433}\u{435}\u{440} \u{437} \u{442}\u{430}\u{43a}\u{43e}\u{44e} \u{43d}\u{430}\u{437}\u{432}\u{43e}\u{44e} \u{432}\u{436}\u{435} \u{454}"), ("no such function", "\u{43d}\u{435}\u{43c}\u{430}\u{454} \u{442}\u{430}\u{43a}\u{43e}\u{457} \u{444}\u{443}\u{43d}\u{43a}\u{446}\u{456}\u{457}"), ("datatype mismatch", "\u{43d}\u{435}\u{432}\u{456}\u{434}\u{43f}\u{43e}\u{432}\u{456}\u{434}\u{43d}\u{456}\u{441}\u{442}\u{44c} \u{442}\u{438}\u{43f}\u{443}"), ("CHECK constraint failed", "\u{43f}\u{43e}\u{440}\u{443}\u{448}\u{435}\u{43d}\u{43e} \u{443}\u{43c}\u{43e}\u{432}\u{443} CHECK"), ("FOREIGN KEY constraint failed", "\u{43f}\u{43e}\u{440}\u{443}\u{448}\u{435}\u{43d}\u{43e} \u{437}\u{43e}\u{432}\u{43d}\u{456}\u{448}\u{43d}\u{456}\u{439} \u{43a}\u{43b}\u{44e}\u{447}"), ("ambiguous column name", "\u{43d}\u{435}\u{43e}\u{434}\u{43d}\u{43e}\u{437}\u{43d}\u{430}\u{447}\u{43d}\u{430} \u{43d}\u{430}\u{437}\u{432}\u{430} \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{446}\u{44f} (\u{434}\u{43e}\u{434}\u{430}\u{439}\u{442}\u{435} \u{442}\u{430}\u{431}\u{43b}\u{438}\u{446}\u{44e}: \u{442}.\u{441}\u{442}\u{43e}\u{432}\u{43f}\u{435}\u{446}\u{44c})"), ("wrong number of arguments", "\u{445}\u{438}\u{431}\u{43d}\u{430} \u{43a}\u{456}\u{43b}\u{44c}\u{43a}\u{456}\u{441}\u{442}\u{44c} \u{430}\u{440}\u{433}\u{443}\u{43c}\u{435}\u{43d}\u{442}\u{456}\u{432} \u{444}\u{443}\u{43d}\u{43a}\u{446}\u{456}\u{457}"), ("integer overflow", "\u{43f}\u{435}\u{440}\u{435}\u{43f}\u{43e}\u{432}\u{43d}\u{435}\u{43d}\u{43d}\u{44f} \u{446}\u{456}\u{43b}\u{43e}\u{433}\u{43e}"), ("incomplete input", "\u{43d}\u{435}\u{437}\u{430}\u{432}\u{435}\u{440}\u{448}\u{435}\u{43d}\u{438}\u{439} \u{437}\u{430}\u{43f}\u{438}\u{442}"), ("no such index", "\u{43d}\u{435}\u{43c}\u{430}\u{454} \u{442}\u{430}\u{43a}\u{43e}\u{433}\u{43e} \u{456}\u{43d}\u{434}\u{435}\u{43a}\u{441}\u{443}"), ("misuse of aggregate", "\u{430}\u{433}\u{440}\u{435}\u{433}\u{430}\u{442}\u{43d}\u{430} \u{444}\u{443}\u{43d}\u{43a}\u{446}\u{456}\u{44f} \u{43d}\u{435} \u{43d}\u{430} \u{441}\u{432}\u{43e}\u{454}\u{43c}\u{443} \u{43c}\u{456}\u{441}\u{446}\u{456}"), ("sub-select returns", "\u{43f}\u{456}\u{434}\u{437}\u{430}\u{43f}\u{438}\u{442} \u{43f}\u{43e}\u{432}\u{435}\u{440}\u{442}\u{430}\u{454} \u{43d}\u{435} \u{43e}\u{434}\u{438}\u{43d} \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{435}\u{446}\u{44c}"), ("too many terms", "\u{437}\u{430}\u{431}\u{430}\u{433}\u{430}\u{442}\u{43e} \u{447}\u{430}\u{441}\u{442}\u{438}\u{43d} \u{443} \u{437}\u{430}\u{43f}\u{438}\u{442}\u{456}"), ("has no column named", "\u{443} \u{442}\u{430}\u{431}\u{43b}\u{438}\u{446}\u{456} \u{43d}\u{435}\u{43c}\u{430}\u{454} \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{446}\u{44f} \u{437} \u{442}\u{430}\u{43a}\u{43e}\u{44e} \u{43d}\u{430}\u{437}\u{432}\u{43e}\u{44e}"), ("values were supplied", "\u{43a}\u{456}\u{43b}\u{44c}\u{43a}\u{456}\u{441}\u{442}\u{44c} \u{437}\u{43d}\u{430}\u{447}\u{435}\u{43d}\u{44c} \u{43d}\u{435} \u{434}\u{43e}\u{440}\u{456}\u{432}\u{43d}\u{44e}\u{454} \u{43a}\u{456}\u{43b}\u{44c}\u{43a}\u{43e}\u{441}\u{442}\u{456} \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{446}\u{456}\u{432} \u{442}\u{430}\u{431}\u{43b}\u{438}\u{446}\u{456}"), ("values for", "\u{43a}\u{456}\u{43b}\u{44c}\u{43a}\u{456}\u{441}\u{442}\u{44c} \u{437}\u{43d}\u{430}\u{447}\u{435}\u{43d}\u{44c} \u{43d}\u{435} \u{434}\u{43e}\u{440}\u{456}\u{432}\u{43d}\u{44e}\u{454} \u{43a}\u{456}\u{43b}\u{44c}\u{43a}\u{43e}\u{441}\u{442}\u{456} \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{446}\u{456}\u{432}"), ("do not have the same number of result columns", "\u{447}\u{430}\u{441}\u{442}\u{438}\u{43d}\u{438} UNION (INTERSECT, EXCEPT) \u{43c}\u{430}\u{44e}\u{442}\u{44c} \u{440}\u{456}\u{437}\u{43d}\u{443} \u{43a}\u{456}\u{43b}\u{44c}\u{43a}\u{456}\u{441}\u{442}\u{44c} \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{446}\u{456}\u{432}"), ("missing datatype", "\u{443} \u{442}\u{430}\u{431}\u{43b}\u{438}\u{446}\u{456} STRICT \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{435}\u{446}\u{44c} \u{431}\u{435}\u{437} \u{442}\u{438}\u{43f}\u{443}"), ("unrecognized token", "\u{43d}\u{435}\u{437}\u{43d}\u{430}\u{439}\u{43e}\u{43c}\u{438}\u{439} \u{437}\u{43d}\u{430}\u{43a} \u{443} \u{437}\u{430}\u{43f}\u{438}\u{442}\u{456} (\u{447}\u{430}\u{441}\u{442}\u{43e} \u{2014} \u{43d}\u{435}\u{437}\u{430}\u{43a}\u{440}\u{438}\u{442}\u{430} \u{43b}\u{430}\u{43f}\u{43a}\u{430})"), ("object name reserved for internal use", "\u{43d}\u{430}\u{437}\u{432}\u{438} sqlite_\u{2026} \u{2014} \u{441}\u{43b}\u{443}\u{436}\u{431}\u{43e}\u{432}\u{456}, \u{457}\u{445} \u{431}\u{435}\u{440}\u{435} \u{43b}\u{438}\u{448}\u{435} \u{441}\u{430}\u{43c} SQLite"), ("because it is a view", "\u{43f}\u{440}\u{435}\u{434}\u{441}\u{442}\u{430}\u{432}\u{43b}\u{435}\u{43d}\u{43d}\u{44f} (VIEW) \u{43d}\u{435} \u{437}\u{43c}\u{456}\u{43d}\u{44e}\u{44e}\u{442}\u{44c} \u{43d}\u{430}\u{43f}\u{440}\u{44f}\u{43c}\u{443} \u{2014} \u{43b}\u{438}\u{448}\u{435} \u{447}\u{435}\u{440}\u{435}\u{437} \u{442}\u{440}\u{438}\u{433}\u{435}\u{440} INSTEAD OF"), ("term out of range", "\u{43d}\u{43e}\u{43c}\u{435}\u{440} \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{446}\u{44f} \u{432} ORDER BY \u{447}\u{438} GROUP BY \u{43f}\u{43e}\u{437}\u{430} \u{43c}\u{435}\u{436}\u{430}\u{43c}\u{438}")];
+diff --git a/athanor/src/main.rs b/athanor/src/main.rs
+index 9c2a10c..fe4f0b7 100644
+--- a/athanor/src/main.rs
++++ b/athanor/src/main.rs
+@@ -458,7 +458,7 @@ fn execute(
+                 ("розмір".into(), J::Int(o.size as i64)),
+                 ("слід".into(), J::Int(o.tsize as i64)),
+                 ("зерно".into(), J::Num(o.seed.trim_start_matches('+').to_string())),
+-                ("облік".into(), J::s("нове")), // облік створеного й кроків 1.1 (суд 14); слід без поля — облік 1.0
++                ("облік".into(), J::s("робота")), // облік 1.2 «робота»; «нове» — 1.1 (суд 14), слід без поля — облік 1.0
+             ]),
+         ),
+     ];
+diff --git a/athanor/src/prims.rs b/athanor/src/prims.rs
+index db701ea..f204209 100644
+--- a/athanor/src/prims.rs
++++ b/athanor/src/prims.rs
+@@ -504,6 +504,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
+                 return ngr("⚗: поріг має бути від 0 до 1", pos);
+             }
+             let mut kept = Vec::new();
++            it.work(lst.iter().map(|x| x.n).sum::<u64>(), pos)?; // кожне рішення показує елемент у сліді (1.2)
+             for x in lst.iter() {
+                 let ok = x.c >= t;
+                 let agent = it.agent.clone();
+@@ -527,7 +528,8 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
+             let key = need_str(&a[0], "🜄", pos)?;
+             let kc = a[0].c.min(it.cpc());
+             it.mem_c = it.mem_c.min(kc);
+-            let val = if kc < a[1].c { capc(&a[1], kc) } else { a[1].clone() };
++            let val = if kc < a[1].c { it.fresh_copy(&a[1], kc, '🜄', pos)? } else { a[1].clone() };
++            it.work(val.n, pos)?; // показ для сліду (1.2)
+             let shown = trace_val(&val, false)?; // спершу — чи можна записати в слід (суд 9: помилка ПІСЛЯ запису в памʼять)
+             it.memory.insert(key.s.to_string(), val.clone());
+             let agent = it.agent.clone();
+@@ -565,6 +567,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
+             let r = it.call(&a[1], vec![a[0].clone()], pos)?;
+             let ok = boolean(&r, g, pos)?;
+             it.taint(r.c);
++            it.work(a[0].n, pos)?; // показ для сліду (1.2)
+             let agent = it.agent.clone();
+             it.rec(
+                 "перевірка",
+@@ -579,7 +582,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
+                 return ngr_c(format!("🜍: перевірку не пройдено для {}", brief(&a[0], 60)), pos, r.c.min(a[0].c).min(it.cpc()));
+             }
+             it.halt_c = it.halt_c.min(r.c);
+-            Ok(if r.c < a[0].c { capc(&a[0], r.c) } else { a[0].clone() })
++            if r.c < a[0].c { it.fresh_copy(&a[0], r.c, '🜍', pos) } else { Ok(a[0].clone()) }
+         }
+         '∋' => match &a[0].v {
+             Val::Str(x) => {
+diff --git a/interpreter/nigredo.py b/interpreter/nigredo.py
+index e65a71d..7318bdd 100755
+--- a/interpreter/nigredo.py
++++ b/interpreter/nigredo.py
+@@ -21,7 +21,7 @@ import decimal
+ import math
+ from decimal import ROUND_HALF_UP, Decimal
+ 
+-VERSION = '1.1'
++VERSION = '1.2'
+ MAX_DEPTH = 2000
+ WALK_MAX_DEPTH = 2000     # показ, порівняння, JSON, ключі ⇅ обходять значення не глибше: далі — «вкладене надто глибоко»
+ #                           (межа мови, а не стека CPython — та сама в еталоні й Атанорі, від версії Python не залежить)
+@@ -30,9 +30,12 @@ MAX_WORK = 200_000                # глибина обчислення: сум
+                                   # — це ~2 млн кадрів, а стек виконавця скінченний; межа — правило мови, однакове в обох)
+ MAX_SIZE = 5_000_000      # найбільший логічний розмір значення (символів + елементів); --розмір N
+ SHARED = {'＋', '✎', '⊏', '【】', '『』'}    # ділять дані зі старими значеннями: нові тут лише власні елементи
+-COST_MODELS = ('нове', 'логічний')       # облік «сумарно створено» і кроків: нове — 1.1 (суд 14), логічний — 1.0 (повтор її слідів)
++COST_MODELS = ('робота', 'нове', 'логічний')   # облік кроків і «сумарно створено»: робота — 1.2, нове — 1.1 (суд 14),
++                                               # логічний — 1.0; старі — лише для повтору їхніх слідів
+ PASS = {'¿', '☂', '↻', 'Σ'}              # повертають уже наявне значення (гілку, тіло, стан, акумулятор): нового — нічого;
+                                          # копія зі зниженою впевненістю (capc) — справжня, її списує сам гліф (it.copied)
++PASS_12 = PASS | {'►', '▶', '✓', '🜍'}     # 1.2: і результат функції-значення, і значення, перевірене схемою чи умовою
++OWN_12 = {'μ', 'φ', '⇅', '⚗', '↺'}       # 1.2: новий список з наявних елементів — власні елементи (копії — окремо, повністю)
+ ALLOC_FACTOR = 20         # сумарно за запуск можна створити не більше ALLOC_FACTOR × --розмір
+ MAX_INT_BITS = 100_000    # найбільше ціле (≈ 30 000 десяткових цифр)
+ MAX_TRACE = 50_000_000    # найбільший слід у байтах; --слід-розмір N
+@@ -6330,13 +6333,14 @@ def check_allowlist(caps, allowed, cwd):
+ 
+ class Interp:
+     def __init__(self, trace, seed=0, steps=DEFAULT_STEPS, cwd='.', out=None, argv=(), protected=(), max_size=MAX_SIZE,
+-                 cost='нове'):
++                 cost='робота'):
+         self.trace, self.rng = trace, random.Random(seed)
+         self.argv, self.protected = list(argv), set(protected)
+         self.max_size = max_size
+         self.alloc = 0
+         self.fresh = False               # останній § повернув копію (capc), а не наявний елемент
+         self.logical = cost == 'логічний'  # облік 1.0: кожне нове значення — свій логічний розмір (лише повтор сліду 1.0)
++        self.labor = cost == 'робота'      # облік 1.2: кожен обхід значення — кроки, кожна копія capc — нові дані (пропозиція облік.md)
+         self.steps_left, self.cwd = steps, os.path.abspath(cwd)
+         self.out = out or sys.stdout
+         self.memory, self.agent, self.caps, self.seal_caps = {}, 'головний', {}, {}
+@@ -6370,6 +6374,8 @@ class Interp:
+     def tool_begin(self, name, args, pos):
+         """Перевірка прав, впевненість аргументів і запис «виклик» — до дії (для ‖ — по черзі, до паралельних дій)."""
+         full = name in ('агент', 'мережа.взяти', 'мережа.послати', 'файл.писати', 'бд.писати', 'процес')  # те, що йде назовні, — у слід повністю
++        if self.labor:                     # показ аргументів у сліді обходить їх — кроки (1.2)
++            self.work(sum(a.n for a in args), pos)
+         try:
+             targs = [trace_val(a, full) for a in args]
+         except RecursionError:              # аргумент глибший за стек — помилка програми до дії, не код 4 (суд 8б)
+@@ -6648,6 +6654,19 @@ class Interp:
+                 if c < t:
+                     self.try_stack[i] = c
+ 
++    def fresh_copy(self, x, c, g, pos):
++        """capc поза гліфом (виклик невпевненої функції, розбір λ【】, елементи φ ⊞, 🜄, 🜍): облік 1.2 списує копію
++        одразу повністю — це справжні нові дані; старі облікі її не бачили (повтор їхніх слідів рахує так само)."""
++        res = capc(x, c)
++        if self.labor and (type(res.v) is list or type(res.v) is dict):
++            self.sized(res, g, pos, res.n)
++        return res
++
++    def shown(self, x, pos):
++        """Облік 1.2: показ значення для сліду обходить усе значення — кроки за логічний розмір."""
++        if self.labor:
++            self.work(x.n, pos)
++
+     def copied(self, res, g, pos):
+         """Копія зі зниженою впевненістю (capc) у гліфі з PASS: справжні нові дані — повний логічний розмір."""
+         if self.logical:                    # облік 1.0: результат гліфа й так спише повний розмір (sized у eval)
+@@ -6662,6 +6681,18 @@ class Interp:
+             raise Fatal(f'{g}: число завелике (понад {MAX_INT_BITS} біт)', pos)
+         if self.logical:                    # облік 1.0 (повтор її сліду): нове значення — увесь логічний розмір
+             spent, self.fresh = res.n, False
++        elif spent is None and self.labor:  # облік 1.2: лише нові дані, без переплати (пропозиція облік.md)
++            t = type(res.v)
++            if self.fresh:                  # копія capc з меншою впевненістю (§ ρ κ ⌂ ⚗ 🜃) — повна ціна
++                spent, self.fresh = (res.n if t is list or t is dict else 1), False
++            elif g in PASS_12 or g == '§':  # наявне значення як є (елемент § — і рядок, і число)
++                spent = 1
++            elif (g in SHARED or g in OWN_12) and (t is list or t is dict):
++                spent = len(res.v) + 1
++            elif g == '⊞' and t is dict:    # групи — нові списки з наявних елементів (копії списано, коли робились)
++                spent = len(res.v) + sum(len(x.v) for x in res.v.values()) + 1
++            else:
++                spent = res.n
+         elif spent is None:                 # скільки створено: лише те, чого ще не було (пропозиція вартість.md)
+             if g in PASS:                   # наявне значення, повернуте як є
+                 spent = 1
+@@ -6762,14 +6793,14 @@ class Interp:
+                     if not isinstance(a.v, list) or len(a.v) != len(p[2]):
+                         raise NgrError(f'розбір 【{" ".join(p[2])}】: очікувався список із {len(p[2])} елементів, а не '
+                                        f'{kind(a)} {brief(a, 40)}', pos, min(a.c, a.s))
+-                    env.update((nm, capc(e, a.s) if a.s < e.c else e) for nm, e in zip(p[2], a.v))
++                    env.update((nm, self.fresh_copy(e, a.s, '►', pos) if a.s < e.c else e) for nm, e in zip(p[2], a.v))
+                     if min(a.c, a.s) < 1:      # розбір міг упасти на сумнівному аргументі — і не впав (канал завершення)
+                         self.halt_risk(min(a.c, a.s), ('op', pos, '☠', []))
+                 else:
+                     env[p] = a
+             env['\0parent'] = f.env
+             res = self.eval(f.body, env)
+-            return capc(res, fn.c) if fn.c < res.c else res
++            return self.fresh_copy(res, fn.c, '►', pos) if fn.c < res.c else res
+         except NgrError as e:
+             if e.file is None:         # функція модуля — його файл; λ програми — '' (місце в програмі, суд 10)
+                 e.file = f.mod[0] if f.mod is not None else ''
+@@ -7090,6 +7121,7 @@ class Interp:
+                 self.quota_stack.pop()
+             self.trace.depth -= 1
+             self.memory, self.agent, self.caps, self.mem_c = saved
++        self.shown(res, pos)
+         try:
+             shown = trace_val(res)
+         except RecursionError:
+@@ -7205,8 +7237,10 @@ class Interp:
+                 return V(total, m)
+             if g == 'φ':
+                 conds = [self.boolean(r, g, pos) for r in results]
+-                return mk([capc(x, r.c) if r.c < x.c else x for x, r, ok in zip(items, results, conds) if ok], m)
++                return mk([self.fresh_copy(x, r.c, g, pos) if r.c < x.c else x for x, r, ok in zip(items, results, conds) if ok], m)
+             if g == '⇅':
++                if self.labor:                    # ключі перетворюються й порівнюються — кроки за їхній розмір (1.2)
++                    self.work(sum(r.n for r in results), pos)
+                 try:
+                     order = sorted(range(len(items)), key=lambda i: sort_key(results[i]))
+                 except BadSortKey as k:
+@@ -7222,7 +7256,8 @@ class Interp:
+                 return V({k: V(n, m) for k, n in counts.items()}, m, m)
+             groups = {}
+             for x, r in zip(items, results):
+-                groups.setdefault(self.need(r, 'рядок', '⊞ (ключ)', pos), []).append(capc(x, r.c) if r.c < x.c else x)
++                groups.setdefault(self.need(r, 'рядок', '⊞ (ключ)', pos), []).append(
++                    self.fresh_copy(x, r.c, g, pos) if r.c < x.c else x)
+             out = {k: mk(v, m) for k, v in groups.items()}
+             return V(out, min([m] + [v.c for v in out.values()]), m)
+         if g == 'Σ':
+@@ -7525,6 +7560,8 @@ class Interp:
+             if not 0 <= t <= 1:
+                 raise NgrError('⚗: поріг має бути від 0 до 1', pos)
+             kept = []
++            if self.labor:                        # кожне рішення показує елемент у сліді (1.2)
++                self.work(sum(x.n for x in lst), pos)
+             for x in lst:
+                 ok = x.c >= t
+                 self.trace('відсів', агент=self.agent, значення=trace_val(x), впевненість=x.c, поріг=t,
+@@ -7536,7 +7573,8 @@ class Interp:
+             key = self.need(a[0], 'рядок', g, pos)
+             kc = min(a[0].c, self.cpc)
+             self.mem_c = min(self.mem_c, kc)       # сам факт запису під таким ключем — теж інформація
+-            val = capc(a[1], kc) if kc < a[1].c else a[1]
++            val = self.fresh_copy(a[1], kc, g, pos) if kc < a[1].c else a[1]
++            self.shown(val, pos)
+             shown = trace_val(val)                # спершу — чи можна записати в слід (надто глибоке — помилка ДО запису
+             self.memory[key] = val                # у памʼять; суд 9: 🜄 казав «помилка», а 🜃 потім бачив значення)
+             self.trace('памʼять', агент=self.agent, дія='запамʼятати', ключ=key, значення=shown, впевненість=val.c)
+@@ -7552,12 +7590,13 @@ class Interp:
+             r = self.call(a[1], [a[0]], pos)
+             ok = self.boolean(r, g, pos)
+             self.taint(r.c)                          # пройде чи впаде — залежить від умови
++            self.shown(a[0], pos)
+             self.trace('перевірка', агент=self.agent, значення=trace_val(a[0]), результат='пройдена' if ok else 'НЕ пройдена',
+                        впевненість=r.c)
+             if not ok:
+                 raise NgrError(f'🜍: перевірку не пройдено для {brief(a[0], 60)}', pos, min(r.c, a[0].c, self.cpc))
+             self.halt_c = min(self.halt_c, r.c)     # те, що програма йде далі, — теж знання про умову
+-            return capc(a[0], r.c) if r.c < a[0].c else a[0]
++            return self.fresh_copy(a[0], r.c, g, pos) if r.c < a[0].c else a[0]
+         if g == '∋':
+             x, y = a[0].v, a[1]
+             if isinstance(x, str):
+@@ -8401,10 +8440,11 @@ def cheatsheet():
+            '  Зайве після завершеного виразу — теж помилка. Кілька виразів в одному рядку — через `¦`.',
+            '- **Значення не змінюються**: `← імʼя вираз` називає назавжди, і лише на початку інструкції',
+            '  (усередині виразу — блок `《 ← … 》`). Цикли — `∀ μ φ Σ ↻`.',
+-           '  **Вартість:** `＋` `⊏` над списками, `✎`, літерали `【】` `『』` платять лише за власні елементи; `§`, що повертає список чи словник, і `¿` `☂` `↻` `Σ`,\n'
+-           '  що повертають наявне значення, — нічого: великий **незмінний** стан у `↻` дешевий. Копія з меншою впевненістю (і `§` з сумнівним ключем) — повна ціна.\n'
+-           '  Решта — логічний розмір, навіть коли повертає наявне: `► ▶ μ φ`, `§` рядка. `＋ спис 【х】` у циклі — квадрат (~14 тис. елементів на типових\n'
+-           '  межах): збирайте шматками. `＝ ≠ ∋` платять за розмір обох боків (і проти `∅`). Один список — до `--розмір`, нових даних за запуск — до 20 × `--розмір`.\n'
++           '  **Вартість (облік 1.2):** платять нові дані й обхід. Наявне значення, повернене як є, — нічого: `§` (і рядок), `¿ ☂ ↻ Σ`, `► ▶`, `✓ 🜍`;\n'
++           '  новий список з наявних елементів — лише власні елементи: `＋ ⊏ ✎`, літерали `【】 『』`, `μ φ ⇅ ⚗ ↺ ⊞`. Тож великий **незмінний** стан у `↻` дешевий.\n'
++           '  Копія з меншою впевненістю — повна ціна: `§` з сумнівним ключем, виклик сумнівної функції, розбір `λ【】` сумнівного списку. Обхід платить кроки\n'
++           '  за розмір: `＝ ≠ ∋` (обидва боки, і проти `∅`), показ для сліду (`🜄`, результат `🜁`, `⚗`, аргументи інструмента), ключі `⇅`. `＋ спис 【х】`\n'
++           '  у циклі — квадрат (~14 тис. елементів на типових межах): збирайте шматками. Один список — до `--розмір`, нових даних за запуск — до 20 × `--розмір`.\n'
+            '- Імена — слова будь-якою мовою, але **одним письмом** (`звiт` з латинською i — помилка). Грецькі літери — гліфи.',
+            '  **Двійники** — два різні імена, однакові на вигляд за скелетом UTS #39 (`x`/`х`, `h`/`һ`, `I`/`l`), — помилка;',
+            '  так само імʼя з символів сумісності (`ｘ`, `𝚡`), з літерою, якої Unicode не радить для імен (UTS #39',
+@@ -9068,6 +9108,9 @@ def replay_report(replay, new_trace, ends):
+     if (replay['початок'].get('ліміти') or {}).get('облік', 'логічний') == 'логічний':
+         print('  (слід 1.0: кроки й «сумарно створено» повтор рахує так, як рахувала 1.0, — кожне нове значення платить '
+               'увесь логічний розмір; так його й записано)', file=sys.stderr)
++    elif (replay['початок'].get('ліміти') or {}).get('облік') == 'нове':
++        print('  (слід 1.1: кроки й «сумарно створено» повтор рахує так, як рахувала 1.1, — без обліку обходів для сліду '
++              'й копій у виклику; так його й записано)', file=sys.stderr)
+     if str(end_new.get('повідомлення', '')).startswith('✗ слід перевищив'):
+         print(f'  (запуск зупинила межа сліду: повтор дійшов до того самого місця; що сталося після, слід не каже — '
+               f'останній виклик, якщо є, міг відбутися, але його результату в сліді немає)', file=sys.stderr)
+@@ -9953,7 +9996,7 @@ def _main(argv, opts, it, value):
+               час=datetime.now(timezone.utc).isoformat(timespec='seconds'), запуск=os.urandom(6).hex(),
+               тека=safe(cwd), дозволи_власника=safe(source), дозволено=allowed,
+               ліміти={'кроки': opts['steps'], 'розмір': opts['size'], 'слід': opts['tsize'], 'зерно': opts['seed'],
+-                      'облік': opts.get('cost', 'нове')},
++                      'облік': opts.get('cost', 'робота')},
+               **({'код': src} if path == '<-e>' else {}), **({'повтор': safe(os.path.realpath(opts['replay']))} if replay else {}),
+               **({'підпис': {'ключ': author, 'імʼя': author_info['імʼя']}} if author else {}))
+         if shown_args != prog_args:
+@@ -9970,7 +10013,7 @@ def _main(argv, opts, it, value):
+                   f'  дозволи власника: {source}', file=sys.stderr)
+             return 3
+         interp = Interp(trace, seed=opts['seed'], steps=opts['steps'], cwd=cwd, argv=prog_args,
+-                        protected=paths + [tp + '.дані' for tp in paths], max_size=opts['size'], cost=opts.get('cost', 'нове'))
++                        protected=paths + [tp + '.дані' for tp in paths], max_size=opts['size'], cost=opts.get('cost', 'робота'))
+         owner_q = Caps()
+         for t, sc, q in owner_quotas(allowed):      # кілька квот на те саме — діє менша (суд 8)
+             owner_q.quotas[(t, sc)] = min(q, owner_q.quotas.get((t, sc), q))
+@@ -10109,7 +10152,7 @@ def repl_main(opts):
+               час=datetime.now(timezone.utc).isoformat(timespec='seconds'), запуск=os.urandom(6).hex(),
+               тека=safe(cwd), дозволи_власника=safe(source), дозволено=allowed,
+               ліміти={'кроки': opts['steps'], 'розмір': opts['size'], 'слід': opts['tsize'], 'зерно': opts['seed'],
+-                      'облік': opts.get('cost', 'нове')},
++                      'облік': opts.get('cost', 'робота')},
+               repl=True)
+ 
+         def reject(text, msg, **extra):
