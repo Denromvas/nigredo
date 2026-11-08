@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Звірка лексера й парсера на Nigredo з еталоном: той самий потік токенів (чи те саме дерево розбору, `--парсер`) на програмах
-корпусу. Обидва — для правильних програм, тож те, що еталон відкидає, не порівнюється, а лічиться окремо; парсер не розбирає ⊃ —
-програми з модулями лічаться як «з модулями».
+корпусу. Обидва — для правильних програм, тож те, що еталон відкидає, не порівнюється, а лічиться окремо. Модулі (⊃) парсер
+розбирає разом з програмою: звірка кладе поруч ті файли, які взяв еталон. Модулі з мережі (сховище за sha256) — «з мережі», окремо;
+шлях модуля, що виходить вище теки програми й вертається в неї (тека/../тека/м.ngr), парсер відкидає — «вище теки», окремо.
 
   python3 самохостинг/звірити.py [--парсер] [-j 3] [--до N] [--від N] [--корінь РЕПО] [--кроки N] [шляхи…]
 
@@ -45,8 +46,8 @@ class Skip(Exception):
 
 
 def canon(n):
-    """Дерево еталона (кортежі Parser) → вигляд, який друкує парсер на Nigredo: [вид, рядок, стовпець, …]. Дозволи печатки й
-    субагента й висоту тіла λ не порівнюємо: перші читає й перевіряє еталон, друга — не будова дерева."""
+    """Дерево еталона (кортежі Parser) → вигляд, який друкує парсер на Nigredo: [вид, рядок, стовпець, …]. Дозволів печатки й
+    субагента не порівнюємо: їх читає й перевіряє еталон. Висоту тіла λ порівнюємо: її бере межа роботи."""
     k, (line, col) = n[0], n[1]
     if k == 'lit':
         v = n[2]
@@ -62,20 +63,34 @@ def canon(n):
     if k == 'bind':
         return [k, line, col, n[2], canon(n[3])]
     if k == 'lam':
-        return [k, line, col, [p if isinstance(p, str) else ['pat', p[1][0], p[1][1], p[2]] for p in n[2]], canon(n[3])]
+        return [k, line, col, [p if isinstance(p, str) else ['pat', p[1][0], p[1][1], p[2]] for p in n[2]], canon(n[3]), n[4]]
     if k == 'seal':
         return [k, line, col, n[2]]
     if k == 'deleg':
         return [k, line, col, n[2], n[3], canon(n[5])]
+    if k == 'import':           # sha256 і справжній шлях — не будова дерева (парсер на Nigredo хешу не рахує)
+        return [k, line, col, n[2], n[3], canon(n[4])]
     raise Skip(f'вузол {k}')
 
 
-def want_tree(src):
+def want_tree(src, prog):
     with LEX:
         toks = nigredo.lex(src)
-        if any(t[0] == 'glyph' and t[1] == '⊃' for t in toks):
-            raise Skip('з модулями')
-        return canon(nigredo.Parser(toks).program())
+        for a, b in zip(toks, toks[1:]):
+            if a[0] == 'glyph' and a[1] == '⊃' and b[0] == 'str' and (b[1].startswith('github.com/') or '#' in b[1]):
+                raise Skip('з мережі')
+        base = os.path.dirname(os.path.realpath(prog))
+        return canon(nigredo.Parser(toks, base, base).program())
+
+
+def module_paths(n, out):
+    """Шляхи (від теки програми) усіх модулів у дереві, і вкладених теж."""
+    if isinstance(n, list):
+        if n and n[0] == 'import':
+            out.append(n[3])
+        for x in n:
+            module_paths(x, out)
+    return out
 
 
 def nfc_names(n):
@@ -131,19 +146,28 @@ def one(prog, work, steps):
         return prog, 'завеликий', '', 0, 0
     t0 = time.perf_counter()
     try:
-        a = want(src) if MODE[0] == 'токени' else want_tree(src)
-    except Skip:
-        return prog, 'з модулями', '', 0, 0
+        a = want(src) if MODE[0] == 'токени' else want_tree(src, prog)
+    except Skip as e:          # вузол, якого звірка не знає, — теж розбіжність: його треба навчити
+        return prog, 'з мережі' if str(e) == 'з мережі' else 'різниця', str(e), 0, 0
     except nigredo.StaticError:
         return prog, 'відкинуто', '', 0, 0
     except RecursionError:
         return prog, 'відкинуто', '', 0, 0
     tp = time.perf_counter() - t0
+    shutil.rmtree(work / 'вхід')
+    (work / 'вхід').mkdir()
+    if MODE[0] == 'дерево':
+        base = os.path.dirname(os.path.realpath(prog))
+        for rel in module_paths(a, []):
+            (work / 'вхід' / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(os.path.join(base, rel), work / 'вхід' / rel)
     (work / 'вхід' / 'вхід.ngr').write_text(src, encoding='utf-8')
     t0 = time.perf_counter()
     r = subprocess.run([*CMD, '--кроки', str(steps), '--розмір', str(SIZE[0]), '--слід-розмір', str(20 * SIZE[0]), str(work / f'{MODE[0]}.ngr')], capture_output=True, env=dict(os.environ, NIGREDO_HOME=str(work / 'в')),
                        stdin=subprocess.DEVNULL, timeout=600)
     tn = time.perf_counter() - t0
+    if r.returncode and MODE[0] == 'дерево' and 'вище теки програми' in r.stderr.decode('utf-8', 'replace'):
+        return prog, 'вище теки', '', tp, tn
     if r.returncode:
         return prog, 'різниця', 'код ' + str(r.returncode) + ': ' + r.stderr.decode('utf-8', 'replace')[:300], tp, tn
     try:
@@ -214,7 +238,7 @@ def main():
                     print(f'… {i}/{len(progs)}', flush=True)
     finally:
         shutil.rmtree(base, ignore_errors=True)
-    print(f'Програм: {len(progs)}; однаково {cnt["так"]}, розбіжностей {cnt["різниця"]}, еталон відкинув {cnt["відкинуто"]}{f", з модулями {cnt['з модулями']}" if a.парсер else ""}, завеликі {cnt["завеликий"]}, не utf-8 {cnt["не utf-8"]}')
+    print(f'Програм: {len(progs)}; однаково {cnt["так"]}, розбіжностей {cnt["різниця"]}, еталон відкинув {cnt["відкинуто"]}{f", з модулями з мережі {cnt['з мережі']}, модуль вище теки {cnt['вище теки']}" if a.парсер else ""}, завеликі {cnt["завеликий"]}, не utf-8 {cnt["не utf-8"]}')
     print(f'Час: еталон {tp:.1f} с, {"парсер" if a.парсер else "лексер"} на Nigredo {tn:.1f} с')
     sys.exit(2 if not cnt['так'] else 1 if cnt['різниця'] else 0)
 
