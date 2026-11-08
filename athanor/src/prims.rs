@@ -260,7 +260,13 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
         '▶' => it.call(&a[0], vec![a[1].clone(), a[2].clone()], pos),
         '☠' => {
             it.work(a[0].n, pos)?; // текст помилки — показ усього значення (1.2, суд 15)
-            ngr(show(&a[0], true)?, pos)
+            let text = show(&a[0], true)?;
+            let n = text.chars().count() as u64 + 1;
+            if n > it.max_size {
+                // ☂ віддасть його обробникові як рядок (суд 15, Новачок)
+                return fatal(format!("☠: значення завелике (логічний розмір {} > --розмір {})", n, it.max_size), Some(pos));
+            }
+            ngr(text, pos)
         }
         '…' => {
             let (x, y) = (n(it, a, 0, g, pos)?, n(it, a, 1, g, pos)?);
