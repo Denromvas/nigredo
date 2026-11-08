@@ -221,10 +221,35 @@ fn owner_key(home: &str) -> std::io::Result<Vec<u8>> {
     std::fs::DirBuilder::new().recursive(true).mode(0o700).create(home)?;
     let path = pathx::join(home, "ключ");
     if !pathx::exists(&path) {
-        let mut f = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&path)?;
-        f.write_all(rand_hex(32).as_bytes())?;
+        // атомарно, як в еталоні: тимчасовий файл, потім link — ключ зʼявляється повним і не перезаписується (два перші
+        // запуски разом не падають і не читають порожній ключ); без жорстких посилань — create_new і чекати переможця
+        let key = rand_hex(32);
+        let tmp = pathx::join(home, &format!(".ключ-{}-{}", std::process::id(), rand_hex(8)));
+        let r = (|| -> std::io::Result<()> {
+            let mut f = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&tmp)?;
+            f.write_all(key.as_bytes())?;
+            f.sync_all()?;
+            match std::fs::hard_link(&tmp, &path) {
+                Ok(()) => Ok(()),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+                Err(_) => match std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&path) {
+                    Ok(mut f) => f.write_all(key.as_bytes()),
+                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+                    Err(e) => Err(e),
+                },
+            }
+        })();
+        let _ = std::fs::remove_file(&tmp);
+        r?;
     }
-    let k = std::fs::read_to_string(&path)?;
+    let mut k = String::new();
+    for _ in 0..200 {
+        k = std::fs::read_to_string(&path)?;
+        if !uni::strip(&k).is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
     Ok(uni::strip(&k).as_bytes().to_vec())
 }
 

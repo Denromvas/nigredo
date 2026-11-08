@@ -2687,6 +2687,21 @@ def main():
     rc_ = [p_.returncode for p_ in ps_]
     check(rc_ == [0, 0] and stored(ph) == want_, 'два паралельні --отримати — один файл на вміст, без часткових (атомарний '
           'rename)', str(rc_) + str(stored(ph)) + ''.join((o + e).decode('utf-8', 'replace')[-600:] for o, e in pout_))
+    # перший запуск у новій теці власника створює ключ підпису: вісім запусків разом — усі ✓, ключ один і повний, тимчасових
+    # не лишилось, кожен слід перевіряється (до 2026-11-09: O_EXCL — той, хто програв, падав з FileExistsError чи міг
+    # прочитати порожній ключ; ловив тест двох паралельних --отримати)
+    kh_ = tmp / 'власник_ключ_разом'
+    (tmp / 'ключ_разом.ngr').write_text('🜂 「перший запуск」 【】\n» 1\n', encoding='utf-8')
+    kps_ = [subprocess.Popen([*NGR_CMD, str(tmp / 'ключ_разом.ngr')], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             env=dict(env, NIGREDO_HOME=str(kh_))) for _ in range(8)]
+    kout_ = [p_.communicate(timeout=120) for p_ in kps_]
+    krc_ = [p_.returncode for p_ in kps_]
+    kkey_ = (kh_ / 'ключ').read_text(encoding='utf-8').strip() if (kh_ / 'ключ').exists() else ''
+    kver_ = [run(['--перевірити-слід', str(t_), str(tmp / 'ключ_разом.ngr')], dict(env, NIGREDO_HOME=str(kh_))).returncode
+             for t_ in sorted((kh_ / 'сліди').glob('*.jsonl'))] if (kh_ / 'сліди').exists() else []
+    check(krc_ == [0] * 8 and len(kkey_) == 64 and not list(kh_.glob('.ключ-*')) and kver_ == [0] * 8,
+          'перший запуск у новій теці власника: 8 разом — ключ підпису один і повний, кожен слід перевіряється',
+          str(krc_) + str(kver_) + ''.join(e.decode('utf-8', 'replace')[-300:] for _, e in kout_))
     # --з-теки: копія сховища іншого агента (без мережі); клон, де проміжна тека — посилання назовні; тека власника
     zh, zenv = owner('власник_з_теки', [])
     copy_ = tmp / 'копія_сховища'

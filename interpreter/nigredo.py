@@ -2460,13 +2460,40 @@ def sign(key, rec):
 
 
 def owner_key():
+    """Ключ підпису слідів. Перший запуск створює його атомарно: тимчасовий файл, потім link під своє імʼя — ключ
+    зʼявляється вже повним і не перезаписується; два перші запуски разом (два --отримати) не падають і не читають
+    порожній ключ. Без жорстких посилань (Android) — як раніше, O_EXCL, і зачекати, поки переможець допише."""
     os.makedirs(OWNER_HOME, mode=0o700, exist_ok=True)
     path = os.path.join(OWNER_HOME, 'ключ')
     if not os.path.exists(path):
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, 'w') as f:
-            f.write(os.urandom(32).hex())
-    return open(path).read().strip().encode()
+        key = os.urandom(32).hex()
+        tmp = os.path.join(OWNER_HOME, f'.ключ-{os.getpid()}-{os.urandom(8).hex()}')
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            with os.fdopen(fd, 'w') as f:
+                f.write(key)
+                f.flush()
+                os.fsync(f.fileno())
+            try:
+                os.link(tmp, path)
+            except FileExistsError:
+                pass
+            except OSError:
+                try:
+                    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    with os.fdopen(fd, 'w') as f:
+                        f.write(key)
+                except FileExistsError:
+                    pass
+        finally:
+            os.unlink(tmp)
+    import time
+    for _ in range(200):
+        k = open(path).read().strip()
+        if k:
+            break
+        time.sleep(0.005)
+    return k.encode()
 
 
 def _no_dups(pairs):

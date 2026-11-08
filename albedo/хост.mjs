@@ -268,8 +268,28 @@ for (const t of modulesSeen) if (inside(t, progDir) && !moduleOk(t)) fail(3, `�
 const ownerKey = () => {
   fs.mkdirSync(HOME, { recursive: true, mode: 0o700 });
   const k = path.join(HOME, 'ключ');
-  if (!fs.existsSync(k)) fs.writeFileSync(k, crypto.randomBytes(32).toString('hex'), { mode: 0o600, flag: 'wx' });
-  return Buffer.from(fs.readFileSync(k, 'utf8').trim());
+  if (!fs.existsSync(k)) {
+    // атомарно, як в еталоні: тимчасовий файл, потім link — ключ зʼявляється повним і не перезаписується (два перші запуски
+    // разом не падають і не читають порожній ключ); без жорстких посилань — 'wx' і чекати переможця
+    const key = crypto.randomBytes(32).toString('hex');
+    const tmp = path.join(HOME, `.ключ-${process.pid}-${crypto.randomBytes(8).toString('hex')}`);
+    const fd = fs.openSync(tmp, 'wx', 0o600);
+    try { fs.writeSync(fd, key); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    try {
+      try { fs.linkSync(tmp, k); } catch (e) {
+        if (e.code !== 'EEXIST') {
+          try { fs.writeFileSync(k, key, { mode: 0o600, flag: 'wx' }); } catch (e2) { if (e2.code !== 'EEXIST') throw e2; }
+        }
+      }
+    } finally { fs.unlinkSync(tmp); }
+  }
+  let s = '';
+  for (let i = 0; i < 200; i++) {
+    s = fs.readFileSync(k, 'utf8').trim();
+    if (s) break;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+  }
+  return Buffer.from(s);
 };
 const key = ownerKey();
 const traces = path.join(HOME, 'сліди');
