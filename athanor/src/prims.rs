@@ -258,7 +258,10 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
         '¬' => Ok(V::b(!boolean(&a[0], g, pos)?)),
         '►' => it.call(&a[0], vec![a[1].clone()], pos),
         '▶' => it.call(&a[0], vec![a[1].clone(), a[2].clone()], pos),
-        '☠' => ngr(show(&a[0], true)?, pos),
+        '☠' => {
+            it.work(a[0].n, pos)?; // текст помилки — показ усього значення (1.2, суд 15)
+            ngr(show(&a[0], true)?, pos)
+        }
         '…' => {
             let (x, y) = (n(it, a, 0, g, pos)?, n(it, a, 1, g, pos)?);
             let (x, y) = match (x, y) {
