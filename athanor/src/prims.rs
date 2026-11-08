@@ -504,6 +504,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                 return ngr("⚗: поріг має бути від 0 до 1", pos);
             }
             let mut kept = Vec::new();
+            it.work(lst.iter().map(|x| x.n).sum::<u64>(), pos)?; // кожне рішення показує елемент у сліді (1.2)
             for x in lst.iter() {
                 let ok = x.c >= t;
                 let agent = it.agent.clone();
@@ -527,7 +528,8 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             let key = need_str(&a[0], "🜄", pos)?;
             let kc = a[0].c.min(it.cpc());
             it.mem_c = it.mem_c.min(kc);
-            let val = if kc < a[1].c { capc(&a[1], kc) } else { a[1].clone() };
+            let val = if kc < a[1].c { it.fresh_copy(&a[1], kc, '🜄', pos)? } else { a[1].clone() };
+            it.work(val.n, pos)?; // показ для сліду (1.2)
             let shown = trace_val(&val, false)?; // спершу — чи можна записати в слід (суд 9: помилка ПІСЛЯ запису в памʼять)
             it.memory.insert(key.s.to_string(), val.clone());
             let agent = it.agent.clone();
@@ -565,6 +567,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             let r = it.call(&a[1], vec![a[0].clone()], pos)?;
             let ok = boolean(&r, g, pos)?;
             it.taint(r.c);
+            it.work(a[0].n, pos)?; // показ для сліду (1.2)
             let agent = it.agent.clone();
             it.rec(
                 "перевірка",
@@ -579,7 +582,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                 return ngr_c(format!("🜍: перевірку не пройдено для {}", brief(&a[0], 60)), pos, r.c.min(a[0].c).min(it.cpc()));
             }
             it.halt_c = it.halt_c.min(r.c);
-            Ok(if r.c < a[0].c { capc(&a[0], r.c) } else { a[0].clone() })
+            if r.c < a[0].c { it.fresh_copy(&a[0], r.c, '🜍', pos) } else { Ok(a[0].clone()) }
         }
         '∋' => match &a[0].v {
             Val::Str(x) => {

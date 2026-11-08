@@ -290,12 +290,13 @@ impl Interp {
         self.sized_as(res, g, pos, spent)
     }
 
-    /// Скільки створено: лише те, чого ще не було (пропозиція вартість.md). `§` контейнера нічого не створює; `＋ ✎ ⊏` над списками й
-    /// словниками ділять дані зі старими значеннями, нові там лише власні елементи; решта — логічний розмір.
+    /// Скільки створено (облік 1.2 «робота», пропозиція облік.md): лише нові дані, без переплати. Значення, повернене як є, — 1
+    /// (`¿ ☂ ↻ Σ`, функція-значення `► ▶`, перевірене `✓ 🜍`, `§` контейнера чи рядка); новий список чи словник з наявних
+    /// елементів — власні елементи + 1 (`＋ ✎ ⊏ μ φ ⇅ ⚗ ↺`; `⊞` — групи й елементи груп); решта — логічний розмір.
     #[inline(always)]
     fn spent(res: &V, g: char) -> u64 {
-        if matches!(g, '¿' | '☂' | '↻' | 'Σ') {
-            return 1; // наявне значення (гілка, тіло, стан, акумулятор), повернуте як є; копію capc списує сам гліф (copied)
+        if matches!(g, '¿' | '☂' | '↻' | 'Σ' | '►' | '▶' | '✓' | '🜍' | '§') {
+            return 1; // наявне значення, повернуте як є (і елемент §); копію capc списує сам гліф (copied, fresh_copy, fresh)
         }
         let own = match &res.v {
             Val::List(l) => l.len() as u64,
@@ -303,19 +304,32 @@ impl Interp {
             _ => return res.n,
         };
         match g {
-            '§' => 1,
-            '＋' | '✎' | '⊏' => own + 1,
+            '＋' | '✎' | '⊏' | 'μ' | 'φ' | '⇅' | '⚗' | '↺' => own + 1,
+            '⊞' => match &res.v {
+                Val::Dict(d) => d.vals.iter().map(|x| match &x.v { Val::List(l) => l.len() as u64, _ => 0 }).sum::<u64>() + own + 1,
+                _ => res.n,
+            },
             _ => res.n,
         }
     }
 
-    /// `spent` з урахуванням копії `§`: елемент, який `§` скопіював зі зниженою впевненістю, — нові дані, повний розмір.
+    /// `spent` з урахуванням копії: значення, яке `§ ρ κ ⌂ ⚗ 🜃` скопіювали зі зниженою впевненістю, — нові дані, повний розмір.
     #[inline(always)]
     fn spent_of(&mut self, res: &V, g: char) -> u64 {
-        if g == '§' && std::mem::take(&mut self.fresh) {
-            return res.n;
+        if std::mem::take(&mut self.fresh) {
+            return if matches!(res.v, Val::List(_) | Val::Dict(_)) { res.n } else { 1 };
         }
         Self::spent(res, g)
+    }
+
+    /// Копія capc поза гліфом (виклик невпевненої функції, розбір λ【】, елементи φ ⊞, `🜄`, `🜍`): нові дані, повна ціна одразу.
+    pub fn fresh_copy(&mut self, x: &V, c: f64, g: char, pos: Pos) -> R<V> {
+        let r = capc(x, c);
+        if matches!(r.v, Val::List(_) | Val::Dict(_)) {
+            let n = r.n;
+            return self.sized_as(r, g, pos, n);
+        }
+        Ok(r)
     }
 
     /// Копія зі зниженою впевненістю (capc) у `¿ ☂ ↻ Σ`: справжні нові дані — повний логічний розмір (еталон: copied).
@@ -895,7 +909,7 @@ impl Interp {
                         }
                         if let Val::List(l) = &a.v {
                             for e in l.iter() {
-                                vars.push(if a.s < e.c { capc(e, a.s) } else { e.clone() });
+                                vars.push(if a.s < e.c { self.fresh_copy(e, a.s, '►', pos)? } else { e.clone() });
                             }
                         }
                         if a.c.min(a.s) < 1.0 {
@@ -907,7 +921,7 @@ impl Interp {
             }
             let env = Env::child(vars, &func.env);
             let res = self.eval(&lam.body, &env)?;
-            Ok(if f.c < res.c { capc(&res, f.c) } else { res })
+            if f.c < res.c { self.fresh_copy(&res, f.c, '►', pos) } else { Ok(res) }
         })();
         let r = match (r, &func.module) {
             (Err(mut e), Some(m)) if e.file.is_none() && !e.pipe && !e.internal => {
@@ -1280,12 +1294,14 @@ impl Interp {
                         for (i, (r, ok)) in results.iter().zip(conds).enumerate() {
                             if ok {
                                 let x = items.get(i);
-                                kept.push(if r.c < x.c { capc(&x, r.c) } else { x });
+                                kept.push(if r.c < x.c { self.fresh_copy(&x, r.c, g, pos)? } else { x });
                             }
                         }
                         Ok(mk(kept, m))
                     }
                     '⇅' => {
+                        // ключі перетворюються й порівнюються — кроки за їхній розмір (1.2)
+                        self.work(results.iter().map(|r| r.n).sum::<u64>(), pos)?;
                         let order = match crate::sort::sort_order(&results, pos) {
                             Ok(o) => o,
                             Err(e) if e.deep => return ngr_c("⇅: ключі вкладені надто глибоко", pos, m),
@@ -1303,7 +1319,7 @@ impl Interp {
                                 Val::Str(s) => s.clone(),
                                 _ => return ngr(format!("⊞ (ключ): очікувалося рядок, а не {} {}", kind(r), brief(r, 40)), pos),
                             };
-                            let el = if r.c < x.c { capc(&x, r.c) } else { x };
+                            let el = if r.c < x.c { self.fresh_copy(&x, r.c, g, pos)? } else { x };
                             match idx.get(&*k.s) {
                                 Some(&i) => groups[i].1.push(el),
                                 None => {
@@ -1511,6 +1527,7 @@ impl Interp {
 
     pub fn tool_begin(&mut self, name: &'static str, args: Vec<V>, pos: Pos) -> R<Job> {
         let full = matches!(name, "агент" | "мережа.взяти" | "мережа.послати" | "файл.писати" | "бд.писати" | "процес");
+        self.work(args.iter().map(|a| a.n).sum::<u64>(), pos)?; // показ аргументів у сліді обходить їх (1.2)
         let targs: Vec<J> = match args.iter().map(|a| trace_val(a, full)).collect() {
             Ok(t) => t,
             Err(e) if e.deep => {
@@ -1911,6 +1928,7 @@ impl Interp {
         self.caps = saved_caps;
         self.mem_c = saved_memc;
         let res = r?;
+        self.work(res.n, pos)?; // показ результату в сліді обходить його (1.2)
         let shown = match trace_val(&res, false) {
             Ok(s) => s,
             Err(e) if e.deep => return ngr_c(format!("субагент «{}»: результат вкладений надто глибоко", name), pos, res.c),

@@ -21,7 +21,7 @@ import decimal
 import math
 from decimal import ROUND_HALF_UP, Decimal
 
-VERSION = '1.1'
+VERSION = '1.2'
 MAX_DEPTH = 2000
 WALK_MAX_DEPTH = 2000     # показ, порівняння, JSON, ключі ⇅ обходять значення не глибше: далі — «вкладене надто глибоко»
 #                           (межа мови, а не стека CPython — та сама в еталоні й Атанорі, від версії Python не залежить)
@@ -30,9 +30,12 @@ MAX_WORK = 200_000                # глибина обчислення: сум�
                                   # — це ~2 млн кадрів, а стек виконавця скінченний; межа — правило мови, однакове в обох)
 MAX_SIZE = 5_000_000      # найбільший логічний розмір значення (символів + елементів); --розмір N
 SHARED = {'＋', '✎', '⊏', '【】', '『』'}    # ділять дані зі старими значеннями: нові тут лише власні елементи
-COST_MODELS = ('нове', 'логічний')       # облік «сумарно створено» і кроків: нове — 1.1 (суд 14), логічний — 1.0 (повтор її слідів)
+COST_MODELS = ('робота', 'нове', 'логічний')   # облік кроків і «сумарно створено»: робота — 1.2, нове — 1.1 (суд 14),
+                                               # логічний — 1.0; старі — лише для повтору їхніх слідів
 PASS = {'¿', '☂', '↻', 'Σ'}              # повертають уже наявне значення (гілку, тіло, стан, акумулятор): нового — нічого;
                                          # копія зі зниженою впевненістю (capc) — справжня, її списує сам гліф (it.copied)
+PASS_12 = PASS | {'►', '▶', '✓', '🜍'}     # 1.2: і результат функції-значення, і значення, перевірене схемою чи умовою
+OWN_12 = {'μ', 'φ', '⇅', '⚗', '↺'}       # 1.2: новий список з наявних елементів — власні елементи (копії — окремо, повністю)
 ALLOC_FACTOR = 20         # сумарно за запуск можна створити не більше ALLOC_FACTOR × --розмір
 MAX_INT_BITS = 100_000    # найбільше ціле (≈ 30 000 десяткових цифр)
 MAX_TRACE = 50_000_000    # найбільший слід у байтах; --слід-розмір N
@@ -6330,13 +6333,14 @@ def check_allowlist(caps, allowed, cwd):
 
 class Interp:
     def __init__(self, trace, seed=0, steps=DEFAULT_STEPS, cwd='.', out=None, argv=(), protected=(), max_size=MAX_SIZE,
-                 cost='нове'):
+                 cost='робота'):
         self.trace, self.rng = trace, random.Random(seed)
         self.argv, self.protected = list(argv), set(protected)
         self.max_size = max_size
         self.alloc = 0
         self.fresh = False               # останній § повернув копію (capc), а не наявний елемент
         self.logical = cost == 'логічний'  # облік 1.0: кожне нове значення — свій логічний розмір (лише повтор сліду 1.0)
+        self.labor = cost == 'робота'      # облік 1.2: кожен обхід значення — кроки, кожна копія capc — нові дані (пропозиція облік.md)
         self.steps_left, self.cwd = steps, os.path.abspath(cwd)
         self.out = out or sys.stdout
         self.memory, self.agent, self.caps, self.seal_caps = {}, 'головний', {}, {}
@@ -6370,6 +6374,8 @@ class Interp:
     def tool_begin(self, name, args, pos):
         """Перевірка прав, впевненість аргументів і запис «виклик» — до дії (для ‖ — по черзі, до паралельних дій)."""
         full = name in ('агент', 'мережа.взяти', 'мережа.послати', 'файл.писати', 'бд.писати', 'процес')  # те, що йде назовні, — у слід повністю
+        if self.labor:                     # показ аргументів у сліді обходить їх — кроки (1.2)
+            self.work(sum(a.n for a in args), pos)
         try:
             targs = [trace_val(a, full) for a in args]
         except RecursionError:              # аргумент глибший за стек — помилка програми до дії, не код 4 (суд 8б)
@@ -6648,6 +6654,19 @@ class Interp:
                 if c < t:
                     self.try_stack[i] = c
 
+    def fresh_copy(self, x, c, g, pos):
+        """capc поза гліфом (виклик невпевненої функції, розбір λ【】, елементи φ ⊞, 🜄, 🜍): облік 1.2 списує копію
+        одразу повністю — це справжні нові дані; старі облікі її не бачили (повтор їхніх слідів рахує так само)."""
+        res = capc(x, c)
+        if self.labor and (type(res.v) is list or type(res.v) is dict):
+            self.sized(res, g, pos, res.n)
+        return res
+
+    def shown(self, x, pos):
+        """Облік 1.2: показ значення для сліду обходить усе значення — кроки за логічний розмір."""
+        if self.labor:
+            self.work(x.n, pos)
+
     def copied(self, res, g, pos):
         """Копія зі зниженою впевненістю (capc) у гліфі з PASS: справжні нові дані — повний логічний розмір."""
         if self.logical:                    # облік 1.0: результат гліфа й так спише повний розмір (sized у eval)
@@ -6662,6 +6681,18 @@ class Interp:
             raise Fatal(f'{g}: число завелике (понад {MAX_INT_BITS} біт)', pos)
         if self.logical:                    # облік 1.0 (повтор її сліду): нове значення — увесь логічний розмір
             spent, self.fresh = res.n, False
+        elif spent is None and self.labor:  # облік 1.2: лише нові дані, без переплати (пропозиція облік.md)
+            t = type(res.v)
+            if self.fresh:                  # копія capc з меншою впевненістю (§ ρ κ ⌂ ⚗ 🜃) — повна ціна
+                spent, self.fresh = (res.n if t is list or t is dict else 1), False
+            elif g in PASS_12 or g == '§':  # наявне значення як є (елемент § — і рядок, і число)
+                spent = 1
+            elif (g in SHARED or g in OWN_12) and (t is list or t is dict):
+                spent = len(res.v) + 1
+            elif g == '⊞' and t is dict:    # групи — нові списки з наявних елементів (копії списано, коли робились)
+                spent = len(res.v) + sum(len(x.v) for x in res.v.values()) + 1
+            else:
+                spent = res.n
         elif spent is None:                 # скільки створено: лише те, чого ще не було (пропозиція вартість.md)
             if g in PASS:                   # наявне значення, повернуте як є
                 spent = 1
@@ -6762,14 +6793,14 @@ class Interp:
                     if not isinstance(a.v, list) or len(a.v) != len(p[2]):
                         raise NgrError(f'розбір 【{" ".join(p[2])}】: очікувався список із {len(p[2])} елементів, а не '
                                        f'{kind(a)} {brief(a, 40)}', pos, min(a.c, a.s))
-                    env.update((nm, capc(e, a.s) if a.s < e.c else e) for nm, e in zip(p[2], a.v))
+                    env.update((nm, self.fresh_copy(e, a.s, '►', pos) if a.s < e.c else e) for nm, e in zip(p[2], a.v))
                     if min(a.c, a.s) < 1:      # розбір міг упасти на сумнівному аргументі — і не впав (канал завершення)
                         self.halt_risk(min(a.c, a.s), ('op', pos, '☠', []))
                 else:
                     env[p] = a
             env['\0parent'] = f.env
             res = self.eval(f.body, env)
-            return capc(res, fn.c) if fn.c < res.c else res
+            return self.fresh_copy(res, fn.c, '►', pos) if fn.c < res.c else res
         except NgrError as e:
             if e.file is None:         # функція модуля — його файл; λ програми — '' (місце в програмі, суд 10)
                 e.file = f.mod[0] if f.mod is not None else ''
@@ -7090,6 +7121,7 @@ class Interp:
                 self.quota_stack.pop()
             self.trace.depth -= 1
             self.memory, self.agent, self.caps, self.mem_c = saved
+        self.shown(res, pos)
         try:
             shown = trace_val(res)
         except RecursionError:
@@ -7205,8 +7237,10 @@ class Interp:
                 return V(total, m)
             if g == 'φ':
                 conds = [self.boolean(r, g, pos) for r in results]
-                return mk([capc(x, r.c) if r.c < x.c else x for x, r, ok in zip(items, results, conds) if ok], m)
+                return mk([self.fresh_copy(x, r.c, g, pos) if r.c < x.c else x for x, r, ok in zip(items, results, conds) if ok], m)
             if g == '⇅':
+                if self.labor:                    # ключі перетворюються й порівнюються — кроки за їхній розмір (1.2)
+                    self.work(sum(r.n for r in results), pos)
                 try:
                     order = sorted(range(len(items)), key=lambda i: sort_key(results[i]))
                 except BadSortKey as k:
@@ -7222,7 +7256,8 @@ class Interp:
                 return V({k: V(n, m) for k, n in counts.items()}, m, m)
             groups = {}
             for x, r in zip(items, results):
-                groups.setdefault(self.need(r, 'рядок', '⊞ (ключ)', pos), []).append(capc(x, r.c) if r.c < x.c else x)
+                groups.setdefault(self.need(r, 'рядок', '⊞ (ключ)', pos), []).append(
+                    self.fresh_copy(x, r.c, g, pos) if r.c < x.c else x)
             out = {k: mk(v, m) for k, v in groups.items()}
             return V(out, min([m] + [v.c for v in out.values()]), m)
         if g == 'Σ':
@@ -7525,6 +7560,8 @@ class Interp:
             if not 0 <= t <= 1:
                 raise NgrError('⚗: поріг має бути від 0 до 1', pos)
             kept = []
+            if self.labor:                        # кожне рішення показує елемент у сліді (1.2)
+                self.work(sum(x.n for x in lst), pos)
             for x in lst:
                 ok = x.c >= t
                 self.trace('відсів', агент=self.agent, значення=trace_val(x), впевненість=x.c, поріг=t,
@@ -7536,7 +7573,8 @@ class Interp:
             key = self.need(a[0], 'рядок', g, pos)
             kc = min(a[0].c, self.cpc)
             self.mem_c = min(self.mem_c, kc)       # сам факт запису під таким ключем — теж інформація
-            val = capc(a[1], kc) if kc < a[1].c else a[1]
+            val = self.fresh_copy(a[1], kc, g, pos) if kc < a[1].c else a[1]
+            self.shown(val, pos)
             shown = trace_val(val)                # спершу — чи можна записати в слід (надто глибоке — помилка ДО запису
             self.memory[key] = val                # у памʼять; суд 9: 🜄 казав «помилка», а 🜃 потім бачив значення)
             self.trace('памʼять', агент=self.agent, дія='запамʼятати', ключ=key, значення=shown, впевненість=val.c)
@@ -7552,12 +7590,13 @@ class Interp:
             r = self.call(a[1], [a[0]], pos)
             ok = self.boolean(r, g, pos)
             self.taint(r.c)                          # пройде чи впаде — залежить від умови
+            self.shown(a[0], pos)
             self.trace('перевірка', агент=self.agent, значення=trace_val(a[0]), результат='пройдена' if ok else 'НЕ пройдена',
                        впевненість=r.c)
             if not ok:
                 raise NgrError(f'🜍: перевірку не пройдено для {brief(a[0], 60)}', pos, min(r.c, a[0].c, self.cpc))
             self.halt_c = min(self.halt_c, r.c)     # те, що програма йде далі, — теж знання про умову
-            return capc(a[0], r.c) if r.c < a[0].c else a[0]
+            return self.fresh_copy(a[0], r.c, g, pos) if r.c < a[0].c else a[0]
         if g == '∋':
             x, y = a[0].v, a[1]
             if isinstance(x, str):
@@ -8401,10 +8440,11 @@ def cheatsheet():
            '  Зайве після завершеного виразу — теж помилка. Кілька виразів в одному рядку — через `¦`.',
            '- **Значення не змінюються**: `← імʼя вираз` називає назавжди, і лише на початку інструкції',
            '  (усередині виразу — блок `《 ← … 》`). Цикли — `∀ μ φ Σ ↻`.',
-           '  **Вартість:** `＋` `⊏` над списками, `✎`, літерали `【】` `『』` платять лише за власні елементи; `§`, що повертає список чи словник, і `¿` `☂` `↻` `Σ`,\n'
-           '  що повертають наявне значення, — нічого: великий **незмінний** стан у `↻` дешевий. Копія з меншою впевненістю (і `§` з сумнівним ключем) — повна ціна.\n'
-           '  Решта — логічний розмір, навіть коли повертає наявне: `► ▶ μ φ`, `§` рядка. `＋ спис 【х】` у циклі — квадрат (~14 тис. елементів на типових\n'
-           '  межах): збирайте шматками. `＝ ≠ ∋` платять за розмір обох боків (і проти `∅`). Один список — до `--розмір`, нових даних за запуск — до 20 × `--розмір`.\n'
+           '  **Вартість (облік 1.2):** платять нові дані й обхід. Наявне значення, повернене як є, — нічого: `§` (і рядок), `¿ ☂ ↻ Σ`, `► ▶`, `✓ 🜍`;\n'
+           '  новий список з наявних елементів — лише власні елементи: `＋ ⊏ ✎`, літерали `【】 『』`, `μ φ ⇅ ⚗ ↺ ⊞`. Тож великий **незмінний** стан у `↻` дешевий.\n'
+           '  Копія з меншою впевненістю — повна ціна: `§` з сумнівним ключем, виклик сумнівної функції, розбір `λ【】` сумнівного списку. Обхід платить кроки\n'
+           '  за розмір: `＝ ≠ ∋` (обидва боки, і проти `∅`), показ для сліду (`🜄`, результат `🜁`, `⚗`, аргументи інструмента), ключі `⇅`. `＋ спис 【х】`\n'
+           '  у циклі — квадрат (~14 тис. елементів на типових межах): збирайте шматками. Один список — до `--розмір`, нових даних за запуск — до 20 × `--розмір`.\n'
            '- Імена — слова будь-якою мовою, але **одним письмом** (`звiт` з латинською i — помилка). Грецькі літери — гліфи.',
            '  **Двійники** — два різні імена, однакові на вигляд за скелетом UTS #39 (`x`/`х`, `h`/`һ`, `I`/`l`), — помилка;',
            '  так само імʼя з символів сумісності (`ｘ`, `𝚡`), з літерою, якої Unicode не радить для імен (UTS #39',
@@ -9068,6 +9108,9 @@ def replay_report(replay, new_trace, ends):
     if (replay['початок'].get('ліміти') or {}).get('облік', 'логічний') == 'логічний':
         print('  (слід 1.0: кроки й «сумарно створено» повтор рахує так, як рахувала 1.0, — кожне нове значення платить '
               'увесь логічний розмір; так його й записано)', file=sys.stderr)
+    elif (replay['початок'].get('ліміти') or {}).get('облік') == 'нове':
+        print('  (слід 1.1: кроки й «сумарно створено» повтор рахує так, як рахувала 1.1, — без обліку обходів для сліду '
+              'й копій у виклику; так його й записано)', file=sys.stderr)
     if str(end_new.get('повідомлення', '')).startswith('✗ слід перевищив'):
         print(f'  (запуск зупинила межа сліду: повтор дійшов до того самого місця; що сталося після, слід не каже — '
               f'останній виклик, якщо є, міг відбутися, але його результату в сліді немає)', file=sys.stderr)
@@ -9953,7 +9996,7 @@ def _main(argv, opts, it, value):
               час=datetime.now(timezone.utc).isoformat(timespec='seconds'), запуск=os.urandom(6).hex(),
               тека=safe(cwd), дозволи_власника=safe(source), дозволено=allowed,
               ліміти={'кроки': opts['steps'], 'розмір': opts['size'], 'слід': opts['tsize'], 'зерно': opts['seed'],
-                      'облік': opts.get('cost', 'нове')},
+                      'облік': opts.get('cost', 'робота')},
               **({'код': src} if path == '<-e>' else {}), **({'повтор': safe(os.path.realpath(opts['replay']))} if replay else {}),
               **({'підпис': {'ключ': author, 'імʼя': author_info['імʼя']}} if author else {}))
         if shown_args != prog_args:
@@ -9970,7 +10013,7 @@ def _main(argv, opts, it, value):
                   f'  дозволи власника: {source}', file=sys.stderr)
             return 3
         interp = Interp(trace, seed=opts['seed'], steps=opts['steps'], cwd=cwd, argv=prog_args,
-                        protected=paths + [tp + '.дані' for tp in paths], max_size=opts['size'], cost=opts.get('cost', 'нове'))
+                        protected=paths + [tp + '.дані' for tp in paths], max_size=opts['size'], cost=opts.get('cost', 'робота'))
         owner_q = Caps()
         for t, sc, q in owner_quotas(allowed):      # кілька квот на те саме — діє менша (суд 8)
             owner_q.quotas[(t, sc)] = min(q, owner_q.quotas.get((t, sc), q))
@@ -10109,7 +10152,7 @@ def repl_main(opts):
               час=datetime.now(timezone.utc).isoformat(timespec='seconds'), запуск=os.urandom(6).hex(),
               тека=safe(cwd), дозволи_власника=safe(source), дозволено=allowed,
               ліміти={'кроки': opts['steps'], 'розмір': opts['size'], 'слід': opts['tsize'], 'зерно': opts['seed'],
-                      'облік': opts.get('cost', 'нове')},
+                      'облік': opts.get('cost', 'робота')},
               repl=True)
 
         def reject(text, msg, **extra):
