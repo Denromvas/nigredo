@@ -551,7 +551,13 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             let key = need_str(&a[0], "🜃", pos)?;
             let res = it.memory.get(&*key.s).cloned().unwrap_or_else(V::none);
             let c = a[0].c.min(it.mem_c).min(it.cpc());
-            let res = if c < res.c { capc(&res, c) } else { res };
+            let res = if c < res.c {
+                it.fresh = true; // копія зі зниженою впевненістю — нові дані (spent_of); наявне значення — 1 (1.2, суд 15)
+                capc(&res, c)
+            } else {
+                res
+            };
+            it.work(res.n, pos)?; // показ для сліду обходить значення
             let agent = it.agent.clone();
             it.rec(
                 "памʼять",
