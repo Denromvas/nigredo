@@ -11,11 +11,65 @@ index ef6d366..abb002b 100644
      ];
      if it.rec("початок", head).is_err() {
          return 4;
+diff --git "a/albedo/\321\205\320\276\321\201\321\202.mjs" "b/albedo/\321\205\320\276\321\201\321\202.mjs"
+index 56fe013..58a1c43 100644
+--- "a/albedo/\321\205\320\276\321\201\321\202.mjs"
++++ "b/albedo/\321\205\320\276\321\201\321\202.mjs"
+@@ -268,8 +268,28 @@ for (const t of modulesSeen) if (inside(t, progDir) && !moduleOk(t)) fail(3, `
+ const ownerKey = () => {
+   fs.mkdirSync(HOME, { recursive: true, mode: 0o700 });
+   const k = path.join(HOME, 'ключ');
+-  if (!fs.existsSync(k)) fs.writeFileSync(k, crypto.randomBytes(32).toString('hex'), { mode: 0o600, flag: 'wx' });
+-  return Buffer.from(fs.readFileSync(k, 'utf8').trim());
++  if (!fs.existsSync(k)) {
++    // атомарно, як в еталоні: тимчасовий файл, потім link — ключ зʼявляється повним і не перезаписується (два перші запуски
++    // разом не падають і не читають порожній ключ); без жорстких посилань — 'wx' і чекати переможця
++    const key = crypto.randomBytes(32).toString('hex');
++    const tmp = path.join(HOME, `.ключ-${process.pid}-${crypto.randomBytes(8).toString('hex')}`);
++    const fd = fs.openSync(tmp, 'wx', 0o600);
++    try { fs.writeSync(fd, key); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
++    try {
++      try { fs.linkSync(tmp, k); } catch (e) {
++        if (e.code !== 'EEXIST') {
++          try { fs.writeFileSync(k, key, { mode: 0o600, flag: 'wx' }); } catch (e2) { if (e2.code !== 'EEXIST') throw e2; }
++        }
++      }
++    } finally { fs.unlinkSync(tmp); }
++  }
++  let s = '';
++  for (let i = 0; i < 200; i++) {
++    s = fs.readFileSync(k, 'utf8').trim();
++    if (s) break;
++    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
++  }
++  return Buffer.from(s);
+ };
+ const key = ownerKey();
+ const traces = path.join(HOME, 'сліди');
 diff --git a/athanor/src/interp.rs b/athanor/src/interp.rs
-index b615a56..f5202ed 100644
+index b615a56..a8a60d0 100644
 --- a/athanor/src/interp.rs
 +++ b/athanor/src/interp.rs
-@@ -290,12 +290,13 @@ impl Interp {
+@@ -274,6 +274,18 @@ impl Interp {
+         self.step(pos)
+     }
+ 
++    /// Нові дані поза значенням гліфа (ключі `⇅`, результат інструмента) — кроки й «сумарно створено» (1.2, суд 15; еталон: made).
++    pub fn made(&mut self, units: u64, pos: Pos) -> R<()> {
++        if units > 1 {
++            self.work(units, pos)?;
++            self.alloc += units;
++            if self.alloc > lang::ALLOC_FACTOR * self.max_size {
++                return fatal(format!("сумарно створено забагато ({} > {} × --розмір)", self.alloc, lang::ALLOC_FACTOR), Some(pos));
++            }
++        }
++        Ok(())
++    }
++
+     pub fn work(&mut self, units: u64, pos: Pos) -> R<()> {
+         self.steps_left -= (units / 64) as i64;
+         if self.steps_left < 0 {
+@@ -290,12 +302,13 @@ impl Interp {
          self.sized_as(res, g, pos, spent)
      }
  
@@ -28,12 +82,12 @@ index b615a56..f5202ed 100644
      fn spent(res: &V, g: char) -> u64 {
 -        if matches!(g, '¿' | '☂' | '↻' | 'Σ') {
 -            return 1; // наявне значення (гілка, тіло, стан, акумулятор), повернуте як є; копію capc списує сам гліф (copied)
-+        if matches!(g, '¿' | '☂' | '↻' | 'Σ' | '►' | '▶' | '✓' | '🜍' | '§') {
++        if matches!(g, '¿' | '☂' | '↻' | 'Σ' | '►' | '▶' | '✓' | '🜍' | '§' | '🜃') {
 +            return 1; // наявне значення, повернуте як є (і елемент §); копію capc списує сам гліф (copied, fresh_copy, fresh)
          }
          let own = match &res.v {
              Val::List(l) => l.len() as u64,
-@@ -303,21 +304,34 @@ impl Interp {
+@@ -303,21 +316,34 @@ impl Interp {
              _ => return res.n,
          };
          match g {
@@ -73,7 +127,34 @@ index b615a56..f5202ed 100644
      /// Копія зі зниженою впевненістю (capc) у `¿ ☂ ↻ Σ`: справжні нові дані — повний логічний розмір (еталон: copied).
      fn copied(&mut self, res: V, g: char, pos: Pos) -> R<V> {
          let n = res.n;
-@@ -895,7 +909,7 @@ impl Interp {
+@@ -406,7 +432,11 @@ impl Interp {
+     }
+ 
+     fn halt_cap(&mut self, env: &Rc<Env>, hops: u32, slot: u32, val: V, pos: Pos) -> R<V> {
+-        self.work(val.n, pos)?;
++        if matches!(val.v, Val::List(_) | Val::Dict(_)) {
++            self.made(val.n, pos)?; // копія списку чи словника — нові дані (1.2, суд 15); рядок копія не копіює
++        } else {
++            self.work(val.n, pos)?;
++        }
+         let capped = capc(&val, self.halt_c);
+         env.at(hops).vars.borrow_mut()[slot as usize] = capped.clone();
+         Ok(capped)
+@@ -678,7 +708,12 @@ impl Interp {
+                         Err(e) => return Err(e),
+                     }
+                 }
+-                Ok(V::strc(s, c))
++                let r = V::strc(s, c);
++                if r.n > self.max_size {
++                    // показ довший за суму підстановок (спільні посилання, пробіли між елементами) — межа й для результату (суд 15)
++                    return fatal(format!("〔〕: значення завелике (> --розмір {})", self.max_size), Some(pos));
++                }
++                Ok(r)
+             }
+             K::Dict(items) => {
+                 let mut d = Dict::new();
+@@ -895,7 +930,7 @@ impl Interp {
                          }
                          if let Val::List(l) = &a.v {
                              for e in l.iter() {
@@ -82,7 +163,7 @@ index b615a56..f5202ed 100644
                              }
                          }
                          if a.c.min(a.s) < 1.0 {
-@@ -907,7 +921,7 @@ impl Interp {
+@@ -907,7 +942,7 @@ impl Interp {
              }
              let env = Env::child(vars, &func.env);
              let res = self.eval(&lam.body, &env)?;
@@ -91,7 +172,40 @@ index b615a56..f5202ed 100644
          })();
          let r = match (r, &func.module) {
              (Err(mut e), Some(m)) if e.file.is_none() && !e.pipe && !e.internal => {
-@@ -1280,12 +1294,14 @@ impl Interp {
+@@ -1206,7 +1241,8 @@ impl Interp {
+                     // ключ не рядок) — лише після всіх викликів, як в еталоні (спершу всі виклики, потім підсумок)
+                     let (mut total, mut m, mut bad): (Val, f64, Option<Box<E>>) = (Val::Int(Int::S(0)), lst.s, None);
+                     let mut counts: Vec<(Rc<PStr>, i64)> = Vec::new();
+-                    let mut idx: FxMap<Rc<str>, usize> = FxMap::default();
++                    // індекс — за хешем, кешованим у рядку (як `✎` після суду 14): ключ не хешується наново на кожен елемент (суд 15)
++                    let mut idx: FxMap<u64, Vec<usize>> = FxMap::default();
+                     let r = self.each_sink(g, &items, &f, None, pos, &mut |it, r| {
+                         if g == '№' {
+                             m = m.min(r.c);
+@@ -1214,13 +1250,16 @@ impl Interp {
+                                 return;
+                             }
+                             match &r.v {
+-                                Val::Str(k) => match idx.get(&*k.s) {
+-                                    Some(&i) => counts[i].1 += 1,
+-                                    None => {
+-                                        idx.insert(Rc::from(&*k.s), counts.len());
+-                                        counts.push((k.clone(), 1));
++                                Val::Str(k) => {
++                                    let slot = idx.entry(k.hash64()).or_default();
++                                    match slot.iter().copied().find(|&i| Rc::ptr_eq(&counts[i].0, k) || counts[i].0.s == k.s) {
++                                        Some(i) => counts[i].1 += 1,
++                                        None => {
++                                            slot.push(counts.len());
++                                            counts.push((k.clone(), 1));
++                                        }
+                                     }
+-                                },
++                                }
+                                 _ => bad = ngr::<()>(format!("№ (ключ): очікувалося рядок, а не {} {}", kind(&r), brief(&r, 40)), pos).err(),
+                             }
+                         } else if g == '∫' {
+@@ -1280,12 +1319,14 @@ impl Interp {
                          for (i, (r, ok)) in results.iter().zip(conds).enumerate() {
                              if ok {
                                  let x = items.get(i);
@@ -103,20 +217,36 @@ index b615a56..f5202ed 100644
                      }
                      '⇅' => {
 +                        // ключі перетворюються й порівнюються — кроки за їхній розмір (1.2)
-+                        self.work(results.iter().map(|r| r.n).sum::<u64>(), pos)?;
++                        self.made(results.iter().map(|r| r.n).sum::<u64>(), pos)?;
                          let order = match crate::sort::sort_order(&results, pos) {
                              Ok(o) => o,
                              Err(e) if e.deep => return ngr_c("⇅: ключі вкладені надто глибоко", pos, m),
-@@ -1303,7 +1319,7 @@ impl Interp {
+@@ -1296,18 +1337,19 @@ impl Interp {
+                     _ => {
+                         // ⊞
+                         let mut groups: Vec<(Rc<PStr>, Vec<V>)> = Vec::new();
+-                        let mut idx: FxMap<Rc<str>, usize> = FxMap::default();
++                        let mut idx: FxMap<u64, Vec<usize>> = FxMap::default(); // як у `№`: кешований хеш рядка (суд 15)
+                         for (i, r) in results.iter().enumerate() {
+                             let x = items.get(i);
+                             let k = match &r.v {
                                  Val::Str(s) => s.clone(),
                                  _ => return ngr(format!("⊞ (ключ): очікувалося рядок, а не {} {}", kind(r), brief(r, 40)), pos),
                              };
 -                            let el = if r.c < x.c { capc(&x, r.c) } else { x };
+-                            match idx.get(&*k.s) {
+-                                Some(&i) => groups[i].1.push(el),
 +                            let el = if r.c < x.c { self.fresh_copy(&x, r.c, g, pos)? } else { x };
-                             match idx.get(&*k.s) {
-                                 Some(&i) => groups[i].1.push(el),
++                            let slot = idx.entry(k.hash64()).or_default();
++                            match slot.iter().copied().find(|&j| Rc::ptr_eq(&groups[j].0, &k) || groups[j].0.s == k.s) {
++                                Some(j) => groups[j].1.push(el),
                                  None => {
-@@ -1511,6 +1527,7 @@ impl Interp {
+-                                    idx.insert(Rc::from(&*k.s), groups.len());
++                                    slot.push(groups.len());
+                                     groups.push((k, vec![el]));
+                                 }
+                             }
+@@ -1511,6 +1553,7 @@ impl Interp {
  
      pub fn tool_begin(&mut self, name: &'static str, args: Vec<V>, pos: Pos) -> R<Job> {
          let full = matches!(name, "агент" | "мережа.взяти" | "мережа.послати" | "файл.писати" | "бд.писати" | "процес");
@@ -124,7 +254,20 @@ index b615a56..f5202ed 100644
          let targs: Vec<J> = match args.iter().map(|a| trace_val(a, full)).collect() {
              Ok(t) => t,
              Err(e) if e.deep => {
-@@ -1911,6 +1928,7 @@ impl Interp {
+@@ -1737,6 +1780,12 @@ impl Interp {
+             d.push(("шлях".into(), J::Arr(job.paths.iter().map(|p| J::s(p)).collect())));
+         }
+         self.rec("інструмент", d)?;
++        // 1.2 (суд 15): показ результату для сліду — обхід; копія зі зниженою впевненістю — нові дані (сам результат — дані
++        // зі світу: їх обмежують квоти, як і дію)
++        self.work(res.n, job.pos)?;
++        if c < 1.0 && matches!(res.v, Val::List(_) | Val::Dict(_)) {
++            self.made(res.n, job.pos)?;
++        }
+         Ok(res)
+     }
+ 
+@@ -1911,6 +1960,7 @@ impl Interp {
          self.caps = saved_caps;
          self.mem_c = saved_memc;
          let res = r?;
@@ -133,10 +276,10 @@ index b615a56..f5202ed 100644
              Ok(s) => s,
              Err(e) if e.deep => return ngr_c(format!("субагент «{}»: результат вкладений надто глибоко", name), pos, res.c),
 diff --git a/athanor/src/lang.rs b/athanor/src/lang.rs
-index e909df3..0a1ee68 100644
+index e909df3..a4ca666 100644
 --- a/athanor/src/lang.rs
 +++ b/athanor/src/lang.rs
-@@ -1,6 +1,6 @@
+@@ -1,16 +1,16 @@
  // Згенеровано athanor/gen_tables.py з interpreter/nigredo.py — не редагувати руками.
  
 -pub const VERSION: &str = "1.1";
@@ -144,11 +287,62 @@ index e909df3..0a1ee68 100644
  pub static GLYPHS: [(char, i8); 77] = [('\u{a7}', 2), ('\u{ac}', 1), ('\u{b1}', 1), ('\u{bb}', 1), ('\u{bf}', 3), ('\u{d7}', 2), ('\u{f7}', 2), ('\u{394}', 1), ('\u{39b}', -1), ('\u{3a3}', 3), ('\u{3b4}', 1), ('\u{3b5}', 1), ('\u{3ba}', 1), ('\u{3bb}', -1), ('\u{3bc}', 2), ('\u{3bd}', 1), ('\u{3c1}', 1), ('\u{3c3}', 1), ('\u{3c4}', 1), ('\u{3c6}', 2), ('\u{3c7}', 1), ('\u{2016}', 2), ('\u{2026}', 2), ('\u{2030}', 2), ('\u{2039}', 2), ('\u{203a}', 2), ('\u{2040}', 2), ('\u{2116}', 2), ('\u{2190}', -1), ('\u{2191}', 1), ('\u{2198}', 2), ('\u{21ba}', 1), ('\u{21bb}', 3), ('\u{21c4}', 3), ('\u{21c5}', 2), ('\u{21e1}', 1), ('\u{21e3}', 1), ('\u{2200}', 2), ('\u{220b}', 2), ('\u{2218}', -1), ('\u{2227}', 2), ('\u{2228}', 2), ('\u{222b}', 2), ('\u{2245}', 2), ('\u{2248}', 2), ('\u{224b}', 3), ('\u{2260}', 2), ('\u{2264}', 2), ('\u{2265}', 2), ('\u{2283}', -1), ('\u{228f}', 3), ('\u{229e}', 2), ('\u{22a2}', 1), ('\u{22b3}', 2), ('\u{2302}', 0), ('\u{230a}', 1), ('\u{2315}', 2), ('\u{2317}', 2), ('\u{25a6}', 1), ('\u{25b6}', 3), ('\u{25ba}', 2), ('\u{25f7}', 2), ('\u{2602}', 2), ('\u{2620}', 1), ('\u{2697}', 2), ('\u{2702}', 2), ('\u{270e}', 3), ('\u{2713}', 2), ('\u{ff0b}', 2), ('\u{ff0d}', 2), ('\u{ff1d}', 2), ('\u{1f701}', 4), ('\u{1f702}', -1), ('\u{1f703}', 1), ('\u{1f704}', 2), ('\u{1f70d}', 2), ('\u{1f714}', -1)];
  pub static TOOLS: [(&str, u8, bool, &str); 13] = [("\u{43e}\u{440}\u{430}\u{43a}\u{443}\u{43b}", 1, false, ""), ("\u{436}\u{435}\u{440}\u{435}\u{431}", 1, false, ""), ("\u{447}\u{430}\u{441}", 0, false, ""), ("\u{444}\u{430}\u{439}\u{43b}.\u{447}\u{438}\u{442}\u{430}\u{442}\u{438}", 1, true, "\u{442}\u{435}\u{43a}\u{430}"), ("\u{444}\u{430}\u{439}\u{43b}.\u{43f}\u{438}\u{441}\u{430}\u{442}\u{438}", 2, true, "\u{442}\u{435}\u{43a}\u{430}"), ("\u{444}\u{430}\u{439}\u{43b}.\u{441}\u{43f}\u{438}\u{441}\u{43e}\u{43a}", 1, true, "\u{442}\u{435}\u{43a}\u{430}"), ("\u{431}\u{434}.\u{447}\u{438}\u{442}\u{430}\u{442}\u{438}", 3, true, "\u{442}\u{435}\u{43a}\u{430}"), ("\u{431}\u{434}.\u{43f}\u{438}\u{441}\u{430}\u{442}\u{438}", 3, true, "\u{442}\u{435}\u{43a}\u{430}"), ("\u{43c}\u{435}\u{440}\u{435}\u{436}\u{430}.\u{432}\u{437}\u{44f}\u{442}\u{438}", 1, true, "\u{445}\u{43e}\u{441}\u{442}"), ("\u{43c}\u{435}\u{440}\u{435}\u{436}\u{430}.\u{43f}\u{43e}\u{441}\u{43b}\u{430}\u{442}\u{438}", 2, true, "\u{445}\u{43e}\u{441}\u{442}"), ("\u{43f}\u{440}\u{43e}\u{446}\u{435}\u{441}", 1, true, "\u{43a}\u{43e}\u{43c}\u{430}\u{43d}\u{434}\u{430}"), ("\u{430}\u{433}\u{435}\u{43d}\u{442}", 2, true, "\u{456}\u{43c}\u{2bc}\u{44f}"), ("python", 2, true, "\u{444}\u{443}\u{43d}\u{43a}\u{446}\u{456}\u{44f}")];
  pub static SQL_ERRORS: [(&str, &str); 38] = [("Incorrect number of bindings", "\u{43a}\u{456}\u{43b}\u{44c}\u{43a}\u{456}\u{441}\u{442}\u{44c} \u{ab}?\u{bb} \u{443} \u{437}\u{430}\u{43f}\u{438}\u{442}\u{456} \u{43d}\u{435} \u{434}\u{43e}\u{440}\u{456}\u{432}\u{43d}\u{44e}\u{454} \u{43a}\u{456}\u{43b}\u{44c}\u{43a}\u{43e}\u{441}\u{442}\u{456} \u{43f}\u{430}\u{440}\u{430}\u{43c}\u{435}\u{442}\u{440}\u{456}\u{432}"), ("no such table", "\u{43d}\u{435}\u{43c}\u{430}\u{454} \u{442}\u{430}\u{43a}\u{43e}\u{457} \u{442}\u{430}\u{431}\u{43b}\u{438}\u{446}\u{456}"), ("no such column", "\u{43d}\u{435}\u{43c}\u{430}\u{454} \u{442}\u{430}\u{43a}\u{43e}\u{433}\u{43e} \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{446}\u{44f}"), ("syntax error", "\u{441}\u{438}\u{43d}\u{442}\u{430}\u{43a}\u{441}\u{438}\u{447}\u{43d}\u{430} \u{43f}\u{43e}\u{43c}\u{438}\u{43b}\u{43a}\u{430} SQL"), ("UNIQUE constraint failed", "\u{43f}\u{43e}\u{440}\u{443}\u{448}\u{435}\u{43d}\u{43e} \u{443}\u{43d}\u{456}\u{43a}\u{430}\u{43b}\u{44c}\u{43d}\u{456}\u{441}\u{442}\u{44c}"), ("NOT NULL constraint failed", "\u{43f}\u{43e}\u{440}\u{43e}\u{436}\u{43d}\u{454} \u{437}\u{43d}\u{430}\u{447}\u{435}\u{43d}\u{43d}\u{44f} \u{442}\u{430}\u{43c}, \u{434}\u{435} \u{437}\u{430}\u{431}\u{43e}\u{440}\u{43e}\u{43d}\u{435}\u{43d}\u{43e}"), ("database is locked", "\u{431}\u{430}\u{437}\u{430} \u{437}\u{430}\u{439}\u{43d}\u{44f}\u{442}\u{430}"), ("database or disk is full", "\u{431}\u{430}\u{437}\u{430} \u{434}\u{43e}\u{441}\u{44f}\u{433}\u{43b}\u{430} \u{43c}\u{435}\u{436}\u{456} \u{440}\u{43e}\u{437}\u{43c}\u{456}\u{440}\u{443} \u{430}\u{431}\u{43e} \u{442}\u{430}\u{431}\u{43b}\u{438}\u{446}\u{44f} \u{437} AUTOINCREMENT \u{432}\u{438}\u{447}\u{435}\u{440}\u{43f}\u{430}\u{43b}\u{430} \u{43d}\u{43e}\u{43c}\u{435}\u{440}\u{438} rowid"), ("string or blob too big", "\u{437}\u{43d}\u{430}\u{447}\u{435}\u{43d}\u{43d}\u{44f} \u{431}\u{456}\u{43b}\u{44c}\u{448}\u{435} \u{437}\u{430} --\u{440}\u{43e}\u{437}\u{43c}\u{456}\u{440}"), ("unable to open", "\u{43d}\u{435} \u{432}\u{434}\u{430}\u{43b}\u{43e}\u{441}\u{44f} \u{432}\u{456}\u{434}\u{43a}\u{440}\u{438}\u{442}\u{438} \u{431}\u{430}\u{437}\u{443}"), ("file is not a database", "\u{444}\u{430}\u{439}\u{43b} \u{2014} \u{43d}\u{435} \u{431}\u{430}\u{437}\u{430} SQLite"), ("malformed database schema", "\u{441}\u{445}\u{435}\u{43c}\u{430} \u{431}\u{430}\u{437}\u{438} \u{43f}\u{43e}\u{448}\u{43a}\u{43e}\u{434}\u{436}\u{435}\u{43d}\u{430}"), ("non-deterministic functions prohibited", "\u{43d}\u{435}\u{434}\u{435}\u{442}\u{435}\u{440}\u{43c}\u{456}\u{43d}\u{43e}\u{432}\u{430}\u{43d}\u{430} \u{444}\u{443}\u{43d}\u{43a}\u{446}\u{456}\u{44f} (random(), CURRENT_* \u{442}\u{43e}\u{449}\u{43e}) \u{443} \u{437}\u{433}\u{435}\u{43d}\u{435}\u{440}\u{43e}\u{432}\u{430}\u{43d}\u{43e}\u{43c}\u{443} \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{446}\u{456} \u{447}\u{438} \u{456}\u{43d}\u{434}\u{435}\u{43a}\u{441}\u{456}"), ("duplicate column name", "\u{441}\u{442}\u{43e}\u{432}\u{43f}\u{435}\u{446}\u{44c} \u{437} \u{442}\u{430}\u{43a}\u{43e}\u{44e} \u{43d}\u{430}\u{437}\u{432}\u{43e}\u{44e} \u{432}\u{436}\u{435} \u{454}"), ("bad JSON path", "\u{445}\u{438}\u{431}\u{43d}\u{438}\u{439} \u{448}\u{43b}\u{44f}\u{445} JSON"), ("malformed JSON", "\u{445}\u{438}\u{431}\u{43d}\u{438}\u{439} JSON"), ("already exists", "\u{442}\u{430}\u{431}\u{43b}\u{438}\u{446}\u{44f}, \u{456}\u{43d}\u{434}\u{435}\u{43a}\u{441} \u{447}\u{438} \u{442}\u{440}\u{438}\u{433}\u{435}\u{440} \u{437} \u{442}\u{430}\u{43a}\u{43e}\u{44e} \u{43d}\u{430}\u{437}\u{432}\u{43e}\u{44e} \u{432}\u{436}\u{435} \u{454}"), ("no such function", "\u{43d}\u{435}\u{43c}\u{430}\u{454} \u{442}\u{430}\u{43a}\u{43e}\u{457} \u{444}\u{443}\u{43d}\u{43a}\u{446}\u{456}\u{457}"), ("datatype mismatch", "\u{43d}\u{435}\u{432}\u{456}\u{434}\u{43f}\u{43e}\u{432}\u{456}\u{434}\u{43d}\u{456}\u{441}\u{442}\u{44c} \u{442}\u{438}\u{43f}\u{443}"), ("CHECK constraint failed", "\u{43f}\u{43e}\u{440}\u{443}\u{448}\u{435}\u{43d}\u{43e} \u{443}\u{43c}\u{43e}\u{432}\u{443} CHECK"), ("FOREIGN KEY constraint failed", "\u{43f}\u{43e}\u{440}\u{443}\u{448}\u{435}\u{43d}\u{43e} \u{437}\u{43e}\u{432}\u{43d}\u{456}\u{448}\u{43d}\u{456}\u{439} \u{43a}\u{43b}\u{44e}\u{447}"), ("ambiguous column name", "\u{43d}\u{435}\u{43e}\u{434}\u{43d}\u{43e}\u{437}\u{43d}\u{430}\u{447}\u{43d}\u{430} \u{43d}\u{430}\u{437}\u{432}\u{430} \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{446}\u{44f} (\u{434}\u{43e}\u{434}\u{430}\u{439}\u{442}\u{435} \u{442}\u{430}\u{431}\u{43b}\u{438}\u{446}\u{44e}: \u{442}.\u{441}\u{442}\u{43e}\u{432}\u{43f}\u{435}\u{446}\u{44c})"), ("wrong number of arguments", "\u{445}\u{438}\u{431}\u{43d}\u{430} \u{43a}\u{456}\u{43b}\u{44c}\u{43a}\u{456}\u{441}\u{442}\u{44c} \u{430}\u{440}\u{433}\u{443}\u{43c}\u{435}\u{43d}\u{442}\u{456}\u{432} \u{444}\u{443}\u{43d}\u{43a}\u{446}\u{456}\u{457}"), ("integer overflow", "\u{43f}\u{435}\u{440}\u{435}\u{43f}\u{43e}\u{432}\u{43d}\u{435}\u{43d}\u{43d}\u{44f} \u{446}\u{456}\u{43b}\u{43e}\u{433}\u{43e}"), ("incomplete input", "\u{43d}\u{435}\u{437}\u{430}\u{432}\u{435}\u{440}\u{448}\u{435}\u{43d}\u{438}\u{439} \u{437}\u{430}\u{43f}\u{438}\u{442}"), ("no such index", "\u{43d}\u{435}\u{43c}\u{430}\u{454} \u{442}\u{430}\u{43a}\u{43e}\u{433}\u{43e} \u{456}\u{43d}\u{434}\u{435}\u{43a}\u{441}\u{443}"), ("misuse of aggregate", "\u{430}\u{433}\u{440}\u{435}\u{433}\u{430}\u{442}\u{43d}\u{430} \u{444}\u{443}\u{43d}\u{43a}\u{446}\u{456}\u{44f} \u{43d}\u{435} \u{43d}\u{430} \u{441}\u{432}\u{43e}\u{454}\u{43c}\u{443} \u{43c}\u{456}\u{441}\u{446}\u{456}"), ("sub-select returns", "\u{43f}\u{456}\u{434}\u{437}\u{430}\u{43f}\u{438}\u{442} \u{43f}\u{43e}\u{432}\u{435}\u{440}\u{442}\u{430}\u{454} \u{43d}\u{435} \u{43e}\u{434}\u{438}\u{43d} \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{435}\u{446}\u{44c}"), ("too many terms", "\u{437}\u{430}\u{431}\u{430}\u{433}\u{430}\u{442}\u{43e} \u{447}\u{430}\u{441}\u{442}\u{438}\u{43d} \u{443} \u{437}\u{430}\u{43f}\u{438}\u{442}\u{456}"), ("has no column named", "\u{443} \u{442}\u{430}\u{431}\u{43b}\u{438}\u{446}\u{456} \u{43d}\u{435}\u{43c}\u{430}\u{454} \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{446}\u{44f} \u{437} \u{442}\u{430}\u{43a}\u{43e}\u{44e} \u{43d}\u{430}\u{437}\u{432}\u{43e}\u{44e}"), ("values were supplied", "\u{43a}\u{456}\u{43b}\u{44c}\u{43a}\u{456}\u{441}\u{442}\u{44c} \u{437}\u{43d}\u{430}\u{447}\u{435}\u{43d}\u{44c} \u{43d}\u{435} \u{434}\u{43e}\u{440}\u{456}\u{432}\u{43d}\u{44e}\u{454} \u{43a}\u{456}\u{43b}\u{44c}\u{43a}\u{43e}\u{441}\u{442}\u{456} \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{446}\u{456}\u{432} \u{442}\u{430}\u{431}\u{43b}\u{438}\u{446}\u{456}"), ("values for", "\u{43a}\u{456}\u{43b}\u{44c}\u{43a}\u{456}\u{441}\u{442}\u{44c} \u{437}\u{43d}\u{430}\u{447}\u{435}\u{43d}\u{44c} \u{43d}\u{435} \u{434}\u{43e}\u{440}\u{456}\u{432}\u{43d}\u{44e}\u{454} \u{43a}\u{456}\u{43b}\u{44c}\u{43a}\u{43e}\u{441}\u{442}\u{456} \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{446}\u{456}\u{432}"), ("do not have the same number of result columns", "\u{447}\u{430}\u{441}\u{442}\u{438}\u{43d}\u{438} UNION (INTERSECT, EXCEPT) \u{43c}\u{430}\u{44e}\u{442}\u{44c} \u{440}\u{456}\u{437}\u{43d}\u{443} \u{43a}\u{456}\u{43b}\u{44c}\u{43a}\u{456}\u{441}\u{442}\u{44c} \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{446}\u{456}\u{432}"), ("missing datatype", "\u{443} \u{442}\u{430}\u{431}\u{43b}\u{438}\u{446}\u{456} STRICT \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{435}\u{446}\u{44c} \u{431}\u{435}\u{437} \u{442}\u{438}\u{43f}\u{443}"), ("unrecognized token", "\u{43d}\u{435}\u{437}\u{43d}\u{430}\u{439}\u{43e}\u{43c}\u{438}\u{439} \u{437}\u{43d}\u{430}\u{43a} \u{443} \u{437}\u{430}\u{43f}\u{438}\u{442}\u{456} (\u{447}\u{430}\u{441}\u{442}\u{43e} \u{2014} \u{43d}\u{435}\u{437}\u{430}\u{43a}\u{440}\u{438}\u{442}\u{430} \u{43b}\u{430}\u{43f}\u{43a}\u{430})"), ("object name reserved for internal use", "\u{43d}\u{430}\u{437}\u{432}\u{438} sqlite_\u{2026} \u{2014} \u{441}\u{43b}\u{443}\u{436}\u{431}\u{43e}\u{432}\u{456}, \u{457}\u{445} \u{431}\u{435}\u{440}\u{435} \u{43b}\u{438}\u{448}\u{435} \u{441}\u{430}\u{43c} SQLite"), ("because it is a view", "\u{43f}\u{440}\u{435}\u{434}\u{441}\u{442}\u{430}\u{432}\u{43b}\u{435}\u{43d}\u{43d}\u{44f} (VIEW) \u{43d}\u{435} \u{437}\u{43c}\u{456}\u{43d}\u{44e}\u{44e}\u{442}\u{44c} \u{43d}\u{430}\u{43f}\u{440}\u{44f}\u{43c}\u{443} \u{2014} \u{43b}\u{438}\u{448}\u{435} \u{447}\u{435}\u{440}\u{435}\u{437} \u{442}\u{440}\u{438}\u{433}\u{435}\u{440} INSTEAD OF"), ("term out of range", "\u{43d}\u{43e}\u{43c}\u{435}\u{440} \u{441}\u{442}\u{43e}\u{432}\u{43f}\u{446}\u{44f} \u{432} ORDER BY \u{447}\u{438} GROUP BY \u{43f}\u{43e}\u{437}\u{430} \u{43c}\u{435}\u{436}\u{430}\u{43c}\u{438}")];
+ pub static RE_ERRORS: [(&str, &str); 30] = [("bad escape (end of pattern)", "\u{448}\u{430}\u{431}\u{43b}\u{43e}\u{43d} \u{437}\u{430}\u{43a}\u{456}\u{43d}\u{447}\u{443}\u{454}\u{442}\u{44c}\u{441}\u{44f} \u{43d}\u{430} \u{ab}\u{5c}\u{bb}"), ("bad escape", "\u{445}\u{438}\u{431}\u{43d}\u{435} \u{435}\u{43a}\u{440}\u{430}\u{43d}\u{443}\u{432}\u{430}\u{43d}\u{43d}\u{44f}"), ("bad character range", "\u{445}\u{438}\u{431}\u{43d}\u{438}\u{439} \u{434}\u{456}\u{430}\u{43f}\u{430}\u{437}\u{43e}\u{43d} \u{441}\u{438}\u{43c}\u{432}\u{43e}\u{43b}\u{456}\u{432}"), ("bad inline flags", "\u{445}\u{438}\u{431}\u{43d}\u{456} \u{432}\u{431}\u{443}\u{434}\u{43e}\u{432}\u{430}\u{43d}\u{456} \u{43f}\u{440}\u{430}\u{43f}\u{43e}\u{440}\u{446}\u{456}"), ("invalid group reference", "\u{43f}\u{43e}\u{441}\u{438}\u{43b}\u{430}\u{43d}\u{43d}\u{44f} \u{43d}\u{430} \u{433}\u{440}\u{443}\u{43f}\u{443}, \u{44f}\u{43a}\u{43e}\u{457} \u{43d}\u{435}\u{43c}\u{430}\u{454}"), ("the repetition number is too large", "\u{437}\u{430}\u{432}\u{435}\u{43b}\u{438}\u{43a}\u{435} \u{447}\u{438}\u{441}\u{43b}\u{43e} \u{43f}\u{43e}\u{432}\u{442}\u{43e}\u{440}\u{435}\u{43d}\u{44c}"), ("min repeat greater than max repeat", "\u{43d}\u{438}\u{436}\u{43d}\u{44f} \u{43c}\u{435}\u{436}\u{430} \u{43f}\u{43e}\u{432}\u{442}\u{43e}\u{440}\u{435}\u{43d}\u{44c} \u{431}\u{456}\u{43b}\u{44c}\u{448}\u{430} \u{437}\u{430} \u{432}\u{435}\u{440}\u{445}\u{43d}\u{44e}"), ("multiple repeat", "\u{43f}\u{43e}\u{432}\u{442}\u{43e}\u{440}\u{435}\u{43d}\u{43d}\u{44f} \u{434}\u{432}\u{456}\u{447}\u{456} \u{43f}\u{43e}\u{441}\u{43f}\u{456}\u{43b}\u{44c}"), ("nothing to repeat", "\u{43d}\u{456}\u{447}\u{43e}\u{433}\u{43e} \u{43f}\u{43e}\u{432}\u{442}\u{43e}\u{440}\u{44e}\u{432}\u{430}\u{442}\u{438}"), ("missing ), unterminated subpattern", "\u{43d}\u{435}\u{437}\u{430}\u{43a}\u{440}\u{438}\u{442}\u{430} \u{434}\u{443}\u{436}\u{43a}\u{430}"), ("unbalanced parenthesis", "\u{437}\u{430}\u{439}\u{432}\u{430} \u{437}\u{430}\u{43a}\u{440}\u{438}\u{432}\u{43d}\u{430} \u{434}\u{443}\u{436}\u{43a}\u{430}"), ("unterminated character set", "\u{43d}\u{435}\u{437}\u{430}\u{43a}\u{440}\u{438}\u{442}\u{438}\u{439} \u{43a}\u{43b}\u{430}\u{441} \u{441}\u{438}\u{43c}\u{432}\u{43e}\u{43b}\u{456}\u{432}"), ("missing group name", "\u{431}\u{440}\u{430}\u{43a}\u{443}\u{454} \u{43d}\u{430}\u{437}\u{432}\u{438} \u{433}\u{440}\u{443}\u{43f}\u{438}"), ("missing >, unterminated name", "\u{43d}\u{435}\u{437}\u{430}\u{43a}\u{440}\u{438}\u{442}\u{430} \u{43d}\u{430}\u{437}\u{432}\u{430} \u{433}\u{440}\u{443}\u{43f}\u{438}"), ("bad character in group name", "\u{445}\u{438}\u{431}\u{43d}\u{438}\u{439} \u{441}\u{438}\u{43c}\u{432}\u{43e}\u{43b} \u{443} \u{43d}\u{430}\u{437}\u{432}\u{456} \u{433}\u{440}\u{443}\u{43f}\u{438}"), ("unknown group name", "\u{43d}\u{435}\u{432}\u{456}\u{434}\u{43e}\u{43c}\u{430} \u{43d}\u{430}\u{437}\u{432}\u{430} \u{433}\u{440}\u{443}\u{43f}\u{438}"), ("redefinition of group name", "\u{43d}\u{430}\u{437}\u{432}\u{430} \u{433}\u{440}\u{443}\u{43f}\u{438} \u{43f}\u{43e}\u{432}\u{442}\u{43e}\u{440}\u{44e}\u{454}\u{442}\u{44c}\u{441}\u{44f}"), ("cannot refer to an open group", "\u{43f}\u{43e}\u{441}\u{438}\u{43b}\u{430}\u{43d}\u{43d}\u{44f} \u{43d}\u{430} \u{449}\u{435} \u{43d}\u{435} \u{437}\u{430}\u{43a}\u{440}\u{438}\u{442}\u{443} \u{433}\u{440}\u{443}\u{43f}\u{443}"), ("unknown extension", "\u{43d}\u{435}\u{432}\u{456}\u{434}\u{43e}\u{43c}\u{435} \u{440}\u{43e}\u{437}\u{448}\u{438}\u{440}\u{435}\u{43d}\u{43d}\u{44f} (?\u{2026})"), ("missing ), unterminated comment", "\u{43d}\u{435}\u{437}\u{430}\u{43a}\u{440}\u{438}\u{442}\u{438}\u{439} \u{43a}\u{43e}\u{43c}\u{435}\u{43d}\u{442}\u{430}\u{440} (?#\u{2026})"), ("unknown flag", "\u{43d}\u{435}\u{432}\u{456}\u{434}\u{43e}\u{43c}\u{438}\u{439} \u{43f}\u{440}\u{430}\u{43f}\u{43e}\u{440}\u{435}\u{446}\u{44c}"), ("missing -, : or )", "\u{431}\u{440}\u{430}\u{43a}\u{443}\u{454} \u{ab}-\u{bb}, \u{ab}:\u{bb} \u{447}\u{438} \u{ab})\u{bb}"), ("missing flag", "\u{431}\u{440}\u{430}\u{43a}\u{443}\u{454} \u{43f}\u{440}\u{430}\u{43f}\u{43e}\u{440}\u{446}\u{44f}"), ("missing :", "\u{431}\u{440}\u{430}\u{43a}\u{443}\u{454} \u{ab}:\u{bb}"), ("look-behind requires fixed-width pattern", "\u{43f}\u{43e}\u{433}\u{43b}\u{44f}\u{434} \u{43d}\u{430}\u{437}\u{430}\u{434} \u{2014} \u{43b}\u{438}\u{448}\u{435} \u{444}\u{456}\u{43a}\u{441}\u{43e}\u{432}\u{430}\u{43d}\u{43e}\u{457} \u{434}\u{43e}\u{432}\u{436}\u{438}\u{43d}\u{438}"), ("incomplete escape", "\u{43d}\u{435}\u{43f}\u{43e}\u{432}\u{43d}\u{435} \u{435}\u{43a}\u{440}\u{430}\u{43d}\u{443}\u{432}\u{430}\u{43d}\u{43d}\u{44f}"), ("octal escape value", "\u{432}\u{456}\u{441}\u{456}\u{43c}\u{43a}\u{43e}\u{432}\u{435} \u{435}\u{43a}\u{440}\u{430}\u{43d}\u{443}\u{432}\u{430}\u{43d}\u{43d}\u{44f} \u{43f}\u{43e}\u{43d}\u{430}\u{434} \u{5c}377"), ("global flags not at the start", "\u{433}\u{43b}\u{43e}\u{431}\u{430}\u{43b}\u{44c}\u{43d}\u{456} \u{43f}\u{440}\u{430}\u{43f}\u{43e}\u{440}\u{446}\u{456} \u{2014} \u{43d}\u{435} \u{43d}\u{430} \u{43f}\u{43e}\u{447}\u{430}\u{442}\u{43a}\u{443} \u{448}\u{430}\u{431}\u{43b}\u{43e}\u{43d}\u{443}"), ("ASCII and UNICODE flags are incompatible", "\u{43f}\u{440}\u{430}\u{43f}\u{43e}\u{440}\u{446}\u{456} ASCII \u{456} UNICODE \u{43d}\u{435}\u{441}\u{443}\u{43c}\u{456}\u{441}\u{43d}\u{456}"), ("conditional backref with more than two branches", "\u{443}\u{43c}\u{43e}\u{432}\u{43d}\u{435} \u{43f}\u{43e}\u{441}\u{438}\u{43b}\u{430}\u{43d}\u{43d}\u{44f} \u{437} \u{43f}\u{43e}\u{43d}\u{430}\u{434} \u{434}\u{432}\u{43e}\u{43c}\u{430} \u{433}\u{456}\u{43b}\u{43a}\u{430}\u{43c}\u{438}")];
+ pub static XML_ERRORS: [(&str, &str); 17] = [("XML declaration not well-formed", "\u{445}\u{438}\u{431}\u{43d}\u{435} \u{43e}\u{433}\u{43e}\u{43b}\u{43e}\u{448}\u{435}\u{43d}\u{43d}\u{44f} XML"), ("text declaration not well-formed", "\u{445}\u{438}\u{431}\u{43d}\u{435} \u{43e}\u{433}\u{43e}\u{43b}\u{43e}\u{448}\u{435}\u{43d}\u{43d}\u{44f}"), ("not well-formed", "\u{445}\u{438}\u{431}\u{43d}\u{430} \u{440}\u{43e}\u{437}\u{43c}\u{456}\u{442}\u{43a}\u{430}"), ("syntax error", "\u{441}\u{438}\u{43d}\u{442}\u{430}\u{43a}\u{441}\u{438}\u{447}\u{43d}\u{430} \u{43f}\u{43e}\u{43c}\u{438}\u{43b}\u{43a}\u{430}"), ("no element found", "\u{434}\u{43e}\u{43a}\u{443}\u{43c}\u{435}\u{43d}\u{442} \u{43f}\u{43e}\u{440}\u{43e}\u{436}\u{43d}\u{456}\u{439} \u{447}\u{438} \u{43e}\u{431}\u{456}\u{440}\u{432}\u{430}\u{43d}\u{438}\u{439}"), ("unclosed token", "\u{43d}\u{435}\u{437}\u{430}\u{43a}\u{440}\u{438}\u{442}\u{438}\u{439} \u{435}\u{43b}\u{435}\u{43c}\u{435}\u{43d}\u{442} \u{440}\u{43e}\u{437}\u{43c}\u{456}\u{442}\u{43a}\u{438}"), ("partial character", "\u{43d}\u{435}\u{43f}\u{43e}\u{432}\u{43d}\u{438}\u{439} \u{441}\u{438}\u{43c}\u{432}\u{43e}\u{43b}"), ("mismatched tag", "\u{437}\u{430}\u{43a}\u{440}\u{438}\u{432}\u{43d}\u{438}\u{439} \u{442}\u{435}\u{433} \u{43d}\u{435} \u{437}\u{431}\u{456}\u{433}\u{430}\u{454}\u{442}\u{44c}\u{441}\u{44f} \u{437} \u{432}\u{456}\u{434}\u{43a}\u{440}\u{438}\u{432}\u{43d}\u{438}\u{43c}"), ("duplicate attribute", "\u{430}\u{442}\u{440}\u{438}\u{431}\u{443}\u{442} \u{43f}\u{43e}\u{432}\u{442}\u{43e}\u{440}\u{44e}\u{454}\u{442}\u{44c}\u{441}\u{44f}"), ("junk after document element", "\u{437}\u{430}\u{439}\u{432}\u{435} \u{43f}\u{456}\u{441}\u{43b}\u{44f} \u{43a}\u{43e}\u{440}\u{435}\u{43d}\u{435}\u{432}\u{43e}\u{433}\u{43e} \u{435}\u{43b}\u{435}\u{43c}\u{435}\u{43d}\u{442}\u{430}"), ("undefined entity", "\u{43d}\u{435}\u{432}\u{456}\u{434}\u{43e}\u{43c}\u{430} \u{441}\u{443}\u{442}\u{43d}\u{456}\u{441}\u{442}\u{44c} (&\u{2026};)"), ("reference to invalid character number", "\u{43f}\u{43e}\u{441}\u{438}\u{43b}\u{430}\u{43d}\u{43d}\u{44f} \u{43d}\u{430} \u{43d}\u{435}\u{434}\u{43e}\u{43f}\u{443}\u{441}\u{442}\u{438}\u{43c}\u{438}\u{439} \u{441}\u{438}\u{43c}\u{432}\u{43e}\u{43b}"), ("unclosed CDATA section", "\u{43d}\u{435}\u{437}\u{430}\u{43a}\u{440}\u{438}\u{442}\u{438}\u{439} \u{440}\u{43e}\u{437}\u{434}\u{456}\u{43b} CDATA"), ("unbound prefix", "\u{43f}\u{440}\u{435}\u{444}\u{456}\u{43a}\u{441} \u{43f}\u{440}\u{43e}\u{441}\u{442}\u{43e}\u{440}\u{443} \u{456}\u{43c}\u{435}\u{43d} \u{431}\u{435}\u{437} \u{43e}\u{433}\u{43e}\u{43b}\u{43e}\u{448}\u{435}\u{43d}\u{43d}\u{44f}"), ("not at start of entity", "\u{43e}\u{433}\u{43e}\u{43b}\u{43e}\u{448}\u{435}\u{43d}\u{43d}\u{44f} XML \u{2014} \u{43d}\u{435} \u{43d}\u{430} \u{43f}\u{43e}\u{447}\u{430}\u{442}\u{43a}\u{443}"), ("unknown encoding", "\u{43d}\u{435}\u{432}\u{456}\u{434}\u{43e}\u{43c}\u{435} \u{43a}\u{43e}\u{434}\u{443}\u{432}\u{430}\u{43d}\u{43d}\u{44f}"), ("encoding specified in XML declaration is incorrect", "\u{43a}\u{43e}\u{434}\u{443}\u{432}\u{430}\u{43d}\u{43d}\u{44f} \u{432} \u{43e}\u{433}\u{43e}\u{43b}\u{43e}\u{448}\u{435}\u{43d}\u{43d}\u{456} XML \u{2014} \u{445}\u{438}\u{431}\u{43d}\u{435}")];
+ pub static TOOL_ALIASES: [(&str, &str); 5] = [("\u{447}\u{438}\u{442}\u{430}\u{442}\u{438}", "\u{444}\u{430}\u{439}\u{43b}.\u{447}\u{438}\u{442}\u{430}\u{442}\u{438}"), ("\u{43f}\u{438}\u{441}\u{430}\u{442}\u{438}", "\u{444}\u{430}\u{439}\u{43b}.\u{43f}\u{438}\u{441}\u{430}\u{442}\u{438}"), ("\u{441}\u{43f}\u{438}\u{441}\u{43e}\u{43a}", "\u{444}\u{430}\u{439}\u{43b}.\u{441}\u{43f}\u{438}\u{441}\u{43e}\u{43a}"), ("\u{432}\u{437}\u{44f}\u{442}\u{438}", "\u{43c}\u{435}\u{440}\u{435}\u{436}\u{430}.\u{432}\u{437}\u{44f}\u{442}\u{438}"), ("\u{43f}\u{43e}\u{441}\u{43b}\u{430}\u{442}\u{438}", "\u{43c}\u{435}\u{440}\u{435}\u{436}\u{430}.\u{43f}\u{43e}\u{441}\u{43b}\u{430}\u{442}\u{438}")];
+-pub const HEAVY: &str = "\u{394}\u{3c3}\u{2040}\u{2191}\u{21c5}\u{21e1}\u{21e3}\u{220b}\u{2248}\u{224b}\u{2260}\u{229e}\u{22b3}\u{2315}\u{ff1d}";
++pub const HEAVY: &str = "\u{394}\u{3b4}\u{3bd}\u{3c3}\u{2030}\u{2039}\u{203a}\u{2040}\u{2191}\u{21c4}\u{21c5}\u{21e1}\u{21e3}\u{220b}\u{2248}\u{224b}\u{2260}\u{2264}\u{2265}\u{229e}\u{22a2}\u{22b3}\u{2315}\u{25a6}\u{2702}\u{ff1d}";
+ #[inline]
+ pub fn is_heavy(g: char) -> bool {
+-    matches!(g, '\u{394}' | '\u{3c3}' | '\u{2040}' | '\u{2191}' | '\u{21c5}' | '\u{21e1}' | '\u{21e3}' | '\u{220b}' | '\u{2248}' | '\u{224b}' | '\u{2260}' | '\u{229e}' | '\u{22b3}' | '\u{2315}' | '\u{ff1d}')
++    matches!(g, '\u{394}' | '\u{3b4}' | '\u{3bd}' | '\u{3c3}' | '\u{2030}' | '\u{2039}' | '\u{203a}' | '\u{2040}' | '\u{2191}' | '\u{21c4}' | '\u{21c5}' | '\u{21e1}' | '\u{21e3}' | '\u{220b}' | '\u{2248}' | '\u{224b}' | '\u{2260}' | '\u{2264}' | '\u{2265}' | '\u{229e}' | '\u{22a2}' | '\u{22b3}' | '\u{2315}' | '\u{25a6}' | '\u{2702}' | '\u{ff1d}')
+ }
+ pub const LAZY_GLYPHS: &str = "\u{bf}\u{3a3}\u{3bc}\u{3c6}\u{2016}\u{2116}\u{21bb}\u{21c5}\u{2200}\u{2227}\u{2228}\u{222b}\u{229e}\u{2602}";
+ #[inline]
 diff --git a/athanor/src/main.rs b/athanor/src/main.rs
-index 9c2a10c..fe4f0b7 100644
+index 9c2a10c..1fb0a30 100644
 --- a/athanor/src/main.rs
 +++ b/athanor/src/main.rs
-@@ -458,7 +458,7 @@ fn execute(
+@@ -221,10 +221,35 @@ fn owner_key(home: &str) -> std::io::Result<Vec<u8>> {
+     std::fs::DirBuilder::new().recursive(true).mode(0o700).create(home)?;
+     let path = pathx::join(home, "ключ");
+     if !pathx::exists(&path) {
+-        let mut f = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&path)?;
+-        f.write_all(rand_hex(32).as_bytes())?;
++        // атомарно, як в еталоні: тимчасовий файл, потім link — ключ зʼявляється повним і не перезаписується (два перші
++        // запуски разом не падають і не читають порожній ключ); без жорстких посилань — create_new і чекати переможця
++        let key = rand_hex(32);
++        let tmp = pathx::join(home, &format!(".ключ-{}-{}", std::process::id(), rand_hex(8)));
++        let r = (|| -> std::io::Result<()> {
++            let mut f = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&tmp)?;
++            f.write_all(key.as_bytes())?;
++            f.sync_all()?;
++            match std::fs::hard_link(&tmp, &path) {
++                Ok(()) => Ok(()),
++                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
++                Err(_) => match std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&path) {
++                    Ok(mut f) => f.write_all(key.as_bytes()),
++                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
++                    Err(e) => Err(e),
++                },
++            }
++        })();
++        let _ = std::fs::remove_file(&tmp);
++        r?;
++    }
++    let mut k = String::new();
++    for _ in 0..200 {
++        k = std::fs::read_to_string(&path)?;
++        if !uni::strip(&k).is_empty() {
++            break;
++        }
++        std::thread::sleep(std::time::Duration::from_millis(5));
+     }
+-    let k = std::fs::read_to_string(&path)?;
+     Ok(uni::strip(&k).as_bytes().to_vec())
+ }
+ 
+@@ -458,7 +483,7 @@ fn execute(
                  ("розмір".into(), J::Int(o.size as i64)),
                  ("слід".into(), J::Int(o.tsize as i64)),
                  ("зерно".into(), J::Num(o.seed.trim_start_matches('+').to_string())),
@@ -158,10 +352,36 @@ index 9c2a10c..fe4f0b7 100644
          ),
      ];
 diff --git a/athanor/src/prims.rs b/athanor/src/prims.rs
-index db701ea..f204209 100644
+index db701ea..f6f4b1e 100644
 --- a/athanor/src/prims.rs
 +++ b/athanor/src/prims.rs
-@@ -504,6 +504,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
+@@ -258,7 +258,16 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
+         '¬' => Ok(V::b(!boolean(&a[0], g, pos)?)),
+         '►' => it.call(&a[0], vec![a[1].clone()], pos),
+         '▶' => it.call(&a[0], vec![a[1].clone(), a[2].clone()], pos),
+-        '☠' => ngr(show(&a[0], true)?, pos),
++        '☠' => {
++            it.work(a[0].n, pos)?; // текст помилки — показ усього значення (1.2, суд 15)
++            let text = show(&a[0], true)?;
++            let n = text.chars().count() as u64 + 1;
++            if n > it.max_size {
++                // ☂ віддасть його обробникові як рядок (суд 15, Новачок)
++                return fatal(format!("☠: значення завелике (логічний розмір {} > --розмір {})", n, it.max_size), Some(pos));
++            }
++            ngr(text, pos)
++        }
+         '…' => {
+             let (x, y) = (n(it, a, 0, g, pos)?, n(it, a, 1, g, pos)?);
+             let (x, y) = match (x, y) {
+@@ -463,6 +472,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
+             if a[0].n > it.max_size {
+                 return fatal(format!("»: значення завелике для друку (> --розмір {})", it.max_size), Some(pos));
+             }
++            it.work(a[0].n, pos)?; // показ — обхід усього значення, і до того, як він упаде (1.2, суд 15)
+             let text = uni::visible(&show(&a[0], true)?, "\n\t", true);
+             let agent = it.agent.clone();
+             it.rec("вивід", vec![("агент".into(), crate::json::J::Str(agent)), ("текст".into(), trace_val(&V::str(text.clone()), true)?)])?;
+@@ -504,6 +514,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                  return ngr("⚗: поріг має бути від 0 до 1", pos);
              }
              let mut kept = Vec::new();
@@ -169,7 +389,7 @@ index db701ea..f204209 100644
              for x in lst.iter() {
                  let ok = x.c >= t;
                  let agent = it.agent.clone();
-@@ -527,7 +528,8 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
+@@ -527,7 +538,8 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
              let key = need_str(&a[0], "🜄", pos)?;
              let kc = a[0].c.min(it.cpc());
              it.mem_c = it.mem_c.min(kc);
@@ -179,7 +399,22 @@ index db701ea..f204209 100644
              let shown = trace_val(&val, false)?; // спершу — чи можна записати в слід (суд 9: помилка ПІСЛЯ запису в памʼять)
              it.memory.insert(key.s.to_string(), val.clone());
              let agent = it.agent.clone();
-@@ -565,6 +567,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
+@@ -547,7 +559,13 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
+             let key = need_str(&a[0], "🜃", pos)?;
+             let res = it.memory.get(&*key.s).cloned().unwrap_or_else(V::none);
+             let c = a[0].c.min(it.mem_c).min(it.cpc());
+-            let res = if c < res.c { capc(&res, c) } else { res };
++            let res = if c < res.c {
++                it.fresh = true; // копія зі зниженою впевненістю — нові дані (spent_of); наявне значення — 1 (1.2, суд 15)
++                capc(&res, c)
++            } else {
++                res
++            };
++            it.work(res.n, pos)?; // показ для сліду обходить значення
+             let agent = it.agent.clone();
+             it.rec(
+                 "памʼять",
+@@ -565,6 +583,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
              let r = it.call(&a[1], vec![a[0].clone()], pos)?;
              let ok = boolean(&r, g, pos)?;
              it.taint(r.c);
@@ -187,7 +422,7 @@ index db701ea..f204209 100644
              let agent = it.agent.clone();
              it.rec(
                  "перевірка",
-@@ -579,7 +582,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
+@@ -579,7 +598,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                  return ngr_c(format!("🜍: перевірку не пройдено для {}", brief(&a[0], 60)), pos, r.c.min(a[0].c).min(it.cpc()));
              }
              it.halt_c = it.halt_c.min(r.c);
@@ -196,8 +431,149 @@ index db701ea..f204209 100644
          }
          '∋' => match &a[0].v {
              Val::Str(x) => {
+diff --git a/athanor/src/schema.rs b/athanor/src/schema.rs
+index 647c784..69c3796 100644
+--- a/athanor/src/schema.rs
++++ b/athanor/src/schema.rs
+@@ -15,6 +15,7 @@ struct Leaf {
+     bounds: Option<(Option<Dec>, Option<Dec>)>,
+     enum_num: Option<Vec<Dec>>,
+     enum_str: Option<std::collections::HashSet<String>>,
++    enum_lim: usize, // найдовша альтернатива (символів) — раз при розборі (суд 15)
+ }
+ 
+ thread_local! {
+@@ -64,7 +65,7 @@ fn leaf(sv: &str) -> Result<Leaf, String> {
+     if !TYPES.contains(&t) {
+         return Err(format!("невідомий тип у схемі «{}» (є: {})", uni::safe(sv), sorted_types()));
+     }
+-    let mut l = Leaf { t: t.to_string(), nullable, bounds: None, enum_num: None, enum_str: None };
++    let mut l = Leaf { t: t.to_string(), nullable, bounds: None, enum_num: None, enum_str: None, enum_lim: 0 };
+     if !colon.is_empty() && rest.is_empty() {
+         return Err(format!("«{}»: після «:» — межі (0..100, 1.., ..50) чи перелік (a|b)", uni::safe(sv)));
+     }
+@@ -113,6 +114,7 @@ fn leaf(sv: &str) -> Result<Leaf, String> {
+             l.enum_num = Some(en);
+         } else {
+             l.enum_str = Some(alts.iter().map(|a| a.to_string()).collect());
++            l.enum_lim = alts.iter().map(|a| a.chars().count()).max().unwrap_or(0);
+         }
+     }
+     Ok(l)
+@@ -189,8 +191,18 @@ pub fn check(it: &mut Interp, x: &V, sch: &V, path: &str, errs: &mut Vec<String>
+                     errs.push(format!("{}: {} — не з переліку {}", where_, brief(x, 30), rest));
+                 }
+             } else if let Some(en) = &l.enum_str {
+-                let s = show(x, true)?;
+-                if !en.contains(&s) {
++                // довший за кожну альтернативу — не з переліку, без показу всього значення (суд 15, Аудитор)
++                let lim = l.enum_lim;
++                let (len, found) = match &x.v {
++                    Val::Str(s) if s.nch <= lim => (s.nch, en.contains(&*s.s)),
++                    Val::Str(_) => (lim, false),
++                    _ => match crate::value::show_upto(x, lim) {
++                        Some(h) => (h.chars().count(), en.contains(&h)),
++                        None => (lim, false),
++                    },
++                };
++                it.work((len as u64 / 64) * 64, pos)?; // показ платить кроки за себе (еталон: charge)
++                if !found {
+                     errs.push(format!("{}: {} — не з переліку {}", where_, brief(x, 30), rest));
+                 }
+             }
+diff --git a/athanor/src/value.rs b/athanor/src/value.rs
+index f66f01e..5fb2c76 100644
+--- a/athanor/src/value.rs
++++ b/athanor/src/value.rs
+@@ -443,6 +443,8 @@ pub fn size_of(v: &Val) -> u64 {
+         Val::List(l) => 1 + l.iter().map(|e| e.n).sum::<u64>(),
+         Val::Dict(d) => 1 + d.keys.iter().zip(&d.vals).map(|(k, e)| k.nch as u64 + e.n).sum::<u64>(),
+         Val::Dec(d) => 1 + d.adjusted().unsigned_abs() + d.digits(),
++        // показ функції — λ та імʼя: розмір, як у рядка (суд 15, Оркестратор)
++        Val::Fn(f) => 1 + f.name.as_ref().map_or(0, |n| n.chars().count() as u64),
+         _ => 1,
+     }
+ }
+@@ -728,6 +730,77 @@ pub fn show(x: &V, top: bool) -> crate::interp::R<String> {
+     Ok(out)
+ }
+ 
++/// show_upto еталона: show(x, true), якщо він не довший за lim символів, інакше None — довшого не будуючи (✓ з переліком,
++/// суд 15, Аудитор: показ усього значення за один крок).
++pub fn show_upto(x: &V, lim: usize) -> Option<String> {
++    if let Val::Str(s) = &x.v {
++        return if s.nch <= lim { Some(s.s.to_string()) } else { None };
++    }
++    let mut out = String::new();
++    let mut size = 0usize;
++    let mut stack: Vec<(char, &V, usize)> = Vec::new();
++    let mut e: Option<&V> = Some(x);
++    loop {
++        if let Some(cur) = e.take() {
++            match &cur.v {
++                Val::List(_) => {
++                    out.push('【');
++                    size += 1;
++                    stack.push(('】', cur, 0));
++                }
++                Val::Dict(_) => {
++                    out.push('『');
++                    size += 1;
++                    stack.push(('』', cur, 0));
++                }
++                Val::Str(s) if size + s.nch + 2 > lim => return None,
++                _ => {
++                    let at = out.len();
++                    show_leaf(&mut out, cur);
++                    size += out[at..].chars().count();
++                }
++            }
++        }
++        if size > lim {
++            return None;
++        }
++        let top = match stack.last_mut() {
++            Some(t) => t,
++            None => return Some(out),
++        };
++        let (close, cont, i) = (top.0, top.1, top.2);
++        let len = match &cont.v {
++            Val::List(l) => l.len(),
++            Val::Dict(dd) => dd.len(),
++            _ => 0,
++        };
++        if i >= len {
++            stack.pop();
++            out.push(close);
++            size += 1;
++            continue;
++        }
++        top.2 += 1;
++        let at = out.len();
++        if i > 0 {
++            out.push(' ');
++        }
++        match &cont.v {
++            Val::List(l) => e = Some(&l[i]),
++            Val::Dict(dd) => {
++                if size + dd.keys[i].nch + 3 > lim {
++                    return None;
++                }
++                show_str(&mut out, &dd.keys[i].s);
++                out.push(' ');
++                e = Some(&dd.vals[i]);
++            }
++            _ => {}
++        }
++        size += out[at..].chars().count();
++    }
++}
++
+ /// show_head еталона: початок show(x, False) — щонайменше n символів (або весь) без обходу всього значення.
+ pub fn show_head(x: &V, n: usize) -> String {
+     let mut out = String::new();
 diff --git a/interpreter/nigredo.py b/interpreter/nigredo.py
-index e65a71d..7318bdd 100755
+index e65a71d..f18f5be 100755
 --- a/interpreter/nigredo.py
 +++ b/interpreter/nigredo.py
 @@ -21,7 +21,7 @@ import decimal
@@ -209,7 +585,7 @@ index e65a71d..7318bdd 100755
  MAX_DEPTH = 2000
  WALK_MAX_DEPTH = 2000     # показ, порівняння, JSON, ключі ⇅ обходять значення не глибше: далі — «вкладене надто глибоко»
  #                           (межа мови, а не стека CPython — та сама в еталоні й Атанорі, від версії Python не залежить)
-@@ -30,9 +30,12 @@ MAX_WORK = 200_000                # глибина обчислення: сум
+@@ -30,13 +30,18 @@ MAX_WORK = 200_000                # глибина обчислення: сум
                                    # — це ~2 млн кадрів, а стек виконавця скінченний; межа — правило мови, однакове в обох)
  MAX_SIZE = 5_000_000      # найбільший логічний розмір значення (символів + елементів); --розмір N
  SHARED = {'＋', '✎', '⊏', '【】', '『』'}    # ділять дані зі старими значеннями: нові тут лише власні елементи
@@ -218,12 +594,180 @@ index e65a71d..7318bdd 100755
 +                                               # логічний — 1.0; старі — лише для повтору їхніх слідів
  PASS = {'¿', '☂', '↻', 'Σ'}              # повертають уже наявне значення (гілку, тіло, стан, акумулятор): нового — нічого;
                                           # копія зі зниженою впевненістю (capc) — справжня, її списує сам гліф (it.copied)
-+PASS_12 = PASS | {'►', '▶', '✓', '🜍'}     # 1.2: і результат функції-значення, і значення, перевірене схемою чи умовою
++PASS_12 = PASS | {'►', '▶', '✓', '🜍', '🜃'}  # 1.2: і результат функції-значення, перевірене, пригадане (показ — окремо, кроки)
 +OWN_12 = {'μ', 'φ', '⇅', '⚗', '↺'}       # 1.2: новий список з наявних елементів — власні елементи (копії — окремо, повністю)
  ALLOC_FACTOR = 20         # сумарно за запуск можна створити не більше ALLOC_FACTOR × --розмір
  MAX_INT_BITS = 100_000    # найбільше ціле (≈ 30 000 десяткових цифр)
  MAX_TRACE = 50_000_000    # найбільший слід у байтах; --слід-розмір N
-@@ -6330,13 +6333,14 @@ def check_allowlist(caps, allowed, cwd):
+-HEAVY = set('＝≠σΔ⁀∋↑⇅⊞≈⇣⇡⊳⌕≋')  # робота пропорційна розміру — і кроки теж
++HEAVY_12 = set('‹›≤≥‰⊢⇄▦νδ✂')    # 1.2 (суд 15): порівняння рядків, остача великих цілих, розбір і чистка рядка з малим результатом
++HEAVY = set('＝≠σΔ⁀∋↑⇅⊞≈⇣⇡⊳⌕≋') | HEAVY_12  # робота пропорційна розміру — і кроки теж
++HEAVY_OLD = HEAVY - HEAVY_12      # облік 1.0 і 1.1 (повтор їхніх слідів)
+ if hasattr(sys, 'set_int_max_str_digits'):
+     sys.set_int_max_str_digits(0)
+ DEFAULT_STEPS = 10_000_000
+@@ -253,10 +258,19 @@ class V:
+             self.n = 1 + sum(len(k) + e.n for k, e in v.items())
+         elif t is Decimal and v.is_finite():
+             self.n = 1 + abs(v.adjusted()) + len(v.as_tuple().digits)
++        elif t is Fn and v.name:
++            self.n = 1 + len(v.name)                    # показ — λ та імʼя: розмір, як у рядка (суд 15, Оркестратор)
+         else:
+             self.n = 1
+ 
+ 
++def v_with(x, c, s):
++    """Те саме значення з іншою впевненістю: логічний розмір не перераховується (обхід списку за один крок — суд 15, ✓)."""
++    r = V.__new__(V)
++    r.v, r.c, r.s, r.n = x.v, c, s, x.n
++    return r
++
++
+ def too_deep(depth):
+     """Текст межі глибини: 2000 викликів чи MAX_WORK (виклики × висота їхніх тіл) — однаковий в обох виконавцях."""
+     return 'надто глибока рекурсія' if depth > MAX_DEPTH else \
+@@ -407,6 +421,49 @@ def show_head(x, n):
+         size += len(piece)
+ 
+ 
++def show_upto(x, lim):
++    """show(x), якщо він не довший за lim символів, інакше None — довшого не будуючи (✓ з переліком: суд 15, Аудитор —
++    показ усього значення за один крок). Рядок верхнього рівня — як є, як show(x, True)."""
++    if isinstance(x.v, str):
++        return x.v if len(x.v) <= lim else None
++    out, size, stack, e = [], 0, [], x
++    while True:
++        if e is not None:
++            v = e.v
++            if isinstance(v, list):
++                out.append('【')
++                stack.append(('】', iter(v), [True]))
++            elif isinstance(v, dict):
++                out.append('『')
++                stack.append(('』', iter(v.items()), [True]))
++            elif isinstance(v, str) and size + len(v) + 2 > lim:
++                return None
++            else:
++                out.append(show(e, False))
++            size += len(out[-1])
++            e = None
++        if size > lim:
++            return None
++        if not stack:
++            return ''.join(out)
++        close, items, first = stack[-1]
++        e = next(items, None)
++        if e is None:
++            stack.pop()
++            out.append(close)
++            size += 1
++            continue
++        piece = '' if first[0] else ' '
++        first[0] = False
++        if isinstance(e, tuple):
++            k, e = e
++            if size + len(k) + 3 > lim:
++                return None
++            piece += show(V(k), False) + ' '
++        out.append(piece)
++        size += len(piece)
++
++
+ def to_json(x, d=0):
+     """JSON без втрат: десяткові пишуться числом JSON точно (без float)."""
+     v = x.v
+@@ -2405,13 +2462,40 @@ def sign(key, rec):
+ 
+ 
+ def owner_key():
++    """Ключ підпису слідів. Перший запуск створює його атомарно: тимчасовий файл, потім link під своє імʼя — ключ
++    зʼявляється вже повним і не перезаписується; два перші запуски разом (два --отримати) не падають і не читають
++    порожній ключ. Без жорстких посилань (Android) — як раніше, O_EXCL, і зачекати, поки переможець допише."""
+     os.makedirs(OWNER_HOME, mode=0o700, exist_ok=True)
+     path = os.path.join(OWNER_HOME, 'ключ')
+     if not os.path.exists(path):
+-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+-        with os.fdopen(fd, 'w') as f:
+-            f.write(os.urandom(32).hex())
+-    return open(path).read().strip().encode()
++        key = os.urandom(32).hex()
++        tmp = os.path.join(OWNER_HOME, f'.ключ-{os.getpid()}-{os.urandom(8).hex()}')
++        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
++        try:
++            with os.fdopen(fd, 'w') as f:
++                f.write(key)
++                f.flush()
++                os.fsync(f.fileno())
++            try:
++                os.link(tmp, path)
++            except FileExistsError:
++                pass
++            except OSError:
++                try:
++                    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
++                    with os.fdopen(fd, 'w') as f:
++                        f.write(key)
++                except FileExistsError:
++                    pass
++        finally:
++            os.unlink(tmp)
++    import time
++    for _ in range(200):
++        k = open(path).read().strip()
++        if k:
++            break
++        time.sleep(0.005)
++    return k.encode()
+ 
+ 
+ def _no_dups(pairs):
+@@ -3259,7 +3343,8 @@ _SCHEMA_LEAF = {}
+ 
+ 
+ def schema_leaf(sv):
+-    """«тип?:обмеження» → (тип, ∅ можна, межі (lo, hi) чи None, перелік (frozenset) чи None). Розбір — раз на рядок
++    """«тип?:обмеження» → (тип, ∅ можна, межі (lo, hi) чи None, перелік (frozenset) чи None, найдовша альтернатива
++    переліку рядків). Розбір — раз на рядок
+     схеми (суд 8б: перелік із n варіантів розбирався на кожному з n елементів — n² поза кроками); крива — ValueError."""
+     got = _SCHEMA_LEAF.get(sv)
+     if got is not None:
+@@ -3293,7 +3378,7 @@ def schema_leaf(sv):
+             enum = frozenset(Decimal(a.replace('¯', '-')) for a in alts)
+         else:
+             enum = frozenset(alts)
+-    got = (t, nullable, bounds, enum)
++    got = (t, nullable, bounds, enum, max(map(len, enum)) if enum and t not in ('число', 'ціле') else 0)
+     if len(_SCHEMA_LEAF) < 10_000:
+         _SCHEMA_LEAF[sv] = got
+     return got
+@@ -3309,7 +3394,7 @@ def check_schema(x, sch, path, errs, pos, depth=0, charge=lambda k: None):
+     sv, v = sch.v, x.v
+     if isinstance(sv, str):
+         try:
+-            t, nullable, bounds, enum = schema_leaf(sv)
++            t, nullable, bounds, enum, lim = schema_leaf(sv)
+         except ValueError as e:
+             raise NgrError(f'✓: {e}', pos)
+         rest = sv.partition(':')[2]
+@@ -3337,9 +3422,14 @@ def check_schema(x, sch, path, errs, pos, depth=0, charge=lambda k: None):
+                 if (lo_ is not None and n < lo_) or (hi_ is not None and n > hi_):
+                     what = 'довжина ' if isinstance(v, (str, list, dict)) else ''
+                     errs.append(f'{where}: {what}{fmt_num(n) if isinstance(n, NUM) else n} поза {rest}')
+-            elif (Decimal(repr(v)) if isinstance(v, float) else Decimal(v) if t in ('число', 'ціле') else show(x)) \
+-                    not in enum:
+-                errs.append(f'{where}: {brief(x, 30)} — не з переліку {rest}')
++            elif t in ('число', 'ціле') or isinstance(v, float):
++                if (Decimal(repr(v)) if isinstance(v, float) else Decimal(v)) not in enum:
++                    errs.append(f'{where}: {brief(x, 30)} — не з переліку {rest}')
++            else:   # показ — не довший за найдовшу альтернативу (lim — з розбору схеми), і платить кроки за себе (суд 15, Аудитор)
++                h = show_upto(x, lim)
++                charge((lim if h is None else len(h)) // 64)
++                if h not in enum:
++                    errs.append(f'{where}: {brief(x, 30)} — не з переліку {rest}')
+         return
+     if isinstance(sv, list):
+         if not isinstance(v, list):
+@@ -6330,13 +6420,15 @@ def check_allowlist(caps, allowed, cwd):
  
  class Interp:
      def __init__(self, trace, seed=0, steps=DEFAULT_STEPS, cwd='.', out=None, argv=(), protected=(), max_size=MAX_SIZE,
@@ -236,10 +780,11 @@ index e65a71d..7318bdd 100755
          self.fresh = False               # останній § повернув копію (capc), а не наявний елемент
          self.logical = cost == 'логічний'  # облік 1.0: кожне нове значення — свій логічний розмір (лише повтор сліду 1.0)
 +        self.labor = cost == 'робота'      # облік 1.2: кожен обхід значення — кроки, кожна копія capc — нові дані (пропозиція облік.md)
++        self.heavy = HEAVY if self.labor else HEAVY_OLD
          self.steps_left, self.cwd = steps, os.path.abspath(cwd)
          self.out = out or sys.stdout
          self.memory, self.agent, self.caps, self.seal_caps = {}, 'головний', {}, {}
-@@ -6370,6 +6374,8 @@ class Interp:
+@@ -6370,6 +6462,8 @@ class Interp:
      def tool_begin(self, name, args, pos):
          """Перевірка прав, впевненість аргументів і запис «виклик» — до дії (для ‖ — по черзі, до паралельних дій)."""
          full = name in ('агент', 'мережа.взяти', 'мережа.послати', 'файл.писати', 'бд.писати', 'процес')  # те, що йде назовні, — у слід повністю
@@ -248,7 +793,27 @@ index e65a71d..7318bdd 100755
          try:
              targs = [trace_val(a, full) for a in args]
          except RecursionError:              # аргумент глибший за стек — помилка програми до дії, не код 4 (суд 8б)
-@@ -6648,6 +6654,19 @@ class Interp:
+@@ -6549,6 +6643,10 @@ class Interp:
+         self.trace('інструмент', агент=job['агент'], назва=name, аргументи=targs, результат=trace_val(res), впевненість=c,
+                    **stored, **({'сухо': 'не виконано'} if job.get('сухо') else {}),
+                    **({'шлях': job['шляхи']} if job.get('шляхи') else {}))
++        if self.labor:      # облік 1.2 (суд 15): показ результату для сліду — обхід; копія зі зниженою впевненістю — нові дані
++            self.work(res.n, job['pos'])            # (сам результат — дані зі світу: їх обмежують квоти, як і дію)
++            if c < 1 and type(res.v) in (list, dict):
++                self.made(res.n, job['pos'])
+         return res
+ 
+     def parallel(self, lst, fn, pos, fnode):
+@@ -6600,7 +6698,7 @@ class Interp:
+                 self.trace(event, **data)
+             try:
+                 r = self.tool_end(j.v[1], outcome)
+-                out.append(capc(r, j.c) if j.c < r.c else r)
++                out.append(self.fresh_copy(r, j.c, '‖', pos) if j.c < r.c else r)   # копія: облік 1.2 — повна ціна (суд 15)
+             except NgrError as e:
+                 if not e.where:
+                     e.msg, e.where = f'‖, елемент №{i + 1} (§ {i}): {e.msg}', True   # «№5» — пʼятий, індекс — з 0 (суд 8б)
+@@ -6648,6 +6746,19 @@ class Interp:
                  if c < t:
                      self.try_stack[i] = c
  
@@ -268,7 +833,7 @@ index e65a71d..7318bdd 100755
      def copied(self, res, g, pos):
          """Копія зі зниженою впевненістю (capc) у гліфі з PASS: справжні нові дані — повний логічний розмір."""
          if self.logical:                    # облік 1.0: результат гліфа й так спише повний розмір (sized у eval)
-@@ -6662,6 +6681,18 @@ class Interp:
+@@ -6662,6 +6773,18 @@ class Interp:
              raise Fatal(f'{g}: число завелике (понад {MAX_INT_BITS} біт)', pos)
          if self.logical:                    # облік 1.0 (повтор її сліду): нове значення — увесь логічний розмір
              spent, self.fresh = res.n, False
@@ -287,7 +852,34 @@ index e65a71d..7318bdd 100755
          elif spent is None:                 # скільки створено: лише те, чого ще не було (пропозиція вартість.md)
              if g in PASS:                   # наявне значення, повернуте як є
                  spent = 1
-@@ -6762,14 +6793,14 @@ class Interp:
+@@ -6679,6 +6802,14 @@ class Interp:
+                 raise Fatal(f'сумарно створено забагато ({self.alloc} > {ALLOC_FACTOR} × --розмір)', pos)
+         return res
+ 
++    def made(self, units, pos):
++        """Облік 1.2: нові дані поза значенням гліфа (ключі ⇅, результат інструмента) — кроки й «сумарно створено»."""
++        if units > 1:
++            self.work(units, pos)
++            self.alloc += units
++            if self.alloc > ALLOC_FACTOR * self.max_size:
++                raise Fatal(f'сумарно створено забагато ({self.alloc} > {ALLOC_FACTOR} × --розмір)', pos)
++
+     def work(self, units, pos):
+         self.steps_left -= units // 64
+         if self.steps_left < 0:
+@@ -6695,7 +6826,10 @@ class Interp:
+     def halt_cap(self, env, name, val, pos):
+         """Канал завершення для давнього значення: впевненість не вища за halt_c. halt_c лише спадає, тож обмежене
+         значення записується назад у ту привʼязку — наступні читання не копіюють заново (і копія — кроки)."""
+-        self.work(val.n, pos)
++        if self.labor and (type(val.v) is list or type(val.v) is dict):
++            self.made(val.n, pos)           # облік 1.2: копія списку чи словника — нові дані (суд 15); рядок копія не копіює
++        else:
++            self.work(val.n, pos)
+         capped = capc(val, self.halt_c)
+         e = env
+         while e is not None:
+@@ -6762,14 +6896,14 @@ class Interp:
                      if not isinstance(a.v, list) or len(a.v) != len(p[2]):
                          raise NgrError(f'розбір 【{" ".join(p[2])}】: очікувався список із {len(p[2])} елементів, а не '
                                         f'{kind(a)} {brief(a, 40)}', pos, min(a.c, a.s))
@@ -304,7 +896,30 @@ index e65a71d..7318bdd 100755
          except NgrError as e:
              if e.file is None:         # функція модуля — його файл; λ програми — '' (місце в програмі, суд 10)
                  e.file = f.mod[0] if f.mod is not None else ''
-@@ -7090,6 +7121,7 @@ class Interp:
+@@ -6859,7 +6993,7 @@ class Interp:
+         elif k == 'op' and node[2] not in LAZY_GLYPHS:
+             g, kids = node[2], [self.compiled(a) for a in node[3]]
+             int2 = g in INT_FAST and len(kids) == 2
+-            heavy = g in HEAVY
++            heavy = g in self.heavy
+             fn2 = INT_FAST.get(g)
+             sized, strict = self.sized, self.strict
+             if int2:
+@@ -6951,9 +7085,12 @@ class Interp:
+             self.work(sum(v.n for v in vals), pos)
+             c = min([self.cpc] + [v.c for v in vals])
+             try:
+-                return V(''.join(show(v) for v in vals), c)
++                r = V(''.join(show(v) for v in vals), c)
+             except RecursionError:          # значення, складене в циклі, глибше за стек — помилка програми, не код 4
+                 raise NgrError('〔〕: значення вкладене надто глибоко', pos, c)
++            if self.labor and r.n > self.max_size:   # показ довший за суму підстановок — межа й для результату (суд 15)
++                raise Fatal(f'〔〕: значення завелике (> --розмір {self.max_size})', pos)
++            return r
+         if k == 'dict':
+             d, c, sc = {}, self.cpc, self.cpc
+             items = node[2]
+@@ -7090,6 +7227,7 @@ class Interp:
                  self.quota_stack.pop()
              self.trace.depth -= 1
              self.memory, self.agent, self.caps, self.mem_c = saved
@@ -312,7 +927,16 @@ index e65a71d..7318bdd 100755
          try:
              shown = trace_val(res)
          except RecursionError:
-@@ -7205,8 +7237,10 @@ class Interp:
+@@ -7104,7 +7242,7 @@ class Interp:
+                 x, y = args
+                 if (type(x.v) is int and type(y.v) is int and x.c >= 1 and y.c >= 1 and self.pc >= 1
+                         and self.halt_c >= 1 and (g != '‰' or y.v) and (g != '×' or x.v.bit_length() + y.v.bit_length() <= MAX_INT_BITS)):
+-                    if g in HEAVY:
++                    if g in self.heavy:
+                         self.work(x.n + y.n, pos)
+                     return V(INT_FAST[g](x.v, y.v))
+             return self.strict(g, args, pos)
+@@ -7205,8 +7343,10 @@ class Interp:
                  return V(total, m)
              if g == 'φ':
                  conds = [self.boolean(r, g, pos) for r in results]
@@ -320,11 +944,11 @@ index e65a71d..7318bdd 100755
 +                return mk([self.fresh_copy(x, r.c, g, pos) if r.c < x.c else x for x, r, ok in zip(items, results, conds) if ok], m)
              if g == '⇅':
 +                if self.labor:                    # ключі перетворюються й порівнюються — кроки за їхній розмір (1.2)
-+                    self.work(sum(r.n for r in results), pos)
++                    self.made(sum(r.n for r in results), pos)
                  try:
                      order = sorted(range(len(items)), key=lambda i: sort_key(results[i]))
                  except BadSortKey as k:
-@@ -7222,7 +7256,8 @@ class Interp:
+@@ -7222,7 +7362,8 @@ class Interp:
                  return V({k: V(n, m) for k, n in counts.items()}, m, m)
              groups = {}
              for x, r in zip(items, results):
@@ -334,7 +958,46 @@ index e65a71d..7318bdd 100755
              out = {k: mk(v, m) for k, v in groups.items()}
              return V(out, min([m] + [v.c for v in out.values()]), m)
          if g == 'Σ':
-@@ -7525,6 +7560,8 @@ class Interp:
+@@ -7266,7 +7407,7 @@ class Interp:
+             self.pure_deny(g, pos)
+         amin = min([1.0] + [a.c for a in args])
+         self.taint(amin)                          # будь-яка операція може впасти — це видно ☂
+-        if g in HEAVY:
++        if g in self.heavy:
+             self.work(sum(a.n for a in args), pos)
+         try:
+             res = self.prim(g, args, pos)
+@@ -7289,7 +7430,7 @@ class Interp:
+         if g not in OWN_CONF:
+             c = min(res.c, amin, self.cpc)        # новий результат — не впевненіший за контекст (pc і канал завершення)
+             if isinstance(res.v, (list, dict)):        # вміст лишає свою впевненість; будова — від аргументів
+-                res = V(res.v, min(res.c, c), min([res.s] + [a.s for a in args]))
++                res = v_with(res, min(res.c, c), min([res.s] + [a.s for a in args]))   # n той самий: без обходу (суд 15)
+             elif c < res.c:
+                 res = V(res.v, c)
+         return res
+@@ -7389,7 +7530,11 @@ class Interp:
+         if g == '▶':
+             return self.call(a[0], [a[1], a[2]], pos)
+         if g == '☠':
+-            e = NgrError(show(a[0]), pos)
++            self.shown(a[0], pos)                     # текст помилки — показ усього значення (облік 1.2, суд 15)
++            text = show(a[0])
++            if self.labor and len(text) + 1 > self.max_size:   # ☂ віддасть його обробникові як рядок (суд 15, Новачок)
++                raise Fatal(f'☠: значення завелике (логічний розмір {len(text) + 1} > --розмір {self.max_size})', pos)
++            e = NgrError(text, pos)
+             e.said = True
+             raise e
+         if g == '…':
+@@ -7501,6 +7646,7 @@ class Interp:
+         if g == '»':
+             if a[0].n > self.max_size:
+                 raise Fatal(f'»: значення завелике для друку (> --розмір {self.max_size})', pos)
++            self.shown(a[0], pos)                   # показ — обхід усього значення, і до того, як він упаде (облік 1.2, суд 15)
+             text = visible(show(a[0]))          # невидиме — як ⟨U+…⟩: прихованого тексту для отримувача немає
+             self.trace('вивід', агент=self.agent, текст=trace_val(V(text), True))   # спершу слід, повністю — тоді вивід
+             if self.pipe_at:                    # повтор: читач закрив трубу на тому самому рядку, що й у запуску
+@@ -7525,6 +7671,8 @@ class Interp:
              if not 0 <= t <= 1:
                  raise NgrError('⚗: поріг має бути від 0 до 1', pos)
              kept = []
@@ -343,7 +1006,7 @@ index e65a71d..7318bdd 100755
              for x in lst:
                  ok = x.c >= t
                  self.trace('відсів', агент=self.agent, значення=trace_val(x), впевненість=x.c, поріг=t,
-@@ -7536,7 +7573,8 @@ class Interp:
+@@ -7536,7 +7684,8 @@ class Interp:
              key = self.need(a[0], 'рядок', g, pos)
              kc = min(a[0].c, self.cpc)
              self.mem_c = min(self.mem_c, kc)       # сам факт запису під таким ключем — теж інформація
@@ -353,7 +1016,19 @@ index e65a71d..7318bdd 100755
              shown = trace_val(val)                # спершу — чи можна записати в слід (надто глибоке — помилка ДО запису
              self.memory[key] = val                # у памʼять; суд 9: 🜄 казав «помилка», а 🜃 потім бачив значення)
              self.trace('памʼять', агент=self.agent, дія='запамʼятати', ключ=key, значення=shown, впевненість=val.c)
-@@ -7552,12 +7590,13 @@ class Interp:
+@@ -7545,19 +7694,24 @@ class Interp:
+             key = self.need(a[0], 'рядок', g, pos)
+             res = self.memory.get(key, V(None))
+             c = min(a[0].c, self.mem_c, self.cpc)  # і знайдене, і відсутнє залежить від того, як писали
+-            res = capc(res, c) if c < res.c else res
++            if c < res.c:
++                res = capc(res, c)
++                if self.labor:
++                    self.fresh = True                  # копія — нові дані (sized); наявне значення — 1 (облік 1.2, суд 15)
++            self.shown(res, pos)
+             self.trace('памʼять', агент=self.agent, дія='пригадати', ключ=key, значення=trace_val(res), впевненість=res.c)
+             return res
+         if g == '🜍':
              r = self.call(a[1], [a[0]], pos)
              ok = self.boolean(r, g, pos)
              self.taint(r.c)                          # пройде чи впаде — залежить від умови
@@ -368,7 +1043,7 @@ index e65a71d..7318bdd 100755
          if g == '∋':
              x, y = a[0].v, a[1]
              if isinstance(x, str):
-@@ -8401,10 +8440,11 @@ def cheatsheet():
+@@ -8401,10 +8555,14 @@ def cheatsheet():
             '  Зайве після завершеного виразу — теж помилка. Кілька виразів в одному рядку — через `¦`.',
             '- **Значення не змінюються**: `← імʼя вираз` називає назавжди, і лише на початку інструкції',
             '  (усередині виразу — блок `《 ← … 》`). Цикли — `∀ μ φ Σ ↻`.',
@@ -376,15 +1051,18 @@ index e65a71d..7318bdd 100755
 -           '  що повертають наявне значення, — нічого: великий **незмінний** стан у `↻` дешевий. Копія з меншою впевненістю (і `§` з сумнівним ключем) — повна ціна.\n'
 -           '  Решта — логічний розмір, навіть коли повертає наявне: `► ▶ μ φ`, `§` рядка. `＋ спис 【х】` у циклі — квадрат (~14 тис. елементів на типових\n'
 -           '  межах): збирайте шматками. `＝ ≠ ∋` платять за розмір обох боків (і проти `∅`). Один список — до `--розмір`, нових даних за запуск — до 20 × `--розмір`.\n'
-+           '  **Вартість (облік 1.2):** платять нові дані й обхід. Наявне значення, повернене як є, — нічого: `§` (і рядок), `¿ ☂ ↻ Σ`, `► ▶`, `✓ 🜍`;\n'
++           '  **Вартість (облік 1.2):** платять нові дані й обхід. Наявне значення, повернене як є, — нічого: `§` (і рядок), `¿ ☂ ↻ Σ`, `► ▶`, `✓ 🜍 🜃`;\n'
 +           '  новий список з наявних елементів — лише власні елементи: `＋ ⊏ ✎`, літерали `【】 『』`, `μ φ ⇅ ⚗ ↺ ⊞`. Тож великий **незмінний** стан у `↻` дешевий.\n'
 +           '  Копія з меншою впевненістю — повна ціна: `§` з сумнівним ключем, виклик сумнівної функції, розбір `λ【】` сумнівного списку. Обхід платить кроки\n'
-+           '  за розмір: `＝ ≠ ∋` (обидва боки, і проти `∅`), показ для сліду (`🜄`, результат `🜁`, `⚗`, аргументи інструмента), ключі `⇅`. `＋ спис 【х】`\n'
-+           '  у циклі — квадрат (~14 тис. елементів на типових межах): збирайте шматками. Один список — до `--розмір`, нових даних за запуск — до 20 × `--розмір`.\n'
++           '  за розмір: `＝ ≠ ∋ ‹ › ≤ ≥ ‰ ⊢ ⇄ ▦ ν δ ✂` (обидва боки, і проти `∅`), показ для сліду (`🜄 🜃 🜍`, текст `☠`, результат `🜁`, `⚗`, аргументи й\n'
++           '  результат інструмента), ключі `⇅` (вони ж — нові дані). `＋ спис 【х】` у циклі — квадрат (~14 тис. елементів на типових межах): збирайте\n'
++           '  шматками. Один список — до `--розмір`, нових даних за запуск — до 20 × `--розмір` (дані зі світу обмежують квоти, шаблон `〔〕` — лише кроки).\n'
++           '  `🜄` чи `🜃` великого стану в циклі платить кроки за весь стан щоразу (показ для сліду): кладіть у памʼять зміни, пригадуйте раз у змінну.\n'
++           '  `--кроки` — межа роботи інтерпретатора, а не часу й памʼяті процесу: чужу програму запускайте ще й з межами ОС (час, памʼять).\n'
             '- Імена — слова будь-якою мовою, але **одним письмом** (`звiт` з латинською i — помилка). Грецькі літери — гліфи.',
             '  **Двійники** — два різні імена, однакові на вигляд за скелетом UTS #39 (`x`/`х`, `h`/`һ`, `I`/`l`), — помилка;',
             '  так само імʼя з символів сумісності (`ｘ`, `𝚡`), з літерою, якої Unicode не радить для імен (UTS #39',
-@@ -9068,6 +9108,9 @@ def replay_report(replay, new_trace, ends):
+@@ -9068,6 +9226,9 @@ def replay_report(replay, new_trace, ends):
      if (replay['початок'].get('ліміти') or {}).get('облік', 'логічний') == 'логічний':
          print('  (слід 1.0: кроки й «сумарно створено» повтор рахує так, як рахувала 1.0, — кожне нове значення платить '
                'увесь логічний розмір; так його й записано)', file=sys.stderr)
@@ -394,7 +1072,7 @@ index e65a71d..7318bdd 100755
      if str(end_new.get('повідомлення', '')).startswith('✗ слід перевищив'):
          print(f'  (запуск зупинила межа сліду: повтор дійшов до того самого місця; що сталося після, слід не каже — '
                f'останній виклик, якщо є, міг відбутися, але його результату в сліді немає)', file=sys.stderr)
-@@ -9953,7 +9996,7 @@ def _main(argv, opts, it, value):
+@@ -9953,7 +10114,7 @@ def _main(argv, opts, it, value):
                час=datetime.now(timezone.utc).isoformat(timespec='seconds'), запуск=os.urandom(6).hex(),
                тека=safe(cwd), дозволи_власника=safe(source), дозволено=allowed,
                ліміти={'кроки': opts['steps'], 'розмір': opts['size'], 'слід': opts['tsize'], 'зерно': opts['seed'],
@@ -403,7 +1081,7 @@ index e65a71d..7318bdd 100755
                **({'код': src} if path == '<-e>' else {}), **({'повтор': safe(os.path.realpath(opts['replay']))} if replay else {}),
                **({'підпис': {'ключ': author, 'імʼя': author_info['імʼя']}} if author else {}))
          if shown_args != prog_args:
-@@ -9970,7 +10013,7 @@ def _main(argv, opts, it, value):
+@@ -9970,7 +10131,7 @@ def _main(argv, opts, it, value):
                    f'  дозволи власника: {source}', file=sys.stderr)
              return 3
          interp = Interp(trace, seed=opts['seed'], steps=opts['steps'], cwd=cwd, argv=prog_args,
@@ -412,7 +1090,7 @@ index e65a71d..7318bdd 100755
          owner_q = Caps()
          for t, sc, q in owner_quotas(allowed):      # кілька квот на те саме — діє менша (суд 8)
              owner_q.quotas[(t, sc)] = min(q, owner_q.quotas.get((t, sc), q))
-@@ -10109,7 +10152,7 @@ def repl_main(opts):
+@@ -10109,7 +10270,7 @@ def repl_main(opts):
                час=datetime.now(timezone.utc).isoformat(timespec='seconds'), запуск=os.urandom(6).hex(),
                тека=safe(cwd), дозволи_власника=safe(source), дозволено=allowed,
                ліміти={'кроки': opts['steps'], 'розмір': opts['size'], 'слід': opts['tsize'], 'зерно': opts['seed'],
