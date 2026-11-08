@@ -474,6 +474,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             if a[0].n > it.max_size {
                 return fatal(format!("»: значення завелике для друку (> --розмір {})", it.max_size), Some(pos));
             }
+            it.work(a[0].n, pos)?; // показ — обхід усього значення, і до того, як він упаде (1.2, суд 15)
             let text = uni::visible(&show(&a[0], true)?, "\n\t", true);
             let agent = it.agent.clone();
             it.rec("вивід", vec![("агент".into(), crate::json::J::Str(agent)), ("текст".into(), trace_val(&V::str(text.clone()), true)?)])?;

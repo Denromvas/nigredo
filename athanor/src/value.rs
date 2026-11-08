@@ -443,6 +443,8 @@ pub fn size_of(v: &Val) -> u64 {
         Val::List(l) => 1 + l.iter().map(|e| e.n).sum::<u64>(),
         Val::Dict(d) => 1 + d.keys.iter().zip(&d.vals).map(|(k, e)| k.nch as u64 + e.n).sum::<u64>(),
         Val::Dec(d) => 1 + d.adjusted().unsigned_abs() + d.digits(),
+        // показ функції — λ та імʼя: розмір, як у рядка (суд 15, Оркестратор)
+        Val::Fn(f) => 1 + f.name.as_ref().map_or(0, |n| n.chars().count() as u64),
         _ => 1,
     }
 }
