@@ -316,7 +316,6 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
                         Val::Str(s) => s,
                         _ => return ngr("§: ключ словника — рядок", pos),
                     };
-                    it.work(a[1].n, pos)?; // пошук порівнює ключ з рівним за вмістом — обхід ключа (1.2, суд 15)
                     match d.get_p(k) {
                         Some(e) => e.clone(),
                         None => V::none_c(a[0].s),
@@ -352,7 +351,6 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
         '✎' => {
             let d = need_dict(&a[0], "✎", pos)?;
             let k = need_str(&a[1], "✎", pos)?;
-            it.work(a[1].n, pos)?; // як і §: ключ порівнюється за вмістом (суд 15)
             let mut nd = d.copy();
             nd.set(k, a[2].clone());
             Ok(V::new(Val::Dict(Rc::new(nd)), 1.0))

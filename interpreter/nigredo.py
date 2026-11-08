@@ -3343,7 +3343,8 @@ _SCHEMA_LEAF = {}
 
 
 def schema_leaf(sv):
-    """«тип?:обмеження» → (тип, ∅ можна, межі (lo, hi) чи None, перелік (frozenset) чи None). Розбір — раз на рядок
+    """«тип?:обмеження» → (тип, ∅ можна, межі (lo, hi) чи None, перелік (frozenset) чи None, найдовша альтернатива
+    переліку рядків). Розбір — раз на рядок
     схеми (суд 8б: перелік із n варіантів розбирався на кожному з n елементів — n² поза кроками); крива — ValueError."""
     got = _SCHEMA_LEAF.get(sv)
     if got is not None:
@@ -3377,7 +3378,7 @@ def schema_leaf(sv):
             enum = frozenset(Decimal(a.replace('¯', '-')) for a in alts)
         else:
             enum = frozenset(alts)
-    got = (t, nullable, bounds, enum)
+    got = (t, nullable, bounds, enum, max(map(len, enum)) if enum and t not in ('число', 'ціле') else 0)
     if len(_SCHEMA_LEAF) < 10_000:
         _SCHEMA_LEAF[sv] = got
     return got
@@ -3393,7 +3394,7 @@ def check_schema(x, sch, path, errs, pos, depth=0, charge=lambda k: None):
     sv, v = sch.v, x.v
     if isinstance(sv, str):
         try:
-            t, nullable, bounds, enum = schema_leaf(sv)
+            t, nullable, bounds, enum, lim = schema_leaf(sv)
         except ValueError as e:
             raise NgrError(f'✓: {e}', pos)
         rest = sv.partition(':')[2]
@@ -3424,8 +3425,7 @@ def check_schema(x, sch, path, errs, pos, depth=0, charge=lambda k: None):
             elif t in ('число', 'ціле') or isinstance(v, float):
                 if (Decimal(repr(v)) if isinstance(v, float) else Decimal(v)) not in enum:
                     errs.append(f'{where}: {brief(x, 30)} — не з переліку {rest}')
-            else:   # показ — не довший за найдовшу альтернативу, і платить кроки за себе (суд 15, Аудитор)
-                lim = max(map(len, enum))
+            else:   # показ — не довший за найдовшу альтернативу (lim — з розбору схеми), і платить кроки за себе (суд 15, Аудитор)
                 h = show_upto(x, lim)
                 charge((lim if h is None else len(h)) // 64)
                 if h not in enum:
@@ -7556,8 +7556,6 @@ class Interp:
             if isinstance(x, dict):
                 if not isinstance(i, str):
                     raise NgrError('§: ключ словника — рядок', pos)
-                if self.labor:                        # пошук порівнює ключ з рівним за вмістом — обхід ключа (суд 15)
-                    self.work(a[1].n, pos)
                 el = x.get(i, V(None, a[0].s))
             elif isinstance(x, (list, str)):
                 if isinstance(i, bool) or not isinstance(i, int):
@@ -7572,10 +7570,7 @@ class Interp:
             return capc(el, c) if c < el.c else el
         if g == '✎':
             d = dict(self.need(a[0], 'словник', g, pos))
-            k = self.need(a[1], 'рядок', g, pos)
-            if self.labor:                            # як і §: ключ порівнюється за вмістом (суд 15)
-                self.work(a[1].n, pos)
-            d[k] = a[2]
+            d[self.need(a[1], 'рядок', g, pos)] = a[2]
             return V(d)
         if g == 'κ':
             return V([V(k, a[0].s) for k in self.need(a[0], 'словник', g, pos)], a[0].s)
@@ -8563,7 +8558,7 @@ def cheatsheet():
            '  **Вартість (облік 1.2):** платять нові дані й обхід. Наявне значення, повернене як є, — нічого: `§` (і рядок), `¿ ☂ ↻ Σ`, `► ▶`, `✓ 🜍 🜃`;\n'
            '  новий список з наявних елементів — лише власні елементи: `＋ ⊏ ✎`, літерали `【】 『』`, `μ φ ⇅ ⚗ ↺ ⊞`. Тож великий **незмінний** стан у `↻` дешевий.\n'
            '  Копія з меншою впевненістю — повна ціна: `§` з сумнівним ключем, виклик сумнівної функції, розбір `λ【】` сумнівного списку. Обхід платить кроки\n'
-           '  за розмір: `＝ ≠ ∋ ‹ › ≤ ≥ ‰ ⊢ ⇄ ▦ ν δ ✂` (обидва боки, і проти `∅`), ключ словника в `§ ✎`, показ для сліду (`🜄 🜃 🜍`, текст `☠`, результат `🜁`, `⚗`, аргументи й\n'
+           '  за розмір: `＝ ≠ ∋ ‹ › ≤ ≥ ‰ ⊢ ⇄ ▦ ν δ ✂` (обидва боки, і проти `∅`), показ для сліду (`🜄 🜃 🜍`, текст `☠`, результат `🜁`, `⚗`, аргументи й\n'
            '  результат інструмента), ключі `⇅` (вони ж — нові дані). `＋ спис 【х】` у циклі — квадрат (~14 тис. елементів на типових межах): збирайте\n'
            '  шматками. Один список — до `--розмір`, нових даних за запуск — до 20 × `--розмір` (дані зі світу обмежують квоти, шаблон `〔〕` — лише кроки).\n'
            '  `🜄` чи `🜃` великого стану в циклі платить кроки за весь стан щоразу (показ для сліду): кладіть у памʼять зміни, пригадуйте раз у змінну.\n'
