@@ -189,8 +189,18 @@ pub fn check(it: &mut Interp, x: &V, sch: &V, path: &str, errs: &mut Vec<String>
                     errs.push(format!("{}: {} — не з переліку {}", where_, brief(x, 30), rest));
                 }
             } else if let Some(en) = &l.enum_str {
-                let s = show(x, true)?;
-                if !en.contains(&s) {
+                // довший за кожну альтернативу — не з переліку, без показу всього значення (суд 15, Аудитор)
+                let lim = en.iter().map(|a| a.chars().count()).max().unwrap_or(0);
+                let (len, found) = match &x.v {
+                    Val::Str(s) if s.nch <= lim => (s.nch, en.contains(&*s.s)),
+                    Val::Str(_) => (lim, false),
+                    _ => match crate::value::show_upto(x, lim) {
+                        Some(h) => (h.chars().count(), en.contains(&h)),
+                        None => (lim, false),
+                    },
+                };
+                it.work((len as u64 / 64) * 64, pos)?; // показ платить кроки за себе (еталон: charge)
+                if !found {
                     errs.push(format!("{}: {} — не з переліку {}", where_, brief(x, 30), rest));
                 }
             }

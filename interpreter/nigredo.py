@@ -419,6 +419,49 @@ def show_head(x, n):
         size += len(piece)
 
 
+def show_upto(x, lim):
+    """show(x), якщо він не довший за lim символів, інакше None — довшого не будуючи (✓ з переліком: суд 15, Аудитор —
+    показ усього значення за один крок). Рядок верхнього рівня — як є, як show(x, True)."""
+    if isinstance(x.v, str):
+        return x.v if len(x.v) <= lim else None
+    out, size, stack, e = [], 0, [], x
+    while True:
+        if e is not None:
+            v = e.v
+            if isinstance(v, list):
+                out.append('【')
+                stack.append(('】', iter(v), [True]))
+            elif isinstance(v, dict):
+                out.append('『')
+                stack.append(('』', iter(v.items()), [True]))
+            elif isinstance(v, str) and size + len(v) + 2 > lim:
+                return None
+            else:
+                out.append(show(e, False))
+            size += len(out[-1])
+            e = None
+        if size > lim:
+            return None
+        if not stack:
+            return ''.join(out)
+        close, items, first = stack[-1]
+        e = next(items, None)
+        if e is None:
+            stack.pop()
+            out.append(close)
+            size += 1
+            continue
+        piece = '' if first[0] else ' '
+        first[0] = False
+        if isinstance(e, tuple):
+            k, e = e
+            if size + len(k) + 3 > lim:
+                return None
+            piece += show(V(k), False) + ' '
+        out.append(piece)
+        size += len(piece)
+
+
 def to_json(x, d=0):
     """JSON без втрат: десяткові пишуться числом JSON точно (без float)."""
     v = x.v
@@ -3349,9 +3392,15 @@ def check_schema(x, sch, path, errs, pos, depth=0, charge=lambda k: None):
                 if (lo_ is not None and n < lo_) or (hi_ is not None and n > hi_):
                     what = 'довжина ' if isinstance(v, (str, list, dict)) else ''
                     errs.append(f'{where}: {what}{fmt_num(n) if isinstance(n, NUM) else n} поза {rest}')
-            elif (Decimal(repr(v)) if isinstance(v, float) else Decimal(v) if t in ('число', 'ціле') else show(x)) \
-                    not in enum:
-                errs.append(f'{where}: {brief(x, 30)} — не з переліку {rest}')
+            elif t in ('число', 'ціле') or isinstance(v, float):
+                if (Decimal(repr(v)) if isinstance(v, float) else Decimal(v)) not in enum:
+                    errs.append(f'{where}: {brief(x, 30)} — не з переліку {rest}')
+            else:   # показ — не довший за найдовшу альтернативу, і платить кроки за себе (суд 15, Аудитор)
+                lim = max(map(len, enum))
+                h = show_upto(x, lim)
+                charge((lim if h is None else len(h)) // 64)
+                if h not in enum:
+                    errs.append(f'{where}: {brief(x, 30)} — не з переліку {rest}')
         return
     if isinstance(sv, list):
         if not isinstance(v, list):
