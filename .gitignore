@@ -54,3 +54,4 @@ konsylium/суд14_вартість/skeptyk/вхід/
 konsylium/суд15_облік/*/дані/
 konsylium/**/власник*/
 konsylium/**/*власник*/
+!tests/сумісність/межа-1.1б/*.jsonl.дані

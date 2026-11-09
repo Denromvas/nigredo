@@ -754,6 +754,9 @@ pub fn show_upto(x: &V, lim: usize) -> Option<String> {
                     stack.push(('』', cur, 0));
                 }
                 Val::Str(s) if size + s.nch + 2 > lim => return None,
+                // число: довжину видно з бітів чи порядку — без показу (суд 15, р2; еталон: num_len_floor)
+                Val::Int(i) if size as u64 + { let b = i.bit_length(); if b == 0 { 1 } else { (b - 1) * 30102 / 100000 + 1 } } > lim as u64 => return None,
+                Val::Dec(d) if size as u64 + d.adjusted().unsigned_abs() + 1 > lim as u64 => return None,
                 _ => {
                     let at = out.len();
                     show_leaf(&mut out, cur);

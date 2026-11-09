@@ -19,23 +19,27 @@ struct Leaf {
 }
 
 thread_local! {
-    /// Розібраний останній рядок схеми (за тим самим Rc): 【S】 на n елементів розбирає S раз, а не n (як кеш еталона).
-    static LAST: std::cell::RefCell<Option<(std::rc::Rc<PStr>, std::rc::Rc<Result<Leaf, String>>)>> =
-        const { std::cell::RefCell::new(None) };
+    /// Розібрані рядки схеми, як словник еталона (`_SCHEMA_LEAF`, до 10 000): 【S】 на n елементів розбирає S раз, а не n, і
+    /// схема з кількома полями-переліками теж (суд 15, р2, Оркестратор Н-3: кеш одного останнього рядка чергував два переліки
+    /// й розбирав кожен наново на кожному полі). Ключ — кешований хеш рядка; той самий рядок — без порівняння вмісту.
+    static LEAVES: std::cell::RefCell<std::collections::HashMap<u64, Vec<(std::rc::Rc<PStr>, std::rc::Rc<Result<Leaf, String>>)>>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    static LEAVES_N: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 fn leaf_cached(sv: &std::rc::Rc<PStr>) -> std::rc::Rc<Result<Leaf, String>> {
-    LAST.with(|c| {
-        let mut c = c.borrow_mut();
-        if let Some((k, v)) = c.as_ref() {
-            if std::rc::Rc::ptr_eq(k, sv) {
-                return v.clone();
-            }
-        }
-        let v = std::rc::Rc::new(leaf(&sv.s));
-        *c = Some((sv.clone(), v.clone()));
-        v
-    })
+    let h = sv.hash64();
+    if let Some(v) = LEAVES.with(|c| {
+        c.borrow().get(&h).and_then(|b| b.iter().find(|(k, _)| std::rc::Rc::ptr_eq(k, sv) || k.s == sv.s).map(|(_, v)| v.clone()))
+    }) {
+        return v;
+    }
+    let v = std::rc::Rc::new(leaf(&sv.s));
+    if LEAVES_N.with(|n| n.get()) < 10_000 {
+        LEAVES.with(|c| c.borrow_mut().entry(h).or_default().push((sv.clone(), v.clone())));
+        LEAVES_N.with(|n| n.set(n.get() + 1));
+    }
+    v
 }
 
 /// SCHEMA_NUM: [¯-]?[0-9]+(\.[0-9]+)?

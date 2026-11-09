@@ -729,6 +729,7 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             let mut errs = Vec::new();
             crate::schema::check(it, &a[0], &a[1], "", &mut errs, pos, 0)?;
             if !errs.is_empty() {
+                it.work(a[0].n, pos)?; // текст помилки показує значення (ціле — повністю в цифри): кроки (суд 15, р2)
                 let more = if errs.len() > 10 { format!(" … ще {}", errs.len() - 10) } else { String::new() };
                 let shown: Vec<&str> = errs.iter().take(10).map(|e| e.as_str()).collect();
                 return ngr(format!("✓: не відповідає схемі: {}{}", shown.join("; "), more), pos);
