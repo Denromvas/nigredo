@@ -42,6 +42,7 @@ MAX_TRACE = 50_000_000    # найбільший слід у байтах; --с�
 HEAVY_12 = set('‹›≤≥‰⊢⇄▦νδ✂')    # 1.2 (суд 15): порівняння рядків, остача великих цілих, розбір і чистка рядка з малим результатом
 HEAVY = set('＝≠σΔ⁀∋↑⇅⊞≈⇣⇡⊳⌕≋') | HEAVY_12  # робота пропорційна розміру — і кроки теж
 HEAVY_OLD = HEAVY - HEAVY_12      # облік 1.0 і 1.1 (повтор їхніх слідів)
+FN_SIZE = [True]                  # розмір названої функції — 1 + імʼя (облік «робота»); повтор слідів 1.0/1.1 — 1, як було (суд 15, р2)
 if hasattr(sys, 'set_int_max_str_digits'):
     sys.set_int_max_str_digits(0)
 DEFAULT_STEPS = 10_000_000
@@ -258,7 +259,7 @@ class V:
             self.n = 1 + sum(len(k) + e.n for k, e in v.items())
         elif t is Decimal and v.is_finite():
             self.n = 1 + abs(v.adjusted()) + len(v.as_tuple().digits)
-        elif t is Fn and v.name:
+        elif t is Fn and v.name and FN_SIZE[0]:
             self.n = 1 + len(v.name)                    # показ — λ та імʼя: розмір, як у рядка (суд 15, Оркестратор)
         else:
             self.n = 1
@@ -421,6 +422,17 @@ def show_head(x, n):
         size += len(piece)
 
 
+def num_len_floor(v):
+    """Нижня межа довжини fmt_num(v) без самого показу: ціле з b бітів — щонайменше ⌊(b−1)·0,30102⌋+1 цифр, десяткове —
+    |порядок|+1; решта — 0."""
+    if type(v) is int:
+        b = abs(v).bit_length()
+        return (b - 1) * 30102 // 100000 + 1 if b else 1
+    if isinstance(v, Decimal) and v.is_finite():
+        return abs(v.adjusted()) + 1
+    return 0
+
+
 def show_upto(x, lim):
     """show(x), якщо він не довший за lim символів, інакше None — довшого не будуючи (✓ з переліком: суд 15, Аудитор —
     показ усього значення за один крок). Рядок верхнього рівня — як є, як show(x, True)."""
@@ -436,8 +448,8 @@ def show_upto(x, lim):
             elif isinstance(v, dict):
                 out.append('『')
                 stack.append(('』', iter(v.items()), [True]))
-            elif isinstance(v, str) and size + len(v) + 2 > lim:
-                return None
+            elif (isinstance(v, str) and size + len(v) + 2 > lim) or size + num_len_floor(v) > lim:
+                return None                         # число: довжину видно з бітів чи порядку — без показу (суд 15, р2)
             else:
                 out.append(show(e, False))
             size += len(out[-1])
@@ -2495,6 +2507,10 @@ def owner_key():
         if k:
             break
         time.sleep(0.005)
+    if not k:                       # запасний шлях: переможець так і не дописав — порожнім ключем не підписувати (суд 15, р2)
+        print(f'✗ ключ підпису слідів «{path}» порожній: його пише інший запуск чи його спорожнили — запустіть ще раз',
+              file=sys.stderr)
+        sys.exit(3)
     return k.encode()
 
 
@@ -3384,7 +3400,7 @@ def schema_leaf(sv):
     return got
 
 
-def check_schema(x, sch, path, errs, pos, depth=0, charge=lambda k: None):
+def check_schema(x, sch, path, errs, pos, depth=0, charge=lambda k: None, labor=False):
     """✓: x проти схеми (дані мови). Розбіжності — у errs як «шлях: що не так»; кривa схема — помилка одразу.
     charge(k) — k кроків роботи (суд 8: n полів × n записів — не безкоштовно)."""
     if depth > 200:
@@ -3427,7 +3443,8 @@ def check_schema(x, sch, path, errs, pos, depth=0, charge=lambda k: None):
                     errs.append(f'{where}: {brief(x, 30)} — не з переліку {rest}')
             else:   # показ — не довший за найдовшу альтернативу (lim — з розбору схеми), і платить кроки за себе (суд 15, Аудитор)
                 h = show_upto(x, lim)
-                charge((lim if h is None else len(h)) // 64)
+                if labor:                   # облік «робота»; повтор слідів 1.0/1.1 — як було (суд 15, р2)
+                    charge((lim if h is None else len(h)) // 64)
                 if h not in enum:
                     errs.append(f'{where}: {brief(x, 30)} — не з переліку {rest}')
         return
@@ -3439,7 +3456,7 @@ def check_schema(x, sch, path, errs, pos, depth=0, charge=lambda k: None):
             raise NgrError('✓: схема списку — 【S】 (один елемент-схема) або 【】 (будь-який список)', pos)
         if sv:
             for i, e in enumerate(v):
-                check_schema(e, sv[0], f'{path}[{i}]', errs, pos, depth + 1, charge)
+                check_schema(e, sv[0], f'{path}[{i}]', errs, pos, depth + 1, charge, labor=labor)
                 if len(errs) > 50:
                     return
         return
@@ -3451,7 +3468,7 @@ def check_schema(x, sch, path, errs, pos, depth=0, charge=lambda k: None):
         charge(len(fields) + len(v))
         for k, (opt, s_) in fields.items():
             if k in v:
-                check_schema(v[k], s_, f'{path}.{k}' if path else k, errs, pos, depth + 1, charge)
+                check_schema(v[k], s_, f'{path}.{k}' if path else k, errs, pos, depth + 1, charge, labor=labor)
             elif not opt:
                 errs.append(f'{(path + ".") if path else ""}{k}: бракує поля')
         extra = [k for k in v if k not in fields]
@@ -3460,7 +3477,7 @@ def check_schema(x, sch, path, errs, pos, depth=0, charge=lambda k: None):
                 errs.append(f'{where}: зайві поля {", ".join(safe(k) for k in extra[:5])} (дозволити — 「…」 「будь-що」)')
         else:                          # 「…」 S — інші поля перевіряються як S (суд 8)
             for k in extra:
-                check_schema(v[k], sv['…'], f'{path}.{k}' if path else k, errs, pos, depth + 1, charge)
+                check_schema(v[k], sv['…'], f'{path}.{k}' if path else k, errs, pos, depth + 1, charge, labor=labor)
                 if len(errs) > 50:
                     return
         return
@@ -6429,6 +6446,7 @@ class Interp:
         self.logical = cost == 'логічний'  # облік 1.0: кожне нове значення — свій логічний розмір (лише повтор сліду 1.0)
         self.labor = cost == 'робота'      # облік 1.2: кожен обхід значення — кроки, кожна копія capc — нові дані (пропозиція облік.md)
         self.heavy = HEAVY if self.labor else HEAVY_OLD
+        FN_SIZE[0] = self.labor
         self.steps_left, self.cwd = steps, os.path.abspath(cwd)
         self.out = out or sys.stdout
         self.memory, self.agent, self.caps, self.seal_caps = {}, 'головний', {}, {}
@@ -7725,8 +7743,9 @@ class Interp:
             return V(date_op(a[0].v, a[1].v, pos))
         if g == '✓':
             errs = []
-            check_schema(a[0], a[1], '', errs, pos, charge=lambda k: self.work(64 * k, pos))
+            check_schema(a[0], a[1], '', errs, pos, charge=lambda k: self.work(64 * k, pos), labor=self.labor)
             if errs:
+                self.shown(a[0], pos)           # текст помилки показує значення (ціле — повністю в цифри): кроки (суд 15, р2)
                 more = f' … ще {len(errs) - 10}' if len(errs) > 10 else ''
                 raise NgrError('✓: не відповідає схемі: ' + '; '.join(errs[:10]) + more, pos)
             return a[0]
@@ -8560,8 +8579,11 @@ def cheatsheet():
            '  Копія з меншою впевненістю — повна ціна: `§` з сумнівним ключем, виклик сумнівної функції, розбір `λ【】` сумнівного списку. Обхід платить кроки\n'
            '  за розмір: `＝ ≠ ∋ ‹ › ≤ ≥ ‰ ⊢ ⇄ ▦ ν δ ✂` (обидва боки, і проти `∅`), показ для сліду (`🜄 🜃 🜍`, текст `☠`, результат `🜁`, `⚗`, аргументи й\n'
            '  результат інструмента), ключі `⇅` (вони ж — нові дані). `＋ спис 【х】` у циклі — квадрат (~14 тис. елементів на типових межах): збирайте\n'
-           '  шматками. Один список — до `--розмір`, нових даних за запуск — до 20 × `--розмір` (дані зі світу обмежують квоти, шаблон `〔〕` — лише кроки).\n'
+           '  шматками. Один список — до `--розмір` (посилання на названу функцію — 1 + довжина імені), нових даних за запуск — до 20 × `--розмір`\n'
+           '  (дані зі світу обмежують квоти, шаблон `〔〕` — лише кроки).\n'
            '  `🜄` чи `🜃` великого стану в циклі платить кроки за весь стан щоразу (показ для сліду): кладіть у памʼять зміни, пригадуйте раз у змінну.\n'
+           '  Так само `»` платить показ, а прочитаний файл — кроки за розмір (10 млн кроків ≈ 640 млн символів). Довге імʼя функції множить розмір\n'
+           '  кожного посилання на неї: список зі 150 тис. посилань на обробник з імʼям у 31 літеру — уже «значення завелике».\n'
            '  `--кроки` — межа роботи інтерпретатора, а не часу й памʼяті процесу: чужу програму запускайте ще й з межами ОС (час, памʼять).\n'
            '- Імена — слова будь-якою мовою, але **одним письмом** (`звiт` з латинською i — помилка). Грецькі літери — гліфи.',
            '  **Двійники** — два різні імена, однакові на вигляд за скелетом UTS #39 (`x`/`х`, `h`/`һ`, `I`/`l`), — помилка;',
@@ -10461,6 +10483,8 @@ def entry():
             result[0] = main(sys.argv[1:])
         except BrokenPipeError:
             result[0] = 0
+        except SystemExit as e:                 # у потоці SystemExit тихо губиться — код з нього (порожній ключ — 3)
+            result[0] = e.code if isinstance(e.code, int) else 1
     t = threading.Thread(target=target)
     t.start()
     t.join()

@@ -289,6 +289,7 @@ const ownerKey = () => {
     if (s) break;
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
   }
+  if (!s) fail(3, `✗ ключ підпису слідів «${k}» порожній: його пише інший запуск чи його спорожнили — запустіть ще раз`);
   return Buffer.from(s);
 };
 const key = ownerKey();

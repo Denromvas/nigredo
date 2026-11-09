@@ -250,6 +250,10 @@ fn owner_key(home: &str) -> std::io::Result<Vec<u8>> {
         }
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
+    if uni::strip(&k).is_empty() {
+        // порожнім ключем не підписувати (суд 15, р2): еталон скаже, що сталося
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, "ключ підпису слідів порожній"));
+    }
     Ok(uni::strip(&k).as_bytes().to_vec())
 }
 
