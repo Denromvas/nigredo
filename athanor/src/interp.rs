@@ -711,7 +711,7 @@ impl Interp {
                 let r = V::strc(s, c);
                 if r.n > self.max_size {
                     // показ довший за суму підстановок (спільні посилання, пробіли між елементами) — межа й для результату (суд 15)
-                    return fatal(format!("〔〕: значення завелике (> --розмір {})", self.max_size), Some(pos));
+                    return fatal(format!("〔〕: значення завелике (логічний розмір {} > --розмір {})", r.n, self.max_size), Some(pos));
                 }
                 Ok(r)
             }

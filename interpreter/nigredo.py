@@ -7107,7 +7107,7 @@ class Interp:
             except RecursionError:          # значення, складене в циклі, глибше за стек — помилка програми, не код 4
                 raise NgrError('〔〕: значення вкладене надто глибоко', pos, c)
             if self.labor and r.n > self.max_size:   # показ довший за суму підстановок — межа й для результату (суд 15)
-                raise Fatal(f'〔〕: значення завелике (> --розмір {self.max_size})', pos)
+                raise Fatal(f'〔〕: значення завелике (логічний розмір {r.n} > --розмір {self.max_size})', pos)
             return r
         if k == 'dict':
             d, c, sc = {}, self.cpc, self.cpc

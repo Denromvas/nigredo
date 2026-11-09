@@ -4128,7 +4128,7 @@ def main():
                                            encoding='utf-8')
     tp_ = run(['--розмір', '300000', str(ct_ / 'помилка_розмір.ngr')], env)
     check(kc_.returncode == 1 and 'сумарно створено забагато' in kc_.stderr and ts_.returncode == 1
-          and '〔〕: значення завелике (> --розмір 300000)' in ts_.stderr and tp_.returncode == 1
+          and '〔〕: значення завелике (логічний розмір 393214 > --розмір 300000)' in ts_.stderr and tp_.returncode == 1
           and '☠: значення завелике (логічний розмір 393214 > --розмір 300000)' in tp_.stderr,
           'облік 1.2 (суд 15): копія каналу завершення — «сумарно створено»; шаблон і текст ☠ довші за --розмір — «значення завелике»',
           kc_.stderr + ts_.stderr + tp_.stderr)
