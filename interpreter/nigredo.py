@@ -1904,7 +1904,7 @@ class Parser:
             name = TOOL_ALIASES.get(name, name)
             if name not in TOOLS:
                 raise StaticError(f'невідомий інструмент «{name}»; є: {", ".join(TOOLS)}', npos)
-            if name not in self.cap_stack[-1]:
+            if not self.cap_stack or name not in self.cap_stack[-1]:      # і в самій печатці, доки її не дочитано
                 raise StaticError(f'інструмента «{name}» немає в печатці (дозволах) цього агента', npos)
             return ('tool', pos, name, [self.expr() for _ in range(TOOLS[name][0])])
         if g == '←':
@@ -1946,7 +1946,7 @@ class Parser:
             if intent[2]:
                 plain_text(intent[2], 'намір субагента', pos)
             _, caps = self.caps_literal('субагента', pos, inherit=True)
-            parent = self.cap_stack[-1]
+            parent = self.cap_stack[-1] if self.cap_stack else {}       # субагент у самій печатці: батько ще без прав
             for t, scopes in caps.items():
                 if t not in parent:
                     raise StaticError(f'субагент «{name[2]}» просить «{t}», якого немає в батька', pos)
