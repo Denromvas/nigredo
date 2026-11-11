@@ -1474,6 +1474,7 @@ class Parser:
         self.agent_names = {skeleton("головний"): "головний"}   # скелет імені субагента → імʼя
         self.ctx = [('stmt', 0)]    # ('stmt', відступ інструкції) або ('items',) усередині 【】『』
         self.head = -1              # індекс токена, з якого почалася поточна інструкція
+        self.first = -1             # індекс першого токена програми: печатка — лише там
         self.frames = []            # незавершені вирази [початок, [(початок, кінець, вкладені)…]] — для підказки арності
         self.peak = 0               # найглибша вкладеність у поточному тілі λ (висота тіла — для MAX_WORK)
         self.last_span = None       # (початок, кінець, вкладені) щойно розібраного виразу
@@ -1508,6 +1509,8 @@ class Parser:
             return '「' + v.replace('\n', '\\n') + '」'
         if k == 'tpart':
             return v if len(v) <= 12 else v[:10] + '…'
+        if k == 'num':
+            return fmt_num(v)                    # як друкує мова: 0.0000001, а не 1E-7 (запису з E мова не має)
         return str(v)
 
     def shape(self, span, limit=300):
@@ -1534,7 +1537,7 @@ class Parser:
         for start, kids in reversed(self.frames):
             if in_tmpl and start < self.i and self.t[start][0] == 'topen':
                 break
-            if start >= self.i or self.t[start][0] in ('open', 'topen'):
+            if start >= self.i or self.t[start][0] in ('open', 'topen', 'nl'):   # nl — вираз ще не почався
                 continue
             k, v, pos = self.t[start]
             if k == 'glyph' and v in GLYPHS and isinstance(GLYPHS[v][0], int):
@@ -1566,6 +1569,7 @@ class Parser:
         tok = self.peek()
         if tok[0] != 'glyph' or tok[1] != '🜂':
             raise StaticError('програма має починатися з печатки: 🜂 「намір」 【дозволи】', tok[2])
+        self.first = self.i
         stmts = self.statements(end=None)
         if self.module:
             for st in stmts[1:]:
@@ -1880,7 +1884,7 @@ class Parser:
 
     def glyph(self, g, pos):
         if g == '🜂':
-            if self.cap_stack:
+            if self.cap_stack or self.i - 1 != self.first:      # і друга 🜂 у самій печатці (🜂 🜂), доки першу не дочитано
                 raise StaticError('печатка 🜂 — лише одна й лише першим рядком програми', pos)
             if self.peek()[0] in ('nl', 'eof'):          # гола 🜂 — програма без дозволів
                 self.cap_stack.append({})
@@ -9270,7 +9274,7 @@ def seal_only(src):
     tok = p.peek()
     if tok[0] != 'glyph' or tok[1] != '🜂':
         raise StaticError('програма має починатися з печатки: 🜂 「намір」 【дозволи】', tok[2])
-    p.head = p.i
+    p.head = p.first = p.i
     p.ctx.append(('stmt', tok[2][1] - 1))
     return p.expr()
 
