@@ -127,15 +127,17 @@ def after_import(toks):
 
 
 def want_tree(src, prog):
-    """Дерево еталона або його помилка розбору: ('дерево', дерево) чи ('помилка', 'рядок:стовпець текст', текст).
-    Як у справжньому запуску, файл програми — у стеку модулів: модуль, що бере саму програму, — коло."""
+    """Дерево еталона з помилками типів (§5а) або його помилка розбору: ('дерево', (дерево, [[рядок, стовпець, текст]…]), токени)
+    чи ('помилка', 'рядок:стовпець текст', токени). Як у справжньому запуску, файл програми — у стеку модулів: модуль, що бере
+    саму програму, — коло."""
     with LEX:
         toks = nigredo.lex(src)                 # помилка лексера — StaticError: «відкинуто»
         if any(p.startswith('github.com/') or '#' in p for p in after_import(toks)):
             raise Skip('з мережі')
         base = os.path.dirname(os.path.realpath(prog))
         try:
-            return 'дерево', canon(nigredo.Parser(toks, base, base, stack=(os.path.realpath(prog),)).program()), toks
+            tree = nigredo.Parser(toks, base, base, stack=(os.path.realpath(prog),)).program()
+            return 'дерево', (canon(tree), [[e.pos[0], e.pos[1], e.msg] for e in nigredo.type_errors(tree)]), toks
         except nigredo.StaticError as e:
             return 'помилка', f'{e.pos[0]}:{e.pos[1]} {e.msg}', toks
 
@@ -276,15 +278,23 @@ def one(prog, work, steps):
         return prog, 'не NFC', '', tp, tn
     if mine is not None:
         return prog, 'різниця', f'еталон розібрав, парсер: {mine[:400]}', tp, tn
-    d = same_tree(a, nfc_names(b))
-    return prog, 'різниця' if d else 'так', d, tp, tn
+    tree, types = a
+    d = same_tree(tree, nfc_names(b['дерево']))
+    if not d:                  # ті самі помилки типів у тому самому порядку: місце й слова
+        got = [[x[0], x[1], nigredo.safe(nfc(x[2]))] for x in b['типи']]
+        want_t = [[x[0], x[1], nigredo.safe(nfc(x[2]))] for x in types]
+        if got != want_t:
+            k = next((i for i, (x, y) in enumerate(zip(want_t, got)) if x != y), min(len(want_t), len(got)))
+            d = (f'помилки типів: еталон {len(want_t)}, парсер {len(got)}; перша різниця №{k + 1}: еталон '
+                 f'{want_t[k] if k < len(want_t) else "—"}, парсер {got[k] if k < len(got) else "—"}')[:900]
+    return prog, 'різниця' if d else 'так з типами' if types else 'так', d, tp, tn
 
 
 def prepare(base):
     work = pathlib.Path(tempfile.mkdtemp(prefix='лексер-', dir=base))
     (work / 'вхід').mkdir()
     (work / 'в').mkdir()
-    for f in ('лексер.ngr', 'токени.ngr', 'парсер.ngr', 'дерево.ngr'):
+    for f in ('лексер.ngr', 'токени.ngr', 'парсер.ngr', 'типи.ngr', 'дерево.ngr'):
         shutil.copy(HERE / f, work / f)
     (work / 'в' / 'дозволи.json').write_text(json.dumps({'дозволено': [f'файл.читати:{work}/вхід']}, ensure_ascii=False), encoding='utf-8')
     return work
@@ -320,6 +330,7 @@ def main():
     works = [prepare(base) for _ in range(a.j)]
     free = list(works)
     cnt, tp, tn = Counter(), 0.0, 0.0
+    typed = [0]
     lock = threading.Lock()
 
     def job(p):
@@ -333,6 +344,8 @@ def main():
     try:
         with cf.ThreadPoolExecutor(a.j) as ex:
             for i, (p, r, d, x, y) in enumerate(ex.map(job, progs), 1):
+                if r == 'так з типами':            # дерево те саме, і помилки типів (вони є) — ті самі
+                    r, typed[0] = 'так', typed[0] + 1
                 cnt[r] += 1
                 tp += x
                 tn += y
@@ -345,7 +358,7 @@ def main():
     finally:
         shutil.rmtree(base, ignore_errors=True)
     if a.парсер:
-        print(f'Програм: {len(progs)}; те саме дерево {cnt["так"]}, та сама помилка розбору {cnt["та сама помилка"]}, розбіжностей '
+        print(f'Програм: {len(progs)}; те саме дерево {cnt["так"]} (з них {typed[0]} — з тими самими помилками типів), та сама помилка розбору {cnt["та сама помилка"]}, розбіжностей '
               f'{cnt["різниця"]}; парсер не подужав: глибина {cnt["глибина"]}, імена не в NFC {cnt["не NFC"]}; не '
               f'порівнювались: інші перевірки еталона {cnt["інші перевірки"]}, відкинув лексер еталона {cnt["відкинуто"]}, з '
               f'модулями з мережі {cnt["з мережі"]}, модуль вище теки {cnt["вище теки"]}, завеликі {cnt["завеликий"]}, не utf-8 '
