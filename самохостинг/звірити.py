@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """Звірка лексера й парсера на Nigredo з еталоном: той самий потік токенів (чи те саме дерево розбору, `--парсер`) на програмах
-корпусу. Обидва — для правильних програм, тож те, що еталон відкидає, не порівнюється, а лічиться окремо. Модулі (⊃) парсер
-розбирає разом з програмою: звірка кладе поруч ті файли, які взяв еталон. Модулі з мережі (сховище за sha256) — «з мережі», окремо;
-шлях модуля, що виходить вище теки програми й вертається в неї (тека/../тека/м.ngr), парсер відкидає — «вище теки», окремо.
+корпусу. Лексер — для правильних програм: те, що відкидає лексер еталона, не порівнюється, а лічиться окремо. Парсер (`--парсер`)
+звіряється й на хибних: помилку розбору, яку він перевіряє сам (OWN — будова, імена, форма печатки, інструмент у печатці), має
+дати в тому самому місці й тими самими словами; решту перевірок Parser еталона (двійники імен функцій, зміст дозволів, файли
+модулів) він не робить — такі програми лічаться окремо («інші перевірки»), і там парсер мусить лише не зламатися. Двійників імен
+(check_twins) і типи (§5а) звірка не запускає зовсім: порівнюється саме розбір. Модулі (⊃) парсер розбирає разом з програмою:
+звірка кладе поруч файли, на які вказують ⊃. Окремо лічаться: модулі з мережі (сховище за sha256); шлях модуля, що виходить вище
+теки програми й вертається в неї (тека/../тека/м.ngr), — парсер його відкидає («вище теки»); програми, яких парсер не подужав
+через межі самої мови («глибина»: 2000 викликів і показ значення до 2000 рівнів — замало для ~1000 рівнів дужок) і через імена
+не в NFC (лексер еталона зводить їх до NFC, мова цього не вміє). Невидиме в тексті помилки (ключ словника, шлях) еталон показує
+сам (↵, ⟨U+…⟩), а парсер лишає як є — показ робить виконавець, тож тексти порівнюються після того самого показу.
 
-  python3 самохостинг/звірити.py [--парсер] [-j 3] [--до N] [--від N] [--корінь РЕПО] [--кроки N] [шляхи…]
+  python3 самохостинг/звірити.py [--парсер] [-j 3] [--до N] [--від N] [--корінь РЕПО] [--кроки N] [--перелік ПІДСУМОК] [шляхи…]
 
 Вихід: 0 — порівняно й розбіжностей немає; 1 — є розбіжності; 2 — порожня звірка."""
 import argparse
@@ -45,6 +52,31 @@ class Skip(Exception):
     pass
 
 
+# Помилки розбору, які парсер на Nigredo перевіряє сам: початок тексту (після «у модулі «…»: ✗ р:с », якщо помилка — в модулі)
+OWN = [re.compile(x) for x in (
+    r'рядок закінчився, а виразові бракує аргументу', r'програма має починатися з печатки', r'незакрите «', r'зайва «',
+    r'вираз уже завершено, а в рядку ще щось є', r'вираз вкладено глибше за', r'імʼя з крапкою «', r'«.*» ще обчислюється',
+    r'невідоме імʼя «', r'у словнику 『』 має бути парна кількість', r'у словнику 『』 ключ «', r'шаблон обірвався',
+    r'у \{…\} шаблону — рівно один вираз', r'«.*» тут не очікувалося', r'бракує аргументу: вираз обірвався', r'бракує «',
+    r'після [λΛ←∘] очікувалося імʼя', r'[λΛ]【…】: розбір', r'однакові імена параметрів',
+    r'⊃ — лише на початку інструкції верхнього рівня', r'⊃: шлях до модуля — буквальний рядок',
+    r'⊃: імена — непорожній буквальний список рядків', r'⊃: модуль — відносний шлях до файлу \.ngr', r'⊃: циклічний імпорт «',
+    r'у модулі «.*» немає «', r'«.*» уже назване тут', r'модуль на верхньому рівні лише називає функції',
+    r'печатка 🜂 — лише одна', r'печатка: 🜂 「намір」', r'дозволи (печатки|субагента) мають бути буквальним списком рядків',
+    r'після 🜔 очікувалася назва інструмента', r'невідомий інструмент «', r'інструмента «.*» немає в печатці',
+    r'← називає лише на початку інструкції', r'∘ бере функцію, названу ←', r'🜁: імʼя \(і, за бажанням, намір\) субагента')]
+IN_MODULE = re.compile(r'у модулі «.*?»: ✗ (?:\d+:\d+ )?')
+# що парсер каже, коли справа не в будові програми: цього з еталоном не звірити
+NOT_HERE = ('⊃: модулі з мережі цей парсер не розбирає', 'не прочитати: ', 'невідомий символ')
+
+
+def own(msg):
+    """Чи це помилка, яку парсер на Nigredo перевіряє сам (і в модулі, і в модулі модуля)."""
+    while (m := IN_MODULE.match(msg)):
+        msg = msg[m.end():]
+    return any(r.match(msg) for r in OWN)
+
+
 def canon(n):
     """Дерево еталона (кортежі Parser) → вигляд, який друкує парсер на Nigredo: [вид, рядок, стовпець, …]. Дозволів печатки й
     субагента не порівнюємо: їх читає й перевіряє еталон. Висоту тіла λ порівнюємо: її бере межа роботи."""
@@ -73,24 +105,53 @@ def canon(n):
     raise Skip(f'вузол {k}')
 
 
-def want_tree(src, prog):
-    with LEX:
-        toks = nigredo.lex(src)
-        for a, b in zip(toks, toks[1:]):
-            if a[0] == 'glyph' and a[1] == '⊃' and b[0] == 'str' and (b[1].startswith('github.com/') or '#' in b[1]):
-                raise Skip('з мережі')
-        base = os.path.dirname(os.path.realpath(prog))
-        return canon(nigredo.Parser(toks, base, base).program())
-
-
-def module_paths(n, out):
-    """Шляхи (від теки програми) усіх модулів у дереві, і вкладених теж."""
-    if isinstance(n, list):
-        if n and n[0] == 'import':
-            out.append(n[3])
-        for x in n:
-            module_paths(x, out)
+def after_import(toks):
+    """Рядки одразу після ⊃ (перенос рядка між ними — теж): шляхи модулів, як їх шукає `шляхи_модулів` парсера."""
+    out = []
+    for i, a in enumerate(toks):
+        if a[0] == 'glyph' and a[1] == '⊃':
+            j = i + 1
+            while toks[j][0] == 'nl':
+                j += 1
+            if toks[j][0] == 'str':
+                out.append(toks[j][1])
     return out
+
+
+def want_tree(src, prog):
+    """Дерево еталона або його помилка розбору: ('дерево', дерево) чи ('помилка', 'рядок:стовпець текст', текст).
+    Як у справжньому запуску, файл програми — у стеку модулів: модуль, що бере саму програму, — коло."""
+    with LEX:
+        toks = nigredo.lex(src)                 # помилка лексера — StaticError: «відкинуто»
+        if any(p.startswith('github.com/') or '#' in p for p in after_import(toks)):
+            raise Skip('з мережі')
+        base = os.path.dirname(os.path.realpath(prog))
+        try:
+            return 'дерево', canon(nigredo.Parser(toks, base, base, stack=(os.path.realpath(prog),)).program()), toks
+        except nigredo.StaticError as e:
+            return 'помилка', f'{e.pos[0]}:{e.pos[1]} {e.msg}', toks
+
+
+def put_modules(toks, base, here, dest, seen):
+    """Покласти в dest файли, на які вказують ⊃ програми та її модулів (що читатиме дерево.ngr): лише .ngr у теці програми."""
+    for rel in after_import(toks):
+        if not rel.endswith('.ngr') or rel.startswith('/') or '://' in rel or '#' in rel:
+            continue
+        path = os.path.normpath(os.path.join(here, rel))
+        if path.startswith('..') or os.path.isabs(path) or path in seen:
+            continue
+        seen.add(path)
+        real = os.path.join(base, path)
+        if not os.path.isfile(real) or os.path.getsize(real) > 400000:
+            continue
+        (dest / path).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(real, dest / path)
+        try:
+            with LEX:
+                sub = nigredo.lex(open(real, 'rb').read().decode('utf-8'), module=True)
+        except (nigredo.StaticError, UnicodeDecodeError, RecursionError):
+            continue
+        put_modules(sub, base, os.path.dirname(path), dest, seen)
 
 
 def nfc_names(n):
@@ -145,8 +206,14 @@ def one(prog, work, steps):
     if len(src) > 400000:
         return prog, 'завеликий', '', 0, 0
     t0 = time.perf_counter()
+    kind, err, toks = 'дерево', '', None
     try:
-        a = want(src) if MODE[0] == 'токени' else want_tree(src, prog)
+        if MODE[0] == 'токени':
+            a = want(src)
+        else:
+            kind, a, toks = want_tree(src, prog)
+            if kind == 'помилка':
+                a, err = None, a
     except Skip as e:          # вузол, якого звірка не знає, — теж розбіжність: його треба навчити
         return prog, 'з мережі' if str(e) == 'з мережі' else 'різниця', str(e), 0, 0
     except nigredo.StaticError:
@@ -157,17 +224,19 @@ def one(prog, work, steps):
     shutil.rmtree(work / 'вхід')
     (work / 'вхід').mkdir()
     if MODE[0] == 'дерево':
-        base = os.path.dirname(os.path.realpath(prog))
-        for rel in module_paths(a, []):
-            (work / 'вхід' / rel).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(os.path.join(base, rel), work / 'вхід' / rel)
-    (work / 'вхід' / 'вхід.ngr').write_text(src, encoding='utf-8')
+        put_modules(toks, os.path.dirname(os.path.realpath(prog)), '', work / 'вхід', set())
+    # парсерові — під власним імʼям: модуль, що бере саму програму, — коло (лексер читає вхід.ngr)
+    name = os.path.basename(prog) if MODE[0] == 'дерево' else 'вхід.ngr'
+    (work / 'вхід' / name).write_text(src, encoding='utf-8')
     t0 = time.perf_counter()
-    r = subprocess.run([*CMD, '--кроки', str(steps), '--розмір', str(SIZE[0]), '--слід-розмір', str(20 * SIZE[0]), str(work / f'{MODE[0]}.ngr')], capture_output=True, env=dict(os.environ, NIGREDO_HOME=str(work / 'в')),
+    r = subprocess.run([*CMD, '--кроки', str(steps), '--розмір', str(SIZE[0]), '--слід-розмір', str(20 * SIZE[0]), str(work / f'{MODE[0]}.ngr'),
+                        *(['--', name] if MODE[0] == 'дерево' else [])], capture_output=True, env=dict(os.environ, NIGREDO_HOME=str(work / 'в')),
                        stdin=subprocess.DEVNULL, timeout=600)
     tn = time.perf_counter() - t0
-    if r.returncode and MODE[0] == 'дерево' and 'вище теки програми' in r.stderr.decode('utf-8', 'replace'):
-        return prog, 'вище теки', '', tp, tn
+    if r.returncode and MODE[0] == 'дерево' and any(x in r.stderr.decode('utf-8', 'replace') for x in ('надто глибока рекурсія', 'Δ: значення вкладене надто глибоко')):
+        # межі самої мови: 2000 викликів — менше, ніж треба парсерові на 1000 рівнів дужок; значення глибше за 2000 не показати
+        # (дерево програми з ~1000 рівнів — це ~2000 рівнів списків)
+        return prog, 'глибина', r.stderr.decode('utf-8', 'replace').strip()[:120], tp, tn
     if r.returncode:
         return prog, 'різниця', 'код ' + str(r.returncode) + ': ' + r.stderr.decode('utf-8', 'replace')[:300], tp, tn
     try:
@@ -175,7 +244,31 @@ def one(prog, work, steps):
         b = json.loads(re.sub(r'⟨U\+([0-9A-F]{4,6})⟩', lambda m: chr(int(m.group(1), 16)), r.stdout.decode('utf-8')))
     except ValueError as e:
         return prog, 'різниця', f'вивід не JSON: {e}', tp, tn
-    d = same(a, b) if MODE[0] == 'токени' else same_tree(a, nfc_names(b))
+    if MODE[0] == 'токени':
+        d = same(a, b)
+        return prog, 'різниця' if d else 'так', d, tp, tn
+    mine = b.get('помилка') if isinstance(b, dict) else None
+    if mine is not None and 'вище теки програми' in mine and not (err and own(err.split(' ', 1)[1])):
+        return prog, 'вище теки', '', tp, tn
+    if err and not own(err.split(' ', 1)[1]):
+        # перевірка, якої парсер не робить: він мусить дати дерево чи свою помилку розбору, а не зламатися всередині
+        text = mine.split(' ', 1)[-1] if mine is not None else ''
+        broke = mine is not None and not own(text) and not IN_MODULE.match(text) and not any(x in text for x in NOT_HERE)
+        return prog, 'різниця' if broke else 'інші перевірки', f'еталон: {err[:200]}; парсер зламався: {mine[:300]}' if broke else '', tp, tn
+    nfc = lambda x: nigredo.unicodedata.normalize('NFC', x)  # noqa: E731
+    # лексер еталона зводить імена до NFC; мова цього не вміє: імʼя в тексті помилки порівнюємо після NFC (як імена в дереві),
+    # а коли через це імʼя «не знайдено» — лічимо окремо
+    lost = mine is not None and 'невідоме імʼя «' in mine and nfc(src) != src
+    if err:
+        ok = mine is not None and nigredo.safe(nfc(mine)) == nigredo.safe(nfc(err))
+        if not ok and lost:
+            return prog, 'не NFC', '', tp, tn
+        return prog, 'та сама помилка' if ok else 'різниця', '' if ok else f'еталон: {err[:400]}\n  парсер: {(mine if mine is not None else "дерево")[:400]}', tp, tn
+    if lost:
+        return prog, 'не NFC', '', tp, tn
+    if mine is not None:
+        return prog, 'різниця', f'еталон розібрав, парсер: {mine[:400]}', tp, tn
+    d = same_tree(a, nfc_names(b))
     return prog, 'різниця' if d else 'так', d, tp, tn
 
 
@@ -200,6 +293,7 @@ def main():
     ap.add_argument('--розмір', type=int, default=50000000, help='межа «сумарно створено» — 20 × це')
     ap.add_argument('--корінь', default=str(ROOT))
     ap.add_argument('--парсер', action='store_true', help='звіряти дерево розбору (парсер.ngr), а не токени')
+    ap.add_argument('--перелік', default='', help='надрукувати програми з цим підсумком (глибина, «не NFC», «інші перевірки», …)')
     a = ap.parse_args()
     MODE[0] = 'дерево' if a.парсер else 'токени'
     SIZE[0] = a.розмір
@@ -212,6 +306,8 @@ def main():
         names = subprocess.run(['git', '-C', a.корінь, 'ls-files', '-z', '--', '*.ngr'], capture_output=True).stdout.decode('utf-8', 'surrogateescape').split('\0')
         progs = sorted(os.path.join(a.корінь, n) for n in names if n and not n.startswith('архів/'))
     progs = (progs[:a.до] if a.до else progs)[a.від:]
+    sys.setrecursionlimit(10_000_000)          # як entry() еталона: вкладеність до MAX_NEST розбирає він, а не межа Python
+    threading.stack_size(512 * 1024 * 1024)
     base = tempfile.mkdtemp(prefix='лексер-звірка-')
     works = [prepare(base) for _ in range(a.j)]
     free = list(works)
@@ -234,13 +330,24 @@ def main():
                 tn += y
                 if r == 'різниця':
                     print(f'✗ {os.path.relpath(p, a.корінь)}\n  {d}', flush=True)
+                elif r == a.перелік:
+                    print(f'· {r}: {os.path.relpath(p, a.корінь)}{"  — " + d if d else ""}', flush=True)
                 if i % 200 == 0:
                     print(f'… {i}/{len(progs)}', flush=True)
     finally:
         shutil.rmtree(base, ignore_errors=True)
-    print(f'Програм: {len(progs)}; однаково {cnt["так"]}, розбіжностей {cnt["різниця"]}, еталон відкинув {cnt["відкинуто"]}{f", з модулями з мережі {cnt['з мережі']}, модуль вище теки {cnt['вище теки']}" if a.парсер else ""}, завеликі {cnt["завеликий"]}, не utf-8 {cnt["не utf-8"]}')
+    if a.парсер:
+        print(f'Програм: {len(progs)}; те саме дерево {cnt["так"]}, та сама помилка розбору {cnt["та сама помилка"]}, розбіжностей '
+              f'{cnt["різниця"]}; парсер не подужав: глибина {cnt["глибина"]}, імена не в NFC {cnt["не NFC"]}; не '
+              f'порівнювались: інші перевірки еталона {cnt["інші перевірки"]}, відкинув лексер еталона {cnt["відкинуто"]}, з '
+              f'модулями з мережі {cnt["з мережі"]}, модуль вище теки {cnt["вище теки"]}, завеликі {cnt["завеликий"]}, не utf-8 '
+              f'{cnt["не utf-8"]}')
+    else:
+        print(f'Програм: {len(progs)}; однаково {cnt["так"]}, розбіжностей {cnt["різниця"]}, еталон відкинув {cnt["відкинуто"]}, '
+              f'завеликі {cnt["завеликий"]}, не utf-8 {cnt["не utf-8"]}')
     print(f'Час: еталон {tp:.1f} с, {"парсер" if a.парсер else "лексер"} на Nigredo {tn:.1f} с')
     sys.exit(2 if not cnt['так'] else 1 if cnt['різниця'] else 0)
 
 
-main()
+if __name__ == '__main__':
+    main()
