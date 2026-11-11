@@ -2,7 +2,8 @@
 """Мутанти: парсер на Nigredo проти еталона на зіпсованих програмах. Корпус має сотні хибних програм, але їх писали люди й
 судді, тож шляхи помилок у ньому нерівні. Тут правильну програму псують в одному місці — прибирають токен, подвоюють, міняють
 сусідні місцями, вставляють гліф, дужку, імʼя, число, рядок чи перенос рядка, обривають текст, зливають рядки — і звіряють
-розбір так само, як `звірити.py --парсер`: те саме дерево або та сама помилка розбору (місце й слова).
+розбір так само, як `звірити.py --парсер`: те саме дерево або та сама помилка розбору (місце й слова). Кожен пʼятий мутант —
+у рядку печатки, прав субагента чи шляху ⊃: квота, пробіли, дужки, вужче й ширше обмеження, інший інструмент.
 
   python3 самохостинг/мутанти.py [-n 2000] [--зерно 1] [-j 8] [--на-програму 4] [--лишити ТЕКА] [--перелік ПІДСУМОК]
                                  [--виконавець КОМАНДА] [шляхи…]
@@ -45,9 +46,42 @@ def offsets(src, toks):
     return [starts[t[2][0] - 1] + t[2][1] - 1 for t in toks]
 
 
+PERMS = ['час', 'оракул', 'жереб', 'читати:дані', 'писати:тимч', 'список:.', 'бд.читати:дані', 'взяти:api.x', 'послати:api.x≤2',
+         'процес:git status', 'процес:./a', 'процес:/bin/ls', 'агент:помічник', 'python:statistics.median', 'python:_x.y',
+         'python:statistics', 'нема:х', 'файл.читати:дані/звіти', 'читати писати:тимч', 'читати', '']
+
+
+def perm_variants(v, rnd):
+    """Зіпсований (чи ні) дозвіл: квоти, пробіли, дужки, вужче й ширше обмеження, інший інструмент."""
+    tool, sep, scope = v.partition(':')
+    return rnd.choice([
+        v + '≤3', v + '≤0', v + '≤ 5', v + '≤x', v + '≤3≤4', '≤2' + v, v + '≤007',
+        ' ' + v, v + ' ', v.replace(':', ' : ', 1), v.replace(':', ': ', 1), v.replace(' ', '  ', 1) if ' ' in v else v + '  x',
+        v + '「', v + '」', v + '/', tool, tool + ':', v + '/..', v + '/підтека', v + '/../..', tool + sep + '..', tool + sep + '/etc',
+        tool + sep + '.', tool + sep + './' + scope, v + '//x', tool + sep + '//' + scope, tool + sep + scope + ' -x',
+        'читати ' + v, 'час ' + v, tool + ' ' + tool + sep + scope, rnd.choice(PERMS), rnd.choice(PERMS).partition(':')[0] + sep + scope])
+
+
+def mutate_perm(src, toks, off, rnd):
+    """Мутант у рядку печатки, субагента чи ⊃: рядки першої інструкції, шість токенів після 🜁 і рядок після ⊃."""
+    first = next((t[2][0] for t in toks if t[0] != 'nl'), 1)
+    where = [i for i, t in enumerate(toks[:-1]) if t[0] == 'str' and (
+        t[2][0] == first or any(x[0] == 'glyph' and x[1] in '🜁⊃' for x in toks[max(0, i - 6):i]))]
+    if not where:
+        return None
+    i = rnd.choice(where)
+    new = perm_variants(toks[i][1], rnd)
+    lit = '「' + new.replace('\\', '\\\\').replace('」', '\\」').replace('\n', '\\n').replace('\t', '\\t') + '」'
+    return 'у дозволі', src[:off[i]] + lit + ' ' + src[off[i + 1]:] if toks[i + 1][0] != 'nl' else src[:off[i]] + lit + src[off[i + 1]:]
+
+
 def mutate(src, toks, rnd):
     """Один мутант: (назва мутації, текст)."""
     off = offsets(src, toks)
+    if rnd.random() < 0.2:
+        m = mutate_perm(src, toks, off, rnd)
+        if m:
+            return m
     n = len(toks) - 1                       # без eof
     i = rnd.randrange(n)
     a, b = off[i], off[i + 1]
