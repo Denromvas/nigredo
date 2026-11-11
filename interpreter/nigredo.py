@@ -1618,8 +1618,8 @@ class Parser:
         try:
             node = self.expr_()
         finally:
-            self.frames.pop()
-        self.last_span = (start, self.i, kids)
+            start = self.frames.pop()[0]            # після переносу рядка вираз починається з першого токена, а не з nl:
+        self.last_span = (start, self.i, kids)      # інакше «розібрано» брало 《 》 на новому рядку в дужки, а на тому самому — ні
         if self.frames:
             self.frames[-1][1].append(self.last_span)
         return node
@@ -1955,8 +1955,10 @@ class Parser:
                 if t not in parent:
                     raise StaticError(f'субагент «{name[2]}» просить «{t}», якого немає в батька', pos)
                 for s in scopes:
-                    if not any(narrower(t, s, p) for p in parent[t]):
-                        raise StaticError(f'субагент «{name[2]}» просить «{t}:{s}» — у батька лише {parent[t]}', pos)
+                    if not any(narrower(t, s, p) for p in parent[t]):       # перелік — словами мови, не списком Python
+                        raise StaticError(f'субагент «{name[2]}» просить «{t}:{s}» — у батька '
+                                          + ('лише ' + ', '.join(f'«{p}»' for p in parent[t]) if parent[t]
+                                             else f'«{t}» без обмеження: пишіть так само'), pos)
                 if not scopes:
                     caps[t] = list(parent[t])
             self.cap_stack.append(caps)
