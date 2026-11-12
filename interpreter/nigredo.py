@@ -21,8 +21,10 @@ import decimal
 import math
 from decimal import ROUND_HALF_UP, Decimal
 
-VERSION = '1.2'
-MAX_DEPTH = 2000
+VERSION = '1.3'
+MAX_DEPTH = 20_000        # найбільше вкладених викликів (1.3; пропозиція «глибина»): стек виконавців розрахований на MAX_WORK, а
+MAX_DEPTH_OLD = 2000      # 2000 викликів 1.0–1.2 зупиняли рекурсивний розбір програми з вкладеністю MAX_NEST; повтор сліду
+#                           без «ліміти.виклики» рахує межею 2000, як тоді
 WALK_MAX_DEPTH = 2000     # показ, порівняння, JSON, ключі ⇅ обходять значення не глибше: далі — «вкладене надто глибоко»
 #                           (межа мови, а не стека CPython — та сама в еталоні й Атанорі, від версії Python не залежить)
 MAX_NEST = 1000                   # вкладеність виразу в тексті програми (глибше — помилка до запуску, суд 8)
@@ -272,9 +274,16 @@ def v_with(x, c, s):
     return r
 
 
-def too_deep(depth):
-    """Текст межі глибини: 2000 викликів чи MAX_WORK (виклики × висота їхніх тіл) — однаковий в обох виконавцях."""
-    return 'надто глибока рекурсія' if depth > MAX_DEPTH else \
+def limits_calls(opts):
+    """Поле «виклики» запису «початок»: межа вкладених викликів цього запуску. Повтор сліду 1.0–1.2 (без поля) пише свій слід
+    теж без нього — так слід повтору каже ті самі межі, що й слід, який повторювали."""
+    calls = opts.get('calls', MAX_DEPTH)
+    return {} if calls == MAX_DEPTH_OLD and opts.get('replay') else {'виклики': calls}
+
+
+def too_deep(depth, calls=MAX_DEPTH):
+    """Текст межі глибини: межа викликів чи MAX_WORK (виклики × висота їхніх тіл) — однаковий в обох виконавцях."""
+    return 'надто глибока рекурсія' if depth > calls else \
         f'надто глибока рекурсія: виклики × вкладеність їхнього коду — понад {MAX_WORK} рівнів'
 
 
@@ -6443,7 +6452,7 @@ def check_allowlist(caps, allowed, cwd):
 
 class Interp:
     def __init__(self, trace, seed=0, steps=DEFAULT_STEPS, cwd='.', out=None, argv=(), protected=(), max_size=MAX_SIZE,
-                 cost='робота'):
+                 cost='робота', calls=MAX_DEPTH):
         self.trace, self.rng = trace, random.Random(seed)
         self.argv, self.protected = list(argv), set(protected)
         self.max_size = max_size
@@ -6465,6 +6474,7 @@ class Interp:
         self.decided_c = 1.0   # найсумнівніше рішення в запуску: від нього залежить і тривалість (годинник)
 
         self.depth = self.wdepth = 0       # викликів і їхньої сумарної висоти (MAX_DEPTH, MAX_WORK)
+        self.max_calls = calls             # межа викликів: 20 000 (1.3) або та, що в сліді, який повторюється (2000 у 1.0–1.2)
         self.defer_node = None  # тіло ‖, чий виклик інструмента відкладено
         self.tl = threading.local()   # для дії інструмента (і в потоці ‖): справжні шляхи, які він узяв
         self.ends = 0           # скільки записів «інструмент» уже зроблено (номер виклику для повтору)
@@ -6880,10 +6890,10 @@ class Interp:
         if fn.c >= 1 and f.mod is None and f.simple:      # швидкий шлях: pc, taint, права не змінюються
             self.depth += 1
             self.wdepth += f.h
-            if self.depth > MAX_DEPTH or self.wdepth > MAX_WORK:
+            if self.depth > self.max_calls or self.wdepth > MAX_WORK:
                 self.depth -= 1
                 self.wdepth -= f.h
-                raise Fatal(too_deep(self.depth + 1), pos)
+                raise Fatal(too_deep(self.depth + 1, self.max_calls), pos)
             env = dict(zip(f.params, args))
             env['\0parent'] = f.env
             try:
@@ -6897,8 +6907,8 @@ class Interp:
                 self.wdepth -= f.h
         self.depth += 1
         self.wdepth += f.h
-        if self.depth > MAX_DEPTH or self.wdepth > MAX_WORK:
-            raise Fatal(too_deep(self.depth), pos)
+        if self.depth > self.max_calls or self.wdepth > MAX_WORK:
+            raise Fatal(too_deep(self.depth, self.max_calls), pos)
         saved = self.pc
         self.pc = min(saved, fn.c)
         self.taint(fn.c)
@@ -8812,7 +8822,7 @@ def cheatsheet():
             '  квоти `≤N`, а не кроки), `--розмір` (логічний',
             '  розмір значення — символи й елементи разом зі спільними посиланнями, цілі й названі функції (1 + довжина імені); відповідь інструмента понад',
             '  нього — помилка інструмента, її ловить `☂`, а значення, яке створює сама програма, — ні), сумарно створене за запуск',
-            '  ≤ 20 × `--розмір`, `--слід-розмір` (байти сліду після запису «початок»), глибина рекурсії (2000 викликів',
+            '  ≤ 20 × `--розмір`, `--слід-розмір` (байти сліду після запису «початок»), глибина рекурсії (20 000 викликів',
             '  і 200 000 рівнів: виклики × вкладеність їхнього коду).',
             '- Точкові права одній програмі: `ngr --схвалити файл.ngr` друкує відбиток і запис «для_програм» — його',
             '  додає до дозволів **власник** (агенти файл дозволів не пишуть). Змінений байт програми чи модуля — і схвалення',
@@ -9257,6 +9267,9 @@ def replay_report(replay, new_trace, ends):
     elif (replay['початок'].get('ліміти') or {}).get('облік') == 'нове':
         print('  (слід 1.1: кроки й «сумарно створено» повтор рахує так, як рахувала 1.1, — без обліку обходів для сліду '
               'й копій у виклику; так його й записано)', file=sys.stderr)
+    if 'виклики' not in (replay['початок'].get('ліміти') or {}):
+        print(f'  (слід 1.0–1.2: глибину рекурсії повтор міряє межею {MAX_DEPTH_OLD} викликів, як тоді; від 1.3 межа — '
+              f'{MAX_DEPTH}, і слід її записує)', file=sys.stderr)
     if str(end_new.get('повідомлення', '')).startswith('✗ слід перевищив'):
         print(f'  (запуск зупинила межа сліду: повтор дійшов до того самого місця; що сталося після, слід не каже — '
               f'останній виклик, якщо є, міг відбутися, але його результату в сліді немає)', file=sys.stderr)
@@ -9956,9 +9969,15 @@ def _main(argv, opts, it, value):
             print(f'✗ повторити неможливо: облік «{safe(str(lim.get("облік")))}» цей виконавець не знає (слід версії '
                   f'{safe(str(head.get("версія")))}, а це {VERSION}) — повторіть новішим ngr', file=sys.stderr)
             return 1
+        calls = lim.get('виклики', MAX_DEPTH_OLD)        # без поля — слід 1.0–1.2: межа 2000 викликів
+        if not isinstance(calls, int) or isinstance(calls, bool) or not 0 < calls <= MAX_DEPTH:   # слід новішої 1.x
+            print(f'✗ повторити неможливо: межу викликів «{safe(str(calls))}» цей виконавець не знає (слід версії '
+                  f'{safe(str(head.get("версія")))}, а це {VERSION}; тут — до {MAX_DEPTH}) — повторіть новішим ngr', file=sys.stderr)
+            return 1
         prog_args = list(head.get('аргументи') or [])
         opts.update(seed=lim.get('зерно', 0), steps=lim.get('кроки', DEFAULT_STEPS), size=lim.get('розмір', MAX_SIZE),
-                    tsize=lim.get('слід', MAX_TRACE), cost=lim.get('облік', 'логічний'))   # без поля — слід 1.0, облік 1.0
+                    tsize=lim.get('слід', MAX_TRACE), cost=lim.get('облік', 'логічний'),   # без поля — слід 1.0, облік 1.0
+                    calls=calls)
     if opts['mode'] == 'repl' and opts.get('dry'):   # суд 9б: сеанс мовчки діяв по-справжньому
         print('✗ --сухо не поєднується з --repl: частини сеансу діють по-справжньому; сухий прогін — для програми '
               'цілком: ngr --сухо ФАЙЛ (чи -e)', file=sys.stderr)
@@ -10142,7 +10161,7 @@ def _main(argv, opts, it, value):
               час=datetime.now(timezone.utc).isoformat(timespec='seconds'), запуск=os.urandom(6).hex(),
               тека=safe(cwd), дозволи_власника=safe(source), дозволено=allowed,
               ліміти={'кроки': opts['steps'], 'розмір': opts['size'], 'слід': opts['tsize'], 'зерно': opts['seed'],
-                      'облік': opts.get('cost', 'робота')},
+                      'облік': opts.get('cost', 'робота'), **limits_calls(opts)},
               **({'код': src} if path == '<-e>' else {}), **({'повтор': safe(os.path.realpath(opts['replay']))} if replay else {}),
               **({'підпис': {'ключ': author, 'імʼя': author_info['імʼя']}} if author else {}))
         if shown_args != prog_args:
@@ -10159,7 +10178,8 @@ def _main(argv, opts, it, value):
                   f'  дозволи власника: {source}', file=sys.stderr)
             return 3
         interp = Interp(trace, seed=opts['seed'], steps=opts['steps'], cwd=cwd, argv=prog_args,
-                        protected=paths + [tp + '.дані' for tp in paths], max_size=opts['size'], cost=opts.get('cost', 'робота'))
+                        protected=paths + [tp + '.дані' for tp in paths], max_size=opts['size'], cost=opts.get('cost', 'робота'),
+                        calls=opts.get('calls', MAX_DEPTH))
         owner_q = Caps()
         for t, sc, q in owner_quotas(allowed):      # кілька квот на те саме — діє менша (суд 8)
             owner_q.quotas[(t, sc)] = min(q, owner_q.quotas.get((t, sc), q))
@@ -10298,7 +10318,7 @@ def repl_main(opts):
               час=datetime.now(timezone.utc).isoformat(timespec='seconds'), запуск=os.urandom(6).hex(),
               тека=safe(cwd), дозволи_власника=safe(source), дозволено=allowed,
               ліміти={'кроки': opts['steps'], 'розмір': opts['size'], 'слід': opts['tsize'], 'зерно': opts['seed'],
-                      'облік': opts.get('cost', 'робота')},
+                      'облік': opts.get('cost', 'робота'), 'виклики': MAX_DEPTH},
               repl=True)
 
         def reject(text, msg, **extra):
