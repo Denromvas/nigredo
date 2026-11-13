@@ -350,6 +350,16 @@ impl Env {
         let module = parent.as_ref().and_then(|p| p.module.clone());
         Rc::new(Env { vars: RefCell::new(vec![V::none(); n]), parent, module })
     }
+    /// Назвати імʼя блоку: місце під імена росте в міру `←`, а не виділяється все при вході в блок. Інакше блок на K імен
+    /// коштував би K комірок за один крок, і рекурсія крізь такий блок тримала б їх на кожному активному виклику (суд 16,
+    /// Скептик: 1500 імен × 20 000 викликів — 1,27 ГБ за 190 тис. кроків; еталон кладе імена в словник так само — у міру).
+    pub fn put(&self, slot: usize, v: V) {
+        let mut vars = self.vars.borrow_mut();
+        if vars.len() <= slot {
+            vars.resize(slot + 1, V::none());
+        }
+        vars[slot] = v;
+    }
     pub fn child(vars: Vec<V>, parent: &Rc<Env>) -> Rc<Env> {
         Rc::new(Env { vars: RefCell::new(vars), parent: Some(parent.clone()), module: parent.module.clone() })
     }

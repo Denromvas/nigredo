@@ -140,11 +140,12 @@ pub struct Interp {
     pub memory: HashMap<String, V>,
     pub agent: String,
     pub caps: Rc<Caps>,
+    pub caps_under: Option<(Rc<Caps>, Vec<Rc<Caps>>)>,     // (права, печатки модулів, якими їх уже звужено)
     pub seal_caps: Rc<Caps>,
     pub pc: f64,
     pub halt_c: f64,
     pub mem_c: f64,
-    pub try_stack: Vec<f64>,
+    pub try_stack: Vec<(f64, f64)>, // для кожного ☂: (впевненість на вході, найменша з позначених у його тілі)
     pub world_c: f64,
     pub decided_c: f64,
     pub depth: u64,
@@ -384,14 +385,29 @@ impl Interp {
         Ok(res)
     }
 
+    /// Сумнівне значення, прочитане в тілі ☂: позначити найближчий ☂; зовнішнім позначку передасть try_pop (суд 16,
+    /// Практик: обхід усього стека ☂ на кожному читанні робив рекурсію крізь ☂ квадратичною за часом).
     pub fn taint(&mut self, c: f64) {
         if c < 1.0 {
-            for t in self.try_stack.iter_mut() {
-                if c < *t {
-                    *t = c;
+            if let Some(top) = self.try_stack.last_mut() {
+                if c < top.1 {
+                    top.1 = c;
                 }
             }
         }
+    }
+
+    /// Кінець тіла ☂: найменша впевненість усього, що в ньому обчислено; позначене дістає й зовнішній ☂.
+    fn try_pop(&mut self) -> f64 {
+        let (init, low) = self.try_stack.pop().unwrap();
+        if low < 1.0 {
+            if let Some(top) = self.try_stack.last_mut() {
+                if low < top.1 {
+                    top.1 = low;
+                }
+            }
+        }
+        init.min(low)
     }
 
     fn halt_risk(&mut self, c: f64, nodes: &[&Node], called: bool) {
@@ -737,8 +753,8 @@ impl Interp {
                 let own = d.len() as u64 + 1;
                 self.sized_as(V::cs(Val::Dict(Rc::new(d)), c, sc), "『』", pos, own)
             }
-            K::Block(stmts, nslots) => {
-                let inner = Env::new(*nslots as usize, Some(env.clone()));
+            K::Block(stmts, _) => {
+                let inner = Env::new(0, Some(env.clone())); // імена — у міру ← (Env::put), не всі одразу (суд 16)
                 let mut result = V::none();
                 for s in stmts {
                     result = self.eval(s, &inner)?;
@@ -748,11 +764,11 @@ impl Interp {
             K::Bind(name, slot, value) => {
                 if let K::Lam(l) = &value.k {
                     let f = V::new(Val::Fn(Rc::new(Func { lam: l.clone(), env: env.clone(), name: Some(name.clone()), module: env.module.clone() })), self.cpc());
-                    env.vars.borrow_mut()[*slot as usize] = f.clone();
+                    env.put(*slot as usize, f.clone());
                     return Ok(f);
                 }
                 let val = self.eval(value, env)?;
-                env.vars.borrow_mut()[*slot as usize] = val.clone();
+                env.put(*slot as usize, val.clone());
                 Ok(val)
             }
             K::Lam(l) => Ok(V::new(Val::Fn(Rc::new(Func { lam: l.clone(), env: env.clone(), name: None, module: env.module.clone() })), self.cpc())),
@@ -818,7 +834,7 @@ impl Interp {
                 };
                 for (_, mslot, slot) in &m.names {
                     let v = menv.vars.borrow()[*mslot as usize].clone();
-                    env.vars.borrow_mut()[*slot as usize] = v;
+                    env.put(*slot as usize, v);
                 }
                 Ok(V::none())
             }
@@ -836,15 +852,22 @@ impl Interp {
         }
     }
 
-    /// Межа глибини (too_deep еталона): 2000 викликів чи MAX_WORK — сума висот тіл активних викликів (суд 9б).
+    /// Межа глибини (too_deep еталона): MAX_DEPTH викликів (20 000 з 1.3; до того 2000) чи MAX_WORK — сума висот тіл
+    /// активних викликів (суд 9б).
     fn enter(&mut self, h: u64, pos: Pos) -> R<()> {
         self.depth += 1;
         self.wdepth += h;
         if self.depth > lang::MAX_DEPTH || self.wdepth > lang::MAX_WORK {
+            // текст називає межу й виклик, на якому зупинились (too_deep еталона; тексти 1.0–1.2 — лише в повторі, а його
+            // робить еталон)
             let msg = if self.depth > lang::MAX_DEPTH {
-                "надто глибока рекурсія".to_string()
+                format!("надто глибока рекурсія: понад {} вкладених викликів", lang::MAX_DEPTH)
             } else {
-                format!("надто глибока рекурсія: виклики × вкладеність їхнього коду — понад {} рівнів", lang::MAX_WORK)
+                format!(
+                    "надто глибока рекурсія: понад {} рівнів на {}-му вкладеному виклику (рівні — сума висот тіл активних викликів)",
+                    lang::MAX_WORK,
+                    self.depth
+                )
             };
             self.depth -= 1;
             self.wdepth -= h;
@@ -895,10 +918,21 @@ impl Interp {
             self.halt_risk(f.c, &[&lam.body], false);
         }
         let saved_caps = self.caps.clone();
+        let saved_under = self.caps_under.clone();
         let mut mod_q = false;
         if let Some(m) = &func.module {
-            // печатка модуля діє: права — перетин прав агента й печатки модуля
-            self.caps = Rc::new(intersect_caps(&self.caps, &m.caps, &self.cwd));
+            // печатка модуля діє: права — перетин прав агента й печатки модуля. Права, вже звужені цією печаткою
+            // (рекурсія функції модуля, функції двох модулів по черзі), другий перетин не змінює — його й не рахуємо:
+            // перетин ходить на диск по справжній шлях кожної теки (суд 16: 19 000 викликів, 10 тек — 15 с)
+            let mut under = match &self.caps_under {
+                Some((c, u)) if Rc::ptr_eq(c, &self.caps) => u.clone(),
+                _ => Vec::new(),
+            };
+            if !under.iter().any(|u| Rc::ptr_eq(u, &m.caps)) {
+                self.caps = Rc::new(intersect_caps(&self.caps, &m.caps, &self.cwd));
+                under.push(m.caps.clone());
+                self.caps_under = Some((self.caps.clone(), under));
+            }
             if !m.caps.quotas.is_empty() {
                 mod_q = true;
                 self.quota_stack.push(Rc::new(QuotaTable {
@@ -956,6 +990,7 @@ impl Interp {
             self.quota_stack.pop();
         }
         self.caps = saved_caps;
+        self.caps_under = saved_under;
         self.pc = saved;
         self.leave(lam.height);
         r
@@ -1199,17 +1234,17 @@ impl Interp {
                     }
                 }
                 let cpc = self.cpc();
-                self.try_stack.push(cpc);
+                self.try_stack.push((cpc, 1.0));
                 match self.eval(&argn[0], env) {
                     Ok(res) => {
-                        let tc = self.try_stack.pop().unwrap();
+                        let tc = self.try_pop();
                         self.taint_effects(&[&argn[0]], tc);
                         self.fn_effects(&argn[1], tc);
                         if tc < res.c { self.copied(capc(&res, tc), g, pos) } else { Ok(res) }
                     }
                     Err(e) if e.fatal => Err(e),
                     Err(e) => {
-                        let tc = self.try_stack.pop().unwrap().min(e.c);
+                        let tc = self.try_pop().min(e.c);
                         self.taint_effects(&[&argn[0]], tc);
                         self.fn_effects(&argn[1], tc);
                         let agent = self.agent.clone();
@@ -2057,10 +2092,13 @@ pub fn intersect_caps(a: &Caps, b: &Caps, cwd: &str) -> Caps {
             out.tools.push((t.clone(), Vec::new()));
             continue;
         }
-        let real = |x: &str| pathx::realpath(&pathx::join(cwd, x));
+        let real = |x: &String| pathx::realpath(&pathx::join(cwd, x));
         let mut keep: Vec<String> = if kind == "тека" {
-            let mut k: Vec<String> = sa.iter().filter(|x| sb.iter().any(|y| pathx::inside(&real(x), &real(y)))).cloned().collect();
-            k.extend(sb.iter().filter(|y| sa.iter().any(|x| pathx::inside(&real(y), &real(x)))).cloned());
+            // справжній шлях — раз на запис, а не на кожну пару: K записів коштували 8·K² обходів диска (суд 16)
+            let (ra, rb): (Vec<String>, Vec<String>) = (sa.iter().map(real).collect(), sb.iter().map(real).collect());
+            let mut k: Vec<String> =
+                sa.iter().zip(&ra).filter(|(_, rx)| rb.iter().any(|ry| pathx::inside_canon(rx, ry))).map(|(x, _)| x.clone()).collect();
+            k.extend(sb.iter().zip(&rb).filter(|(_, ry)| ra.iter().any(|rx| pathx::inside_canon(ry, rx))).map(|(y, _)| y.clone()));
             k
         } else if kind == "команда" {
             let mut k: Vec<String> = sa.iter().filter(|x| sb.iter().any(|y| crate::parser::cmd_within(x, y))).cloned().collect();

@@ -568,7 +568,8 @@ if (isMainThread) {
     clearTimeout(timer);
     const tail = fs.readFileSync(mainTrace, 'utf8').trimEnd().split('\n').pop();
     if (tail) { const r = JSON.parse(tail); n = r['№']; prev = r['хеш']; }
-    hostRecord('помилка', { 'повідомлення': msg, 'від_господаря': true });
+    // код 4 — модуль упав: у сліді це «внутрішня», як у еталона, щоб --перевірити-слід --json давав «внутрішня_помилка» (суд 16)
+    hostRecord('помилка', { ...(code === 4 ? { 'внутрішня': true } : {}), 'повідомлення': msg, 'від_господаря': true });
     fs.writeSync(2, msg + '\n');
     process.exit(code);
   };

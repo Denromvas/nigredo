@@ -165,6 +165,7 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
         memory: Default::default(),
         agent: "головний".into(),
         caps: Rc::new(Default::default()),
+        caps_under: None,
         seal_caps: Rc::new(Default::default()),
         pc: 1.0,
         halt_c: 1.0,
