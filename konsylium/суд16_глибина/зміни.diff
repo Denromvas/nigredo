@@ -1,8 +1,16 @@
 diff --git a/albedo/src/lib.rs b/albedo/src/lib.rs
-index abb002b..6d82957 100644
+index abb002b..058ce30 100644
 --- a/albedo/src/lib.rs
 +++ b/albedo/src/lib.rs
-@@ -202,7 +202,7 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
+@@ -165,6 +165,7 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
+         memory: Default::default(),
+         agent: "головний".into(),
+         caps: Rc::new(Default::default()),
++        caps_under: None,
+         seal_caps: Rc::new(Default::default()),
+         pc: 1.0,
+         halt_c: 1.0,
+@@ -202,7 +203,7 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
          ("тека".into(), J::Str(uni::safe(f[1]))),
          ("дозволи_власника".into(), J::Str(uni::safe(f[6]))),
          ("дозволено".into(), J::Arr(allowed.iter().map(|a| J::s(a)).collect())),
@@ -11,6 +19,203 @@ index abb002b..6d82957 100644
      ];
      if it.rec("початок", head).is_err() {
          return 4;
+diff --git "a/albedo/\321\205\320\276\321\201\321\202.mjs" "b/albedo/\321\205\320\276\321\201\321\202.mjs"
+index b14f08c..875ef3a 100644
+--- "a/albedo/\321\205\320\276\321\201\321\202.mjs"
++++ "b/albedo/\321\205\320\276\321\201\321\202.mjs"
+@@ -568,7 +568,8 @@ if (isMainThread) {
+     clearTimeout(timer);
+     const tail = fs.readFileSync(mainTrace, 'utf8').trimEnd().split('\n').pop();
+     if (tail) { const r = JSON.parse(tail); n = r['№']; prev = r['хеш']; }
+-    hostRecord('помилка', { 'повідомлення': msg, 'від_господаря': true });
++    // код 4 — модуль упав: у сліді це «внутрішня», як у еталона, щоб --перевірити-слід --json давав «внутрішня_помилка» (суд 16)
++    hostRecord('помилка', { ...(code === 4 ? { 'внутрішня': true } : {}), 'повідомлення': msg, 'від_господаря': true });
+     fs.writeSync(2, msg + '\n');
+     process.exit(code);
+   };
+diff --git a/athanor/src/interp.rs b/athanor/src/interp.rs
+index 62c9ff3..27e8362 100644
+--- a/athanor/src/interp.rs
++++ b/athanor/src/interp.rs
+@@ -140,11 +140,12 @@ pub struct Interp {
+     pub memory: HashMap<String, V>,
+     pub agent: String,
+     pub caps: Rc<Caps>,
++    pub caps_under: Option<(Rc<Caps>, Vec<Rc<Caps>>)>,     // (права, печатки модулів, якими їх уже звужено)
+     pub seal_caps: Rc<Caps>,
+     pub pc: f64,
+     pub halt_c: f64,
+     pub mem_c: f64,
+-    pub try_stack: Vec<f64>,
++    pub try_stack: Vec<(f64, f64)>, // для кожного ☂: (впевненість на вході, найменша з позначених у його тілі)
+     pub world_c: f64,
+     pub decided_c: f64,
+     pub depth: u64,
+@@ -384,16 +385,31 @@ impl Interp {
+         Ok(res)
+     }
+ 
++    /// Сумнівне значення, прочитане в тілі ☂: позначити найближчий ☂; зовнішнім позначку передасть try_pop (суд 16,
++    /// Практик: обхід усього стека ☂ на кожному читанні робив рекурсію крізь ☂ квадратичною за часом).
+     pub fn taint(&mut self, c: f64) {
+         if c < 1.0 {
+-            for t in self.try_stack.iter_mut() {
+-                if c < *t {
+-                    *t = c;
++            if let Some(top) = self.try_stack.last_mut() {
++                if c < top.1 {
++                    top.1 = c;
+                 }
+             }
+         }
+     }
+ 
++    /// Кінець тіла ☂: найменша впевненість усього, що в ньому обчислено; позначене дістає й зовнішній ☂.
++    fn try_pop(&mut self) -> f64 {
++        let (init, low) = self.try_stack.pop().unwrap();
++        if low < 1.0 {
++            if let Some(top) = self.try_stack.last_mut() {
++                if low < top.1 {
++                    top.1 = low;
++                }
++            }
++        }
++        init.min(low)
++    }
++
+     fn halt_risk(&mut self, c: f64, nodes: &[&Node], called: bool) {
+         if c < 1.0 && nodes.iter().any(|n| n.may_stop(called)) {
+             self.halt_c = self.halt_c.min(c);
+@@ -737,8 +753,8 @@ impl Interp {
+                 let own = d.len() as u64 + 1;
+                 self.sized_as(V::cs(Val::Dict(Rc::new(d)), c, sc), "『』", pos, own)
+             }
+-            K::Block(stmts, nslots) => {
+-                let inner = Env::new(*nslots as usize, Some(env.clone()));
++            K::Block(stmts, _) => {
++                let inner = Env::new(0, Some(env.clone())); // імена — у міру ← (Env::put), не всі одразу (суд 16)
+                 let mut result = V::none();
+                 for s in stmts {
+                     result = self.eval(s, &inner)?;
+@@ -748,11 +764,11 @@ impl Interp {
+             K::Bind(name, slot, value) => {
+                 if let K::Lam(l) = &value.k {
+                     let f = V::new(Val::Fn(Rc::new(Func { lam: l.clone(), env: env.clone(), name: Some(name.clone()), module: env.module.clone() })), self.cpc());
+-                    env.vars.borrow_mut()[*slot as usize] = f.clone();
++                    env.put(*slot as usize, f.clone());
+                     return Ok(f);
+                 }
+                 let val = self.eval(value, env)?;
+-                env.vars.borrow_mut()[*slot as usize] = val.clone();
++                env.put(*slot as usize, val.clone());
+                 Ok(val)
+             }
+             K::Lam(l) => Ok(V::new(Val::Fn(Rc::new(Func { lam: l.clone(), env: env.clone(), name: None, module: env.module.clone() })), self.cpc())),
+@@ -818,7 +834,7 @@ impl Interp {
+                 };
+                 for (_, mslot, slot) in &m.names {
+                     let v = menv.vars.borrow()[*mslot as usize].clone();
+-                    env.vars.borrow_mut()[*slot as usize] = v;
++                    env.put(*slot as usize, v);
+                 }
+                 Ok(V::none())
+             }
+@@ -836,15 +852,22 @@ impl Interp {
+         }
+     }
+ 
+-    /// Межа глибини (too_deep еталона): 2000 викликів чи MAX_WORK — сума висот тіл активних викликів (суд 9б).
++    /// Межа глибини (too_deep еталона): MAX_DEPTH викликів (20 000 з 1.3; до того 2000) чи MAX_WORK — сума висот тіл
++    /// активних викликів (суд 9б).
+     fn enter(&mut self, h: u64, pos: Pos) -> R<()> {
+         self.depth += 1;
+         self.wdepth += h;
+         if self.depth > lang::MAX_DEPTH || self.wdepth > lang::MAX_WORK {
++            // текст називає межу й виклик, на якому зупинились (too_deep еталона; тексти 1.0–1.2 — лише в повторі, а його
++            // робить еталон)
+             let msg = if self.depth > lang::MAX_DEPTH {
+-                "надто глибока рекурсія".to_string()
++                format!("надто глибока рекурсія: понад {} вкладених викликів", lang::MAX_DEPTH)
+             } else {
+-                format!("надто глибока рекурсія: виклики × вкладеність їхнього коду — понад {} рівнів", lang::MAX_WORK)
++                format!(
++                    "надто глибока рекурсія: понад {} рівнів на {}-му вкладеному виклику (рівні — сума висот тіл активних викликів)",
++                    lang::MAX_WORK,
++                    self.depth
++                )
+             };
+             self.depth -= 1;
+             self.wdepth -= h;
+@@ -895,10 +918,21 @@ impl Interp {
+             self.halt_risk(f.c, &[&lam.body], false);
+         }
+         let saved_caps = self.caps.clone();
++        let saved_under = self.caps_under.clone();
+         let mut mod_q = false;
+         if let Some(m) = &func.module {
+-            // печатка модуля діє: права — перетин прав агента й печатки модуля
+-            self.caps = Rc::new(intersect_caps(&self.caps, &m.caps, &self.cwd));
++            // печатка модуля діє: права — перетин прав агента й печатки модуля. Права, вже звужені цією печаткою
++            // (рекурсія функції модуля, функції двох модулів по черзі), другий перетин не змінює — його й не рахуємо:
++            // перетин ходить на диск по справжній шлях кожної теки (суд 16: 19 000 викликів, 10 тек — 15 с)
++            let mut under = match &self.caps_under {
++                Some((c, u)) if Rc::ptr_eq(c, &self.caps) => u.clone(),
++                _ => Vec::new(),
++            };
++            if !under.iter().any(|u| Rc::ptr_eq(u, &m.caps)) {
++                self.caps = Rc::new(intersect_caps(&self.caps, &m.caps, &self.cwd));
++                under.push(m.caps.clone());
++                self.caps_under = Some((self.caps.clone(), under));
++            }
+             if !m.caps.quotas.is_empty() {
+                 mod_q = true;
+                 self.quota_stack.push(Rc::new(QuotaTable {
+@@ -956,6 +990,7 @@ impl Interp {
+             self.quota_stack.pop();
+         }
+         self.caps = saved_caps;
++        self.caps_under = saved_under;
+         self.pc = saved;
+         self.leave(lam.height);
+         r
+@@ -1199,17 +1234,17 @@ impl Interp {
+                     }
+                 }
+                 let cpc = self.cpc();
+-                self.try_stack.push(cpc);
++                self.try_stack.push((cpc, 1.0));
+                 match self.eval(&argn[0], env) {
+                     Ok(res) => {
+-                        let tc = self.try_stack.pop().unwrap();
++                        let tc = self.try_pop();
+                         self.taint_effects(&[&argn[0]], tc);
+                         self.fn_effects(&argn[1], tc);
+                         if tc < res.c { self.copied(capc(&res, tc), g, pos) } else { Ok(res) }
+                     }
+                     Err(e) if e.fatal => Err(e),
+                     Err(e) => {
+-                        let tc = self.try_stack.pop().unwrap().min(e.c);
++                        let tc = self.try_pop().min(e.c);
+                         self.taint_effects(&[&argn[0]], tc);
+                         self.fn_effects(&argn[1], tc);
+                         let agent = self.agent.clone();
+@@ -2057,10 +2092,13 @@ pub fn intersect_caps(a: &Caps, b: &Caps, cwd: &str) -> Caps {
+             out.tools.push((t.clone(), Vec::new()));
+             continue;
+         }
+-        let real = |x: &str| pathx::realpath(&pathx::join(cwd, x));
++        let real = |x: &String| pathx::realpath(&pathx::join(cwd, x));
+         let mut keep: Vec<String> = if kind == "тека" {
+-            let mut k: Vec<String> = sa.iter().filter(|x| sb.iter().any(|y| pathx::inside(&real(x), &real(y)))).cloned().collect();
+-            k.extend(sb.iter().filter(|y| sa.iter().any(|x| pathx::inside(&real(y), &real(x)))).cloned());
++            // справжній шлях — раз на запис, а не на кожну пару: K записів коштували 8·K² обходів диска (суд 16)
++            let (ra, rb): (Vec<String>, Vec<String>) = (sa.iter().map(real).collect(), sb.iter().map(real).collect());
++            let mut k: Vec<String> =
++                sa.iter().zip(&ra).filter(|(_, rx)| rb.iter().any(|ry| pathx::inside_canon(rx, ry))).map(|(x, _)| x.clone()).collect();
++            k.extend(sb.iter().zip(&rb).filter(|(_, ry)| ra.iter().any(|rx| pathx::inside_canon(ry, rx))).map(|(y, _)| y.clone()));
+             k
+         } else if kind == "команда" {
+             let mut k: Vec<String> = sa.iter().filter(|x| sb.iter().any(|y| crate::parser::cmd_within(x, y))).cloned().collect();
 diff --git a/athanor/src/lang.rs b/athanor/src/lang.rs
 index a4ca666..b22c68e 100644
 --- a/athanor/src/lang.rs
@@ -33,10 +238,18 @@ index a4ca666..b22c68e 100644
  pub const MAX_WORK: u64 = 200000;
  pub const MAX_SIZE: u64 = 5000000;
 diff --git a/athanor/src/main.rs b/athanor/src/main.rs
-index c022110..248fbee 100644
+index c022110..8676448 100644
 --- a/athanor/src/main.rs
 +++ b/athanor/src/main.rs
-@@ -488,6 +488,7 @@ fn execute(
+@@ -443,6 +443,7 @@ fn execute(
+         memory: Default::default(),
+         agent: "головний".into(),
+         caps: Rc::new(Default::default()),
++        caps_under: None,
+         seal_caps: Rc::new(Default::default()),
+         pc: 1.0,
+         halt_c: 1.0,
+@@ -488,6 +489,7 @@ fn execute(
                  ("слід".into(), J::Int(o.tsize as i64)),
                  ("зерно".into(), J::Num(o.seed.trim_start_matches('+').to_string())),
                  ("облік".into(), J::s("робота")), // облік 1.2 «робота»; «нове» — 1.1 (суд 14), слід без поля — облік 1.0
@@ -44,8 +257,42 @@ index c022110..248fbee 100644
              ]),
          ),
      ];
+@@ -774,8 +776,10 @@ fn main() {
+     if sample.is_some() {
+         sampler::start();
+     }
+-    // межа мови — MAX_WORK (200 000 рівнів: виклики × висота тіл, суд 9б) і MAX_NEST верхнього рівня; кадр ☂ чи ¿ —
+-    // до ~2,6 КБ, тож справді треба до ~0,6 ГБ. Стек — лише віртуальна памʼять: зайнято стільки, скільки програма
++    // межа мови — MAX_WORK (200 000 рівнів: виклики × висота тіл, суд 9б) і MAX_NEST верхнього рівня; найважчий рівень —
++    // μ φ Σ ⇅ з рекурсією в місці списку, ~3,9 КБ (☂ ¿ ∧ ∨ ↻ — ~3,4 КБ), тож справді треба до ~0,8 ГБ (суд 16: вежа з
++    // 98 μ на 2000 викликів — 0,77 ГБ; Альбедо — 0,90 ГБ разом з господарем, з 1 ГБ стека модуля; усі гліфи й місця
++    // аргументів обійдено вежами). Стек — лише віртуальна памʼять: зайнято стільки, скільки програма
+     // заглибилась (до суду 9б межею були 2000 × 1000 рівнів, і 4 ГБ бракувало — SIGABRT на ☂ і ¿)
+     let h = std::thread::Builder::new().stack_size(1 << 32).spawn(run).expect("потік");
+     let code = match h.join() {
+diff --git a/athanor/src/value.rs b/athanor/src/value.rs
+index a568c20..0612782 100644
+--- a/athanor/src/value.rs
++++ b/athanor/src/value.rs
+@@ -350,6 +350,16 @@ impl Env {
+         let module = parent.as_ref().and_then(|p| p.module.clone());
+         Rc::new(Env { vars: RefCell::new(vec![V::none(); n]), parent, module })
+     }
++    /// Назвати імʼя блоку: місце під імена росте в міру `←`, а не виділяється все при вході в блок. Інакше блок на K імен
++    /// коштував би K комірок за один крок, і рекурсія крізь такий блок тримала б їх на кожному активному виклику (суд 16,
++    /// Скептик: 1500 імен × 20 000 викликів — 1,27 ГБ за 190 тис. кроків; еталон кладе імена в словник так само — у міру).
++    pub fn put(&self, slot: usize, v: V) {
++        let mut vars = self.vars.borrow_mut();
++        if vars.len() <= slot {
++            vars.resize(slot + 1, V::none());
++        }
++        vars[slot] = v;
++    }
+     pub fn child(vars: Vec<V>, parent: &Rc<Env>) -> Rc<Env> {
+         Rc::new(Env { vars: RefCell::new(vars), parent: Some(parent.clone()), module: parent.module.clone() })
+     }
 diff --git a/interpreter/nigredo.py b/interpreter/nigredo.py
-index 6ce01e4..83d2a51 100755
+index 6ce01e4..924620e 100755
 --- a/interpreter/nigredo.py
 +++ b/interpreter/nigredo.py
 @@ -21,8 +21,10 @@ import decimal
@@ -61,27 +308,90 @@ index 6ce01e4..83d2a51 100755
  WALK_MAX_DEPTH = 2000     # показ, порівняння, JSON, ключі ⇅ обходять значення не глибше: далі — «вкладене надто глибоко»
  #                           (межа мови, а не стека CPython — та сама в еталоні й Атанорі, від версії Python не залежить)
  MAX_NEST = 1000                   # вкладеність виразу в тексті програми (глибше — помилка до запуску, суд 8)
-@@ -272,9 +274,16 @@ def v_with(x, c, s):
+@@ -272,10 +274,21 @@ def v_with(x, c, s):
      return r
  
  
 -def too_deep(depth):
 -    """Текст межі глибини: 2000 викликів чи MAX_WORK (виклики × висота їхніх тіл) — однаковий в обох виконавцях."""
 -    return 'надто глибока рекурсія' if depth > MAX_DEPTH else \
+-        f'надто глибока рекурсія: виклики × вкладеність їхнього коду — понад {MAX_WORK} рівнів'
 +def limits_calls(opts):
-+    """Поле «виклики» запису «початок»: межа вкладених викликів цього запуску. Повтор сліду 1.0–1.2 (без поля) пише свій слід
-+    теж без нього — так слід повтору каже ті самі межі, що й слід, який повторювали."""
-+    calls = opts.get('calls', MAX_DEPTH)
-+    return {} if calls == MAX_DEPTH_OLD and opts.get('replay') else {'виклики': calls}
++    """Поле «виклики» запису «початок»: межа вкладених викликів цього запуску. Його пише кожен слід від 1.3 — і слід повтору
++    старого сліду (там межа 2000): слід без поля записала 1.0–1.2, і тільки вона (суд 16, Скептик)."""
++    return {'виклики': opts.get('calls', MAX_DEPTH)}
 +
 +
 +def too_deep(depth, calls=MAX_DEPTH):
-+    """Текст межі глибини: межа викликів чи MAX_WORK (виклики × висота їхніх тіл) — однаковий в обох виконавцях."""
-+    return 'надто глибока рекурсія' if depth > calls else \
-         f'надто глибока рекурсія: виклики × вкладеність їхнього коду — понад {MAX_WORK} рівнів'
++    """Текст межі глибини: межа викликів чи MAX_WORK (виклики × висота їхніх тіл) — однаковий в усіх виконавцях. Від 1.3
++    текст називає межу й виклик, на якому зупинились (суд 16: без числа зупинку на 20 000 не відрізнити від зупинки на
++    2000, а «виклики × вкладеність» нема з чого порахувати). Повтор сліду 1.0–1.2 (межа 2000) дає тодішній текст."""
++    if calls == MAX_DEPTH_OLD:
++        return 'надто глибока рекурсія' if depth > calls else \
++            f'надто глибока рекурсія: виклики × вкладеність їхнього коду — понад {MAX_WORK} рівнів'
++    return f'надто глибока рекурсія: понад {calls} вкладених викликів' if depth > calls else \
++        f'надто глибока рекурсія: понад {MAX_WORK} рівнів на {depth}-му вкладеному виклику (рівні — сума висот тіл активних викликів)'
  
  
-@@ -6443,7 +6452,7 @@ def check_allowlist(caps, allowed, cwd):
+ class Fn:
+@@ -2749,6 +2762,14 @@ def _verify(path, program=None):
+     notes = [f'виконавець: {engine} (' + ('sha256 джерел ' if engine == 'Атанор' else 'sha256 модуля ' if engine == 'Альбедо' else 'sha256 nigredo.py ')
+              + str(head.get('інтерпретатор', '')).removeprefix('атанор:').removeprefix('альбедо:')[:16] + '…; ngr --відбиток — для порівняння)', f'тека {safe(str(head.get("тека", "—")))}',
+              f'аргументи {safe(json.dumps(head.get("аргументи"), ensure_ascii=False))}']
++    # версія сліду й межа вкладених викликів: дві зупинки «надто глибока рекурсія» — на 2000 (1.0–1.2) і на 20 000 —
++    # у підсумку були однакові (суд 16, Аудитор). Слід без поля записала 1.0–1.2: межа 2000
++    lim_head = head.get('ліміти') if isinstance(head.get('ліміти'), dict) else {}
++    calls_lim = lim_head.get('виклики', MAX_DEPTH_OLD) if 'печатка' in events or lim_head else None
++    info['версія'], info['межа_викликів'] = head.get('версія'), calls_lim
++    if calls_lim is not None and not head.get('отримання'):
++        notes.append(f'версія сліду {safe(str(head.get("версія", "—")))}; межа вкладених викликів {safe(str(calls_lim))}'
++                     + ('' if 'виклики' in lim_head else ' (поля в сліді немає: 1.0–1.2)'))
+     if isinstance(head.get('підпис'), dict):    # фаза 6.3: програму підписано — чий ключ (імʼя — з дозволів власника)
+         g = head['підпис']
+         notes.append(f'підпис автора: {safe(str(g.get("ключ")))}'
+@@ -6317,9 +6338,11 @@ def intersect_caps(a, b, cwd):
+             out[t] = []
+             continue
+         if TOOLS[t][4] == 'тека':
+-            real = lambda x: os.path.realpath(os.path.join(cwd, x))      # noqa: E731
+-            keep = [x for x in sa if any(inside(real(x), real(y)) for y in sb)] + \
+-                   [y for y in sb if any(inside(real(y), real(x)) for x in sa)]
++            ra = [os.path.realpath(os.path.join(cwd, x)) for x in sa]    # справжній шлях — раз на запис, а не на кожну
++            rb = [os.path.realpath(os.path.join(cwd, y)) for y in sb]    # пару: K записів коштували 8·K² обходів диска
++            within = lambda p, base: p == base or p.startswith(base + os.sep)      # noqa: E731 — inside для справжніх
++            keep = [x for x, rx in zip(sa, ra) if any(within(rx, ry) for ry in rb)] + \
++                   [y for y, ry in zip(sb, rb) if any(within(ry, rx) for rx in ra)]
+         elif TOOLS[t][4] == 'команда':
+             keep = [x for x in sa if any(cmd_within(x, y) for y in sb)] + [y for y in sb if any(cmd_within(y, x) for x in sa)]
+         else:
+@@ -6329,6 +6352,26 @@ def intersect_caps(a, b, cwd):
+     return out
+ 
+ 
++def fn_heights(prog):
++    """Названі функції програми (← імʼя λ…, і вкладені в блоки й тіла) з висотою тіла — для межі рівнів (§4): рекурсії
++    дістається 200 000 / висота викликів. Модулі не обходимо: їхні функції показує перевірка самого модуля."""
++    out = []
++
++    def walk(n):
++        if isinstance(n, tuple) and n:
++            if n[0] == 'import':
++                return
++            if n[0] == 'bind' and isinstance(n[3], tuple) and n[3] and n[3][0] == 'lam':
++                out.append({'імʼя': n[2], 'рядок': n[1][0], 'висота': n[3][4]})
++            for x in n[1:]:
++                walk(x)
++        elif isinstance(n, list):
++            for x in n:
++                walk(x)
++    walk(prog)
++    return out
++
++
+ def delegations(prog):
+     """Пари (дозволи батька, дозволи субагента, імʼя) для всіх 🜁 у програмі."""
+     out = []
+@@ -6443,7 +6486,7 @@ def check_allowlist(caps, allowed, cwd):
  
  class Interp:
      def __init__(self, trace, seed=0, steps=DEFAULT_STEPS, cwd='.', out=None, argv=(), protected=(), max_size=MAX_SIZE,
@@ -90,7 +400,19 @@ index 6ce01e4..83d2a51 100755
          self.trace, self.rng = trace, random.Random(seed)
          self.argv, self.protected = list(argv), set(protected)
          self.max_size = max_size
-@@ -6465,6 +6474,7 @@ class Interp:
+@@ -6456,15 +6499,18 @@ class Interp:
+         self.steps_left, self.cwd = steps, os.path.abspath(cwd)
+         self.out = out or sys.stdout
+         self.memory, self.agent, self.caps, self.seal_caps = {}, 'головний', {}, {}
++        self.caps_under = (None, ())       # (права, печатки модулів, якими їх уже звужено): виклик функції модуля
++        self.caps_under = (None, ())       # (права, печатки модулів, якими їх уже звужено): mod_caps
+         self.modules = {}      # справжній шлях модуля → його імена (модуль виконується один раз)
+         self.pc = 1.0          # впевненість контексту керування: усе, що створено тут, не впевненіше
+         self.halt_c = 1.0      # канал завершення: після пройденої сумнівної 🜍 решта запуску не впевненіша
+         self.mem_c = 1.0       # наскільки сумнівними були ключі, якими писали в памʼять
+-        self.try_stack = []    # для кожного ☂: найменша впевненість усього, що обчислено в його тілі
++        self.try_stack = []    # для кожного ☂: [впевненість на вході, найменша з позначених у його тілі] (try_pop)
+         self.world_c = 1.0     # наскільки сумнівно могли змінити зовнішній стан (жереб, файли, агенти, мережа)
          self.decided_c = 1.0   # найсумнівніше рішення в запуску: від нього залежить і тривалість (годинник)
  
          self.depth = self.wdepth = 0       # викликів і їхньої сумарної висоти (MAX_DEPTH, MAX_WORK)
@@ -98,7 +420,31 @@ index 6ce01e4..83d2a51 100755
          self.defer_node = None  # тіло ‖, чий виклик інструмента відкладено
          self.tl = threading.local()   # для дії інструмента (і в потоці ‖): справжні шляхи, які він узяв
          self.ends = 0           # скільки записів «інструмент» уже зроблено (номер виклику для повтору)
-@@ -6880,10 +6890,10 @@ class Interp:
+@@ -6765,10 +6811,19 @@ class Interp:
+             self.world_c = min(self.world_c, c)
+ 
+     def taint(self, c):
+-        if c < 1:
+-            for i, t in enumerate(self.try_stack):
+-                if c < t:
+-                    self.try_stack[i] = c
++        """Сумнівне значення, прочитане в тілі ☂: позначити найближчий ☂. Зовнішнім позначку передасть try_pop — раніше тут
++        обходили весь стек ☂ на кожному читанні, і рекурсія крізь ☂ була квадратичною за часом (суд 16, Практик: 20 000
++        викликів — 22 с в еталоні)."""
++        if c < 1 and self.try_stack and c < self.try_stack[-1][1]:
++            self.try_stack[-1][1] = c
++
++    def try_pop(self):
++        """Кінець тіла ☂: найменша впевненість усього, що в ньому обчислено, — та, з якою ввійшли, і все позначене всередині.
++        Позначене дістає й зовнішній ☂: обчислене у вкладеному тілі обчислено й у зовнішньому."""
++        init, low = self.try_stack.pop()
++        if low < 1 and self.try_stack and low < self.try_stack[-1][1]:
++            self.try_stack[-1][1] = low
++        return min(init, low)
+ 
+     def fresh_copy(self, x, c, g, pos):
+         """capc поза гліфом (виклик невпевненої функції, розбір λ【】, елементи φ ⊞, 🜄, 🜍): облік 1.2 списує копію
+@@ -6880,10 +6935,10 @@ class Interp:
          if fn.c >= 1 and f.mod is None and f.simple:      # швидкий шлях: pc, taint, права не змінюються
              self.depth += 1
              self.wdepth += f.h
@@ -111,7 +457,7 @@ index 6ce01e4..83d2a51 100755
              env = dict(zip(f.params, args))
              env['\0parent'] = f.env
              try:
-@@ -6897,8 +6907,8 @@ class Interp:
+@@ -6897,18 +6952,24 @@ class Interp:
                  self.wdepth -= f.h
          self.depth += 1
          self.wdepth += f.h
@@ -122,7 +468,105 @@ index 6ce01e4..83d2a51 100755
          saved = self.pc
          self.pc = min(saved, fn.c)
          self.taint(fn.c)
-@@ -8812,7 +8822,7 @@ def cheatsheet():
+         if fn.c < 1:
+             self.taint_effects((f.body,), fn.c)
+             self.halt_risk(fn.c, f.body)
+-        saved_caps, saved_pure = self.caps, self.pure
++        saved_caps, saved_pure, saved_under = self.caps, self.pure, self.caps_under
+         mod_q = f.mod is not None and bool(getattr(f.mod[1], 'quotas', None))
+         if f.mod is not None:          # печатка модуля діє: права — перетин прав агента й печатки модуля
+-            self.caps = intersect_caps(self.caps, f.mod[1], self.cwd)    # модуль з мережі: печатка гола — прав немає
++            # (модуль з мережі: печатка гола — прав немає). Права, вже звужені цією печаткою (рекурсія функції модуля,
++            # функції двох модулів по черзі), другий перетин не змінює — його й не рахуємо: перетин ходить на диск по
++            # справжній шлях кожної теки, і 19 000 вкладених викликів з печаткою на 10 тек тривали 38 с (суд 16)
++            under = self.caps_under[1] if self.caps_under[0] is self.caps else ()
++            if not any(m is f.mod[1] for m in under):
++                self.caps = intersect_caps(self.caps, f.mod[1], self.cwd)
++                self.caps_under = (self.caps, under + (f.mod[1],))
+             if f.mod[2]:               # і жодних дій без інструментів — до кінця виклику, і в λ того, хто кличе (§6.2);
+                 self.pure = f.mod[0]   # self.pure — адреса модуля, у виклику якого це діє (для сліду й помилки)
+             if mod_q:                  # і квоти модуля — на весь запуск, усі виклики його функцій (суд 8)
+@@ -6937,7 +6998,7 @@ class Interp:
+         finally:
+             if mod_q:
+                 self.quota_stack.pop()
+-            self.caps, self.pure = saved_caps, saved_pure
++            self.caps, self.pure, self.caps_under = saved_caps, saved_pure, saved_under
+             self.pc = saved
+             self.depth -= 1
+             self.wdepth -= f.h
+@@ -7310,30 +7371,35 @@ class Interp:
+                 h = E(1)
+                 if not isinstance(h.v, Fn):
+                     raise NgrError(f'☂: обробник має бути функцією (λe …), а не {kind(h)}', pos)
+-            self.try_stack.append(self.cpc)
++            self.try_stack.append([self.cpc, 1.0])
+             try:
+                 res = E(0)
+-                tc = self.try_stack.pop()
++                tc = self.try_pop()
+                 self.taint_effects((argn[0],), tc)            # чи дійшло тіло до кінця й чи був обробник — від даних
+                 self.fn_effects(argn[1], tc)
+                 return self.copied(capc(res, tc), g, pos) if tc < res.c else res
+             except Fatal:
+                 raise
+-            except NgrError as e:
+-                tc = min(self.try_stack.pop(), e.c)
+-                self.taint_effects((argn[0],), tc)
+-                self.fn_effects(argn[1], tc)
+-                src_mod = self.pure or e.via or (e.file if e.file and '#sha256=' in e.file else None)
+-                self.trace('помилку перехоплено', агент=self.agent, помилка=e.msg, впевненість=tc,   # з коду чи у виклику
+-                           **({'модуль': src_mod, 'текст_від': text_source(e, env)} if src_mod else {}))   # модуля з
+-                # мережі — котрого (суд 10, Мовознавець); і чий текст — за місцем ☠, а не за тим, чий ☂ (огляд 10б)
+-                saved = self.pc
+-                self.pc = min(saved, tc)
+-                try:
+-                    res = self.call(E(1), [V(e.msg, tc)], pos)
+-                finally:
+-                    self.pc = saved
+-                return self.copied(capc(res, tc), g, pos) if tc < res.c else res
++            except NgrError as caught:
++                e = caught
++            # Обробник кличемо вже поза except: інакше кожна помилка в ньому чіпляється до перехопленої (__context__), і
++            # CPython на кожному raise обходить увесь ланцюжок — N помилок одна в одній коштували N² (суд 16, Мовознавець).
++            tc = min(self.try_pop(), e.c)
++            self.taint_effects((argn[0],), tc)
++            self.fn_effects(argn[1], tc)
++            src_mod = self.pure or e.via or (e.file if e.file and '#sha256=' in e.file else None)
++            self.trace('помилку перехоплено', агент=self.agent, помилка=e.msg, впевненість=tc,   # з коду чи у виклику
++                       **({'модуль': src_mod, 'текст_від': text_source(e, env)} if src_mod else {}))   # модуля з
++            # мережі — котрого (суд 10, Мовознавець); і чий текст — за місцем ☠, а не за тим, чий ☂ (огляд 10б)
++            msg = e.msg
++            del e                                 # помилка тримає кадри Python, де сталася: не тримати їх, доки йде обробник
++            saved = self.pc
++            self.pc = min(saved, tc)
++            try:
++                res = self.call(E(1), [V(msg, tc)], pos)
++            finally:
++                self.pc = saved
++            return self.copied(capc(res, tc), g, pos) if tc < res.c else res
+         if g == '‖':
+             lst = E(0)
+             self.taint(lst.c)
+@@ -8738,6 +8804,17 @@ def cheatsheet():
+             '- `☂` ловить помилки програми, а не межі запуску: `--кроки`, `--розмір`, надто глибока рекурсія зупиняють усе.',
+             '- `✓ x 『「a」 「число」 「…」 「рядок」』` — інші поля перевіряються як рядок; межі: `「число:¯5..5」`, `「рядок:1..」`',
+             '  (довжина — у символах, пробіли й невидимі теж: «порожнє на око» пройде — спершу `⊢`); `「дата」` — без часу.',
++            '- Рекурсія: дві межі — 20 000 вкладених викликів (тіло `↻ Σ μ φ …` — теж виклик) і 200 000 рівнів: сума висот тіл',
++            '  активних викликів. Висота — найглибша вкладеність виразу в тексті тіла, з гілками, що не виконуються, і тілами',
++            '  вкладених λ; її показує `ngr --перевірити --json` («функції»). Тіло до 10 рівнів зупинять виклики, глибше —',
++            '  рівні: викликів вийде 200 000 / висота (тіло на 25 рівнів — 8000). Треба глибше — винеси глибокий вираз у',
++            '  названу функцію: рахуються лише активні виклики, а вона повернеться. Памʼять: ~5–25 КБ на активний виклик,',
++            '  до ~0,8 ГБ на межі рівнів (так було й у 1.2) — чужу програму запускай з межею памʼяті ОС.',
++            '- Стан, що росте вниз по рекурсії (`✎ ＋ ⊏` на кожному рівні), кожен рівень тримає своєю копією — памʼять росте',
++            '  як квадрат глибини, до гігабайтів у межах мови: накопичуй у `Σ`/`↻` чи в `🜄`, а в рекурсію передавай індекс,',
++            '  а не решту списку.',
++            '- Значення, вкладене глибше 2000 рівнів, можна збудувати, але не показати й не порівняти: `» σ Δ ＝ ∋ ⇅ 🜄 〔〕` —',
++            '  «значення вкладене надто глибоко» (`☂` ловить).',
+             '- `ν` бере лише цифри 0–9 (`ν 「12.5」`, `ν 「¯3」`); `1_000` чи арабські цифри — не число.',
+             '- SQLite рахує дроби у float: `SUM(сума)` дає `0.30000000000000004`; гроші — сумуйте в Nigredo (`∫`) або',
+             '  зберігайте копійками (INTEGER). Дробовий параметр `?` іде **текстом** (точне десяткове): `? > 1000000`',
+@@ -8812,7 +8889,7 @@ def cheatsheet():
              '  квоти `≤N`, а не кроки), `--розмір` (логічний',
              '  розмір значення — символи й елементи разом зі спільними посиланнями, цілі й названі функції (1 + довжина імені); відповідь інструмента понад',
              '  нього — помилка інструмента, її ловить `☂`, а значення, яке створює сама програма, — ні), сумарно створене за запуск',
@@ -131,17 +575,39 @@ index 6ce01e4..83d2a51 100755
              '  і 200 000 рівнів: виклики × вкладеність їхнього коду).',
              '- Точкові права одній програмі: `ngr --схвалити файл.ngr` друкує відбиток і запис «для_програм» — його',
              '  додає до дозволів **власник** (агенти файл дозволів не пишуть). Змінений байт програми чи модуля — і схвалення',
-@@ -9257,6 +9267,9 @@ def replay_report(replay, new_trace, ends):
+@@ -8932,6 +9009,8 @@ USAGE = f"""Nigredo {VERSION}
+     --зерно N              зерно для «жереб» (типово 0)
+     --кроки N              ліміт кроків (типово {DEFAULT_STEPS})
+     --розмір N             найбільший рядок/список (типово {MAX_SIZE})
++                           (глибина рекурсії — без прапорця: {MAX_DEPTH} вкладених викликів і {MAX_WORK} рівнів — сума
++                           висот тіл активних викликів; висоти показує --перевірити --json)
+   ngr --перевірити [--json] ФАЙЛ   усі помилки до запуску (розбір, типи, регулярки) і печатка — без виконання
+   ngr --перевірити-слід ФАЙЛ [ПРОГРАМА] [--json]   цілість сліду й підсумок (з програмою — ще й чи слід саме від неї)
+   ngr --repl [--тека ТЕКА]  сеанс для агента: рядки JSON {{"код": "…"}} на вхід (перша частина — з печаткою 🜂),
+@@ -9245,8 +9324,9 @@ def replay_report(replay, new_trace, ends):
+             why = ''
+         print(f'✗ повтор розійшовся зі слідом: {"; ".join(problems)}{why}', file=sys.stderr)
+         return 5
+-    if str(replay['початок'].get('інтерпретатор', '')).startswith('атанор:'):
+-        print('  (слід записав Атанор, повторює еталон — повтор перевіряє й те, що виконавці поводяться однаково)',
++    if str(replay['початок'].get('інтерпретатор', '')).startswith(('атанор:', 'альбедо:')):
++        who = 'Атанор' if str(replay['початок']['інтерпретатор']).startswith('атанор:') else 'Альбедо'
++        print(f'  (слід записав {who}, повторює еталон — повтор перевіряє й те, що виконавці поводяться однаково)',
+               file=sys.stderr)
+     elif replay['початок'].get('інтерпретатор') != INTERP_SHA:
+         print('  (слід записано іншою версією еталона — повтор перевіряє й те, що поведінка не змінилася)',
+@@ -9257,6 +9337,10 @@ def replay_report(replay, new_trace, ends):
      elif (replay['початок'].get('ліміти') or {}).get('облік') == 'нове':
          print('  (слід 1.1: кроки й «сумарно створено» повтор рахує так, як рахувала 1.1, — без обліку обходів для сліду '
                'й копій у виклику; так його й записано)', file=sys.stderr)
-+    if 'виклики' not in (replay['початок'].get('ліміти') or {}):
-+        print(f'  (слід 1.0–1.2: глибину рекурсії повтор міряє межею {MAX_DEPTH_OLD} викликів, як тоді; від 1.3 межа — '
-+              f'{MAX_DEPTH}, і слід її записує)', file=sys.stderr)
++    rcalls = (replay['початок'].get('ліміти') or {}).get('виклики', MAX_DEPTH_OLD)
++    if rcalls != MAX_DEPTH:
++        print(f'  (глибину рекурсії повтор міряє межею {rcalls} викликів — як у сліді, що повторюється: 1.0–1.2 мали {MAX_DEPTH_OLD} '
++              f'і поля «ліміти.виклики» не писали; від 1.3 межа — {MAX_DEPTH})', file=sys.stderr)
      if str(end_new.get('повідомлення', '')).startswith('✗ слід перевищив'):
          print(f'  (запуск зупинила межа сліду: повтор дійшов до того самого місця; що сталося після, слід не каже — '
                f'останній виклик, якщо є, міг відбутися, але його результату в сліді немає)', file=sys.stderr)
-@@ -9956,9 +9969,15 @@ def _main(argv, opts, it, value):
+@@ -9956,9 +10040,15 @@ def _main(argv, opts, it, value):
              print(f'✗ повторити неможливо: облік «{safe(str(lim.get("облік")))}» цей виконавець не знає (слід версії '
                    f'{safe(str(head.get("версія")))}, а це {VERSION}) — повторіть новішим ngr', file=sys.stderr)
              return 1
@@ -158,7 +624,15 @@ index 6ce01e4..83d2a51 100755
      if opts['mode'] == 'repl' and opts.get('dry'):   # суд 9б: сеанс мовчки діяв по-справжньому
          print('✗ --сухо не поєднується з --repl: частини сеансу діють по-справжньому; сухий прогін — для програми '
                'цілком: ngr --сухо ФАЙЛ (чи -e)', file=sys.stderr)
-@@ -10142,7 +10161,7 @@ def _main(argv, opts, it, value):
+@@ -10026,6 +10116,7 @@ def _main(argv, opts, it, value):
+                                           for e in errors],
+                               'обрізано': more,
+                               'печатка': {'в_межах': not missing, 'бракує': missing, 'попередження': warnings} if prog else None,
++                              **({'функції': fn_heights(prog)} if prog else {}),      # висота тіла — для межі рівнів (1.3)
+                               **({'бракує_модулів': lacks} if (lacks := lacking(errors)) else {})},
+                              ensure_ascii=False, indent=1))
+         else:
+@@ -10142,7 +10233,7 @@ def _main(argv, opts, it, value):
                час=datetime.now(timezone.utc).isoformat(timespec='seconds'), запуск=os.urandom(6).hex(),
                тека=safe(cwd), дозволи_власника=safe(source), дозволено=allowed,
                ліміти={'кроки': opts['steps'], 'розмір': opts['size'], 'слід': opts['tsize'], 'зерно': opts['seed'],
@@ -167,7 +641,7 @@ index 6ce01e4..83d2a51 100755
                **({'код': src} if path == '<-e>' else {}), **({'повтор': safe(os.path.realpath(opts['replay']))} if replay else {}),
                **({'підпис': {'ключ': author, 'імʼя': author_info['імʼя']}} if author else {}))
          if shown_args != prog_args:
-@@ -10159,7 +10178,8 @@ def _main(argv, opts, it, value):
+@@ -10159,7 +10250,8 @@ def _main(argv, opts, it, value):
                    f'  дозволи власника: {source}', file=sys.stderr)
              return 3
          interp = Interp(trace, seed=opts['seed'], steps=opts['steps'], cwd=cwd, argv=prog_args,
@@ -177,7 +651,7 @@ index 6ce01e4..83d2a51 100755
          owner_q = Caps()
          for t, sc, q in owner_quotas(allowed):      # кілька квот на те саме — діє менша (суд 8)
              owner_q.quotas[(t, sc)] = min(q, owner_q.quotas.get((t, sc), q))
-@@ -10298,7 +10318,7 @@ def repl_main(opts):
+@@ -10298,7 +10390,7 @@ def repl_main(opts):
                час=datetime.now(timezone.utc).isoformat(timespec='seconds'), запуск=os.urandom(6).hex(),
                тека=safe(cwd), дозволи_власника=safe(source), дозволено=allowed,
                ліміти={'кроки': opts['steps'], 'розмір': opts['size'], 'слід': opts['tsize'], 'зерно': opts['seed'],
@@ -186,41 +660,127 @@ index 6ce01e4..83d2a51 100755
                repl=True)
  
          def reject(text, msg, **extra):
+@@ -10379,15 +10471,15 @@ def repl_main(opts):
+             interp.out = buf
+             result = V(None)
+             stmts = prog[2][done:]
+-            interp.try_stack.append(interp.cpc)     # частина — як тіло ☂: сеанс іде далі й після її помилки
++            interp.try_stack.append([interp.cpc, 1.0])     # частина — як тіло ☂: сеанс іде далі й після її помилки
+             try:
+                 for st in stmts:
+                     result = interp.eval(st, top)
+-                interp.try_stack.pop()
++                interp.try_pop()
+             except Fatal:
+                 raise
+             except NgrError as e:
+-                tc = min(interp.try_stack.pop(), e.c)
++                tc = min(interp.try_pop(), e.c)
+                 interp.taint_effects(tuple(stmts), tc)    # що встигла змінити частина — не певніше за її провал
+                 interp.halt_c = min(interp.halt_c, tc)    # сеанс знає, що частина впала: решта — не впевненіша
+                 trace('помилка частини', повідомлення=safe(str(e)), впевненість=tc, прийнято=False, **err_fields(e))
 diff --git a/spec/SPEC.md b/spec/SPEC.md
-index dee10fd..82fe61b 100644
+index dee10fd..ea8ec5c 100644
 --- a/spec/SPEC.md
 +++ b/spec/SPEC.md
-@@ -225,8 +225,10 @@
+@@ -225,8 +225,18 @@
    дешевшим (§9). Час на крок залежить від операції й виконавця (виміри — `spec/пропозиції/облік.md`); обіцяно лише, що
    кожен обхід, який знайшли суди 14–15, платить кроки за розмір, крім названих у «Що лишається» пропозиції (ключ словника,
    рівний, але інший рядок; порівняння глибоких ключів `⇅`) — до 1.2 сотня кроків могла тривати хвилини;
 -- глибина рекурсії — 2000 викликів і 200 000 рівнів (сума висот тіл λ усіх активних викликів): «надто глибока рекурсія:
 -  виклики × вкладеність…»;
-+- глибина рекурсії — 20 000 викликів (до 1.3 — 2000) і 200 000 рівнів (сума висот тіл λ усіх активних викликів): «надто
-+  глибока рекурсія» чи «надто глибока рекурсія: виклики × вкладеність…». Тіло `↻ Σ μ φ …` — теж виклик. Під межу рівнів
-+  розраховано стек виконавців; межа викликів — 20 × вкладеність виразу, щоб програму з 1000 рівнів дужок могла розібрати
-+  рекурсією програма мовою Nigredo (`spec/пропозиції/глибина.md`);
++- глибина рекурсії — дві межі, зупиняє та, що спрацює першою (коли обидві разом — текст про виклики): 20 000 вкладених
++  викликів (до 1.3 — 2000) — «надто глибока рекурсія: понад 20000 вкладених викликів»; і 200 000 рівнів — «надто глибока
++  рекурсія: понад 200000 рівнів на N-му вкладеному виклику (рівні — сума висот тіл активних викликів)». До 1.3 тексти були
++  без чисел («надто глибока рекурсія», «…виклики × вкладеність їхнього коду — понад 200000 рівнів») — ними й далі
++  повторюється слід 1.0–1.2. Висота тіла λ — найглибша вкладеність виразу в його тексті: кожен гліф, дужка й аргумент —
++  рівень (тіло `глиб － ном 1` має висоту 3); рахуються й гілки, що не виконуються, і тіла вкладених λ, навіть якщо їх
++  ніхто не кличе, а коли таку λ кличуть, її висота додається ще раз. Тіло `↻ Σ μ φ …` — теж виклик. Отже 20 000 викликів
++  досяжні для тіл до 10 рівнів; глибшому тілу дістається 200 000 / висота викликів (тіло на 25 рівнів — 8000). Рахується
++  висота всього тіла, а не місця виклику в ньому, і лише активних викликів: глибокий вираз, винесений у названу функцію,
++  що повертається, глибини не забирає. Висоту кожної названої функції показує `--перевірити --json` («функції»). Під межу
++  рівнів розраховано стек виконавців; межа викликів — 20 × вкладеність виразу, щоб програму з 1000 рівнів дужок могла
++  розібрати рекурсією програма мовою Nigredo (`spec/пропозиції/глибина.md`);
  - вкладеність виразу в тексті — до 1000 рівнів: глибше — помилка до запуску (код 2, «відмова» в сліді);
  - розмір значення (`--розмір`, типово 5 000 000) — логічний: символи й елементи разом зі спільними посиланнями, цілі, і
    функції (1 + довжина імені: показ функції — `λ` та імʼя; з 1.2, у повторі слідів 1.0 і 1.1 — 1);
-@@ -677,7 +679,8 @@ stderr. Розмір сліду — `--слід-розмір` (типово 50 0
- - `початок` — `версія`, `інтерпретатор` (sha256 джерел еталона; Атанор — `атанор:<sha256 джерел>`), `програма`,
+@@ -315,7 +325,9 @@
+ - на верхньому рівні модуль лише називає — функції (`← f λ…`) і сталі без викликів і без гліфів, що беруть функції,
+   — і бере інші модулі (`⊃`); дії — лише у функціях;
+ - печатка модуля **не виконується**: права агента вона не змінює; функція модуля діє з **перетином** прав того, хто
+-  її викликає, і печатки модуля; відносні шляхи в модулі — від теки головної програми;
++  її викликає, і печатки модуля (теки — за справжніми шляхами на вході у виклик; вкладений виклик функції модуля, чиєю
++  печаткою права вже звужено, їх не міняє — перетин удруге дав би те саме, 1.3); відносні шляхи в модулі — від теки
++  головної програми;
+ - модуль із теки запису — відмова (код 3); помилка в модулі називає файл модуля; `--розбір` перекладає й тіла
+   модулів; `--перевірити-слід СЛІД ПРОГРАМА` і `--повторити` звіряють sha256 кожного модуля («✗ модуль … тепер
+   ІНШИЙ»); у REPL модуль, змінений посеред сеансу, — відмова;
+@@ -674,10 +686,12 @@ stderr. Розмір сліду — `--слід-розмір` (типово 50 0
+ дані події, `попередній` і `хеш` = перші 16 hex HMAC-SHA256 запису без хешу ключем власника
+ `~/.nigredo/ключ` (створюється сам, 0600). Запис іде **до** дії й до друку; `№` неперервний; sha256 програми — від
+ сирих байтів; слід лишає й відмова розбору. Події:
+-- `початок` — `версія`, `інтерпретатор` (sha256 джерел еталона; Атанор — `атанор:<sha256 джерел>`), `програма`,
++- `початок` — `версія`, `інтерпретатор` (sha256 джерел еталона; Атанор — `атанор:<sha256 джерел>`; Альбедо, Атанор як
++  модуль WebAssembly під господарем, — `альбедо:<sha256 модуля>`), `програма`,
    `sha256`, `аргументи`, `час`, `запуск`, `тека`, `дозволи_власника`, `дозволено` (повністю), `ліміти` (`кроки`,
    `розмір`, `слід`, `зерно`, `облік` — як рахували створене й кроки: `робота` з 1.2, `нове` — 1.1; у сліді 1.0 поля немає —
 -  облік 1.0, «кожне нове значення — увесь логічний розмір»), для `-e` — `код`; у повтору — `повтор`, у сеансу — `repl`; підпис — `підпис`;
-+  облік 1.0, «кожне нове значення — увесь логічний розмір»; `виклики` — межа вкладених викликів, з 1.3; у сліді 1.0–1.2 поля
-+  немає — 2000), для `-e` — `код`; у повтору — `повтор`, у сеансу — `repl`; підпис — `підпис`;
++  облік 1.0, «кожне нове значення — увесь логічний розмір»; `виклики` — межа вкладених викликів, його пише кожен слід від
++  1.3; слід без поля записала 1.0–1.2 — межа 2000, і повтор такого сліду пише у свій слід `виклики`: 2000), для `-e` — `код`; у повтору — `повтор`, у сеансу — `repl`; підпис — `підпис`;
  - `печатка`, `ізоляція` (замок ОС, §5) одразу після неї; `відмова` — лише відмова **на старті** (розбір, печатка поза
    дозволами, криві аргументи);
  - `виклик` — до дії інструмента, що змінює світ (`жереб`, `писати`, `бд.писати`, `процес`, `агент`, `взяти`,
-@@ -959,6 +962,11 @@ HTTP, розмір, строк, LFS, інший вміст у клоні; 2 —
+@@ -761,12 +775,14 @@ ngr -h | --help
+   `запобіжні_відмови` (списки рядків: агент, інструмент, що й чому), `скасовано`, `перехоплено_помилок`,
+   `перехоплено_в_модулях` (`модуль`, `текст_від`, `помилка`), `помилка_з_модуля`, `підсумовано_значень`,
+   `піднято_впевненість`, `підпис` (`ключ`, `імʼя` чи `null`), `схвалено_власником`, `ізоляція` (`ядро`, `закрито`,
+-  `причина`), `модулі` (`шлях`, `sha256`, `з_мережі`, `джерело`); за потреби — `виклик_без_результату` (межа сліду влучила
++  `причина`), `модулі` (`шлях`, `sha256`, `з_мережі`, `джерело`), `версія` і `межа_викликів` (з 1.3: версія сліду й межа
++  вкладених викликів, за якою він писався; слід без поля `ліміти.виклики` — 2000); за потреби — `виклик_без_результату` (межа сліду влучила
+   між викликом і результатом), `внутрішня_помилка` (код 4); у сеансу REPL — ще `частини` й `відкинуто`; у сліду отримання —
+   `отримання` (`отримано`, `уже_було`, `замінено_пошкоджений`, `не_збіглося`).
+   Перевіряльнику агента: `цілий`, `режим: звичайний` і порожнє `заборонено`.
+ - `--перевірити --json`: `гаразд`, `помилки` (`рядок`, `стовпець`, `повідомлення`, `після_пропуску`), `обрізано`,
+-  `печатка` (`в_межах`, `бракує`, `попередження` чи `null`), `бракує_модулів`.
++  `печатка` (`в_межах`, `бракує`, `попередження` чи `null`), `бракує_модулів`; `функції` (з 1.3) — названі функції
++  програми: `імʼя`, `рядок`, `висота` тіла (§4, межа рівнів).
+ - `--перевірити-підпис --json`: `гаразд`, `код`, `підпис` (`ключ`, `цілий`, `імʼя` — з «для_авторів» чи `null`,
+   `модулі`), при коді 2 — `помилка_розбору`; права ключа й що з них бере програма — у `--печатка --json` (`підпис.права`, `підпис.бере`).
+ - `--тести --json`: `пройшли`, `усього`, `перевірок`, `пропущено_з_тек_запису`, `тести` (`файл`, `код`, `пройшов`,
+@@ -795,7 +811,7 @@ ngr -h | --help
+ **`--повторити СЛІД [ПРОГРАМА]`** — виконати знову без дій у світі. Умови: слід цілий; програма та сама (sha256; без
+ ПРОГРАМИ — з `тека` і `програма` сліду, для `-e` — `код`); модулі й `СЛІД.дані` звірено. Аргументи, тека, зерно й ліміти
+ — зі сліду, і облік створеного й кроків теж (`ліміти.облік`: `робота` — 1.2, `нове` — 1.1; без поля — облік 1.0): слід, зупинений межею, повтор зупиняє
+-там само й тим самим текстом; облік, якого виконавець не знає (слід новішої 1.x), — відмова, код 1. Інструменти не діють: виклик №i дає записане значення чи помилку; інший виклик — «повтор розійшовся» (код
++там само й тим самим текстом; облік, якого виконавець не знає (слід новішої 1.x), — відмова, код 1. Так само межа вкладених викликів — `ліміти.виклики` (без поля — 2000 і тодішні тексти зупинки: слід 1.0–1.2); межа, більша за ту, що знає виконавець, — відмова, код 1. Інструменти не діють: виклик №i дає записане значення чи помилку; інший виклик — «повтор розійшовся» (код
+ 5). Дозволи власника не потрібні (вимикача модулів не перевіряє); квоту за відмову повертає. Наприкінці звіряються
+ вивід, кількість викликів і завершення: 0 — збіглося, 5 — ні, 1 — помилка. Свій слід з полем `повтор`; слід, зупинений
+ `--слід-розмір`, — «✓ … межа сліду»; слід, обірваний читачем (`| head`), повтор обриває на тому самому виводі (суд 12). Сеанс REPL, слід `--сухо`, слід «відмова» і слід отримання не повторюються (відмова до повтору,
+@@ -903,6 +919,9 @@ HTTP, розмір, строк, LFS, інший вміст у клоні; 2 —
+ - облік межі: скільки кроків і «створено» коштує гліф, а отже число кроків у сліді, місце й текст зупинки на межі — лише
+   в бік дешевшого (що проходило, проходить; той самий `--кроки N` може купити більше роботи — дії обмежують квоти). Слід
+   пише облік (`ліміти.облік`), а повтор рахує за ним, тож слід, зупинений межею, повторюється тією самою зупинкою (п. 6);
++- межі глибини рекурсії (вкладені виклики, рівні; §4) — лише в бік більших: зупинку на них `☂` не ловить, тож жодна
++  програма на ній не розгалужується; слід пише межу викликів (`ліміти.виклики`), повтор бере її зі сліду. Глибина значень
++  (2000 рівнів) — інакше: це помилка, яку `☂` ловить, тож для неї діє правило меж інструментів нижче;
+ - межі за замовчуванням (`--кроки`, `--розмір`, `--слід-розмір`, час мережі й моста) — лише в бік більших; менші —
+   тільки як виняток безпеки, і тоді вичерпання саме цієї межі — зупинка, яку `☂` не ловить (як `--кроки`), а не
+   помилка інструмента, яку програма перехопила б і пішла іншою гілкою при коді 0 (суд 12, Аудитор). Межі
+@@ -959,6 +978,18 @@ HTTP, розмір, строк, LFS, інший вміст у клоні; 2 —
    Дорожче — те, що раніше працювало без плати, і `--розмір` значень із названими функціями (виняток безпеки вище). Слід
    пише `ліміти.облік`: `робота`; повтор сліду 1.1 рахує обліком 1.1, сліду 1.0 — обліком 1.0, з розміром функції 1
    (зразки — `tests/сумісність/межа-1.1/`, `межа-1.1б/`, `межа/`).
 +- **1.3** (2026-11-12, `spec/пропозиції/глибина.md`): межа вкладених викликів — 20 000 замість 2000; межа рівнів (200 000) і
 +  стек виконавців ті самі. Що в 1.2 доходило до кінця, доходить так само; що зупинялось на 2000 викликів — іде далі (цю
-+  зупинку `☂` не ловить, тож розгалузитись на ній програма не могла). Слід пише `ліміти.виклики`; повтор сліду 1.0–1.2 (без
-+  поля) рахує межею 2000 (зразки — `tests/сумісність/межа-1.2/`). Знайшов самохостинг: рекурсивний парсер мовою Nigredo не міг
++  зупинку `☂` не ловить, тож розгалузитись на ній програма не могла). 2000 викликів стримували ще й дані, які тримають
++  кадри рекурсії: рекурсія, що несе вниз стан, який росте, тепер доходить до бюджету даних мови («сумарно створено») — до
++  гігабайтів памʼяті процесу, як і програма без рекурсії в 1.2 (памʼятка, «Пастки»). Слід пише `ліміти.виклики`; повтор
++  сліду 1.0–1.2 (без поля) рахує межею 2000 (зразки — `tests/сумісність/межа-1.2/`, `межа-1.0-1.1/`). Разом із межею прибрано роботу, що
++  росла з глибиною (суд 16): позначка впевненості під вкладеними `☂` — сталий час; вкладений виклик функції модуля не
++  перетинає права вдруге (§4) — значення ті самі, що в 1.2. Текст зупинки на глибині тепер називає межу й виклик (§4;
++  `☂` його не бачить, а слід 1.0–1.2 повторюється тодішнім текстом), `--перевірити --json` показує висоти тіл («функції»),
++  `--перевірити-слід` — версію сліду й межу викликів. Глибина значень лишилась 2000 рівнів: дерево програми з 998 рівнів
++  вкладення мова будує, але показати чи порівняти його не може (`spec/пропозиції/глибина.md`, «Що лишається»). Знайшов самохостинг: рекурсивний парсер мовою Nigredo не міг
 +  розібрати програму з 1000 рівнів дужок, яку мова дозволяє.
  
  ## 10. Відкриті питання

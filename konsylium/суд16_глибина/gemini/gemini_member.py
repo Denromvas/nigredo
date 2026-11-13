@@ -96,5 +96,19 @@ def main():
     (HERE / 'розмова_раунд1.md').write_text('\n'.join(log), encoding='utf-8')
 
 
+def main2():
+    """Раунд 2: звіти раунду 1 й підсумок виправлень — остаточний голос."""
+    history, log = [], ['# Gemini — розмова, суд 16, раунд 2\n']
+    r1 = '\n\n'.join(f'# звіт раунду 1: {f.stem}\n{f.read_text()}' for f in sorted((K / 'protokol' / 'раунд1').glob('*.md')))
+    text = (f'{materials()}\n\n{r1}\n\n# protokol/ПІДСУМОК.md\n{(K / "protokol" / "ПІДСУМОК.md").read_text()}\n\n'
+            'Це РАУНД 2 суду 16. Прочитай звіти раунду 1 й підсумок виправлень; версія заморожена наново (ПРАВИЛА, «Раунд 2»). '
+            'Запускати код ти не можеш: звір за текстом змін (git diff вище), чи виправлення справді закривають знахідки й чи не '
+            'відкрили нових, позначай «за читанням». Напиши звіт раунду 2 за шаблоном ПРАВИЛ (Markdown, без вступу) з '
+            'остаточним голосом. Роль: «Gemini — незалежний експерт».')
+    report = say(history, log, text)
+    (HERE / 'звіт_раунд2.md').write_text(f'_Модель: {", ".join(sorted(set(USED)))}_\n\n' + report.strip() + '\n', encoding='utf-8')
+    (HERE / 'розмова_раунд2.md').write_text('\n'.join(log), encoding='utf-8')
+
+
 if __name__ == '__main__':
-    main()
+    main2() if sys.argv[1:] == ['2'] else main()
