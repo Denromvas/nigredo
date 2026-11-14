@@ -4727,8 +4727,9 @@ def main():
         spec.loader.exec_module(ng_)
         gc_ = ng_.glyphs_1x_clash()
         gold_ = ng_.glyphs_1x_clash('ηγ')
+        gman_ = ng_.glyphs_1x_clash('σ')      # ручна пара 'ơ': 'σ' — для гліфа 1.x такий запис був би зіткненням
         check(gc_ == [] and ng_.GLYPHS_1X == 'ζωψ' and all(g in ng_.GLYPHS for g in ng_.GLYPHS_1X)
-              and {('γ', 'y'), ('γ', 'у'), ('η', 'ŋ')} <= set(gold_),
+              and {('γ', 'y'), ('γ', 'у'), ('η', 'ŋ')} <= set(gold_) and ('σ', 'ơ') in gman_,
               '§9, «Нові гліфи в 1.x», друга умова: скелет гліфа, доданого в 1.x (ζ ω ψ), не має спільних символів зі '
               'скелетом жодного символу, що може стояти в імені, — перебір усього Unicode; відкинуті η і γ перевірка ловить '
               '(y, у, ŋ)', str(gc_[:10]) + str(gold_[:5]))
