@@ -40,7 +40,7 @@ fn compose(a: char, b: char) -> Option<char> {
     NFC_COMP.binary_search_by(|&(p, q, _)| (p, q).cmp(&(x, y))).ok().and_then(|i| char::from_u32(NFC_COMP[i].2))
 }
 
-/// Нормальна форма NFC (гліф η): розклад, канонічний порядок, складання — UAX #15, таблиці Unicode 15.1 з того самого
+/// Нормальна форма NFC (гліф ζ): розклад, канонічний порядок, складання — UAX #15, таблиці Unicode 15.1 з того самого
 /// Python, що й еталон. Рядок без «небезпечних» знаків уже в NFC.
 pub fn nfc(s: &str) -> String {
     if s.is_ascii() || !s.chars().any(norm_unsafe) {

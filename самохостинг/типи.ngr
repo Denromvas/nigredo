@@ -9,7 +9,7 @@
   「⌊」 【【「num」】】 「≅」 【【「num」 「num」】】 「⌗」 【【「num」 「num」】】 「…」 【【「num」 「num」】】 「‹」 【【「num」 「num」】 【「str」 「str」】】 「›」 【【「num」 「num」】 【「str」 「str」】】
   「≤」 【【「num」 「num」】 【「str」 「str」】】 「≥」 【【「num」 「num」】 【「str」 「str」】】 「∧」 【【「bool」 「bool」】】 「∨」 【【「bool」 「bool」】】 「¬」 【【「bool」】】
   「¿」 【【「bool」 「any」 「any」】】 「ρ」 【【「str」】 【「list」】 【「dict」】】 「§」 【【「list」 「num」】 【「str」 「num」】 【「dict」 「str」】】 「✂」 【【「str」 「str」】】
-  「⁀」 【【「list」 「str」】】 「⇄」 【【「str」 「str」 「str」】】 「⊢」 【【「str」】】 「⇣」 【【「str」】】 「⇡」 【【「str」】】 「η」 【【「str」】】 「γ」 【【「str」】】 「ω」 【【「str」】 【「num」】】 「ν」 【【「str」】】 「δ」 【【「str」】】
+  「⁀」 【【「list」 「str」】】 「⇄」 【【「str」 「str」 「str」】】 「⊢」 【【「str」】】 「⇣」 【【「str」】】 「⇡」 【【「str」】】 「ζ」 【【「str」】】 「ψ」 【【「str」】】 「ω」 【【「str」】 【「num」】】 「ν」 【【「str」】】 「δ」 【【「str」】】
   「◷」 【【「str」 「str」】 【「str」 「num」】】 「▦」 【【「str」】】 「χ」 【【「str」】 【「dict」】】 「↘」 【【「dict」 「str」】】 「✓」 【【「any」 「str」】 【「any」 「list」】 【「any」 「dict」】】
   「⌕」 【【「str」 「str」】】 「≋」 【【「str」 「str」 「str」】】
   「⊏」 【【「str」 「num」 「num」】 【「str」 「num」 「none」】 【「str」 「none」 「num」】 【「str」 「none」 「none」】 【「list」 「num」 「num」】 【「list」 「num」 「none」】 【「list」 「none」 「num」】 【「list」 「none」 「none」】】
@@ -20,7 +20,7 @@
   「↻」 【【「any」 「fn」 「fn」】】 「☂」 【【「any」 「fn」】】 「🜍」 【【「any」 「fn」】】 「►」 【【「fn」 「any」】】 「▶」 【【「fn」 「any」 「any」】】』
 ← РЕЗУЛЬТАТИ 『「∫」 「num」 「－」 「num」 「×」 「num」 「÷」 「num」 「‰」 「num」 「⌊」 「num」 「≅」 「num」 「ρ」 「num」 「ν」 「num」 「±」 「num」 「⊳」 「num」 「＝」 「bool」 「≠」 「bool」
   「‹」 「bool」 「›」 「bool」 「≤」 「bool」 「≥」 「bool」 「∧」 「bool」 「∨」 「bool」 「¬」 「bool」 「∋」 「bool」 「σ」 「str」 「τ」 「str」 「⌗」 「str」 「⁀」 「str」 「⇄」 「str」
-  「⊢」 「str」 「⇣」 「str」 「⇡」 「str」 「η」 「str」 「γ」 「str」 「≋」 「str」 「Δ」 「str」 「▦」 「list」 「ε」 「list」 「↘」 「list」 「‖」 「list」 「✂」 「list」 「μ」 「list」 「φ」 「list」 「⇅」 「list」
+  「⊢」 「str」 「⇣」 「str」 「⇡」 「str」 「ζ」 「str」 「ψ」 「str」 「≋」 「str」 「Δ」 「str」 「▦」 「list」 「ε」 「list」 「↘」 「list」 「‖」 「list」 「✂」 「list」 「μ」 「list」 「φ」 「list」 「⇅」 「list」
   「↑」 「list」 「⌕」 「list」 「κ」 「list」 「…」 「list」 「⚗」 「list」 「⌂」 「list」 「⊞」 「dict」 「№」 「dict」 「✎」 「dict」 「∀」 「none」 「»」 「none」 「🜄」 「none」 「☠」 「any」』
 ← ТИПИ_ІНСТРУМЕНТІВ 『「оракул」 【【「any」】 「bool」】 「жереб」 【【「num」】 「num」】 「час」 【【】 「str」】 「файл.читати」 【【「str」】 「str」】
   「файл.писати」 【【「str」 「str」】 「none」】 「файл.список」 【【「str」】 「list:str」】 「мережа.взяти」 【【「str」】 「str」】 「мережа.послати」 【【「str」 「any」】 「str」】
@@ -107,6 +107,7 @@
                       ¿ ∧ › ρ відомі 0 усі відомі λт ＝ т § відомі 0 § відомі 0 「any」
                   ¿ ＝ г 「¿」 спільний § справжні 1 § справжні 2
                     ¿ ∋ 「⊏↺≈🜍」 г § справжні 0
+                     ¿ ＝ г 「ω」 ¿ ＝ § справжні 0 「str」 「num」 ¿ ＝ § справжні 0 「num」 「str」 「any」
                       ¿ ∧ ∋ 「↑⇅φ」 г ＝ основа § справжні 0 「list」 § справжні 0
                         ¿ ∧ ＝ г 「§」 ∨ ＝ основа § справжні 0 「list」 ＝ § справжні 0 「str」 елемент § справжні 0
                           ¿ ∧ ∋ 「φ⇅」 г ＝ § справжні 0 「str」 「list:str」

@@ -258,6 +258,12 @@ impl Ck {
             }
             '¿' => join(actual[1].clone(), actual[2].clone()),
             '⊏' | '↺' | '≈' | '🜍' => actual[0].clone(),
+            'ω' => match actual[0] {
+                // рядок → число, число → рядок (суд 17)
+                Ty::Str => Ty::Num,
+                Ty::Num => Ty::Str,
+                _ => Ty::Any,
+            },
             '↑' | '⇅' | 'φ' if base(&actual[0]) == Ty::List => actual[0].clone(),
             '§' if matches!(base(&actual[0]), Ty::List | Ty::Str) => elem(&actual[0]),
             'φ' | '⇅' if actual[0] == Ty::Str => Ty::ListOf(Rc::new(Ty::Str)),

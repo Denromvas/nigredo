@@ -149,6 +149,8 @@ def main():
     out.append(f'pub static SIG_TARGET: &str = {rs(sig_t)};')
     out.append(f'pub static SIG_CHARS: [(u32, &str); {len(sig_u)}] = [' +
                ', '.join(f'({a}, {rs(b)})' for a, b in sig_u) + '];')
+    clash = N.glyphs_1x_clash()      # §9, «Нові гліфи в 1.x»: новий гліф не забороняє жодного імені 1.0 (суд 17)
+    assert not clash, f'гліф, доданий у 1.x, схожий на дозволене імʼя: {clash[:10]}'
     twins = sorted(N.glyph_twin_table().items())
     out.append(f'pub static DIGIT_SKELETON: &str = {rs(N.digit_skeleton())};')
     # літери, яких UTS #39 не радить для імен (interpreter/літери.tsv), і літери-цифри (丨 Ҙ ҙ): імʼя з ними розбирає еталон
@@ -217,7 +219,7 @@ def main():
             prev = k
     out.append(f'pub static SIGMA_CLASS: [(u32, u8); {len(runs)}] = [' + ', '.join(f'({a}, {b})' for a, b in runs) + '];')
 
-    # NFC (гліф η, 1.4): повний канонічний розклад (без складів хангиля — вони рахуються), класи поєднання, пари складання
+    # NFC (гліф ζ, 1.4): повний канонічний розклад (без складів хангиля — вони рахуються), класи поєднання, пари складання
     # (первинні складені: розклад на два знаки, який NFC складає назад)
     HANGUL = range(0xAC00, 0xD7A4)
     dec = [(cp, U.normalize('NFD', chr(cp))) for cp in range(MAXCP)

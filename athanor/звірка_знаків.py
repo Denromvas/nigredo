@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Звірка гліфів знаків Атанора (1.4) з unicodedata того Python, яким запускають. η (NFC): кожен знак Unicode окремо, а
+"""Звірка гліфів знаків Атанора (1.4) з unicodedata того Python, яким запускають. ζ (NFC): кожен знак Unicode окремо, а
 далі випадкові низки зі знаків, які нормалізація зачіпає (розкладні, з класом поєднання, перші й другі в парах
-складання, хангиль). γ (категорія) і ω (код і назад) — кожен знак.
+складання, хангиль). ψ (категорія) і ω (код і назад) — кожен знак.
 Запуск: python3 athanor/звірка_знаків.py [БІНАРНИК] [--низок N]. Код 0 — розбіжностей немає."""
 import json
 import os
@@ -20,8 +20,8 @@ def binary():
     return c[-1]
 
 
-def run(bin_, strings, tmp, body='μ η р λз ω з'):
-    """η над кожним рядком, результат — кодами знаків (ω): друк показує невидимі знаки як ⟨U+…⟩. Програма з самих ASCII
+def run(bin_, strings, tmp, body='μ ζ р λз ω з'):
+    """ζ над кожним рядком, результат — кодами знаків (ω): друк показує невидимі знаки як ⟨U+…⟩. Програма з самих ASCII
     (рядки — в JSON з \\u), тож Атанор виконує її сам."""
     data = json.dumps(strings, ensure_ascii=True).replace('\\', '\\\\').replace('」', '\\」')
     assert data.isascii()
@@ -69,14 +69,14 @@ def main():
             print(f'{name}: {len(items)}')
         for i in range(0, len(cps), 100_000):
             part = [chr(c) for c in cps[i:i + 100_000]]
-            got = run(bin_, part, tmp, '【γ р ω р ω ω ω р】')
+            got = run(bin_, part, tmp, '【ψ р ω р ω ω ω р】')
             for s, g in zip(part, got):
                 total += 1
                 if g != [U.category(s), ord(s), ord(s)]:
                     bad += 1
                     if bad <= 10:
-                        print(f'✗ γ ω: {hex(ord(s))} → {g}, а треба {[U.category(s), ord(s), ord(s)]}')
-        print(f'γ і ω кожного знака: {len(cps)}')
+                        print(f'✗ ψ ω: {hex(ord(s))} → {g}, а треба {[U.category(s), ord(s), ord(s)]}')
+        print(f'ψ і ω кожного знака: {len(cps)}')
     print(f'рядків {total}, знаків для низок {len(hot)}, розбіжностей {bad}')
     sys.exit(1 if bad else 0)
 

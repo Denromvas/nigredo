@@ -81,9 +81,9 @@ def expr():
     if k == 10:
         return f'✂ {data(text())} {data(rng.choice([",", " ", "ß", "Σ", "a"]))}'
     if k == 11:                     # знаки (1.4): NFC над низкою зі знаками поєднання, хангилем, винятками складання
-        return f'μ η {data("".join(rng.choice(NORM) for _ in range(rng.randint(0, 6))) + text(2))} λз ω з'
+        return f'μ ζ {data("".join(rng.choice(NORM) for _ in range(rng.randint(0, 6))) + text(2))} λз ω з'
     if k == 12:
-        return f'{rng.choice("γω")} {data(text(rng.choice([0, 1, 1, 1, 2])))}'
+        return f'{rng.choice("ψω")} {data(text(rng.choice([0, 1, 1, 1, 2])))}'
     if k == 13:
         return f'ω {rng.choice(["0", "55295", "55296", "57343", "57344", "1114111", "1114112", "¯1", "1.5", str(rng.randrange(0x110000))])}'
     return f'⊢ {data(text())}'
