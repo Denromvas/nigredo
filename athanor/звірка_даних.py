@@ -25,6 +25,8 @@ RX_PIECES = ['a', 'b', '.', '\\w', '\\W', '\\d', '\\s', '\\b', '^', '$', '\\Z', 
              '(?i)', '(?s)', '(?m)', '(?a)', '(a)', '(?:ab)', '(?P<x>b)', 'a|b', 'a*', 'a+?', 'b?', 'a{2}', 'a{1,3}',
              'a{4294967294}', 'a{4294967295}', 'a{99999999999999999999}', 'a{2,1}', '\\N{LATIN SMALL LETTER A}',
              'İ', 'ß', 'K', 'ſ', 'σ', 'Σ', '\\u0130', '\\x41', '[', ')', '(?<=a)', '\\1', '(?#c)', '\\²', 'é', '\\.']
+NORM = [chr(c) for c in (0x65, 0x301, 0x323, 0x302, 0x308, 0x328, 0x315, 0x5ae, 0x958, 0x915, 0x93c, 0x212b, 0x1e9b, 0x1100,
+                         0x1161, 0x11a8, 0xac00, 0xd4db, 0x9c7, 0x9be, 0x2126, 0xf900, 0x1d15e, 0x3099, 0x304b, 0x3a9, 0x44, 0x307)]
 REPL_PIECES = ['x', '\\1', '\\g<1>', '\\g<x>', '\\²', '\\n', '\\٣', '\\g<١>', '\\0', '\\\\', '\\q', '']
 
 
@@ -43,7 +45,7 @@ def text(n=None):
 
 
 def expr():
-    k = rng.randrange(12)
+    k = rng.randrange(15)
     if k == 0:
         pat = ''.join(rng.choice(RX_PIECES) for _ in range(rng.randint(1, 4)))
         return f'⌕ {data(text())} {data(pat)}'
@@ -78,6 +80,12 @@ def expr():
         return f'▦ {data(csv)}'
     if k == 10:
         return f'✂ {data(text())} {data(rng.choice([",", " ", "ß", "Σ", "a"]))}'
+    if k == 11:                     # знаки (1.4): NFC над низкою зі знаками поєднання, хангилем, винятками складання
+        return f'μ η {data("".join(rng.choice(NORM) for _ in range(rng.randint(0, 6))) + text(2))} λз ω з'
+    if k == 12:
+        return f'{rng.choice("γω")} {data(text(rng.choice([0, 1, 1, 1, 2])))}'
+    if k == 13:
+        return f'ω {rng.choice(["0", "55295", "55296", "57343", "57344", "1114111", "1114112", "¯1", "1.5", str(rng.randrange(0x110000))])}'
     return f'⊢ {data(text())}'
 
 

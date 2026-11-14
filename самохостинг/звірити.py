@@ -69,6 +69,7 @@ OWN = [re.compile(x) for x in (
     # печатка: зміст дозволів
     r'(намір печатки|дозвіл печатки|дозвіл субагента|імʼя субагента|намір субагента|шлях модуля): пробіли поспіль чи по краях',
     r'(намір печатки|дозвіл печатки|дозвіл субагента|імʼя субагента|намір субагента|шлях модуля): символи 「」',
+    r'(намір печатки|дозвіл печатки|дозвіл субагента|імʼя субагента|намір субагента|шлях модуля): керівні чи невидимі символи заборонені',
     r'дозвіл «.*»: квота — «≤N» у кінці', r'дозвіл «.*»: одна квота ≤N', r'дозвіл «.*»: квота ≤0', r'дві квоти на «',
     r'невідомий інструмент у дозволах: «', r'«.*» потребує обмеження: «', r'«.*»: команда — імʼя з PATH',
     r'«.*»: функція — повна назва', r'субагент «.*» просить «.*», якого немає в батька', r'субагент «.*» просить «.*» — у батька',
@@ -168,7 +169,7 @@ def nfc_names(n):
     """Імена в дереві парсера — до NFC, як їх зводить лексер еталона (лексер на Nigredo NFC не робить; звірка токенів це прощає так само)."""
     if not isinstance(n, list):
         return n
-    nfc = lambda x: nigredo.unicodedata.normalize('NFC', x) if isinstance(x, str) else x  # noqa: E731
+    nfc = lambda x: x   # з 1.4 лексер на Nigredo зводить імена сам (η): звірка імен — сувора  # noqa: E731
     if n and n[0] in ('var', 'call', 'bind') and len(n) > 3:
         n = n[:3] + [nfc(n[3])] + n[4:]
     elif n and n[0] == 'lam' and len(n) > 3 and isinstance(n[3], list):
@@ -201,7 +202,7 @@ def same(a, b):
         if ok and x[0] == 'num':
             ok = decimal.Decimal(str(x[1])) == decimal.Decimal(y[1]) and ('.' in y[1]) == isinstance(x[1], decimal.Decimal)
         elif ok:
-            ok = x[1] == y[1] or (x[0] == 'name' and nigredo.unicodedata.normalize('NFC', y[1]) == x[1])
+            ok = x[1] == y[1]      # і імена: лексер зводить їх до NFC сам (η, 1.4)
         if not ok:
             return f'еталон {x!r}, лексер {y!r}'
     return ''
@@ -265,10 +266,10 @@ def one(prog, work, steps):
         text = mine.split(' ', 1)[-1] if mine is not None else ''
         broke = mine is not None and not own(text) and not IN_MODULE.match(text) and not any(x in text for x in NOT_HERE)
         return prog, 'різниця' if broke else 'інші перевірки', f'еталон: {err[:200]}; парсер зламався: {mine[:300]}' if broke else '', tp, tn
-    nfc = lambda x: nigredo.unicodedata.normalize('NFC', x)  # noqa: E731
-    # лексер еталона зводить імена до NFC; мова цього не вміє: імʼя в тексті помилки порівнюємо після NFC (як імена в дереві),
+    nfc = lambda x: x  # з 1.4 без поблажки: імена зводить сам лексер (η)  # noqa: E731
+    # (до 1.4:) лексер еталона зводить імена до NFC; мова цього не вміє: імʼя в тексті помилки порівнюємо після NFC (як імена в дереві),
     # а коли через це імʼя «не знайдено» — лічимо окремо
-    lost = mine is not None and 'невідоме імʼя «' in mine and nfc(src) != src
+    lost = False
     if err:
         ok = mine is not None and nigredo.safe(nfc(mine)) == nigredo.safe(nfc(err))
         if not ok and lost:
