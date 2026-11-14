@@ -217,6 +217,30 @@ def main():
             prev = k
     out.append(f'pub static SIGMA_CLASS: [(u32, u8); {len(runs)}] = [' + ', '.join(f'({a}, {b})' for a, b in runs) + '];')
 
+    # NFC (гліф η, 1.4): повний канонічний розклад (без складів хангиля — вони рахуються), класи поєднання, пари складання
+    # (первинні складені: розклад на два знаки, який NFC складає назад)
+    HANGUL = range(0xAC00, 0xD7A4)
+    dec = [(cp, U.normalize('NFD', chr(cp))) for cp in range(MAXCP)
+           if not 0xD800 <= cp <= 0xDFFF and cp not in HANGUL and U.normalize('NFD', chr(cp)) != chr(cp)]
+    out.append(f'pub static NFC_DECOMP: [(u32, &str); {len(dec)}] = [' + ', '.join(f'({a}, {rs(b)})' for a, b in dec) + '];')
+    runs, prev = [], None
+    for cp in range(MAXCP):
+        k = U.combining(chr(cp))
+        if k != prev:
+            runs.append((cp, k))
+            prev = k
+    out.append(f'pub static CCC_RUNS: [(u32, u8); {len(runs)}] = [' + ', '.join(f'({a}, {b})' for a, b in runs) + '];')
+    comp = []
+    for cp in range(MAXCP):
+        d = U.decomposition(chr(cp))
+        if not d or d.startswith('<') or cp in HANGUL:
+            continue
+        parts = [int(x, 16) for x in d.split()]
+        if len(parts) == 2 and U.normalize('NFC', chr(parts[0]) + chr(parts[1])) == chr(cp):
+            comp.append((parts[0], parts[1], cp))
+    comp.sort()
+    out.append(f'pub static NFC_COMP: [(u32, u32, u32); {len(comp)}] = [' + ', '.join(f'({a}, {b}, {c})' for a, b, c in comp) + '];')
+
     path = os.path.join(HERE, 'src', 'tables.rs')
     open(path, 'w', encoding='utf-8').write('\n'.join(out) + '\n')
     print(f'{path}: {os.path.getsize(path)} байтів')

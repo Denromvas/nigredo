@@ -623,6 +623,30 @@ pub fn prim(it: &mut Interp, g: char, a: &[V], pos: Pos) -> R<V> {
             let x = need_str(&a[0], &g.to_string(), pos)?;
             Ok(V::str(if g == '⇣' { uni::lower(&x.s) } else { uni::upper(&x.s) }))
         }
+        'η' => {
+            let x = need_str(&a[0], "η", pos)?;
+            Ok(V::str(uni::nfc(&x.s)))
+        }
+        'γ' => {
+            let x = need_str(&a[0], "γ", pos)?;
+            if x.nch != 1 {
+                return ngr(format!("γ: очікувався один знак, а не рядок із {} знаків", x.nch), pos);
+            }
+            Ok(V::str(uni::category(x.s.chars().next().unwrap()).to_string()))
+        }
+        'ω' => match &a[0].v {
+            Val::Str(x) => {
+                if x.nch != 1 {
+                    return ngr(format!("ω: очікувався один знак, а не рядок із {} знаків", x.nch), pos);
+                }
+                Ok(V::int(Int::S(x.s.chars().next().unwrap() as i64)))
+            }
+            Val::Int(x) => match x.to_i64().and_then(|k| u32::try_from(k).ok()).and_then(char::from_u32) {
+                Some(c) => Ok(V::str(c.to_string())),
+                None => ngr(format!("ω: коду {} серед знаків Unicode немає (є 0…1114111, крім 55296…57343)", x.to_string()), pos),
+            },
+            _ => ngr(format!("ω: очікувався знак чи його код (ціле), а не {} {}", kind(&a[0]), brief(&a[0], 40)), pos),
+        },
         '⊏' => {
             let len = match &a[0].v {
                 Val::Str(s) => s.nch,

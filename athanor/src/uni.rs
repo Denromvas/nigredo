@@ -24,6 +24,82 @@ pub fn category(c: char) -> &'static str {
     CAT_NAMES[run_val(&CAT_RUNS, c as u32) as usize]
 }
 
+fn ccc(c: char) -> u8 {
+    run_val(&CCC_RUNS, c as u32)
+}
+
+fn compose(a: char, b: char) -> Option<char> {
+    let (x, y) = (a as u32, b as u32);
+    // хангиль: Л + Г → ЛГ, ЛГ + К → ЛГК
+    if (0x1100..0x1113).contains(&x) && (0x1161..0x1176).contains(&y) {
+        return char::from_u32(0xAC00 + ((x - 0x1100) * 21 + (y - 0x1161)) * 28);
+    }
+    if (0xAC00..0xD7A4).contains(&x) && (x - 0xAC00) % 28 == 0 && (0x11A8..0x11C3).contains(&y) {
+        return char::from_u32(x + (y - 0x11A7));
+    }
+    NFC_COMP.binary_search_by(|&(p, q, _)| (p, q).cmp(&(x, y))).ok().and_then(|i| char::from_u32(NFC_COMP[i].2))
+}
+
+/// Нормальна форма NFC (гліф η): розклад, канонічний порядок, складання — UAX #15, таблиці Unicode 15.1 з того самого
+/// Python, що й еталон. Рядок без «небезпечних» знаків уже в NFC.
+pub fn nfc(s: &str) -> String {
+    if s.is_ascii() || !s.chars().any(norm_unsafe) {
+        return s.to_string();
+    }
+    let mut d: Vec<(char, u8)> = Vec::with_capacity(s.len());
+    for c in s.chars() {
+        let x = c as u32;
+        if (0xAC00..0xD7A4).contains(&x) {
+            let i = x - 0xAC00;
+            d.push((char::from_u32(0x1100 + i / 588).unwrap(), 0));
+            d.push((char::from_u32(0x1161 + (i % 588) / 28).unwrap(), 0));
+            if i % 28 != 0 {
+                d.push((char::from_u32(0x11A7 + i % 28).unwrap(), 0));
+            }
+        } else if let Some(t) = map_str(&NFC_DECOMP, x) {
+            d.extend(t.chars().map(|k| (k, ccc(k))));
+        } else {
+            d.push((c, ccc(c)));
+        }
+    }
+    // канонічний порядок: у кожній низці знаків з ненульовим класом — стійко за класом
+    let mut i = 0;
+    while i < d.len() {
+        if d[i].1 == 0 {
+            i += 1;
+            continue;
+        }
+        let mut j = i;
+        while j < d.len() && d[j].1 != 0 {
+            j += 1;
+        }
+        d[i..j].sort_by_key(|&(_, k)| k);
+        i = j;
+    }
+    let mut out: Vec<char> = Vec::with_capacity(d.len());
+    let mut starter: Option<usize> = None;
+    let mut last: i32 = -1; // клас останнього знака після початкового, що лишився; −1 — між ними нічого немає
+    for &(c, k) in &d {
+        if let Some(sp) = starter {
+            if last < k as i32 {
+                // не заступлений: між початковим і цим знаком немає знака з таким самим чи більшим класом
+                if let Some(m) = compose(out[sp], c) {
+                    out[sp] = m;
+                    continue;
+                }
+            }
+        }
+        if k == 0 {
+            starter = Some(out.len());
+            last = -1;
+        } else {
+            last = k as i32;
+        }
+        out.push(c);
+    }
+    out.into_iter().collect()
+}
+
 pub fn is_letter(c: char) -> bool {
     run_val(&CAT_RUNS, c as u32) <= 4 // Lu Ll Lt Lm Lo
 }
