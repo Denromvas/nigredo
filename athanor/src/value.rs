@@ -530,7 +530,9 @@ pub fn env_get(env: &Rc<Env>, hops: u32, slot: u32) -> V {
     for _ in 0..hops {
         e = e.parent.as_deref().unwrap();
     }
-    e.vars.borrow()[slot as usize].clone()
+    // імʼя блоку читається лише після свого ← — це тримає розбір («ще обчислюється», «невідоме імʼя», перекриття);
+    // якби не втримав — зрозуміла внутрішня помилка, а не індекс поза межами
+    e.vars.borrow().get(slot as usize).cloned().expect("імʼя прочитано до його ←")
 }
 
 /// mk: список, чия впевненість — мінімум вмісту (і extra); будова — extra.

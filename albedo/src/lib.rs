@@ -179,6 +179,7 @@ pub extern "C" fn ngr_run(c: *const u8, cn: usize, p: *const u8, n: usize) -> i3
         quota_stack: Vec::new(),
         quota_used: Default::default(),
         quota_seq: 0,
+        quota_mods: Vec::new(),
         owner_home: home,
         paths_seen: None,
         rp_cache: std::collections::HashMap::new(),

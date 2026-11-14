@@ -457,6 +457,7 @@ fn execute(
         quota_stack: Vec::new(),
         quota_used: Default::default(),
         quota_seq: 0,
+        quota_mods: Vec::new(),
         owner_home: home.to_string(),
         paths_seen: None,
         rp_cache: std::collections::HashMap::new(),

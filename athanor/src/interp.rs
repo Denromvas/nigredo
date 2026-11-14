@@ -154,6 +154,7 @@ pub struct Interp {
     pub quota_stack: Vec<Rc<QuotaTable>>,
     pub quota_used: HashMap<(String, String, String), u64>,
     pub quota_seq: u64,
+    pub quota_mods: Vec<*const crate::ast::Caps>, // модулі, чия таблиця квот уже в стосі
     pub owner_home: String, // уже справжній шлях (realpath під час запуску)
     pub paths_seen: Option<Vec<String>>,
     pub rp_cache: HashMap<String, String>, // realpath тек із печатки: програма симлінків не створює (у proot stat дорогий)
@@ -933,8 +934,12 @@ impl Interp {
                 under.push(m.caps.clone());
                 self.caps_under = Some((self.caps.clone(), under));
             }
-            if !m.caps.quotas.is_empty() {
+            // таблиця квот модуля — у стосі один раз, хоч би скільки його викликів було вкладено: check_quota і так
+            // рахує її раз, а копія на кожен вкладений виклик — це памʼять поза обліком (суд 16, раунд 2, Скептик:
+            // модуль на 700 квот × 17 400 викликів — 1,33 ГБ)
+            if !m.caps.quotas.is_empty() && !self.quota_mods.contains(&Rc::as_ptr(&m.caps)) {
                 mod_q = true;
+                self.quota_mods.push(Rc::as_ptr(&m.caps));
                 self.quota_stack.push(Rc::new(QuotaTable {
                     who: format!("модуль {}", m.rel),
                     quotas: m.caps.quotas.clone(),
@@ -988,6 +993,7 @@ impl Interp {
         };
         if mod_q {
             self.quota_stack.pop();
+            self.quota_mods.pop();
         }
         self.caps = saved_caps;
         self.caps_under = saved_under;
